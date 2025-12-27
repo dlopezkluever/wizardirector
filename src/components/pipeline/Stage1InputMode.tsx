@@ -1,22 +1,31 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
   FileText, 
   Wand2, 
   Layers, 
   ScrollText, 
-  Check
+  Check,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { InputMode, ProjectType, ContentRating } from '@/types/project';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { useState } from 'react';
+import { FileStagingArea, type UploadedFile } from './FileStagingArea';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 
 interface InputModeOption {
   id: InputMode;
   title: string;
   description: string;
   icon: React.ElementType;
+  fileHint: string;
 }
 
 const inputModes: InputModeOption[] = [
@@ -25,24 +34,28 @@ const inputModes: InputModeOption[] = [
     title: 'Expansion',
     description: 'Start with a brief idea and expand into a full narrative',
     icon: Wand2,
+    fileHint: 'Upload a 1-3 paragraph idea kernel or type directly',
   },
   {
     id: 'condensation',
     title: 'Condensation',
     description: 'Condense a large text into a cinematic narrative',
     icon: Layers,
+    fileHint: 'Upload a novel, script, or 100+ page document',
   },
   {
     id: 'transformation',
     title: 'Transformation',
     description: 'Transform existing content with a creative twist',
     icon: ScrollText,
+    fileHint: 'Upload source text + optional reference materials',
   },
   {
     id: 'script-skip',
     title: 'Script Skip',
     description: 'Upload a formatted screenplay directly',
     icon: FileText,
+    fileHint: 'Upload a formatted screenplay file',
   },
 ];
 
@@ -75,6 +88,9 @@ export function Stage1InputMode({ onComplete }: Stage1InputModeProps) {
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [targetLength, setTargetLength] = useState<[number, number]>([3, 5]);
   const [tonalPrecision, setTonalPrecision] = useState('');
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [ideaText, setIdeaText] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const toggleGenre = (genre: string) => {
     setSelectedGenres(prev => 
@@ -84,7 +100,10 @@ export function Stage1InputMode({ onComplete }: Stage1InputModeProps) {
     );
   };
 
-  const canProceed = selectedMode && selectedProjectType && tonalPrecision.length >= 10;
+  const canProceed = selectedMode && selectedProjectType && tonalPrecision.length >= 10 && 
+    (uploadedFiles.length > 0 || (selectedMode === 'expansion' && ideaText.length >= 20));
+
+  const selectedModeData = inputModes.find(m => m.id === selectedMode);
 
   return (
     <div className="flex-1 overflow-auto p-8">
@@ -153,6 +172,60 @@ export function Stage1InputMode({ onComplete }: Stage1InputModeProps) {
             })}
           </div>
         </section>
+
+        {/* File Upload / Text Input Section */}
+        {selectedMode && (
+          <motion.section
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            className="space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="font-display text-xl font-semibold text-foreground">
+                Input Content
+              </h3>
+              <span className="text-sm text-muted-foreground">
+                {selectedModeData?.fileHint}
+              </span>
+            </div>
+
+            {selectedMode === 'expansion' ? (
+              <div className="space-y-4">
+                <textarea
+                  value={ideaText}
+                  onChange={(e) => setIdeaText(e.target.value)}
+                  placeholder="Enter your story idea, concept, or initial premise here. Be as brief or detailed as you like - the AI will expand this into a full narrative treatment..."
+                  className="w-full h-40 px-4 py-3 rounded-xl bg-secondary border border-border text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span>{ideaText.length} characters</span>
+                  <span>•</span>
+                  <span>Minimum 20 characters required</span>
+                </div>
+                
+                <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" size="sm" className="gap-2">
+                      {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      Add supporting files (optional)
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-4">
+                    <FileStagingArea
+                      files={uploadedFiles}
+                      onFilesChange={setUploadedFiles}
+                    />
+                  </CollapsibleContent>
+                </Collapsible>
+              </div>
+            ) : (
+              <FileStagingArea
+                files={uploadedFiles}
+                onFilesChange={setUploadedFiles}
+              />
+            )}
+          </motion.section>
+        )}
 
         {/* Project Type */}
         <section className="space-y-4">
@@ -238,7 +311,10 @@ export function Stage1InputMode({ onComplete }: Stage1InputModeProps) {
             <h3 className="font-display text-xl font-semibold text-foreground">
               Tonal Precision
             </h3>
-            <span className="text-xs text-muted-foreground">
+            <span className={cn(
+              'text-xs',
+              tonalPrecision.length >= 10 ? 'text-success' : 'text-muted-foreground'
+            )}>
               {tonalPrecision.length}/10 characters minimum
             </span>
           </div>

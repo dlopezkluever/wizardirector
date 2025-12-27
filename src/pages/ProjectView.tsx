@@ -3,6 +3,10 @@ import { toast } from 'sonner';
 import { PhaseTimeline } from '@/components/pipeline/PhaseTimeline';
 import { ProjectHeader } from '@/components/pipeline/ProjectHeader';
 import { Stage1InputMode } from '@/components/pipeline/Stage1InputMode';
+import { Stage2Treatment } from '@/components/pipeline/Stage2Treatment';
+import { Stage3BeatSheet } from '@/components/pipeline/Stage3BeatSheet';
+import { Stage4MasterScript } from '@/components/pipeline/Stage4MasterScript';
+import { Stage5Assets } from '@/components/pipeline/Stage5Assets';
 import type { StageProgress, StageStatus } from '@/types/project';
 
 const initialPhaseAStages: StageProgress[] = [
@@ -22,7 +26,6 @@ export function ProjectView({ projectId, onBack }: ProjectViewProps) {
   const [currentStage, setCurrentStage] = useState(1);
   const [stages, setStages] = useState<StageProgress[]>(initialPhaseAStages);
 
-  // Mock project data - in production this would come from state/API
   const projectTitle = projectId === 'new' ? 'New Project' : 'The Last Sunset';
   const currentBranch = 'main';
 
@@ -38,16 +41,8 @@ export function ProjectView({ projectId, onBack }: ProjectViewProps) {
     toast.success(`Stage ${stageNumber} completed`);
   };
 
-  const handleOpenVault = () => {
-    toast.info('Artifact Vault coming soon');
-  };
-
-  const handleOpenVersionHistory = () => {
-    toast.info('Story Timelines coming soon');
-  };
-
-  const handleCreateBranch = () => {
-    toast.info('Branch creation coming soon');
+  const handleGoBack = (toStage: number) => {
+    setCurrentStage(toStage);
   };
 
   return (
@@ -56,23 +51,24 @@ export function ProjectView({ projectId, onBack }: ProjectViewProps) {
         projectTitle={projectTitle}
         currentBranch={currentBranch}
         onBack={onBack}
-        onOpenVault={handleOpenVault}
-        onOpenVersionHistory={handleOpenVersionHistory}
-        onCreateBranch={handleCreateBranch}
+        onOpenVault={() => toast.info('Artifact Vault coming soon')}
+        onOpenVersionHistory={() => toast.info('Story Timelines coming soon')}
+        onCreateBranch={() => toast.info('Branch creation coming soon')}
       />
       
       <PhaseTimeline stages={stages} currentStage={currentStage} />
       
-      {/* Stage Content */}
-      {currentStage === 1 && (
-        <Stage1InputMode onComplete={() => handleStageComplete(1)} />
-      )}
+      {currentStage === 1 && <Stage1InputMode onComplete={() => handleStageComplete(1)} />}
+      {currentStage === 2 && <Stage2Treatment onComplete={() => handleStageComplete(2)} onBack={() => handleGoBack(1)} />}
+      {currentStage === 3 && <Stage3BeatSheet onComplete={() => handleStageComplete(3)} onBack={() => handleGoBack(2)} />}
+      {currentStage === 4 && <Stage4MasterScript onComplete={() => handleStageComplete(4)} onBack={() => handleGoBack(3)} />}
+      {currentStage === 5 && <Stage5Assets onComplete={() => handleStageComplete(5)} onBack={() => handleGoBack(4)} />}
       
-      {currentStage > 1 && (
+      {currentStage > 5 && (
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-center text-muted-foreground">
-            <p className="text-xl font-display">Stage {currentStage}: {stages[currentStage - 1]?.label}</p>
-            <p className="mt-2">This stage is under development</p>
+          <div className="text-center">
+            <h2 className="font-display text-2xl font-bold text-primary mb-2">Phase A Complete!</h2>
+            <p className="text-muted-foreground">Ready for Phase B: Production Engine</p>
           </div>
         </div>
       )}
