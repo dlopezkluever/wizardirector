@@ -1,0 +1,108 @@
+import { motion } from 'framer-motion';
+import { GitBranch, Clock, ChevronRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import type { Project, StageStatus } from '@/types/project';
+
+interface ProjectCardProps {
+  project: Project;
+  onClick: () => void;
+  index: number;
+}
+
+function StageIndicator({ status }: { status: StageStatus }) {
+  const statusStyles: Record<StageStatus, string> = {
+    locked: 'bg-success',
+    active: 'bg-primary animate-pulse-glow',
+    pending: 'bg-muted-foreground/40',
+    outdated: 'bg-warning',
+  };
+
+  return (
+    <span className={cn('w-2 h-2 rounded-full', statusStyles[status])} />
+  );
+}
+
+export function ProjectCard({ project, onClick, index }: ProjectCardProps) {
+  const progressPercentage = 
+    (project.stages.filter(s => s.status === 'locked').length / project.stages.length) * 100;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: index * 0.1 }}
+      onClick={onClick}
+      className="group relative overflow-hidden rounded-xl bg-card border border-border card-hover cursor-pointer"
+    >
+      {/* Thumbnail/Gradient Background */}
+      <div 
+        className="h-32 bg-gradient-to-br from-primary/10 via-accent/5 to-transparent"
+        style={project.thumbnail ? { 
+          backgroundImage: `url(${project.thumbnail})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center'
+        } : undefined}
+      />
+
+      {/* Content */}
+      <div className="p-5">
+        {/* Title & Branch */}
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <h3 className="font-display text-xl font-semibold text-foreground line-clamp-1">
+            {project.title}
+          </h3>
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-secondary text-xs text-secondary-foreground shrink-0">
+            <GitBranch className="w-3 h-3" />
+            <span>{project.branch}</span>
+          </div>
+        </div>
+
+        {/* Description */}
+        <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
+          {project.description}
+        </p>
+
+        {/* Stage Progress */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+            <span>Stage {project.currentStage} of {project.stages.length}</span>
+            <span>{Math.round(progressPercentage)}%</span>
+          </div>
+          <div className="flex gap-1">
+            {project.stages.map((stage, i) => (
+              <StageIndicator key={i} status={stage.status} />
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between pt-3 border-t border-border">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Clock className="w-3.5 h-3.5" />
+            <span>
+              Updated {formatRelativeTime(project.updatedAt)}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 text-sm text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+            <span>Open</span>
+            <ChevronRight className="w-4 h-4" />
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function formatRelativeTime(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return 'just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
