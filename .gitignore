@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+._docs/Personal_Notes.md
+._docs/old-database-schema-state-transition-matrix.md
+._docs/REVISED-DEV-NEW-PROJECT-SETUP.md
