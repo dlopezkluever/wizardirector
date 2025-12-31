@@ -326,7 +326,7 @@ These tools manage continuity and iteration.
 
 ### **6.3 Data Persistence and Version Control (Corrected)**
 
-* **Real-time Saving:** The application must utilize a Firestore database to save project state after every critical user action.  
+* **Real-time Saving:** The application must utilize Supabase Postgres (specifically JSONB columns) to save project state after every critical user action. This allows for flexible schema evolution for stage artifacts (Beat Sheets, Shot Lists) while maintaining relational integrity with the core Project and User tables.  
 * **Branching System (Correction):** The old requirement for a fixed "5 previous states" is deprecated. All versioning will be managed by the **Git-Style Branching System** detailed in **Section 7**. This allows for non-linear, branching history persistence.
 
 ## **7\. Versioning and Invalidation Logic: "Story Timelines" (GIT-STYLE BRANCHING)**
