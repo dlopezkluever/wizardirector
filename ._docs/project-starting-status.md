@@ -90,7 +90,7 @@ src/
 - Full component library with variants
 - Responsive design patterns
 
-#### **Application Shell**
+#### **Application Shell in Basic/uncomplete Form**
 - Global sidebar navigation
 - Project dashboard with grid layout
 - Project cards with status indicators
@@ -195,7 +195,7 @@ Based on the PRD, the following backend services will need to be integrated:
 5. **No Error Handling**: Basic error states only
 6. **Performance**: Not optimized for large projects
 
-## Next Steps Required
+## Some of the Next Steps Required
 
 ### Immediate Priorities
 1. **Backend Architecture**: Choose and implement database solution
@@ -205,7 +205,7 @@ Based on the PRD, the following backend services will need to be integrated:
 5. **Data Persistence**: Replace mock data with real storage
 
 ### Medium-term Goals
-1. **Version Control**: Implement git-style branching
+1. **Version Control**: Implement git-style "Story Timelines" branching
 2. **Real-time Processing**: Add background job processing for AI generation
 3. **Collaboration**: Multi-user editing capabilities
 4. **Export System**: Video and project export functionality
