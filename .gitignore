@@ -26,3 +26,19 @@ dist-ssr
 ._docs/Personal_Notes.md
 ._docs/old-database-schema-state-transition-matrix.md
 ._docs/REVISED-DEV-NEW-PROJECT-SETUP.md
+
+dev-debug.log
+# Dependency directories
+node_modules/
+# Environment variables
+.env
+.vscode
+# OS specific
+
+# Task files
+# tasks.json
+# tasks/ 
+
+
+.cursor
+.taskmaster
