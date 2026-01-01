@@ -33,6 +33,8 @@ node_modules/
 # Environment variables
 .env
 .vscode
+.env.local
+
 # OS specific
 
 # Task files
@@ -42,3 +44,9 @@ node_modules/
 
 .cursor
 .taskmaster
+backend/.env
+Zhe_Trash
+
+.cursorignore
+
+._docs/ignore
