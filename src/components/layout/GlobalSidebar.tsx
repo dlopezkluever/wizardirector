@@ -1,15 +1,18 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  Home, 
-  FileText, 
-  Image, 
-  Box, 
+import {
+  Home,
+  FileText,
+  Image,
+  Box,
   ChevronLeft,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  LogOut
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/lib/stores/auth-store';
+import { useNavigate } from 'react-router-dom';
 
 interface SidebarItem {
   id: string;
@@ -32,6 +35,13 @@ interface GlobalSidebarProps {
 
 export function GlobalSidebar({ currentPath, onNavigate }: GlobalSidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const { signOut, user } = useAuthStore();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/auth');
+  };
 
   return (
     <motion.aside
@@ -94,8 +104,27 @@ export function GlobalSidebar({ currentPath, onNavigate }: GlobalSidebarProps) {
         })}
       </nav>
 
-      {/* Collapse Toggle */}
-      <div className="px-3 py-4 border-t border-sidebar-border">
+      {/* User Actions */}
+      <div className="px-3 py-4 border-t border-sidebar-border space-y-1">
+        {user && (
+          <button
+            onClick={handleSignOut}
+            className="sidebar-item w-full text-destructive hover:bg-destructive/10"
+          >
+            <LogOut className="w-5 h-5 shrink-0" />
+            {!collapsed && (
+              <motion.span
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="truncate"
+              >
+                Sign Out
+              </motion.span>
+            )}
+          </button>
+        )}
+
+        {/* Collapse Toggle */}
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="sidebar-item w-full justify-center"
