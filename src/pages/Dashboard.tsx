@@ -1,68 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Search, Filter, SortAsc } from 'lucide-react';
+import { Search, Filter, SortAsc, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ProjectCard } from '@/components/dashboard/ProjectCard';
 import { NewProjectCard } from '@/components/dashboard/NewProjectCard';
-import type { Project, StageStatus } from '@/types/project';
-
-// Mock data for demonstration
-const mockProjects: Project[] = [
-  {
-    id: '1',
-    title: 'The Last Sunset',
-    description: 'A poignant drama about a retired astronaut facing his final days while reconciling with his estranged daughter.',
-    status: 'in-progress',
-    branch: 'main',
-    currentStage: 4,
-    stages: [
-      { stage: 1, status: 'locked' as StageStatus, label: 'Input' },
-      { stage: 2, status: 'locked' as StageStatus, label: 'Treatment' },
-      { stage: 3, status: 'locked' as StageStatus, label: 'Beat Sheet' },
-      { stage: 4, status: 'active' as StageStatus, label: 'Script' },
-      { stage: 5, status: 'pending' as StageStatus, label: 'Assets' },
-    ],
-    createdAt: new Date(Date.now() - 86400000 * 3),
-    updatedAt: new Date(Date.now() - 3600000),
-  },
-  {
-    id: '2',
-    title: 'Neon Dreams',
-    description: 'A cyberpunk thriller set in 2087 Tokyo, following a data smuggler caught between rival megacorporations.',
-    status: 'in-progress',
-    branch: 'alt-ending',
-    currentStage: 7,
-    stages: [
-      { stage: 1, status: 'locked' as StageStatus, label: 'Input' },
-      { stage: 2, status: 'locked' as StageStatus, label: 'Treatment' },
-      { stage: 3, status: 'locked' as StageStatus, label: 'Beat Sheet' },
-      { stage: 4, status: 'locked' as StageStatus, label: 'Script' },
-      { stage: 5, status: 'locked' as StageStatus, label: 'Assets' },
-      { stage: 6, status: 'locked' as StageStatus, label: 'Script Hub' },
-      { stage: 7, status: 'active' as StageStatus, label: 'Shot List' },
-    ],
-    createdAt: new Date(Date.now() - 86400000 * 7),
-    updatedAt: new Date(Date.now() - 7200000),
-  },
-  {
-    id: '3',
-    title: 'Coffee Shop Encounters',
-    description: 'A romantic comedy anthology featuring interconnected stories of love, loss, and second chances.',
-    status: 'draft',
-    branch: 'main',
-    currentStage: 2,
-    stages: [
-      { stage: 1, status: 'locked' as StageStatus, label: 'Input' },
-      { stage: 2, status: 'active' as StageStatus, label: 'Treatment' },
-      { stage: 3, status: 'pending' as StageStatus, label: 'Beat Sheet' },
-      { stage: 4, status: 'pending' as StageStatus, label: 'Script' },
-      { stage: 5, status: 'pending' as StageStatus, label: 'Assets' },
-    ],
-    createdAt: new Date(Date.now() - 86400000),
-    updatedAt: new Date(Date.now() - 1800000),
-  },
-];
+import { NewProjectDialog } from '@/components/dashboard/NewProjectDialog';
+import { projectService } from '@/lib/services/projectService';
+import { useToast } from '@/hooks/use-toast';
+import type { Project } from '@/types/project';
 
 interface DashboardProps {
   onProjectSelect: (projectId: string) => void;
@@ -71,8 +17,44 @@ interface DashboardProps {
 
 export function Dashboard({ onProjectSelect, onNewProject }: DashboardProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [newProjectDialogOpen, setNewProjectDialogOpen] = useState(false);
+  const { toast } = useToast();
 
-  const filteredProjects = mockProjects.filter(project =>
+  // Load projects on component mount
+  useEffect(() => {
+    loadProjects();
+  }, []);
+
+  const loadProjects = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const fetchedProjects = await projectService.getProjects();
+      setProjects(fetchedProjects);
+    } catch (err) {
+      console.error('Error loading projects:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load projects');
+      toast({
+        title: 'Error',
+        description: 'Failed to load projects. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleProjectCreated = (projectId: string) => {
+    // Refresh the projects list
+    loadProjects();
+    // Navigate to the new project
+    onProjectSelect(projectId);
+  };
+
+  const filteredProjects = projects.filter(project =>
     project.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     project.description.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -120,18 +102,47 @@ export function Dashboard({ onProjectSelect, onNewProject }: DashboardProps) {
 
       {/* Project Grid */}
       <main className="px-8 py-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <NewProjectCard onClick={onNewProject} />
-          {filteredProjects.map((project, index) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              onClick={() => onProjectSelect(project.id)}
-              index={index + 1}
-            />
-          ))}
-        </div>
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            <span className="ml-2 text-muted-foreground">Loading projects...</span>
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center py-12">
+            <p className="text-destructive mb-4">{error}</p>
+            <Button onClick={loadProjects} variant="outline">
+              Try Again
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <NewProjectCard onClick={() => setNewProjectDialogOpen(true)} />
+            {filteredProjects.map((project, index) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                onClick={() => onProjectSelect(project.id)}
+                index={index + 1}
+              />
+            ))}
+            {filteredProjects.length === 0 && !loading && (
+              <div className="col-span-full flex flex-col items-center justify-center py-12 text-center">
+                <p className="text-muted-foreground mb-2">No projects found</p>
+                <p className="text-sm text-muted-foreground">
+                  {searchQuery ? 'Try adjusting your search query.' : 'Create your first project to get started.'}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </main>
+
+      {/* New Project Dialog */}
+      <NewProjectDialog
+        open={newProjectDialogOpen}
+        onOpenChange={setNewProjectDialogOpen}
+        onProjectCreated={handleProjectCreated}
+      />
     </div>
   );
 }

@@ -55,6 +55,7 @@ export interface Project {
 }
 
 export interface ProjectSettings {
+  projectTitle?: string;
   inputMode: InputMode;
   projectType: ProjectType;
   contentRating: ContentRating;
