@@ -4,14 +4,27 @@ import type { Project, ProjectSettings } from '@/types/project';
 class ProjectService {
   // Get all projects for the current user
   async getProjects(): Promise<Project[]> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
 
-    if (!user) {
+    if (!session?.access_token) {
       throw new Error('User not authenticated');
     }
 
-    // For now, we'll make a direct Supabase call
-    // TODO: Replace with API call when backend auth middleware is ready
+    // Make API call to backend with JWT token
+    const response = await fetch('/api/projects', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch projects');
+    }
+
+    return response.json();
     const { data, error } = await supabase
       .from('projects')
       .select(`
@@ -62,13 +75,27 @@ class ProjectService {
 
   // Get a specific project by ID
   async getProject(id: string): Promise<Project> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
 
-    if (!user) {
+    if (!session?.access_token) {
       throw new Error('User not authenticated');
     }
 
-    // Direct Supabase call for now
+    // Make API call to backend with JWT token
+    const response = await fetch(`/api/projects/${id}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch project');
+    }
+
+    return response.json();
     const { data, error } = await supabase
       .from('projects')
       .select(`
@@ -122,66 +149,35 @@ class ProjectService {
 
   // Create a new project
   async createProject(settings: ProjectSettings): Promise<Project> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
 
-    if (!user) {
+    if (!session?.access_token) {
       throw new Error('User not authenticated');
     }
 
-    const { data, error } = await supabase
-      .from('projects')
-      .insert({
-        user_id: user.id,
-        title: settings.projectTitle || 'New Project', // We'll need to add this to ProjectSettings
-        project_type: settings.projectType,
-        content_rating: settings.contentRating,
-        genre: settings.genres,
-        tonal_precision: settings.tonalPrecision,
-        target_length_min: settings.targetLength.min,
-        target_length_max: settings.targetLength.max
-      })
-      .select(`
-        id,
-        title,
-        project_type,
-        content_rating,
-        genre,
-        tonal_precision,
-        target_length_min,
-        target_length_max,
-        created_at,
-        updated_at,
-        active_branch_id,
-        branches!active_branch_id (
-          name,
-          commit_message
-        )
-      `)
-      .single();
+    // Make API call to backend with JWT token
+    const response = await fetch('/api/projects', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: settings.projectTitle || 'New Project',
+        projectType: settings.projectType,
+        contentRating: settings.contentRating,
+        genres: settings.genres,
+        tonalPrecision: settings.tonalPrecision,
+        targetLength: settings.targetLength
+      }),
+    });
 
-    if (error) {
-      console.error('Error creating project:', error);
-      throw new Error('Failed to create project');
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create project');
     }
 
-    return {
-      id: data.id,
-      title: data.title,
-      description: data.tonal_precision || '',
-      status: 'draft' as const,
-      branch: data.branches?.name || 'main',
-      currentStage: 1,
-      stages: [],
-      createdAt: new Date(data.created_at),
-      updatedAt: new Date(data.updated_at),
-      projectType: data.project_type,
-      contentRating: data.content_rating,
-      genres: data.genre || [],
-      targetLength: {
-        min: data.target_length_min,
-        max: data.target_length_max
-      }
-    };
+    return response.json();
   }
 
   // Update project (placeholder for future use)

@@ -5,6 +5,7 @@ import * as dotenv from 'dotenv';
 
 import { healthRouter } from './routes/health.js';
 import { projectsRouter } from './routes/projects.js';
+import { authenticateUser } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 // Load environment variables
@@ -31,8 +32,8 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Health check route
 app.use('/api/health', healthRouter);
 
-// Projects routes
-app.use('/api/projects', projectsRouter);
+// Projects routes (protected)
+app.use('/api/projects', authenticateUser, projectsRouter);
 
 // Error handling middleware (must be last)
 app.use(errorHandler);

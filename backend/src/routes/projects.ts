@@ -6,13 +6,7 @@ const router = Router();
 // GET /api/projects - List all projects for the authenticated user
 router.get('/', async (req, res) => {
   try {
-    // Get the user from the session (we'll need auth middleware later)
-    // For now, we'll use a placeholder user_id - this will be fixed when we add auth middleware
-    const userId = req.headers['user-id'] as string; // Temporary header-based auth
-
-    if (!userId) {
-      return res.status(401).json({ error: 'User not authenticated' });
-    }
+    const userId = req.user!.id;
 
     // Get projects with their active branch information
     const { data: projects, error } = await supabase
@@ -73,11 +67,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.headers['user-id'] as string; // Temporary header-based auth
-
-    if (!userId) {
-      return res.status(401).json({ error: 'User not authenticated' });
-    }
+    const userId = req.user!.id;
 
     const { data: project, error } = await supabase
       .from('projects')
@@ -140,11 +130,7 @@ router.get('/:id', async (req, res) => {
 // POST /api/projects - Create a new project
 router.post('/', async (req, res) => {
   try {
-    const userId = req.headers['user-id'] as string; // Temporary header-based auth
-
-    if (!userId) {
-      return res.status(401).json({ error: 'User not authenticated' });
-    }
+    const userId = req.user!.id;
 
     const {
       title,
