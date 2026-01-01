@@ -48,7 +48,7 @@ router.get('/', async (req, res) => {
       title: project.title,
       description: project.tonal_precision || '',
       status: 'draft' as const, // We'll derive this from stage states later
-      branch: project.branches?.name || 'main',
+      branch: project.branches?.[0]?.name || 'main',
       currentStage: 1, // We'll calculate this from stage states later
       stages: [], // We'll populate this from stage states later
       createdAt: new Date(project.created_at),
@@ -116,7 +116,7 @@ router.get('/:id', async (req, res) => {
       title: project.title,
       description: project.tonal_precision || '',
       status: 'draft' as const,
-      branch: project.branches?.name || 'main',
+      branch: project.branches?.[0]?.name || 'main',
       currentStage: 1,
       stages: [],
       createdAt: new Date(project.created_at),
@@ -224,7 +224,7 @@ router.post('/', async (req, res) => {
       title: project.title,
       description: project.tonal_precision || '',
       status: 'draft' as const,
-      branch: project.branches?.name || 'main',
+      branch: project.branches?.[0]?.name || 'main',
       currentStage: 1,
       stages: [],
       createdAt: new Date(project.created_at),

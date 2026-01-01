@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
+import * as dotenv from 'dotenv';
 
 import { healthRouter } from './routes/health.js';
 import { projectsRouter } from './routes/projects.js';
