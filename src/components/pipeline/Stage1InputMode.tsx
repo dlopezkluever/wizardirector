@@ -368,13 +368,16 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
 
         {/* Proceed Button */}
         <div className="flex justify-between items-center pt-6 border-t border-border">
-          {isSaving && (
+          {projectId === 'new' ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>💡 Create a project first to enable auto-save</span>
+            </div>
+          ) : isSaving ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Save className="w-4 h-4 animate-pulse" />
               <span>Saving...</span>
             </div>
-          )}
-          {!isSaving && (
+          ) : (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Check className="w-4 h-4 text-success" />
               <span>All changes saved</span>

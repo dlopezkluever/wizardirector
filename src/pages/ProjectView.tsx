@@ -73,6 +73,11 @@ export function ProjectView({ projectId, onBack }: ProjectViewProps) {
 
   // Hydrate stage progression from database
   useEffect(() => {
+    // Skip hydration for new projects
+    if (projectId === 'new') {
+      return;
+    }
+
     if (isLoadingStates || stageStates.length === 0) {
       return;
     }
@@ -106,7 +111,7 @@ export function ProjectView({ projectId, onBack }: ProjectViewProps) {
 
     setStages(finalStages);
     setCurrentStage(nextStage);
-  }, [stageStates, isLoadingStates, getStageState]);
+  }, [stageStates, isLoadingStates, getStageState, projectId]);
 
   const handleStageComplete = (stageNumber: number) => {
     setStages(prev => prev.map(s => 

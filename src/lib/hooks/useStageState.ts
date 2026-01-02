@@ -57,6 +57,12 @@ export function useStageState<T extends Record<string, any>>({
    * Load stage state on mount
    */
   const loadStageState = useCallback(async () => {
+    // Skip loading if this is a new project (no real ID yet)
+    if (!projectId || projectId === 'new') {
+      setIsLoading(false);
+      return;
+    }
+
     try {
       setIsLoading(true);
       const state = await stageStateService.getStageState(projectId, stageNumber);
@@ -90,6 +96,11 @@ export function useStageState<T extends Record<string, any>>({
       return;
     }
 
+    // Skip auto-save for new projects (no real ID yet)
+    if (!projectId || projectId === 'new') {
+      return;
+    }
+
     if (!autoSave) {
       return;
     }
@@ -119,6 +130,12 @@ export function useStageState<T extends Record<string, any>>({
    * Manually save stage state
    */
   const save = useCallback(async (options?: Partial<SaveStageStateOptions>) => {
+    // Skip saving for new projects (no real ID yet)
+    if (!projectId || projectId === 'new') {
+      toast.error('Cannot save - project not created yet');
+      return;
+    }
+
     try {
       setIsSaving(true);
       const savedState = await stageStateService.forceSave(
@@ -147,6 +164,12 @@ export function useStageState<T extends Record<string, any>>({
    * Lock the stage (mark as completed)
    */
   const lock = useCallback(async () => {
+    // Skip locking for new projects (no real ID yet)
+    if (!projectId || projectId === 'new') {
+      toast.error('Cannot lock stage - project not created yet');
+      return;
+    }
+
     try {
       setIsSaving(true);
       const lockedState = await stageStateService.lockStage(projectId, stageNumber);
@@ -201,7 +224,9 @@ export function useProjectStageStates(projectId: string | null) {
   const [error, setError] = useState<Error | null>(null);
 
   const loadStageStates = useCallback(async () => {
-    if (!projectId) {
+    // Skip loading for new projects or invalid IDs
+    if (!projectId || projectId === 'new') {
+      setIsLoading(false);
       return;
     }
 
