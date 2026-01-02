@@ -24,52 +24,23 @@ class ProjectService {
       throw new Error(error.error || 'Failed to fetch projects');
     }
 
-    return response.json();
-    const { data, error } = await supabase
-      .from('projects')
-      .select(`
-        id,
-        title,
-        project_type,
-        content_rating,
-        genre,
-        tonal_precision,
-        target_length_min,
-        target_length_max,
-        created_at,
-        updated_at,
-        active_branch_id,
-        branches!active_branch_id (
-          name,
-          commit_message
-        )
-      `)
-      .eq('user_id', user.id)
-      .order('updated_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching projects:', error);
-      throw new Error('Failed to fetch projects');
-    }
+    const data = await response.json();
 
     // Transform database data to match frontend Project interface
-    return data.map(project => ({
+    return data.map((project: any) => ({
       id: project.id,
       title: project.title,
-      description: project.tonal_precision || '',
-      status: 'draft' as const, // TODO: Calculate from stage states
-      branch: project.branches?.name || 'main',
-      currentStage: 1, // TODO: Calculate from stage states
-      stages: [], // TODO: Populate from stage states
-      createdAt: new Date(project.created_at),
-      updatedAt: new Date(project.updated_at),
-      projectType: project.project_type,
-      contentRating: project.content_rating,
-      genres: project.genre || [],
-      targetLength: {
-        min: project.target_length_min,
-        max: project.target_length_max
-      }
+      description: project.description || '',
+      status: project.status || 'draft',
+      branch: project.branch || 'main',
+      currentStage: project.currentStage || 1,
+      stages: project.stages || [],
+      createdAt: new Date(project.createdAt),
+      updatedAt: new Date(project.updatedAt),
+      projectType: project.projectType,
+      contentRating: project.contentRating,
+      genres: project.genres || [],
+      targetLength: project.targetLength
     }));
   }
 
@@ -95,7 +66,14 @@ class ProjectService {
       throw new Error(error.error || 'Failed to fetch project');
     }
 
-    return response.json();
+    const project = await response.json();
+
+    // Transform to ensure dates are Date objects
+    return {
+      ...project,
+      createdAt: new Date(project.createdAt),
+      updatedAt: new Date(project.updatedAt)
+    };
     const { data, error } = await supabase
       .from('projects')
       .select(`
@@ -177,7 +155,14 @@ class ProjectService {
       throw new Error(error.error || 'Failed to create project');
     }
 
-    return response.json();
+    const project = await response.json();
+
+    // Transform to ensure dates are Date objects
+    return {
+      ...project,
+      createdAt: new Date(project.createdAt),
+      updatedAt: new Date(project.updatedAt)
+    };
   }
 
   // Update project (placeholder for future use)
