@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { PhaseTimeline } from '@/components/pipeline/PhaseTimeline';
 import { ProjectHeader } from '@/components/pipeline/ProjectHeader';
@@ -16,6 +16,8 @@ import { Stage11Confirmation } from '@/components/pipeline/Stage11Confirmation';
 import { Stage12VideoGeneration } from '@/components/pipeline/Stage12VideoGeneration';
 import { SceneWorkflowSidebar } from '@/components/pipeline/SceneWorkflowSidebar';
 import type { StageProgress, StageStatus } from '@/types/project';
+import { useProjectStageStates } from '@/lib/hooks/useStageState';
+import { projectService } from '@/lib/services/projectService';
 
 const initialPhaseAStages: StageProgress[] = [
   { stage: 1, status: 'active' as StageStatus, label: 'Input' },
@@ -38,9 +40,73 @@ export function ProjectView({ projectId, onBack }: ProjectViewProps) {
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
   const [sceneStage, setSceneStage] = useState<SceneStage>(7);
   const [completedSceneStages, setCompletedSceneStages] = useState<SceneStage[]>([]);
+  const [projectTitle, setProjectTitle] = useState('Loading...');
+  const [currentBranch, setCurrentBranch] = useState('main');
+  const [isLoadingProject, setIsLoadingProject] = useState(true);
 
-  const projectTitle = projectId === 'new' ? 'New Project' : 'The Last Sunset';
-  const currentBranch = 'main';
+  // Load all stage states for the project
+  const { stageStates, isLoading: isLoadingStates, getStageState } = useProjectStageStates(projectId);
+
+  // Load project details on mount
+  useEffect(() => {
+    const loadProject = async () => {
+      try {
+        setIsLoadingProject(true);
+        const project = await projectService.getProject(projectId);
+        setProjectTitle(project.title);
+        setCurrentBranch(project.branch);
+      } catch (error) {
+        console.error('Failed to load project:', error);
+        toast.error('Failed to load project');
+      } finally {
+        setIsLoadingProject(false);
+      }
+    };
+
+    if (projectId && projectId !== 'new') {
+      loadProject();
+    } else {
+      setProjectTitle('New Project');
+      setIsLoadingProject(false);
+    }
+  }, [projectId]);
+
+  // Hydrate stage progression from database
+  useEffect(() => {
+    if (isLoadingStates || stageStates.length === 0) {
+      return;
+    }
+
+    // Find the highest stage number with a locked or draft status
+    let highestStage = 1;
+    const updatedStages = initialPhaseAStages.map(stageProgress => {
+      const stageState = getStageState(stageProgress.stage);
+      
+      if (stageState) {
+        highestStage = Math.max(highestStage, stageProgress.stage);
+        
+        // Map database status to UI status
+        if (stageState.status === 'locked') {
+          return { ...stageProgress, status: 'locked' as StageStatus };
+        } else if (stageState.status === 'draft') {
+          return { ...stageProgress, status: 'active' as StageStatus };
+        } else if (stageState.status === 'outdated') {
+          return { ...stageProgress, status: 'outdated' as StageStatus };
+        }
+      }
+      
+      return stageProgress;
+    });
+
+    // Set the next stage as active if all previous stages are locked
+    const nextStage = Math.min(highestStage + 1, 5);
+    const finalStages = updatedStages.map(s => 
+      s.stage === nextStage ? { ...s, status: 'active' as StageStatus } : s
+    );
+
+    setStages(finalStages);
+    setCurrentStage(nextStage);
+  }, [stageStates, isLoadingStates, getStageState]);
 
   const handleStageComplete = (stageNumber: number) => {
     setStages(prev => prev.map(s => 
@@ -198,11 +264,11 @@ export function ProjectView({ projectId, onBack }: ProjectViewProps) {
       
       <PhaseTimeline stages={stages} currentStage={currentStage} />
       
-      {currentStage === 1 && <Stage1InputMode onComplete={() => handleStageComplete(1)} />}
-      {currentStage === 2 && <Stage2Treatment onComplete={() => handleStageComplete(2)} onBack={() => handleGoBack(1)} />}
-      {currentStage === 3 && <Stage3BeatSheet onComplete={() => handleStageComplete(3)} onBack={() => handleGoBack(2)} />}
-      {currentStage === 4 && <Stage4MasterScript onComplete={() => handleStageComplete(4)} onBack={() => handleGoBack(3)} />}
-      {currentStage === 5 && <Stage5Assets onComplete={() => handleStageComplete(5)} onBack={() => handleGoBack(4)} />}
+      {currentStage === 1 && <Stage1InputMode projectId={projectId} onComplete={() => handleStageComplete(1)} />}
+      {currentStage === 2 && <Stage2Treatment projectId={projectId} onComplete={() => handleStageComplete(2)} onBack={() => handleGoBack(1)} />}
+      {currentStage === 3 && <Stage3BeatSheet projectId={projectId} onComplete={() => handleStageComplete(3)} onBack={() => handleGoBack(2)} />}
+      {currentStage === 4 && <Stage4MasterScript projectId={projectId} onComplete={() => handleStageComplete(4)} onBack={() => handleGoBack(3)} />}
+      {currentStage === 5 && <Stage5Assets projectId={projectId} onComplete={() => handleStageComplete(5)} onBack={() => handleGoBack(4)} />}
     </div>
   );
 }

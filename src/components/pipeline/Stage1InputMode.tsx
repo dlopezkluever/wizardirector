@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   FileText, 
@@ -7,7 +7,8 @@ import {
   ScrollText, 
   Check,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Save
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { InputMode, ProjectType, ContentRating } from '@/types/project';
@@ -19,6 +20,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import { useStageState } from '@/lib/hooks/useStageState';
 
 interface InputModeOption {
   id: InputMode;
@@ -78,32 +80,70 @@ const genres = [
 ];
 
 interface Stage1InputModeProps {
+  projectId: string;
   onComplete: () => void;
 }
 
-export function Stage1InputMode({ onComplete }: Stage1InputModeProps) {
-  const [selectedMode, setSelectedMode] = useState<InputMode | null>(null);
-  const [selectedProjectType, setSelectedProjectType] = useState<ProjectType | null>(null);
-  const [selectedRating, setSelectedRating] = useState<ContentRating>('PG-13');
-  const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
-  const [targetLength, setTargetLength] = useState<[number, number]>([3, 5]);
-  const [tonalPrecision, setTonalPrecision] = useState('');
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  const [ideaText, setIdeaText] = useState('');
+interface Stage1Content {
+  selectedMode: InputMode | null;
+  selectedProjectType: ProjectType | null;
+  selectedRating: ContentRating;
+  selectedGenres: string[];
+  targetLength: [number, number];
+  tonalPrecision: string;
+  uploadedFiles: UploadedFile[];
+  ideaText: string;
+}
+
+export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps) {
+  // Use the stage state hook for persistence
+  const { content, setContent, isLoading, isSaving } = useStageState<Stage1Content>({
+    projectId,
+    stageNumber: 1,
+    initialContent: {
+      selectedMode: null,
+      selectedProjectType: null,
+      selectedRating: 'PG-13',
+      selectedGenres: [],
+      targetLength: [3, 5],
+      tonalPrecision: '',
+      uploadedFiles: [],
+      ideaText: ''
+    },
+    autoSave: true
+  });
+
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  const toggleGenre = (genre: string) => {
-    setSelectedGenres(prev => 
-      prev.includes(genre) 
-        ? prev.filter(g => g !== genre)
-        : [...prev, genre]
-    );
+  // Helper function to update a single field in content
+  const updateField = <K extends keyof Stage1Content>(field: K, value: Stage1Content[K]) => {
+    setContent(prev => ({ ...prev, [field]: value }));
   };
 
-  const canProceed = selectedMode && selectedProjectType && tonalPrecision.length >= 10 && 
-    (uploadedFiles.length > 0 || (selectedMode === 'expansion' && ideaText.length >= 20));
+  const toggleGenre = (genre: string) => {
+    setContent(prev => ({
+      ...prev,
+      selectedGenres: prev.selectedGenres.includes(genre)
+        ? prev.selectedGenres.filter(g => g !== genre)
+        : [...prev.selectedGenres, genre]
+    }));
+  };
 
-  const selectedModeData = inputModes.find(m => m.id === selectedMode);
+  const canProceed = content.selectedMode && content.selectedProjectType && content.tonalPrecision.length >= 10 && 
+    (content.uploadedFiles.length > 0 || (content.selectedMode === 'expansion' && content.ideaText.length >= 20));
+
+  const selectedModeData = inputModes.find(m => m.id === content.selectedMode);
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="text-muted-foreground">Loading stage data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 overflow-auto p-8">
@@ -130,7 +170,7 @@ export function Stage1InputMode({ onComplete }: Stage1InputModeProps) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {inputModes.map((mode, index) => {
               const Icon = mode.icon;
-              const isSelected = selectedMode === mode.id;
+              const isSelected = content.selectedMode === mode.id;
 
               return (
                 <motion.button
@@ -138,10 +178,10 @@ export function Stage1InputMode({ onComplete }: Stage1InputModeProps) {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
-                  onClick={() => setSelectedMode(mode.id)}
+                  onClick={() => updateField('selectedMode', mode.id)}
                   className={cn(
                     'relative flex items-start gap-4 p-5 rounded-xl border-2 text-left transition-all duration-200',
-                    isSelected
+                    content.selectedMode === mode.id
                       ? 'border-primary bg-primary/10 shadow-gold'
                       : 'border-border bg-card hover:border-primary/30 hover:bg-card/80'
                   )}
@@ -174,7 +214,7 @@ export function Stage1InputMode({ onComplete }: Stage1InputModeProps) {
         </section>
 
         {/* File Upload / Text Input Section */}
-        {selectedMode && (
+        {content.selectedMode && (
           <motion.section
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
@@ -189,16 +229,16 @@ export function Stage1InputMode({ onComplete }: Stage1InputModeProps) {
               </span>
             </div>
 
-            {selectedMode === 'expansion' ? (
+            {content.selectedMode === 'expansion' ? (
               <div className="space-y-4">
                 <textarea
-                  value={ideaText}
-                  onChange={(e) => setIdeaText(e.target.value)}
+                  value={content.ideaText}
+                  onChange={(e) => updateField('ideaText', e.target.value)}
                   placeholder="Enter your story idea, concept, or initial premise here. Be as brief or detailed as you like - the AI will expand this into a full narrative treatment..."
                   className="w-full h-40 px-4 py-3 rounded-xl bg-secondary border border-border text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 />
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <span>{ideaText.length} characters</span>
+                  <span>{content.ideaText.length} characters</span>
                   <span>•</span>
                   <span>Minimum 20 characters required</span>
                 </div>
@@ -212,16 +252,16 @@ export function Stage1InputMode({ onComplete }: Stage1InputModeProps) {
                   </CollapsibleTrigger>
                   <CollapsibleContent className="mt-4">
                     <FileStagingArea
-                      files={uploadedFiles}
-                      onFilesChange={setUploadedFiles}
+                      files={content.uploadedFiles}
+                      onFilesChange={(files) => updateField('uploadedFiles', files)}
                     />
                   </CollapsibleContent>
                 </Collapsible>
               </div>
             ) : (
               <FileStagingArea
-                files={uploadedFiles}
-                onFilesChange={setUploadedFiles}
+                files={content.uploadedFiles}
+                onFilesChange={(files) => updateField('uploadedFiles', files)}
               />
             )}
           </motion.section>
@@ -236,8 +276,8 @@ export function Stage1InputMode({ onComplete }: Stage1InputModeProps) {
             {projectTypes.map((type) => (
               <Button
                 key={type.id}
-                variant={selectedProjectType === type.id ? 'stage-active' : 'stage'}
-                onClick={() => setSelectedProjectType(type.id)}
+                variant={content.selectedProjectType === type.id ? 'stage-active' : 'stage'}
+                onClick={() => updateField('selectedProjectType', type.id)}
                 className="h-auto py-3 px-4 flex-col items-start gap-1"
               >
                 <span className="font-medium">{type.label}</span>
@@ -254,12 +294,12 @@ export function Stage1InputMode({ onComplete }: Stage1InputModeProps) {
               Target Length
             </h3>
             <span className="text-primary font-medium">
-              {targetLength[0]}:00 - {targetLength[1]}:00 min
+              {content.targetLength[0]}:00 - {content.targetLength[1]}:00 min
             </span>
           </div>
           <Slider
-            value={targetLength}
-            onValueChange={(value) => setTargetLength(value as [number, number])}
+            value={content.targetLength}
+            onValueChange={(value) => updateField('targetLength', value as [number, number])}
             min={1}
             max={15}
             step={1}
@@ -276,9 +316,9 @@ export function Stage1InputMode({ onComplete }: Stage1InputModeProps) {
             {contentRatings.map((rating) => (
               <Button
                 key={rating.id}
-                variant={selectedRating === rating.id ? 'stage-active' : 'stage'}
+                variant={content.selectedRating === rating.id ? 'stage-active' : 'stage'}
                 size="sm"
-                onClick={() => setSelectedRating(rating.id)}
+                onClick={() => updateField('selectedRating', rating.id)}
               >
                 {rating.label}
               </Button>
@@ -295,7 +335,7 @@ export function Stage1InputMode({ onComplete }: Stage1InputModeProps) {
             {genres.map((genre) => (
               <Button
                 key={genre}
-                variant={selectedGenres.includes(genre) ? 'stage-active' : 'stage'}
+                variant={content.selectedGenres.includes(genre) ? 'stage-active' : 'stage'}
                 size="sm"
                 onClick={() => toggleGenre(genre)}
               >
@@ -313,21 +353,33 @@ export function Stage1InputMode({ onComplete }: Stage1InputModeProps) {
             </h3>
             <span className={cn(
               'text-xs',
-              tonalPrecision.length >= 10 ? 'text-success' : 'text-muted-foreground'
+              content.tonalPrecision.length >= 10 ? 'text-success' : 'text-muted-foreground'
             )}>
-              {tonalPrecision.length}/10 characters minimum
+              {content.tonalPrecision.length}/10 characters minimum
             </span>
           </div>
           <textarea
-            value={tonalPrecision}
-            onChange={(e) => setTonalPrecision(e.target.value)}
+            value={content.tonalPrecision}
+            onChange={(e) => updateField('tonalPrecision', e.target.value)}
             placeholder="Describe the specific tone and atmosphere you want (e.g., 'Dark and moody with moments of dry humor, reminiscent of early Coen Brothers films...')"
             className="w-full h-32 px-4 py-3 rounded-xl bg-secondary border border-border text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
           />
         </section>
 
         {/* Proceed Button */}
-        <div className="flex justify-end pt-6 border-t border-border">
+        <div className="flex justify-between items-center pt-6 border-t border-border">
+          {isSaving && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Save className="w-4 h-4 animate-pulse" />
+              <span>Saving...</span>
+            </div>
+          )}
+          {!isSaving && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Check className="w-4 h-4 text-success" />
+              <span>All changes saved</span>
+            </div>
+          )}
           <Button
             variant="gold"
             size="lg"
