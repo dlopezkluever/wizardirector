@@ -82,11 +82,24 @@ class StageStateService {
     stageNumber: number,
     options: SaveStageStateOptions
   ): Promise<StageState> {
+    console.log('🔄 StageStateService.saveStageState called:', { projectId, stageNumber, options });
+    
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session?.access_token) {
+      console.error('❌ No auth session found');
       throw new Error('User not authenticated');
     }
+
+    console.log('✅ Auth session found, making API request...');
+
+    const requestBody = {
+      content: options.content,
+      status: options.status || 'draft',
+      regenerationGuidance: options.regenerationGuidance || ''
+    };
+
+    console.log('📤 Request body:', requestBody);
 
     const response = await fetch(`/api/projects/${projectId}/stages/${stageNumber}`, {
       method: 'PUT',
@@ -94,19 +107,20 @@ class StageStateService {
         'Authorization': `Bearer ${session.access_token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        content: options.content,
-        status: options.status || 'draft',
-        regenerationGuidance: options.regenerationGuidance || ''
-      }),
+      body: JSON.stringify(requestBody),
     });
+
+    console.log('📥 Response status:', response.status);
 
     if (!response.ok) {
       const error = await response.json();
+      console.error('❌ API Error:', error);
       throw new Error(error.error || 'Failed to save stage state');
     }
 
-    return response.json();
+    const result = await response.json();
+    console.log('✅ Save successful:', result);
+    return result;
   }
 
   /**
@@ -144,29 +158,35 @@ class StageStateService {
     options: SaveStageStateOptions,
     callback?: (success: boolean, error?: Error) => void
   ): void {
+    console.log('⏰ Auto-save triggered:', { projectId, stageNumber });
+    
     // Create a unique key for this auto-save operation
     const key = `${projectId}-${stageNumber}`;
 
     // Clear any existing timer for this stage
     const existingTimer = this.autoSaveTimers.get(key);
     if (existingTimer) {
+      console.log('🔄 Clearing existing auto-save timer');
       clearTimeout(existingTimer);
     }
 
     // Set a new timer
     const timer = setTimeout(async () => {
+      console.log('🚀 Auto-save timer fired, executing save...');
       try {
         await this.saveStageState(projectId, stageNumber, options);
         this.autoSaveTimers.delete(key);
+        console.log('✅ Auto-save completed successfully');
         callback?.(true);
       } catch (error) {
-        console.error('Auto-save failed:', error);
+        console.error('❌ Auto-save failed:', error);
         this.autoSaveTimers.delete(key);
         callback?.(false, error as Error);
       }
     }, this.autoSaveDelay);
 
     this.autoSaveTimers.set(key, timer);
+    console.log(`⏳ Auto-save scheduled in ${this.autoSaveDelay}ms`);
   }
 
   /**

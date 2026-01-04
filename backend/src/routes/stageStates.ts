@@ -123,24 +123,37 @@ router.put('/:projectId/stages/:stageNumber', async (req, res) => {
     const userId = req.user!.id;
     const { content, status, regenerationGuidance } = req.body;
 
+    console.log('🔄 PUT /api/projects/:projectId/stages/:stageNumber called:', {
+      projectId,
+      stageNumber,
+      userId,
+      contentKeys: content ? Object.keys(content) : 'null',
+      status,
+      regenerationGuidance
+    });
+
     // Validate stage number
     const stage = parseInt(stageNumber);
     if (isNaN(stage) || stage < 1 || stage > 12) {
+      console.error('❌ Invalid stage number:', stageNumber);
       return res.status(400).json({ error: 'Invalid stage number. Must be between 1 and 12' });
     }
 
     // Validate content
     if (!content || typeof content !== 'object') {
+      console.error('❌ Invalid content:', content);
       return res.status(400).json({ error: 'Content is required and must be an object' });
     }
 
     // Validate status if provided
     const validStatuses = ['draft', 'locked', 'invalidated', 'outdated'];
     if (status && !validStatuses.includes(status)) {
+      console.error('❌ Invalid status:', status);
       return res.status(400).json({ error: 'Invalid status' });
     }
 
     // Get the project and its active branch
+    console.log('🔍 Looking up project:', projectId, 'for user:', userId);
     const { data: project, error: projectError } = await supabase
       .from('projects')
       .select('id, active_branch_id, user_id')
@@ -150,13 +163,17 @@ router.put('/:projectId/stages/:stageNumber', async (req, res) => {
 
     if (projectError) {
       if (projectError.code === 'PGRST116') {
+        console.error('❌ Project not found:', projectId);
         return res.status(404).json({ error: 'Project not found' });
       }
-      console.error('Error fetching project:', projectError);
+      console.error('❌ Error fetching project:', projectError);
       return res.status(500).json({ error: 'Failed to fetch project' });
     }
 
+    console.log('✅ Project found:', { id: project.id, active_branch_id: project.active_branch_id });
+
     if (!project.active_branch_id) {
+      console.error('❌ Project has no active branch');
       return res.status(400).json({ error: 'Project has no active branch' });
     }
 
@@ -184,26 +201,31 @@ router.put('/:projectId/stages/:stageNumber', async (req, res) => {
     }
 
     // Insert new version
+    const insertData = {
+      branch_id: project.active_branch_id,
+      stage_number: stage,
+      version: nextVersion,
+      status: status || 'draft',
+      content: content,
+      regeneration_guidance: regenerationGuidance || '',
+      created_by: userId,
+      inherited_from_stage_id: existingState?.id || null
+    };
+
+    console.log('💾 Inserting stage state:', insertData);
+
     const { data: newState, error: insertError } = await supabase
       .from('stage_states')
-      .insert({
-        branch_id: project.active_branch_id,
-        stage_number: stage,
-        version: nextVersion,
-        status: status || 'draft',
-        content: content,
-        regeneration_guidance: regenerationGuidance || '',
-        created_by: userId,
-        inherited_from_stage_id: existingState?.id || null
-      })
+      .insert(insertData)
       .select('*')
       .single();
 
     if (insertError) {
-      console.error('Error inserting stage state:', insertError);
+      console.error('❌ Error inserting stage state:', insertError);
       return res.status(500).json({ error: 'Failed to save stage state' });
     }
 
+    console.log('✅ Stage state inserted successfully:', newState.id);
     stageState = newState;
 
     // Update project's updated_at timestamp

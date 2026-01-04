@@ -133,7 +133,9 @@ class ProjectService {
       throw new Error('User not authenticated');
     }
 
-    // Make API call to backend with JWT token
+    console.log('🔄 ProjectService.createProject called:', settings);
+
+    // Make API call to backend with JWT token - only send title
     const response = await fetch('/api/projects', {
       method: 'POST',
       headers: {
@@ -141,12 +143,8 @@ class ProjectService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        title: settings.projectTitle || 'New Project',
-        projectType: settings.projectType,
-        contentRating: settings.contentRating,
-        genres: settings.genres,
-        tonalPrecision: settings.tonalPrecision,
-        targetLength: settings.targetLength
+        title: settings.projectTitle || 'New Project'
+        // Stage 1 configuration will be handled separately in stage_states
       }),
     });
 
