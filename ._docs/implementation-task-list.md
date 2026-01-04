@@ -10,7 +10,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 \---
 
-\#\# Phase 0: Setup & Foundation (Barebones Functioning System)
+\#\# Phase 0: **DONE** Setup & Foundation (Barebones Functioning System)
 
 \*\*Goal\*\*: Establish minimal infrastructure to support basic data flow and state persistence. No AI integrations yet—focus on making the skeleton "live" with mock data that persists.
 
