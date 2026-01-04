@@ -41,6 +41,8 @@ export function useStageState<T extends Record<string, any>>({
   onSaveSuccess,
   onSaveError
 }: UseStageStateOptions<T>): UseStageStateReturn<T> {
+  console.log('🔧 useStageState initialized:', { projectId, stageNumber, autoSave, initialContent });
+  
   const [content, setContentState] = useState<T>(initialContent);
   const [stageState, setStageState] = useState<StageState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -50,6 +52,7 @@ export function useStageState<T extends Record<string, any>>({
 
   // Keep ref in sync with content
   useEffect(() => {
+    console.log('📝 Content updated in useStageState:', content);
     contentRef.current = content;
   }, [content]);
 
@@ -57,24 +60,32 @@ export function useStageState<T extends Record<string, any>>({
    * Load stage state on mount
    */
   const loadStageState = useCallback(async () => {
+    console.log('🔄 loadStageState called:', { projectId, stageNumber });
+    
     // Skip loading if this is a new project (no real ID yet)
     if (!projectId || projectId === 'new') {
+      console.log('⏭️ Skipping load - projectId is new or invalid:', projectId);
       setIsLoading(false);
       return;
     }
 
     try {
+      console.log('📥 Loading stage state from API...');
       setIsLoading(true);
       const state = await stageStateService.getStageState(projectId, stageNumber);
       
       if (state) {
+        console.log('✅ Stage state loaded:', state);
         setStageState(state);
         setContentState(state.content as T);
+      } else {
+        console.log('ℹ️ No existing stage state found - using initial content');
       }
     } catch (error) {
-      console.error('Failed to load stage state:', error);
+      console.error('❌ Failed to load stage state:', error);
       // Don't show error toast on initial load - just use initial content
     } finally {
+      console.log('✅ Load stage state completed');
       setIsLoading(false);
     }
   }, [projectId, stageNumber]);
@@ -83,6 +94,7 @@ export function useStageState<T extends Record<string, any>>({
    * Load stage state on mount
    */
   useEffect(() => {
+    console.log('🚀 useEffect for loadStageState triggered');
     loadStageState();
   }, [loadStageState]);
 
@@ -90,20 +102,33 @@ export function useStageState<T extends Record<string, any>>({
    * Auto-save when content changes (skip first render)
    */
   useEffect(() => {
+    console.log('🔄 Auto-save useEffect triggered:', {
+      isFirstRender: isFirstRender.current,
+      isLoading,
+      projectId,
+      autoSave,
+      contentKeys: Object.keys(content)
+    });
+
     // Skip auto-save on first render and during initial load
     if (isFirstRender.current || isLoading) {
+      console.log('⏭️ Skipping auto-save - first render or loading:', { isFirstRender: isFirstRender.current, isLoading });
       isFirstRender.current = false;
       return;
     }
 
     // Skip auto-save for new projects (no real ID yet)
     if (!projectId || projectId === 'new') {
+      console.log('⏭️ Skipping auto-save - invalid projectId:', projectId);
       return;
     }
 
     if (!autoSave) {
+      console.log('⏭️ Skipping auto-save - autoSave disabled');
       return;
     }
+
+    console.log('🚀 Triggering auto-save with content:', contentRef.current);
 
     // Trigger auto-save with debouncing
     stageStateService.autoSave(
@@ -111,6 +136,7 @@ export function useStageState<T extends Record<string, any>>({
       stageNumber,
       { content: contentRef.current },
       (success, error) => {
+        console.log('📋 Auto-save callback:', { success, error });
         if (success) {
           onSaveSuccess?.();
         } else {
@@ -122,6 +148,7 @@ export function useStageState<T extends Record<string, any>>({
 
     // Cleanup: cancel auto-save on unmount
     return () => {
+      console.log('🧹 Cleaning up auto-save for:', projectId, stageNumber);
       stageStateService.cancelAutoSave(projectId, stageNumber);
     };
   }, [content, projectId, stageNumber, autoSave, isLoading, onSaveSuccess, onSaveError]);
@@ -195,10 +222,12 @@ export function useStageState<T extends Record<string, any>>({
    * Wrapper for setContent that works with both direct values and updater functions
    */
   const setContent = useCallback((newContent: T | ((prev: T) => T)) => {
+    console.log('📝 setContent called with:', typeof newContent === 'function' ? 'function' : newContent);
     setContentState(prev => {
       const next = typeof newContent === 'function' 
         ? (newContent as (prev: T) => T)(prev)
         : newContent;
+      console.log('📝 Content changing from:', prev, 'to:', next);
       return next;
     });
   }, []);

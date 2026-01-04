@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { PhaseTimeline } from '@/components/pipeline/PhaseTimeline';
 import { ProjectHeader } from '@/components/pipeline/ProjectHeader';
@@ -28,13 +29,18 @@ const initialPhaseAStages: StageProgress[] = [
 ];
 
 interface ProjectViewProps {
-  projectId: string;
-  onBack: () => void;
+  projectId?: string;
+  onBack?: () => void;
 }
 
 type SceneStage = 7 | 8 | 9 | 10 | 11 | 12;
 
-export function ProjectView({ projectId, onBack }: ProjectViewProps) {
+export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewProps) {
+  // Get projectId from URL params if not provided as prop
+  const { projectId: urlProjectId } = useParams<{ projectId: string }>();
+  const projectId = propProjectId || urlProjectId;
+  
+  console.log('🔧 ProjectView Debug:', { propProjectId, urlProjectId, finalProjectId: projectId });
   const [currentStage, setCurrentStage] = useState(1);
   const [stages, setStages] = useState<StageProgress[]>(initialPhaseAStages);
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
@@ -241,7 +247,7 @@ export function ProjectView({ projectId, onBack }: ProjectViewProps) {
         <ProjectHeader
           projectTitle={projectTitle}
           currentBranch={currentBranch}
-          onBack={onBack}
+          onBack={onBack || (() => window.history.back())}
           onOpenVault={() => toast.info('Artifact Vault coming soon')}
           onOpenVersionHistory={() => toast.info('Story Timelines coming soon')}
           onCreateBranch={() => toast.info('Branch creation coming soon')}
@@ -261,7 +267,7 @@ export function ProjectView({ projectId, onBack }: ProjectViewProps) {
       <ProjectHeader
         projectTitle={projectTitle}
         currentBranch={currentBranch}
-        onBack={onBack}
+        onBack={onBack || (() => window.history.back())}
         onOpenVault={() => toast.info('Artifact Vault coming soon')}
         onOpenVersionHistory={() => toast.info('Story Timelines coming soon')}
         onCreateBranch={() => toast.info('Branch creation coming soon')}
@@ -269,7 +275,12 @@ export function ProjectView({ projectId, onBack }: ProjectViewProps) {
       
       <PhaseTimeline stages={stages} currentStage={currentStage} />
       
-      {currentStage === 1 && <Stage1InputMode projectId={projectId} onComplete={() => handleStageComplete(1)} />}
+      {currentStage === 1 && (
+        <>
+          {console.log('🎭 ProjectView rendering Stage1InputMode with projectId:', projectId)}
+          <Stage1InputMode projectId={projectId} onComplete={() => handleStageComplete(1)} />
+        </>
+      )}
       {currentStage === 2 && <Stage2Treatment projectId={projectId} onComplete={() => handleStageComplete(2)} onBack={() => handleGoBack(1)} />}
       {currentStage === 3 && <Stage3BeatSheet projectId={projectId} onComplete={() => handleStageComplete(3)} onBack={() => handleGoBack(2)} />}
       {currentStage === 4 && <Stage4MasterScript projectId={projectId} onComplete={() => handleStageComplete(4)} onBack={() => handleGoBack(3)} />}
