@@ -45,6 +45,7 @@ node_modules/
 .cursor
 .taskmaster
 backend/.env
+backend/.env.local
 Zhe_Trash
 
 .cursorignore

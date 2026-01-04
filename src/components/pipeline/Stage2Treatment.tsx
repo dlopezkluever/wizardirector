@@ -66,11 +66,12 @@ And she has a choice: let him die alone among the stars, or race against time to
 ];
 
 interface Stage2TreatmentProps {
+  projectId: string;
   onComplete: () => void;
   onBack: () => void;
 }
 
-export function Stage2Treatment({ onComplete, onBack }: Stage2TreatmentProps) {
+export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2TreatmentProps) {
   const [variations, setVariations] = useState<TreatmentVariation[]>(mockTreatments);
   const [activeVariation, setActiveVariation] = useState(0);
   const [content, setContent] = useState(variations[0].content);

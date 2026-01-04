@@ -62,11 +62,12 @@ Marcus, I...
 But he's already gone.`;
 
 interface Stage4MasterScriptProps {
+  projectId: string;
   onComplete: () => void;
   onBack: () => void;
 }
 
-export function Stage4MasterScript({ onComplete, onBack }: Stage4MasterScriptProps) {
+export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4MasterScriptProps) {
   const [content, setContent] = useState(mockScript);
   const [isEditing, setIsEditing] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);

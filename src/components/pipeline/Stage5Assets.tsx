@@ -26,11 +26,12 @@ const mockAssets: Asset[] = [
 const visualStyles = ['Cinematic Realism', 'Neo-Noir', 'Warm Nostalgia', 'Modern Minimalist', 'Documentary Style'];
 
 interface Stage5AssetsProps {
+  projectId: string;
   onComplete: () => void;
   onBack: () => void;
 }
 
-export function Stage5Assets({ onComplete, onBack }: Stage5AssetsProps) {
+export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProps) {
   const [assets, setAssets] = useState<Asset[]>(mockAssets);
   const [selectedStyle, setSelectedStyle] = useState<string | null>(null);
 

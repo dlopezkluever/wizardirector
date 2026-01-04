@@ -44,11 +44,12 @@ const mockBeats: Beat[] = [
 ];
 
 interface Stage3BeatSheetProps {
+  projectId: string;
   onComplete: () => void;
   onBack: () => void;
 }
 
-export function Stage3BeatSheet({ onComplete, onBack }: Stage3BeatSheetProps) {
+export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatSheetProps) {
   const [beats, setBeats] = useState<Beat[]>(mockBeats);
   const [editingBeatId, setEditingBeatId] = useState<string | null>(null);
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);

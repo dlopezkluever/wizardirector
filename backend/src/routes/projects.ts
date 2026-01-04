@@ -132,14 +132,9 @@ router.post('/', async (req, res) => {
   try {
     const userId = req.user!.id;
 
-    const {
-      title,
-      projectType = 'narrative',
-      contentRating = 'PG',
-      genres = [],
-      tonalPrecision = '',
-      targetLength = { min: 180, max: 300 }
-    } = req.body;
+    const { title } = req.body;
+
+    console.log('🔄 Creating project:', { title, userId });
 
     // Validate required fields
     if (!title || typeof title !== 'string') {
@@ -150,35 +145,19 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Title must be less than 255 characters' });
     }
 
-    // Validate project type
-    const validProjectTypes = ['narrative', 'commercial', 'audio_visual'];
-    if (!validProjectTypes.includes(projectType)) {
-      return res.status(400).json({ error: 'Invalid project type' });
-    }
-
-    // Validate content rating
-    const validContentRatings = ['G', 'PG', 'PG-13', 'M'];
-    if (!validContentRatings.includes(contentRating)) {
-      return res.status(400).json({ error: 'Invalid content rating' });
-    }
-
-    // Validate target length
-    if (!targetLength.min || !targetLength.max || targetLength.min >= targetLength.max) {
-      return res.status(400).json({ error: 'Invalid target length range' });
-    }
-
-    // Create the project
+    // Create the project with minimal data - Stage 1 will handle the rest
     const { data: project, error } = await supabase
       .from('projects')
       .insert({
         user_id: userId,
         title,
-        project_type: projectType,
-        content_rating: contentRating,
-        genre: genres,
-        tonal_precision: tonalPrecision,
-        target_length_min: targetLength.min,
-        target_length_max: targetLength.max
+        // Use defaults for Stage 1 configuration - these will be overridden by Stage 1 data
+        project_type: 'narrative',
+        content_rating: 'PG',
+        genre: [],
+        tonal_precision: '',
+        target_length_min: 180,
+        target_length_max: 300
       })
       .select(`
         id,
@@ -200,9 +179,11 @@ router.post('/', async (req, res) => {
       .single();
 
     if (error) {
-      console.error('Error creating project:', error);
+      console.error('❌ Error creating project:', error);
       return res.status(500).json({ error: 'Failed to create project' });
     }
+
+    console.log('✅ Project created successfully:', project.id);
 
     // Transform the response
     const transformedProject = {

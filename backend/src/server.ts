@@ -5,6 +5,7 @@ import * as dotenv from 'dotenv';
 
 import { healthRouter } from './routes/health.js';
 import { projectsRouter } from './routes/projects.js';
+import { stageStatesRouter } from './routes/stageStates.js';
 import { authenticateUser } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -34,6 +35,9 @@ app.use('/api/health', healthRouter);
 
 // Projects routes (protected)
 app.use('/api/projects', authenticateUser, projectsRouter);
+
+// Stage states routes (protected, nested under projects)
+app.use('/api/projects', authenticateUser, stageStatesRouter);
 
 // Error handling middleware (must be last)
 app.use(errorHandler);
