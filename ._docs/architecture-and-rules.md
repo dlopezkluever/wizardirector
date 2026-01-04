@@ -96,7 +96,7 @@ User Action → Frontend → API Gateway → Orchestration Service → AI Servic
 |---------|---------|-----------|------------|
 | **Google Veo3** | Video generation with audio | Start frame + End frame + Prompt → MP4 | Per-second credits |
 | **Nano Banana** | High-volume image generation | Text prompt + Style RAG → Images | Per-image credits |
-| **OpenAI/Anthropic** | LLM text generation | Context + Prompt → Structured output | Per-token credits |
+| **Gemini/OpenAI/Anthropic** | LLM text generation | Context + Prompt → Structured output | Per-token credits |
 | **pgvector** | Style RAG retrieval | Text chunks → Embeddings → Semantic search | Storage-based |
 
 ---
