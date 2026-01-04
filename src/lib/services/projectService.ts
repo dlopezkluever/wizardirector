@@ -133,7 +133,6 @@ class ProjectService {
       throw new Error('User not authenticated');
     }
 
-    console.log('🔄 ProjectService.createProject called:', settings);
 
     // Make API call to backend with JWT token - only send title
     const response = await fetch('/api/projects', {

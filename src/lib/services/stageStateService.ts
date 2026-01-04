@@ -82,7 +82,6 @@ class StageStateService {
     stageNumber: number,
     options: SaveStageStateOptions
   ): Promise<StageState> {
-    console.log('🔄 StageStateService.saveStageState called:', { projectId, stageNumber, options });
     
     const { data: { session } } = await supabase.auth.getSession();
 
@@ -158,7 +157,6 @@ class StageStateService {
     options: SaveStageStateOptions,
     callback?: (success: boolean, error?: Error) => void
   ): void {
-    console.log('⏰ Auto-save triggered:', { projectId, stageNumber });
     
     // Create a unique key for this auto-save operation
     const key = `${projectId}-${stageNumber}`;
@@ -166,13 +164,11 @@ class StageStateService {
     // Clear any existing timer for this stage
     const existingTimer = this.autoSaveTimers.get(key);
     if (existingTimer) {
-      console.log('🔄 Clearing existing auto-save timer');
       clearTimeout(existingTimer);
     }
 
     // Set a new timer
     const timer = setTimeout(async () => {
-      console.log('🚀 Auto-save timer fired, executing save...');
       try {
         await this.saveStageState(projectId, stageNumber, options);
         this.autoSaveTimers.delete(key);

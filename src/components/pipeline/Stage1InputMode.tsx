@@ -96,7 +96,6 @@ interface Stage1Content {
 }
 
 export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps) {
-  console.log('🎬 Stage1InputMode rendered with projectId:', projectId);
   
   // Use the stage state hook for persistence
   const { content, setContent, isLoading, isSaving } = useStageState<Stage1Content>({
@@ -115,13 +114,11 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
     autoSave: true
   });
 
-  console.log('🎬 Stage1InputMode hook state:', { isLoading, isSaving, contentKeys: Object.keys(content) });
 
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Helper function to update a single field in content
   const updateField = <K extends keyof Stage1Content>(field: K, value: Stage1Content[K]) => {
-    console.log('🎬 updateField called:', { field, value });
     setContent(prev => ({ ...prev, [field]: value }));
   };
 
@@ -384,7 +381,7 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
             </div>
           ) : (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>🔧 Debug mode - check console for auto-save logs</span>
+              <span>All changes saved</span>
             </div>
           )}
           <Button

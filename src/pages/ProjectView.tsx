@@ -40,7 +40,6 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
   const { projectId: urlProjectId } = useParams<{ projectId: string }>();
   const projectId = propProjectId || urlProjectId;
   
-  console.log('🔧 ProjectView Debug:', { propProjectId, urlProjectId, finalProjectId: projectId });
   const [currentStage, setCurrentStage] = useState(1);
   const [stages, setStages] = useState<StageProgress[]>(initialPhaseAStages);
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
@@ -276,10 +275,7 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
       <PhaseTimeline stages={stages} currentStage={currentStage} />
       
       {currentStage === 1 && (
-        <>
-          {console.log('🎭 ProjectView rendering Stage1InputMode with projectId:', projectId)}
-          <Stage1InputMode projectId={projectId} onComplete={() => handleStageComplete(1)} />
-        </>
+        <Stage1InputMode projectId={projectId} onComplete={() => handleStageComplete(1)} />
       )}
       {currentStage === 2 && <Stage2Treatment projectId={projectId} onComplete={() => handleStageComplete(2)} onBack={() => handleGoBack(1)} />}
       {currentStage === 3 && <Stage3BeatSheet projectId={projectId} onComplete={() => handleStageComplete(3)} onBack={() => handleGoBack(2)} />}
