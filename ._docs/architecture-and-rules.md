@@ -23,22 +23,23 @@
                                    │
                                    │ HTTP/REST APIs
                                    ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                 Backend Services (Fly.io)                       │
+┌──────────────────────────────────────────────────────────────────┐
+│                 Backend Services (Fly.io)                        │
 │  ┌─────────────────────────────────────────────────────────────┐ │
-│  │ API Orchestration Layer                                    │ │
+│  │ API Orchestration Layer                                     │ │
 │  │ - Explicit Stage Transitions                                │ │
-│  │ - Context Management (Global ↔ Local)                      │ │
-│  │ - Cost Estimation & Validation                             │ │
+│  │ - Context Management (Global ↔ Local)                       │ │
+│  │ - Cost Estimation & Validation                              │ │
 │  └─────────────────────────────────────────────────────────────┘ │
 │  ┌─────────────────────────────────────────────────────────────┐ │
 │  │ AI Service Integration                                      │ │
 │  │ - Google Veo3 (Video Generation)                            │ │
 │  │ - Nano Banana (Image Generation)                            │ │
+│  │ - LangChain + LangSmith (RAG & Observability)               │ │
 │  │ - OpenAI/Anthropic/Gemini (LLM)                             │ │
 │  │ - pgvector RAG (Style Databases)                            │ │
 │  └─────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────────────────────┘
                                    │
                                    │ PostgreSQL + pgvector
                                    ▼
@@ -97,6 +98,7 @@ User Action → Frontend → API Gateway → Orchestration Service → AI Servic
 | **Google Veo3** | Video generation with audio | Start frame + End frame + Prompt → MP4 | Per-second credits |
 | **Nano Banana** | High-volume image generation | Text prompt + Style RAG → Images | Per-image credits |
 | **Gemini/OpenAI/Anthropic** | LLM text generation | Context + Prompt → Structured output | Per-token credits |
+| **LangSmith** | Unified Prompt Engineering & Observability | Traces + Prompt Metadata → UI | Tiered (Free/Pro) |
 | **pgvector** | Style RAG retrieval | Text chunks → Embeddings → Semantic search | Storage-based |
 
 ---
