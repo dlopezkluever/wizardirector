@@ -150,7 +150,7 @@ export class LLMClient {
     try {
       // Get LangSmith callbacks
       const callbacks = await getLangchainCallbacks({
-        projectName: process.env.LANGSMITH_PROJECT || 'aiuteur',
+        projectName: process.env.LANGSMITH_PROJECT || 'Aiutuer',
         metadata: {
           requestId,
           model,
@@ -349,5 +349,35 @@ export class LLMClient {
   }
 }
 
-// Export singleton instance
-export const llmClient = new LLMClient();
+// Export lazy-loaded singleton instance
+let _llmClient: LLMClient | null = null;
+
+export const llmClient = {
+  get instance(): LLMClient {
+    if (!_llmClient) {
+      _llmClient = new LLMClient();
+    }
+    return _llmClient;
+  },
+  
+  // Proxy all methods to the instance
+  async generate(request: LLMRequest): Promise<LLMResponse> {
+    return this.instance.generate(request);
+  },
+  
+  estimateCost(request: LLMRequest, expectedOutputTokens?: number): CostEstimate {
+    return this.instance.estimateCost(request, expectedOutputTokens);
+  },
+  
+  getUsageStats(timeframe?: { start: Date; end: Date }) {
+    return this.instance.getUsageStats(timeframe);
+  },
+  
+  setRetryConfig(config: Partial<RetryConfig>): void {
+    return this.instance.setRetryConfig(config);
+  },
+  
+  async testConnectivity(): Promise<{ gemini: boolean; langsmith: boolean; error?: string }> {
+    return this.instance.testConnectivity();
+  }
+};

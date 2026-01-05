@@ -5,12 +5,18 @@
  */
 
 import * as dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { llmClient } from '../services/llm-client.js';
 import { promptTemplateService } from '../services/prompt-template.js';
 import { DatabaseService } from '../config/database.js';
 
-// Load environment variables
-dotenv.config();
+// Get the current file's directory
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Load environment variables from the backend directory
+dotenv.config({ path: join(__dirname, '../../.env') });
 
 async function testConnectivity() {
   console.log('🧪 Testing LLM Service Connectivity...\n');
@@ -158,7 +164,7 @@ async function testConnectivity() {
   console.log('\n🎉 Connectivity test completed!');
   console.log('\nNext steps:');
   console.log('1. Check your LangSmith dashboard at https://smith.langchain.com');
-  console.log('2. Look for traces from the "wizardirector-dev" project');
+  console.log('2. Look for traces from the "Aiutuer" project');
   console.log('3. Verify that traces contain the expected metadata and prompts');
 }
 
