@@ -5,7 +5,7 @@
 
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
-import { LangSmithTracer } from 'langsmith/langchain';
+import { getLangchainCallbacks } from 'langsmith/langchain';
 import { Client } from 'langsmith';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -64,7 +64,6 @@ export class LLMClientError extends Error {
 export class LLMClient {
   private client: ChatGoogleGenerativeAI;
   private langsmithClient: Client;
-  private tracer: LangSmithTracer;
   private retryConfig: RetryConfig;
 
   constructor() {
@@ -74,19 +73,14 @@ export class LLMClient {
     // Initialize Gemini client
     this.client = new ChatGoogleGenerativeAI({
       apiKey: process.env.GOOGLE_AI_API_KEY!,
-      model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
+      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite',
       temperature: 0.7,
       maxOutputTokens: 4096,
     });
 
-    // Initialize LangSmith client and tracer
+    // Initialize LangSmith client
     this.langsmithClient = new Client({
       apiKey: process.env.LANGSMITH_API_KEY!,
-    });
-
-    this.tracer = new LangSmithTracer({
-      projectName: process.env.LANGSMITH_PROJECT || 'wizardirector-dev',
-      client: this.langsmithClient,
     });
 
     this.retryConfig = DEFAULT_RETRY_CONFIG;
@@ -154,8 +148,9 @@ export class LLMClient {
     let traceId: string | undefined;
 
     try {
-      const response = await client.invoke(messages, {
-        callbacks: [this.tracer],
+      // Get LangSmith callbacks
+      const callbacks = await getLangchainCallbacks({
+        projectName: process.env.LANGSMITH_PROJECT || 'aiuteur',
         metadata: {
           requestId,
           model,
@@ -165,11 +160,15 @@ export class LLMClient {
         tags: ['llm-generation', 'gemini', model],
       });
 
+      const response = await client.invoke(messages, {
+        callbacks,
+      });
+
       const endTime = Date.now();
       const duration = endTime - startTime;
 
-      // Extract trace ID from the tracer (this might need adjustment based on LangSmith version)
-      traceId = this.tracer.getRunId() || requestId;
+      // Use request ID as trace ID for now
+      traceId = requestId;
 
       // Estimate output tokens
       const outputTokens = estimateTokenCount(response.content.toString());
@@ -300,7 +299,7 @@ export class LLMClient {
    * Estimate cost for a request without executing it
    */
   estimateCost(request: LLMRequest, expectedOutputTokens: number = 1000): CostEstimate {
-    const model = request.model || process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+    const model = request.model || process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
     const inputTokens = estimateTokenCount(request.systemPrompt + request.userPrompt);
     
     return calculateCost(inputTokens, expectedOutputTokens, model);

@@ -20,12 +20,15 @@ Add the following to your `.env` file:
 ```env
 # LangSmith Configuration
 LANGSMITH_API_KEY=your_langsmith_api_key_here
-LANGSMITH_PROJECT=wizardirector-dev
+LANGSMITH_PROJECT=aiuteur
 LANGSMITH_TRACING=true
 
 # Google Gemini Configuration  
 GOOGLE_AI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-1.5-flash
+GEMINI_MODEL=gemini-2.5-flash-lite
+
+#image: gemini-2.5-flash-image
+#video: veo-3.0-fast-generate-001
 ```
 
 ### 2. Database Migration

@@ -37,6 +37,10 @@ const GEMINI_PRICING = {
     input: 0.50,   // $0.50 per 1M input tokens
     output: 1.50,  // $1.50 per 1M output tokens
   },
+  'gemini-2.5-flash-lite': {
+    input: 0.075,  // $0.075 per 1M input tokens (estimated, same as 1.5-flash)
+    output: 0.30,  // $0.30 per 1M output tokens (estimated, same as 1.5-flash)
+  },
 } as const;
 
 /**
