@@ -62,7 +62,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 \*\*Goal\*\*: Deliver core narrative creation pipeline (Phase A: Stages 1-4) with real LLM integration. Users can input a story idea and get a structured script output.
 
-### Feature 1.1: LLM Service Integration & Observability
+### Feature 1.1 **DONE**: LLM Service Integration & Observability
 **Purpose**: Connect to text generation AI services with full debugging visibility
 - [ ] Set up LangSmith project and API keys
 - [ ] Set up Gemini/OpenAI/Anthropic client wrapped with LangSmith tracer
@@ -71,7 +71,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 - [ ] Add token counting and cost estimation utilities
 - [ ] Test LLM connectivity and verify trace appearance in LangSmith
 
-\#\#\# Feature 1.2: Stage 1 \- Input Modes (Complete)  
+\#\#\# Feature 1.2: Stage 1 \- Input Modes (semi-complete)  
 \*\*Purpose\*\*: Functional narrative input system  
 \- \[ \] Implement file upload component for multi-file staging  
 \- \[ \] Add file type validation (text, PDF, screenplay formats)  
@@ -79,7 +79,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 \- \[ \] Store Stage 1 configuration in database  
 \- \[ \] Implement mode-specific processing logic
 
-\#\#\# Feature 1.3: Stage 2 \- Treatment Generation (Complete)  
+\#\#\# Feature 1.3: Stage 2 \- Treatment Generation (semi-complete)  
 \*\*Purpose\*\*: AI-powered prose treatment generation  
 \- \[ \] Build prompt template for treatment generation  
 \- \[ \] Implement 3-variant generation system  
@@ -87,7 +87,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 \- \[ \] Add rich text editor with manual editing  
 \- \[ \] Implement targeted regeneration (highlight \+ right-click)
 
-\#\#\# Feature 1.4: Stage 3 \- Beat Sheet Editor (Complete)  
+\#\#\# Feature 1.4: Stage 3 \- Beat Sheet Editor (semi-complete)  
 \*\*Purpose\*\*: Interactive structural editing  
 \- \[ \] Implement drag-and-drop beat reordering with @dnd-kit  
 \- \[ \] Create beat extraction LLM agent  
@@ -95,7 +95,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 \- \[ \] Implement beat splitting/merging actions  
 \- \[ \] Add "Confirm Beat Sheet" gatekeeper logic
 
-\#\#\# Feature 1.5: Stage 4 \- Master Script Generator (Complete)  
+\#\#\# Feature 1.5: Stage 4 \- Master Script Generator (semi-complete)  
 \*\*Purpose\*\*: Generate production-ready screenplay  
 \- \[ \] Build verbose script generation prompt template  
 \- \[ \] Implement screenplay formatting (INT/EXT, character names, dialogue)  

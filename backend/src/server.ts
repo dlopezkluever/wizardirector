@@ -7,6 +7,7 @@ import { healthRouter } from './routes/health.js';
 import { projectsRouter } from './routes/projects.js';
 import { stageStatesRouter } from './routes/stageStates.js';
 import { llmRouter } from './routes/llm.js';
+import { seedRouter } from './routes/seed.js';
 import { authenticateUser } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -42,6 +43,9 @@ app.use('/api/projects', authenticateUser, stageStatesRouter);
 
 // LLM routes (protected)
 app.use('/api/llm', authenticateUser, llmRouter);
+
+// Seed routes (protected)
+app.use('/api/seed', authenticateUser, seedRouter);
 
 // Error handling middleware (must be last)
 app.use(errorHandler);

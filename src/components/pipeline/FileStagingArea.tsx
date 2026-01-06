@@ -1,56 +1,162 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, 
   File, 
   FileText, 
+  Image, 
   X, 
-  Star, 
-  Tag,
-  Plus
+  AlertCircle,
+  CheckCircle2,
+  Star,
+  StarOff
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { toast } from 'sonner';
 
 export interface UploadedFile {
   id: string;
   name: string;
   size: number;
   type: string;
+  content?: string;
   isPrimary: boolean;
-  contextTag?: string;
+  tag?: string;
+  lastModified: number;
 }
-
-const contextTags = [
-  'Character Notes',
-  'World Building',
-  'Reference Material',
-  'Parody Source',
-  'Visual Reference',
-  'Dialogue Samples',
-  'Research Notes',
-  'Formatting Guide',
-];
 
 interface FileStagingAreaProps {
   files: UploadedFile[];
   onFilesChange: (files: UploadedFile[]) => void;
   maxFiles?: number;
+  acceptedTypes?: string[];
+  maxFileSize?: number; // in MB
 }
+
+const ACCEPTED_TYPES = [
+  'text/plain',
+  'text/markdown',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/rtf',
+  'application/rtf'
+];
+
+const TYPE_LABELS: Record<string, string> = {
+  'text/plain': 'Text File',
+  'text/markdown': 'Markdown',
+  'application/pdf': 'PDF Document',
+  'application/msword': 'Word Document',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Word Document',
+  'text/rtf': 'Rich Text Format',
+  'application/rtf': 'Rich Text Format'
+};
+
+const FILE_TAGS = [
+  'Character Notes',
+  'World Building', 
+  'Parody Source',
+  'Visual Reference',
+  'Research Notes',
+  'Style Guide',
+  'Other'
+];
 
 export function FileStagingArea({ 
   files, 
-  onFilesChange,
-  maxFiles = 10 
+  onFilesChange, 
+  maxFiles = 10,
+  acceptedTypes = ACCEPTED_TYPES,
+  maxFileSize = 10 // 10MB default
 }: FileStagingAreaProps) {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const validateFile = useCallback((file: File): string | null => {
+    // Check file type
+    if (!acceptedTypes.includes(file.type)) {
+      return `File type "${file.type}" is not supported. Please upload text, PDF, or document files.`;
+    }
+
+    // Check file size
+    if (file.size > maxFileSize * 1024 * 1024) {
+      return `File size exceeds ${maxFileSize}MB limit.`;
+    }
+
+    return null;
+  }, [acceptedTypes, maxFileSize]);
+
+  const readFileContent = useCallback((file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result;
+        if (typeof result === 'string') {
+          resolve(result);
+        } else {
+          reject(new Error('Failed to read file as text'));
+        }
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      
+      if (file.type === 'application/pdf') {
+        // For PDFs, we'll need to handle text extraction differently
+        // For now, just store the file info without content
+        resolve('');
+      } else {
+        reader.readAsText(file);
+      }
+    });
+  }, []);
+
+  const processFiles = useCallback(async (fileList: FileList) => {
+    if (files.length + fileList.length > maxFiles) {
+      toast.error(`Maximum ${maxFiles} files allowed`);
+      return;
+    }
+
+    setIsProcessing(true);
+    const newFiles: UploadedFile[] = [];
+
+    try {
+      for (let i = 0; i < fileList.length; i++) {
+        const file = fileList[i];
+        const validationError = validateFile(file);
+        
+        if (validationError) {
+          toast.error(validationError);
+          continue;
+        }
+
+        try {
+          const content = await readFileContent(file);
+          const uploadedFile: UploadedFile = {
+            id: `file-${Date.now()}-${i}`,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            content,
+            isPrimary: files.length === 0 && newFiles.length === 0, // First file is primary by default
+            lastModified: file.lastModified
+          };
+          newFiles.push(uploadedFile);
+        } catch (error) {
+          console.error('Error reading file:', error);
+          toast.error(`Failed to read file: ${file.name}`);
+        }
+      }
+
+      if (newFiles.length > 0) {
+        onFilesChange([...files, ...newFiles]);
+        toast.success(`${newFiles.length} file(s) uploaded successfully`);
+      }
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [files, maxFiles, validateFile, readFileContent, onFilesChange]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -66,202 +172,253 @@ export function FileStagingArea({
     e.preventDefault();
     setIsDragOver(false);
     
-    const droppedFiles = Array.from(e.dataTransfer.files);
-    const newFiles: UploadedFile[] = droppedFiles.slice(0, maxFiles - files.length).map((file, index) => ({
-      id: `file-${Date.now()}-${index}`,
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      isPrimary: files.length === 0 && index === 0,
-    }));
-    
-    onFilesChange([...files, ...newFiles]);
-  }, [files, maxFiles, onFilesChange]);
+    const droppedFiles = e.dataTransfer.files;
+    if (droppedFiles.length > 0) {
+      processFiles(droppedFiles);
+    }
+  }, [processFiles]);
 
-  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files) return;
-    
-    const selectedFiles = Array.from(e.target.files);
-    const newFiles: UploadedFile[] = selectedFiles.slice(0, maxFiles - files.length).map((file, index) => ({
-      id: `file-${Date.now()}-${index}`,
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      isPrimary: files.length === 0 && index === 0,
-    }));
-    
-    onFilesChange([...files, ...newFiles]);
-    e.target.value = '';
-  }, [files, maxFiles, onFilesChange]);
-
-  const setPrimaryFile = useCallback((fileId: string) => {
-    onFilesChange(files.map(f => ({
-      ...f,
-      isPrimary: f.id === fileId,
-    })));
-  }, [files, onFilesChange]);
-
-  const setContextTag = useCallback((fileId: string, tag: string) => {
-    onFilesChange(files.map(f => 
-      f.id === fileId ? { ...f, contextTag: tag } : f
-    ));
-  }, [files, onFilesChange]);
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (selectedFiles && selectedFiles.length > 0) {
+      processFiles(selectedFiles);
+    }
+    // Reset input value to allow selecting the same file again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, [processFiles]);
 
   const removeFile = useCallback((fileId: string) => {
-    const newFiles = files.filter(f => f.id !== fileId);
+    const updatedFiles = files.filter(f => f.id !== fileId);
+    
     // If we removed the primary file, make the first remaining file primary
-    if (newFiles.length > 0 && !newFiles.some(f => f.isPrimary)) {
-      newFiles[0].isPrimary = true;
+    if (updatedFiles.length > 0 && !updatedFiles.some(f => f.isPrimary)) {
+      updatedFiles[0].isPrimary = true;
     }
-    onFilesChange(newFiles);
+    
+    onFilesChange(updatedFiles);
+    toast.success('File removed');
   }, [files, onFilesChange]);
 
+  const setPrimaryFile = useCallback((fileId: string) => {
+    const updatedFiles = files.map(f => ({
+      ...f,
+      isPrimary: f.id === fileId
+    }));
+    onFilesChange(updatedFiles);
+  }, [files, onFilesChange]);
+
+  const setFileTag = useCallback((fileId: string, tag: string) => {
+    const updatedFiles = files.map(f => 
+      f.id === fileId ? { ...f, tag } : f
+    );
+    onFilesChange(updatedFiles);
+  }, [files, onFilesChange]);
+
+  const getFileIcon = (type: string) => {
+    if (type.startsWith('image/')) return Image;
+    if (type.includes('pdf')) return File;
+    return FileText;
+  };
+
   const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   return (
     <div className="space-y-4">
-      {/* Drop Zone */}
+      {/* Upload Area */}
       <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className={cn(
-          'relative flex flex-col items-center justify-center p-8 rounded-xl border-2 border-dashed transition-all duration-200',
+          'relative border-2 border-dashed rounded-xl p-8 text-center transition-all duration-200',
           isDragOver
-            ? 'border-primary bg-primary/10'
-            : 'border-border bg-card/50 hover:border-primary/30 hover:bg-card/80'
+            ? 'border-primary bg-primary/10 shadow-gold'
+            : 'border-border bg-secondary/30 hover:border-primary/50 hover:bg-secondary/50'
         )}
       >
         <input
+          ref={fileInputRef}
           type="file"
           multiple
-          onChange={handleFileInput}
+          accept={acceptedTypes.join(',')}
+          onChange={handleFileSelect}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-          accept=".txt,.md,.doc,.docx,.pdf,.rtf,.json"
+          disabled={isProcessing}
         />
-        <Upload className={cn(
-          'w-10 h-10 mb-3 transition-colors',
-          isDragOver ? 'text-primary' : 'text-muted-foreground'
-        )} />
-        <p className="text-foreground font-medium mb-1">
-          Drop files here or click to browse
-        </p>
-        <p className="text-sm text-muted-foreground">
-          Supports TXT, MD, DOC, DOCX, PDF, RTF, JSON
-        </p>
+        
+        <div className="space-y-4">
+          <div className={cn(
+            'mx-auto w-16 h-16 rounded-full flex items-center justify-center transition-colors',
+            isDragOver ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+          )}>
+            <Upload className="w-8 h-8" />
+          </div>
+          
+          <div>
+            <h3 className="font-medium text-foreground mb-2">
+              {isDragOver ? 'Drop files here' : 'Upload Files'}
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Drag and drop files here, or click to browse
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Supported: Text, PDF, Word documents • Max {maxFileSize}MB per file • Up to {maxFiles} files
+            </p>
+          </div>
+          
+          {!isDragOver && (
+            <Button 
+              variant="outline" 
+              size="sm"
+              disabled={isProcessing}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {isProcessing ? 'Processing...' : 'Choose Files'}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* File List */}
-      <AnimatePresence mode="popLayout">
+      <AnimatePresence>
         {files.length > 0 && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="space-y-2"
+            className="space-y-3"
           >
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">
-                {files.length} file{files.length !== 1 ? 's' : ''} staged
-              </span>
-              <span className="text-xs text-muted-foreground">
-                Click <Star className="w-3 h-3 inline text-primary" /> to set primary input
-              </span>
+            <div className="flex items-center justify-between">
+              <h4 className="font-medium text-foreground">
+                Uploaded Files ({files.length})
+              </h4>
+              {files.length > 1 && (
+                <p className="text-xs text-muted-foreground">
+                  <Star className="w-3 h-3 inline mr-1" />
+                  Primary input file
+                </p>
+              )}
             </div>
-
-            {files.map((file, index) => (
-              <motion.div
-                key={file.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                transition={{ delay: index * 0.05 }}
-                className={cn(
-                  'flex items-center gap-3 p-3 rounded-lg border transition-all',
-                  file.isPrimary
-                    ? 'bg-primary/10 border-primary/50'
-                    : 'bg-card border-border'
-                )}
-              >
-                {/* File Icon */}
-                <div className={cn(
-                  'flex items-center justify-center w-10 h-10 rounded-lg shrink-0',
-                  file.isPrimary ? 'bg-primary/20' : 'bg-secondary'
-                )}>
-                  <FileText className={cn(
-                    'w-5 h-5',
-                    file.isPrimary ? 'text-primary' : 'text-muted-foreground'
-                  )} />
-                </div>
-
-                {/* File Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-foreground truncate">
-                      {file.name}
-                    </p>
-                    {file.isPrimary && (
-                      <span className="px-1.5 py-0.5 rounded text-xs bg-primary text-primary-foreground">
-                        Primary
-                      </span>
+            
+            <div className="space-y-2">
+              {files.map((file) => {
+                const FileIcon = getFileIcon(file.type);
+                return (
+                  <motion.div
+                    key={file.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    className={cn(
+                      'flex items-center gap-3 p-3 rounded-lg border transition-all',
+                      file.isPrimary 
+                        ? 'bg-primary/10 border-primary/30' 
+                        : 'bg-card border-border'
                     )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {formatFileSize(file.size)}
-                  </p>
-                </div>
-
-                {/* Context Tag Selector (for non-primary files) */}
-                {!file.isPrimary && (
-                  <Select
-                    value={file.contextTag || ''}
-                    onValueChange={(value) => setContextTag(file.id, value)}
                   >
-                    <SelectTrigger className="w-40 h-8 text-xs">
-                      <Tag className="w-3 h-3 mr-1" />
-                      <SelectValue placeholder="Add tag..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {contextTags.map((tag) => (
-                        <SelectItem key={tag} value={tag} className="text-xs">
-                          {tag}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-
-                {/* Actions */}
-                <div className="flex items-center gap-1">
-                  {!file.isPrimary && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => setPrimaryFile(file.id)}
-                      title="Set as primary input"
-                    >
-                      <Star className="w-4 h-4" />
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                    onClick={() => removeFile(file.id)}
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
-              </motion.div>
-            ))}
+                    {/* File Icon */}
+                    <div className={cn(
+                      'flex items-center justify-center w-10 h-10 rounded-lg',
+                      file.isPrimary ? 'bg-primary/20' : 'bg-secondary'
+                    )}>
+                      <FileIcon className="w-5 h-5" />
+                    </div>
+                    
+                    {/* File Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-foreground truncate">
+                          {file.name}
+                        </p>
+                        {file.isPrimary && (
+                          <Star className="w-4 h-4 text-primary fill-current" />
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>{TYPE_LABELS[file.type] || file.type}</span>
+                        <span>•</span>
+                        <span>{formatFileSize(file.size)}</span>
+                        {file.tag && (
+                          <>
+                            <span>•</span>
+                            <span className="px-2 py-0.5 rounded bg-secondary text-secondary-foreground">
+                              {file.tag}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Actions */}
+                    <div className="flex items-center gap-1">
+                      {!file.isPrimary && files.length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => setPrimaryFile(file.id)}
+                          title="Set as primary input"
+                        >
+                          <StarOff className="w-4 h-4" />
+                        </Button>
+                      )}
+                      
+                      {/* Tag Selector */}
+                      {!file.isPrimary && (
+                        <select
+                          value={file.tag || ''}
+                          onChange={(e) => setFileTag(file.id, e.target.value)}
+                          className="text-xs bg-transparent border border-border rounded px-2 py-1 text-foreground"
+                        >
+                          <option value="">Tag...</option>
+                          {FILE_TAGS.map(tag => (
+                            <option key={tag} value={tag}>{tag}</option>
+                          ))}
+                        </select>
+                      )}
+                      
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={() => removeFile(file.id)}
+                        title="Remove file"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
+      
+      {/* Validation Messages */}
+      {files.length > 0 && (
+        <div className="text-xs text-muted-foreground space-y-1">
+          {files.some(f => f.isPrimary) ? (
+            <div className="flex items-center gap-1 text-success">
+              <CheckCircle2 className="w-3 h-3" />
+              <span>Primary input file selected</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 text-warning">
+              <AlertCircle className="w-3 h-3" />
+              <span>Please designate a primary input file</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

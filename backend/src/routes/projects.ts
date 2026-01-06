@@ -212,4 +212,148 @@ router.post('/', async (req, res) => {
   }
 });
 
+// PUT /api/projects/:id - Update project configuration (Stage 1 data)
+router.put('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+    const { 
+      title,
+      project_type,
+      content_rating,
+      genre,
+      tonal_precision,
+      target_length_min,
+      target_length_max
+    } = req.body;
+
+    console.log('🔄 Updating project configuration:', { id, userId, title, project_type });
+
+    // Validate project exists and user owns it
+    const { data: existingProject, error: fetchError } = await supabase
+      .from('projects')
+      .select('id, user_id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchError) {
+      if (fetchError.code === 'PGRST116') {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+      console.error('Error fetching project:', fetchError);
+      return res.status(500).json({ error: 'Failed to fetch project' });
+    }
+
+    // Build update object with only provided fields
+    const updateData: any = { updated_at: new Date().toISOString() };
+    
+    if (title !== undefined) {
+      if (!title || typeof title !== 'string' || title.length > 255) {
+        return res.status(400).json({ error: 'Invalid title' });
+      }
+      updateData.title = title;
+    }
+    
+    if (project_type !== undefined) {
+      if (!['narrative', 'commercial', 'audio_visual'].includes(project_type)) {
+        return res.status(400).json({ error: 'Invalid project type' });
+      }
+      updateData.project_type = project_type;
+    }
+    
+    if (content_rating !== undefined) {
+      if (!['G', 'PG', 'PG-13', 'M'].includes(content_rating)) {
+        return res.status(400).json({ error: 'Invalid content rating' });
+      }
+      updateData.content_rating = content_rating;
+    }
+    
+    if (genre !== undefined) {
+      if (!Array.isArray(genre)) {
+        return res.status(400).json({ error: 'Genre must be an array' });
+      }
+      updateData.genre = genre;
+    }
+    
+    if (tonal_precision !== undefined) {
+      if (typeof tonal_precision !== 'string') {
+        return res.status(400).json({ error: 'Tonal precision must be a string' });
+      }
+      updateData.tonal_precision = tonal_precision;
+    }
+    
+    if (target_length_min !== undefined) {
+      if (typeof target_length_min !== 'number' || target_length_min < 30) {
+        return res.status(400).json({ error: 'Invalid target length min' });
+      }
+      updateData.target_length_min = target_length_min;
+    }
+    
+    if (target_length_max !== undefined) {
+      if (typeof target_length_max !== 'number' || target_length_max < 60) {
+        return res.status(400).json({ error: 'Invalid target length max' });
+      }
+      updateData.target_length_max = target_length_max;
+    }
+
+    // Update the project
+    const { data: updatedProject, error: updateError } = await supabase
+      .from('projects')
+      .update(updateData)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select(`
+        id,
+        title,
+        project_type,
+        content_rating,
+        genre,
+        tonal_precision,
+        target_length_min,
+        target_length_max,
+        created_at,
+        updated_at,
+        active_branch_id,
+        branches!active_branch_id (
+          name,
+          commit_message
+        )
+      `)
+      .single();
+
+    if (updateError) {
+      console.error('❌ Error updating project:', updateError);
+      return res.status(500).json({ error: 'Failed to update project' });
+    }
+
+    console.log('✅ Project updated successfully:', updatedProject.id);
+
+    // Transform the response
+    const transformedProject = {
+      id: updatedProject.id,
+      title: updatedProject.title,
+      description: updatedProject.tonal_precision || '',
+      status: 'draft' as const,
+      branch: updatedProject.branches?.[0]?.name || 'main',
+      currentStage: 1,
+      stages: [],
+      createdAt: updatedProject.created_at,
+      updatedAt: updatedProject.updated_at,
+      projectType: updatedProject.project_type,
+      contentRating: updatedProject.content_rating,
+      genres: updatedProject.genre || [],
+      targetLength: {
+        min: updatedProject.target_length_min,
+        max: updatedProject.target_length_max
+      }
+    };
+
+    res.json(transformedProject);
+  } catch (error) {
+    console.error('Error in PUT /api/projects/:id:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export { router as projectsRouter };

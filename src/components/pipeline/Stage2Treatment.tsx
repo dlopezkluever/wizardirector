@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   RefreshCw, 
@@ -8,16 +8,23 @@ import {
   ChevronLeft,
   ChevronRight,
   Edit3,
-  MessageSquare
+  MessageSquare,
+  Loader2,
+  FileText
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { useStageState } from '@/lib/hooks/useStageState';
+import { treatmentService, type TreatmentVariation } from '@/lib/services/treatmentService';
+import { inputProcessingService, type ProcessedInput } from '@/lib/services/inputProcessingService';
 
-interface TreatmentVariation {
-  id: string;
-  content: string;
-  createdAt: Date;
+interface Stage2Content {
+  variations: TreatmentVariation[];
+  activeVariation: number;
+  processedInput?: ProcessedInput;
+  langsmithTraceId?: string;
+  promptTemplateVersion?: string;
 }
 
 // Mock treatment data for demonstration
@@ -72,28 +79,116 @@ interface Stage2TreatmentProps {
 }
 
 export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2TreatmentProps) {
-  const [variations, setVariations] = useState<TreatmentVariation[]>(mockTreatments);
-  const [activeVariation, setActiveVariation] = useState(0);
-  const [content, setContent] = useState(variations[0].content);
+  // Use stage state for persistence
+  const { content: stageContent, setContent: setStageContent, isLoading, isSaving } = useStageState<Stage2Content>({
+    projectId,
+    stageNumber: 2,
+    initialContent: {
+      variations: [],
+      activeVariation: 0
+    },
+    autoSave: true
+  });
+
   const [isEditing, setIsEditing] = useState(false);
   const [selectedText, setSelectedText] = useState<{ start: number; end: number; text: string } | null>(null);
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
   const [regenerateGuidance, setRegenerateGuidance] = useState('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isOutdated, setIsOutdated] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Current treatment content for editing
+  const [editableContent, setEditableContent] = useState('');
+
+  // Initialize treatments on component mount
+  useEffect(() => {
+    const initializeTreatments = async () => {
+      // If we don't have variations yet, generate them from Stage 1 input
+      if (stageContent.variations.length === 0 && !isGenerating) {
+        await generateInitialTreatments();
+      } else if (stageContent.variations.length > 0) {
+        // Set editable content from current variation
+        const currentVariation = stageContent.variations[stageContent.activeVariation];
+        if (currentVariation) {
+          setEditableContent(currentVariation.content);
+        }
+      }
+    };
+
+    if (!isLoading) {
+      initializeTreatments();
+    }
+  }, [isLoading, stageContent.variations.length]);
+
+  const generateInitialTreatments = async () => {
+    try {
+      setIsGenerating(true);
+
+      // Get Stage 1 processed input
+      // This should be available from Stage 1's state
+      // For now, we'll need to fetch it or pass it as a prop
+      // TODO: Implement proper Stage 1 data retrieval
+      
+      toast.info('Generating treatment variations...', {
+        description: 'This may take a few moments'
+      });
+
+      // Mock for now - in real implementation, get from Stage 1
+      const mockProcessedInput: ProcessedInput = {
+        mode: 'expansion',
+        primaryContent: 'A retired astronaut receives a terminal diagnosis and embarks on a journey to reconnect with his estranged daughter.',
+        contextFiles: [],
+        projectParams: {
+          targetLengthMin: 180,
+          targetLengthMax: 300,
+          projectType: 'narrative',
+          contentRating: 'PG-13',
+          genres: ['Drama'],
+          tonalPrecision: 'Emotional and contemplative with moments of hope'
+        }
+      };
+
+      const result = await treatmentService.generateTreatments({
+        processedInput: mockProcessedInput,
+        projectId
+      });
+
+      setStageContent(prev => ({
+        ...prev,
+        variations: result.variations,
+        processedInput: mockProcessedInput,
+        langsmithTraceId: result.langsmithTraceId,
+        promptTemplateVersion: result.promptTemplateVersion
+      }));
+
+      if (result.variations.length > 0) {
+        setEditableContent(result.variations[0].content);
+      }
+
+      toast.success(`Generated ${result.variations.length} treatment variations`);
+    } catch (error) {
+      console.error('Failed to generate treatments:', error);
+      toast.error('Failed to generate treatments. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const handleVariationSelect = useCallback((index: number) => {
     if (hasUnsavedChanges) {
       if (!confirm('You have unsaved changes. Switch anyway?')) return;
     }
-    setActiveVariation(index);
-    setContent(variations[index].content);
+    
+    setStageContent(prev => ({ ...prev, activeVariation: index }));
+    setEditableContent(stageContent.variations[index]?.content || '');
     setHasUnsavedChanges(false);
-  }, [variations, hasUnsavedChanges]);
+  }, [stageContent.variations, hasUnsavedChanges, setStageContent]);
 
   const handleContentChange = useCallback((newContent: string) => {
-    setContent(newContent);
+    setEditableContent(newContent);
     setHasUnsavedChanges(true);
   }, []);
 
@@ -104,49 +199,129 @@ export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2Treatme
       setSelectedText({
         start: selectionStart,
         end: selectionEnd,
-        text: content.substring(selectionStart, selectionEnd),
+        text: editableContent.substring(selectionStart, selectionEnd),
       });
     } else {
       setSelectedText(null);
     }
-  }, [content]);
+  }, [editableContent]);
 
-  const handleTargetedRegenerate = useCallback(() => {
+  const handleTargetedRegenerate = useCallback(async () => {
     if (!selectedText) return;
-    toast.info('Targeted regeneration triggered', {
-      description: `Regenerating: "${selectedText.text.substring(0, 50)}..."`
-    });
-    // Mock: In real app, this would call the LLM
-    setSelectedText(null);
-  }, [selectedText]);
 
-  const handleFullRegenerate = useCallback(() => {
+    const guidance = prompt('How would you like to change this section?');
+    if (!guidance) return;
+
+    try {
+      setIsRegenerating(true);
+      toast.info('Regenerating selected text...', {
+        description: `"${selectedText.text.substring(0, 50)}..."`
+      });
+
+      const newText = await treatmentService.regenerateSection(
+        projectId,
+        editableContent,
+        selectedText.text,
+        guidance
+      );
+
+      // Replace the selected text with the new text
+      const newContent = editableContent.substring(0, selectedText.start) + 
+                        newText + 
+                        editableContent.substring(selectedText.end);
+      
+      setEditableContent(newContent);
+      setHasUnsavedChanges(true);
+      setSelectedText(null);
+      
+      toast.success('Section regenerated successfully');
+    } catch (error) {
+      console.error('Failed to regenerate section:', error);
+      toast.error('Failed to regenerate section. Please try again.');
+    } finally {
+      setIsRegenerating(false);
+    }
+  }, [selectedText, editableContent, projectId]);
+
+  const handleFullRegenerate = useCallback(async () => {
     if (regenerateGuidance.length < 10) {
       toast.error('Please provide at least 10 characters of guidance');
       return;
     }
-    toast.success('Treatment regeneration queued', {
-      description: regenerateGuidance
-    });
-    setShowRegenerateDialog(false);
-    setRegenerateGuidance('');
-  }, [regenerateGuidance]);
+
+    if (!stageContent.processedInput) {
+      toast.error('No input data available for regeneration');
+      return;
+    }
+
+    try {
+      setIsRegenerating(true);
+      toast.info('Regenerating all treatments...', {
+        description: regenerateGuidance
+      });
+
+      const result = await treatmentService.regenerateTreatments({
+        projectId,
+        guidance: regenerateGuidance,
+        processedInput: stageContent.processedInput
+      });
+
+      setStageContent(prev => ({
+        ...prev,
+        variations: result.variations,
+        activeVariation: 0,
+        langsmithTraceId: result.langsmithTraceId,
+        promptTemplateVersion: result.promptTemplateVersion
+      }));
+
+      if (result.variations.length > 0) {
+        setEditableContent(result.variations[0].content);
+      }
+
+      toast.success(`Regenerated ${result.variations.length} treatment variations`);
+      setShowRegenerateDialog(false);
+      setRegenerateGuidance('');
+    } catch (error) {
+      console.error('Failed to regenerate treatments:', error);
+      toast.error('Failed to regenerate treatments. Please try again.');
+    } finally {
+      setIsRegenerating(false);
+    }
+  }, [regenerateGuidance, stageContent.processedInput, projectId, setStageContent]);
 
   const handleSaveChanges = useCallback(() => {
-    const newVariations = [...variations];
-    newVariations[activeVariation] = {
-      ...newVariations[activeVariation],
-      content,
+    if (stageContent.variations.length === 0) return;
+
+    const updatedVariations = [...stageContent.variations];
+    updatedVariations[stageContent.activeVariation] = {
+      ...updatedVariations[stageContent.activeVariation],
+      content: editableContent,
     };
-    setVariations(newVariations);
+
+    setStageContent(prev => ({
+      ...prev,
+      variations: updatedVariations
+    }));
+    
     setHasUnsavedChanges(false);
     toast.success('Changes saved');
-  }, [variations, activeVariation, content]);
+  }, [stageContent.variations, stageContent.activeVariation, editableContent, setStageContent]);
 
   const handleRetroactiveRevise = useCallback(() => {
     toast.info('Retroactive revision triggered');
     setIsOutdated(false);
   }, []);
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="text-muted-foreground">Loading treatment data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -184,9 +359,14 @@ export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2Treatme
             variant="outline"
             size="sm"
             onClick={() => setShowRegenerateDialog(true)}
+            disabled={isRegenerating || isGenerating}
             className="gap-2"
           >
-            <RefreshCw className="w-4 h-4" />
+            {isRegenerating ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
+            )}
             Full Regenerate
           </Button>
 
@@ -213,84 +393,150 @@ export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2Treatme
       </div>
 
       {/* Variation Gallery */}
-      <div className="flex items-center gap-4 px-6 py-3 border-b border-border bg-muted/30">
-        <span className="text-sm text-muted-foreground">Variations:</span>
-        <div className="flex gap-2">
-          {variations.map((variation, index) => (
-            <Button
-              key={variation.id}
-              variant={activeVariation === index ? 'stage-active' : 'stage'}
-              size="sm"
-              onClick={() => handleVariationSelect(index)}
-            >
-              Version {index + 1}
-            </Button>
-          ))}
+      {stageContent.variations.length > 0 && (
+        <div className="flex items-center gap-4 px-6 py-3 border-b border-border bg-muted/30">
+          <span className="text-sm text-muted-foreground">Variations:</span>
+          <div className="flex gap-2">
+            {stageContent.variations.map((variation, index) => (
+              <Button
+                key={variation.id}
+                variant={stageContent.activeVariation === index ? 'stage-active' : 'stage'}
+                size="sm"
+                onClick={() => handleVariationSelect(index)}
+                disabled={isGenerating || isRegenerating}
+              >
+                Version {index + 1}
+                {variation.structuralEmphasis && (
+                  <span className="ml-1 text-xs opacity-70">
+                    ({variation.structuralEmphasis})
+                  </span>
+                )}
+              </Button>
+            ))}
+          </div>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="gap-1 ml-auto"
+            onClick={generateInitialTreatments}
+            disabled={isGenerating || isRegenerating}
+          >
+            {isGenerating ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Sparkles className="w-4 h-4" />
+            )}
+            Generate New Variation
+          </Button>
         </div>
-        <Button variant="ghost" size="sm" className="gap-1 ml-auto">
-          <Sparkles className="w-4 h-4" />
-          Generate New Variation
-        </Button>
-      </div>
+      )}
 
       {/* Editor Area */}
       <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 p-6 overflow-auto">
-          <div className="max-w-3xl mx-auto">
-            {/* Editing Mode Toggle */}
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant={isEditing ? 'stage-active' : 'ghost'}
-                  size="sm"
-                  onClick={() => setIsEditing(!isEditing)}
-                  className="gap-2"
-                >
-                  <Edit3 className="w-4 h-4" />
-                  {isEditing ? 'Editing' : 'Edit Mode'}
-                </Button>
-                {selectedText && (
-                  <Button
-                    variant="gold"
-                    size="sm"
-                    onClick={handleTargetedRegenerate}
-                    className="gap-2"
-                  >
-                    <MessageSquare className="w-4 h-4" />
-                    Regenerate Selection
-                  </Button>
-                )}
+        {isGenerating && stageContent.variations.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center space-y-4">
+              <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto" />
+              <div>
+                <h3 className="font-medium text-foreground mb-2">Generating Treatments</h3>
+                <p className="text-sm text-muted-foreground">
+                  Creating 3 unique treatment variations based on your input...
+                </p>
               </div>
-              <span className="text-xs text-muted-foreground">
-                {content.length} characters • {content.split(/\s+/).length} words
-              </span>
             </div>
-
-            {/* Content */}
-            {isEditing ? (
-              <textarea
-                ref={textareaRef}
-                value={content}
-                onChange={(e) => handleContentChange(e.target.value)}
-                onSelect={handleTextSelection}
-                className="w-full min-h-[600px] p-6 rounded-xl bg-card border border-border text-foreground leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-sans"
-                placeholder="Your treatment will appear here..."
-              />
-            ) : (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="p-6 rounded-xl bg-card border border-border"
-              >
-                {content.split('\n\n').map((paragraph, index) => (
-                  <p key={index} className="mb-4 last:mb-0 text-foreground leading-relaxed">
-                    {paragraph}
-                  </p>
-                ))}
-              </motion.div>
-            )}
           </div>
-        </div>
+        ) : stageContent.variations.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center space-y-4">
+              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto">
+                <FileText className="w-8 h-8 text-muted-foreground" />
+              </div>
+              <div>
+                <h3 className="font-medium text-foreground mb-2">No Treatments Generated</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Generate treatment variations from your Stage 1 input to continue.
+                </p>
+                <Button onClick={generateInitialTreatments} disabled={isGenerating}>
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Generate Treatments
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 p-6 overflow-auto">
+            <div className="max-w-3xl mx-auto">
+              {/* Editing Mode Toggle */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant={isEditing ? 'stage-active' : 'ghost'}
+                    size="sm"
+                    onClick={() => setIsEditing(!isEditing)}
+                    className="gap-2"
+                    disabled={isRegenerating}
+                  >
+                    <Edit3 className="w-4 h-4" />
+                    {isEditing ? 'Editing' : 'Edit Mode'}
+                  </Button>
+                  {selectedText && (
+                    <Button
+                      variant="gold"
+                      size="sm"
+                      onClick={handleTargetedRegenerate}
+                      disabled={isRegenerating}
+                      className="gap-2"
+                    >
+                      {isRegenerating ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <MessageSquare className="w-4 h-4" />
+                      )}
+                      Regenerate Selection
+                    </Button>
+                  )}
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {editableContent.length} characters • {editableContent.split(/\s+/).length} words
+                </span>
+              </div>
+
+              {/* Content */}
+              {isEditing ? (
+                <textarea
+                  ref={textareaRef}
+                  value={editableContent}
+                  onChange={(e) => handleContentChange(e.target.value)}
+                  onSelect={handleTextSelection}
+                  className="w-full min-h-[600px] p-6 rounded-xl bg-card border border-border text-foreground leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-sans"
+                  placeholder="Your treatment will appear here..."
+                  disabled={isRegenerating}
+                />
+              ) : (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="p-6 rounded-xl bg-card border border-border"
+                >
+                  {editableContent.split('\n\n').map((paragraph, index) => (
+                    <p key={index} className="mb-4 last:mb-0 text-foreground leading-relaxed">
+                      {paragraph}
+                    </p>
+                  ))}
+                </motion.div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Regeneration Dialog */}

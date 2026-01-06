@@ -44,7 +44,7 @@ User provides:
 * Primary narrative input  
 * Optional context files  
 * Global project parameters (length, genre, rating, tone)  
-* Optional Written Style RAG
+* Optional Written Style RAG **IGNORE**
 
 **Output:** Initialized narrative state
 

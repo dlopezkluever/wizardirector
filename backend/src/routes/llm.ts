@@ -47,6 +47,15 @@ const interpolateRequestSchema = z.object({
   variables: z.record(z.any()),
 });
 
+const generateFromTemplateSchema = z.object({
+  templateName: z.string().min(1, 'Template name is required'),
+  variables: z.record(z.any()),
+  model: z.string().optional(),
+  temperature: z.number().min(0).max(2).optional(),
+  maxTokens: z.number().min(1).max(8192).optional(),
+  metadata: z.record(z.any()).optional(),
+});
+
 /**
  * POST /api/llm/generate
  * Generate text using LLM with full tracing
@@ -76,6 +85,99 @@ router.post('/generate', async (req, res) => {
     });
   } catch (error) {
     console.error('[API] LLM generation error:', error);
+    
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation error',
+        details: error.errors,
+      });
+    }
+    
+    if (error instanceof LLMClientError) {
+      const statusCode = error.statusCode || 500;
+      return res.status(statusCode).json({
+        success: false,
+        error: error.message,
+        code: error.code,
+        retryable: error.retryable,
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+    });
+  }
+});
+
+/**
+ * POST /api/llm/generate-from-template
+ * Generate text using a prompt template with variable interpolation
+ */
+router.post('/generate-from-template', async (req, res) => {
+  try {
+    const validatedRequest = generateFromTemplateSchema.parse(req.body);
+    
+    console.log(`[API] Template-based generation request from user ${req.user?.id}`);
+    
+    // Get the active template for the specified name
+    const templates = await promptTemplateService.listTemplates({
+      name: validatedRequest.templateName,
+      activeOnly: true,
+      limit: 1
+    });
+    
+    if (templates.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: `No active template found with name: ${validatedRequest.templateName}`,
+      });
+    }
+    
+    const template = templates[0];
+    
+    // Validate variables
+    const validation = promptTemplateService.validateVariables(template, validatedRequest.variables);
+    if (!validation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required template variables',
+        missing: validation.missing,
+        extra: validation.extra,
+      });
+    }
+    
+    // Interpolate the template
+    const interpolated = promptTemplateService.interpolateTemplate(template, validatedRequest.variables);
+    
+    // Generate using the interpolated prompts
+    const response = await llmClient.generate({
+      systemPrompt: interpolated.systemPrompt,
+      userPrompt: interpolated.userPrompt,
+      model: validatedRequest.model,
+      temperature: validatedRequest.temperature,
+      maxTokens: validatedRequest.maxTokens,
+      metadata: {
+        ...validatedRequest.metadata,
+        userId: req.user?.id,
+        endpoint: '/api/llm/generate-from-template',
+        templateId: template.id,
+        templateName: template.name,
+        templateVersion: template.version,
+      },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        ...response,
+        promptTemplateVersion: template.version,
+        templateId: template.id,
+      },
+    });
+  } catch (error) {
+    console.error('[API] Template-based generation error:', error);
     
     if (error instanceof z.ZodError) {
       return res.status(400).json({

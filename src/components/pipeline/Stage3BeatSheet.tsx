@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { motion, AnimatePresence, Reorder } from 'framer-motion';
+import { useState, useCallback, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   GripVertical,
   Plus,
@@ -10,18 +10,215 @@ import {
   AlertTriangle,
   Check,
   RefreshCw,
-  Lock
+  Lock,
+  Loader2,
+  FileText
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import {
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { useStageState } from '@/lib/hooks/useStageState';
+import { beatService, type Beat } from '@/lib/services/beatService';
 
-interface Beat {
-  id: string;
-  number: number;
-  content: string;
-  originalTreatmentExcerpt?: string;
-  isExpanded: boolean;
+interface Stage3Content {
+  beats: Beat[];
+  totalEstimatedRuntime: number;
+  narrativeStructure: string;
+  treatmentSource?: {
+    content: string;
+    variantId: string;
+  };
+  langsmithTraceId?: string;
+  promptTemplateVersion?: string;
+}
+
+// Sortable Beat Item Component
+interface SortableBeatItemProps {
+  beat: Beat;
+  isEditing: boolean;
+  onEdit: (beatId: string) => void;
+  onContentChange: (beatId: string, content: string) => void;
+  onToggleExpand: (beatId: string) => void;
+  onBrainstorm: (beatId: string) => void;
+  onAddAfter: (beatId: string) => void;
+  onDelete: (beatId: string) => void;
+  disabled?: boolean;
+}
+
+function SortableBeatItem({
+  beat,
+  isEditing,
+  onEdit,
+  onContentChange,
+  onToggleExpand,
+  onBrainstorm,
+  onAddAfter,
+  onDelete,
+  disabled = false
+}: SortableBeatItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: beat.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        'group relative rounded-xl border transition-all duration-200',
+        isDragging ? 'opacity-50 scale-105 shadow-lg' : '',
+        isEditing
+          ? 'bg-primary/10 border-primary shadow-gold'
+          : 'bg-card border-border hover:border-primary/30'
+      )}
+    >
+      <div className="flex items-start gap-3 p-4">
+        {/* Drag Handle */}
+        <div
+          {...attributes}
+          {...listeners}
+          className={cn(
+            'flex items-center justify-center w-8 h-8 rounded-lg cursor-grab active:cursor-grabbing shrink-0 mt-0.5',
+            disabled ? 'cursor-not-allowed opacity-50' : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
+          )}
+        >
+          <GripVertical className="w-4 h-4" />
+        </div>
+
+        {/* Beat Number */}
+        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/20 text-primary font-semibold text-sm shrink-0">
+          {beat.order}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          {isEditing ? (
+            <textarea
+              value={beat.text}
+              onChange={(e) => onContentChange(beat.id, e.target.value)}
+              onBlur={() => onEdit('')}
+              autoFocus
+              disabled={disabled}
+              className="w-full min-h-[80px] p-2 rounded-lg bg-secondary border border-border text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
+            />
+          ) : (
+            <p 
+              onClick={() => !disabled && onEdit(beat.id)}
+              className={cn(
+                'text-foreground cursor-text hover:bg-secondary/50 p-2 -m-2 rounded-lg transition-colors',
+                disabled && 'cursor-not-allowed opacity-50'
+              )}
+            >
+              {beat.text}
+            </p>
+          )}
+
+          {/* Treatment Excerpt (expandable) */}
+          {beat.originalTreatmentExcerpt && (
+            <div className="mt-2">
+              <button
+                onClick={() => onToggleExpand(beat.id)}
+                disabled={disabled}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              >
+                {beat.isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                View original treatment context
+              </button>
+              <AnimatePresence>
+                {beat.isExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="mt-2 p-3 rounded-lg bg-muted text-sm text-muted-foreground overflow-hidden"
+                  >
+                    {beat.originalTreatmentExcerpt}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
+          {/* Beat Metadata */}
+          <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <span>{beat.estimatedScreenTimeSeconds}s</span>
+            {beat.rationale && (
+              <>
+                <span>•</span>
+                <span>{beat.rationale}</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className={cn(
+          'flex items-center gap-1 transition-opacity',
+          disabled ? 'opacity-50' : 'opacity-0 group-hover:opacity-100'
+        )}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => onBrainstorm(beat.id)}
+            disabled={disabled}
+            title="Brainstorm alternatives"
+          >
+            <Sparkles className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => onAddAfter(beat.id)}
+            disabled={disabled}
+            title="Add beat after"
+          >
+            <Plus className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+            onClick={() => onDelete(beat.id)}
+            disabled={disabled}
+            title="Delete beat"
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // Mock beat data
@@ -50,91 +247,280 @@ interface Stage3BeatSheetProps {
 }
 
 export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatSheetProps) {
-  const [beats, setBeats] = useState<Beat[]>(mockBeats);
+  // Use stage state for persistence
+  const { content: stageContent, setContent: setStageContent, isLoading, isSaving } = useStageState<Stage3Content>({
+    projectId,
+    stageNumber: 3,
+    initialContent: {
+      beats: [],
+      totalEstimatedRuntime: 0,
+      narrativeStructure: ''
+    },
+    autoSave: true
+  });
+
   const [editingBeatId, setEditingBeatId] = useState<string | null>(null);
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
   const [regenerateGuidance, setRegenerateGuidance] = useState('');
   const [selectedBeatForBrainstorm, setSelectedBeatForBrainstorm] = useState<string | null>(null);
   const [isOutdated, setIsOutdated] = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
 
-  const handleReorder = useCallback((newOrder: Beat[]) => {
-    const reorderedBeats = newOrder.map((beat, index) => ({
-      ...beat,
-      number: index + 1,
-    }));
-    setBeats(reorderedBeats);
-    setHasChanges(true);
-  }, []);
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Initialize beats on component mount
+  useEffect(() => {
+    const initializeBeats = async () => {
+      // If we don't have beats yet, generate them from Stage 2 treatment
+      if (stageContent.beats.length === 0 && !isGenerating) {
+        await generateInitialBeats();
+      }
+    };
+
+    if (!isLoading) {
+      initializeBeats();
+    }
+  }, [isLoading, stageContent.beats.length]);
+
+  const generateInitialBeats = async () => {
+    try {
+      setIsGenerating(true);
+      toast.info('Generating beat sheet...', {
+        description: 'Extracting structural beats from your treatment'
+      });
+
+      // TODO: Get Stage 2 treatment data
+      // For now, using mock data
+      const mockTreatmentData = {
+        treatmentProse: 'A retired astronaut receives a terminal diagnosis and embarks on a journey to reconnect with his estranged daughter.',
+        selectedVariantId: '1',
+        projectParams: {
+          targetLengthMin: 180,
+          targetLengthMax: 300,
+          genres: ['Drama'],
+          tonalPrecision: 'Emotional and contemplative with moments of hope'
+        }
+      };
+
+      const result = await beatService.generateBeats(mockTreatmentData);
+
+      setStageContent(prev => ({
+        ...prev,
+        beats: result.beats,
+        totalEstimatedRuntime: result.totalEstimatedRuntime,
+        narrativeStructure: result.narrativeStructure,
+        treatmentSource: {
+          content: mockTreatmentData.treatmentProse,
+          variantId: mockTreatmentData.selectedVariantId
+        },
+        langsmithTraceId: result.langsmithTraceId,
+        promptTemplateVersion: result.promptTemplateVersion
+      }));
+
+      toast.success(`Generated ${result.beats.length} beats`);
+    } catch (error) {
+      console.error('Failed to generate beats:', error);
+      toast.error('Failed to generate beats. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = stageContent.beats.findIndex(beat => beat.id === active.id);
+      const newIndex = stageContent.beats.findIndex(beat => beat.id === over.id);
+
+      const reorderedBeats = arrayMove(stageContent.beats, oldIndex, newIndex).map((beat, index) => ({
+        ...beat,
+        order: index + 1,
+      }));
+
+      setStageContent(prev => ({
+        ...prev,
+        beats: reorderedBeats
+      }));
+
+      toast.success('Beat order updated');
+    }
+  }, [stageContent.beats, setStageContent]);
 
   const handleBeatContentChange = useCallback((beatId: string, newContent: string) => {
-    setBeats(prev => prev.map(beat => 
-      beat.id === beatId ? { ...beat, content: newContent } : beat
-    ));
-    setHasChanges(true);
-  }, []);
+    setStageContent(prev => ({
+      ...prev,
+      beats: prev.beats.map(beat => 
+        beat.id === beatId ? { ...beat, text: newContent } : beat
+      )
+    }));
+  }, [setStageContent]);
 
   const toggleBeatExpand = useCallback((beatId: string) => {
-    setBeats(prev => prev.map(beat => 
-      beat.id === beatId ? { ...beat, isExpanded: !beat.isExpanded } : beat
-    ));
-  }, []);
+    setStageContent(prev => ({
+      ...prev,
+      beats: prev.beats.map(beat => 
+        beat.id === beatId ? { ...beat, isExpanded: !beat.isExpanded } : beat
+      )
+    }));
+  }, [setStageContent]);
 
   const addBeatAfter = useCallback((afterBeatId: string) => {
-    const index = beats.findIndex(b => b.id === afterBeatId);
+    const index = stageContent.beats.findIndex(b => b.id === afterBeatId);
     const newBeat: Beat = {
       id: `beat-${Date.now()}`,
-      number: index + 2,
-      content: 'New beat - describe what happens here...',
+      order: index + 2,
+      text: 'New beat - describe what happens here...',
+      estimatedScreenTimeSeconds: 20,
       isExpanded: false,
     };
     
     const newBeats = [
-      ...beats.slice(0, index + 1),
+      ...stageContent.beats.slice(0, index + 1),
       newBeat,
-      ...beats.slice(index + 1).map(b => ({ ...b, number: b.number + 1 })),
+      ...stageContent.beats.slice(index + 1).map(b => ({ ...b, order: b.order + 1 })),
     ];
-    setBeats(newBeats);
+    
+    setStageContent(prev => ({
+      ...prev,
+      beats: newBeats
+    }));
+    
     setEditingBeatId(newBeat.id);
-    setHasChanges(true);
     toast.success('New beat added');
-  }, [beats]);
+  }, [stageContent.beats, setStageContent]);
 
   const deleteBeat = useCallback((beatId: string) => {
-    if (beats.length <= 3) {
+    if (stageContent.beats.length <= 3) {
       toast.error('Minimum 3 beats required');
       return;
     }
-    const index = beats.findIndex(b => b.id === beatId);
-    const newBeats = beats
+    
+    const newBeats = stageContent.beats
       .filter(b => b.id !== beatId)
-      .map((b, i) => ({ ...b, number: i + 1 }));
-    setBeats(newBeats);
-    setHasChanges(true);
+      .map((b, i) => ({ ...b, order: i + 1 }));
+    
+    setStageContent(prev => ({
+      ...prev,
+      beats: newBeats
+    }));
+    
     toast.success('Beat removed');
-  }, [beats]);
+  }, [stageContent.beats, setStageContent]);
 
-  const handleBrainstorm = useCallback((beatId: string) => {
-    setSelectedBeatForBrainstorm(beatId);
-    toast.info('Brainstorming alternatives...', {
-      description: 'AI is generating 3 alternative versions of this beat'
-    });
-    // Mock: In real app, this would call the LLM
-    setTimeout(() => {
-      setSelectedBeatForBrainstorm(null);
-      toast.success('3 alternatives generated', {
-        description: 'Select one to replace the current beat'
+  const handleBrainstorm = useCallback(async (beatId: string) => {
+    const beat = stageContent.beats.find(b => b.id === beatId);
+    if (!beat) return;
+
+    try {
+      setSelectedBeatForBrainstorm(beatId);
+      toast.info('Brainstorming alternatives...', {
+        description: 'AI is generating 3 alternative versions of this beat'
       });
-    }, 2000);
-  }, []);
+
+      const alternatives = await beatService.brainstormBeatAlternatives(
+        projectId,
+        beat,
+        stageContent.beats
+      );
+
+      // For now, just show the alternatives in a toast
+      // TODO: Implement proper alternative selection UI
+      toast.success(`Generated ${alternatives.length} alternatives`, {
+        description: 'Alternative versions created'
+      });
+    } catch (error) {
+      console.error('Failed to brainstorm alternatives:', error);
+      toast.error('Failed to generate alternatives. Please try again.');
+    } finally {
+      setSelectedBeatForBrainstorm(null);
+    }
+  }, [stageContent.beats, projectId]);
 
   const handleConfirmAndLock = useCallback(() => {
-    if (beats.some(b => b.content.length < 10)) {
+    if (stageContent.beats.some(b => b.text.length < 10)) {
       toast.error('All beats must have at least 10 characters');
       return;
     }
+    
+    if (stageContent.beats.length < 3) {
+      toast.error('At least 3 beats are required');
+      return;
+    }
+    
+    toast.success('Beat sheet confirmed and locked');
     onComplete();
-  }, [beats, onComplete]);
+  }, [stageContent.beats, onComplete]);
+
+  const handleFullRegenerate = useCallback(async () => {
+    if (regenerateGuidance.length < 10) {
+      toast.error('Please provide at least 10 characters of guidance');
+      return;
+    }
+
+    if (!stageContent.treatmentSource) {
+      toast.error('No treatment source available for regeneration');
+      return;
+    }
+
+    try {
+      setIsRegenerating(true);
+      toast.info('Regenerating beat sheet...', {
+        description: regenerateGuidance
+      });
+
+      const result = await beatService.regenerateBeats(
+        projectId,
+        {
+          treatmentProse: stageContent.treatmentSource.content,
+          selectedVariantId: stageContent.treatmentSource.variantId,
+          projectParams: {
+            targetLengthMin: 180, // TODO: Get from project config
+            targetLengthMax: 300,
+            genres: ['Drama'],
+            tonalPrecision: 'Emotional and contemplative'
+          }
+        },
+        regenerateGuidance
+      );
+
+      setStageContent(prev => ({
+        ...prev,
+        beats: result.beats,
+        totalEstimatedRuntime: result.totalEstimatedRuntime,
+        narrativeStructure: result.narrativeStructure,
+        langsmithTraceId: result.langsmithTraceId,
+        promptTemplateVersion: result.promptTemplateVersion
+      }));
+
+      toast.success(`Regenerated ${result.beats.length} beats`);
+      setShowRegenerateDialog(false);
+      setRegenerateGuidance('');
+    } catch (error) {
+      console.error('Failed to regenerate beats:', error);
+      toast.error('Failed to regenerate beats. Please try again.');
+    } finally {
+      setIsRegenerating(false);
+    }
+  }, [regenerateGuidance, stageContent.treatmentSource, projectId, setStageContent]);
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="text-muted-foreground">Loading beat sheet data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -149,7 +535,10 @@ export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatShe
               Beat Sheet
             </h2>
             <p className="text-sm text-muted-foreground">
-              Structural anchor for your narrative • {beats.length} beats
+              Structural anchor for your narrative • {stageContent.beats.length} beats
+              {stageContent.totalEstimatedRuntime > 0 && (
+                <span> • {Math.round(stageContent.totalEstimatedRuntime / 60)}m estimated</span>
+              )}
             </p>
           </div>
         </div>
@@ -170,9 +559,14 @@ export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatShe
             variant="outline"
             size="sm"
             onClick={() => setShowRegenerateDialog(true)}
+            disabled={isRegenerating || isGenerating}
             className="gap-2"
           >
-            <RefreshCw className="w-4 h-4" />
+            {isRegenerating ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
+            )}
             Regenerate All
           </Button>
 
@@ -199,133 +593,89 @@ export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatShe
 
       {/* Beat List */}
       <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-3xl mx-auto">
-          <Reorder.Group
-            axis="y"
-            values={beats}
-            onReorder={handleReorder}
-            className="space-y-3"
-          >
-            {beats.map((beat) => (
-              <Reorder.Item
-                key={beat.id}
-                value={beat}
-                className="list-none"
-              >
-                <motion.div
-                  layout
-                  className={cn(
-                    'group relative rounded-xl border transition-all duration-200',
-                    editingBeatId === beat.id
-                      ? 'bg-primary/10 border-primary shadow-gold'
-                      : 'bg-card border-border hover:border-primary/30'
+        {isGenerating && stageContent.beats.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center space-y-4">
+              <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto" />
+              <div>
+                <h3 className="font-medium text-foreground mb-2">Generating Beat Sheet</h3>
+                <p className="text-sm text-muted-foreground">
+                  Extracting structural beats from your treatment...
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : stageContent.beats.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center space-y-4">
+              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto">
+                <FileText className="w-8 h-8 text-muted-foreground" />
+              </div>
+              <div>
+                <h3 className="font-medium text-foreground mb-2">No Beat Sheet Generated</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Generate beats from your Stage 2 treatment to continue.
+                </p>
+                <Button onClick={generateInitialBeats} disabled={isGenerating}>
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Generate Beat Sheet
+                    </>
                   )}
-                >
-                  <div className="flex items-start gap-3 p-4">
-                    {/* Drag Handle */}
-                    <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-secondary text-muted-foreground cursor-grab active:cursor-grabbing shrink-0 mt-0.5">
-                      <GripVertical className="w-4 h-4" />
-                    </div>
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="max-w-3xl mx-auto">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={stageContent.beats.map(beat => beat.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="space-y-3">
+                  {stageContent.beats.map((beat) => (
+                    <SortableBeatItem
+                      key={beat.id}
+                      beat={beat}
+                      isEditing={editingBeatId === beat.id}
+                      onEdit={setEditingBeatId}
+                      onContentChange={handleBeatContentChange}
+                      onToggleExpand={toggleBeatExpand}
+                      onBrainstorm={handleBrainstorm}
+                      onAddAfter={addBeatAfter}
+                      onDelete={deleteBeat}
+                      disabled={isRegenerating || isGenerating}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
 
-                    {/* Beat Number */}
-                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/20 text-primary font-semibold text-sm shrink-0">
-                      {beat.number}
-                    </div>
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      {editingBeatId === beat.id ? (
-                        <textarea
-                          value={beat.content}
-                          onChange={(e) => handleBeatContentChange(beat.id, e.target.value)}
-                          onBlur={() => setEditingBeatId(null)}
-                          autoFocus
-                          className="w-full min-h-[80px] p-2 rounded-lg bg-secondary border border-border text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary"
-                        />
-                      ) : (
-                        <p 
-                          onClick={() => setEditingBeatId(beat.id)}
-                          className="text-foreground cursor-text hover:bg-secondary/50 p-2 -m-2 rounded-lg transition-colors"
-                        >
-                          {beat.content}
-                        </p>
-                      )}
-
-                      {/* Treatment Excerpt (expandable) */}
-                      {beat.originalTreatmentExcerpt && (
-                        <div className="mt-2">
-                          <button
-                            onClick={() => toggleBeatExpand(beat.id)}
-                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                          >
-                            {beat.isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                            View original treatment context
-                          </button>
-                          <AnimatePresence>
-                            {beat.isExpanded && (
-                              <motion.div
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: 'auto', opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
-                                className="mt-2 p-3 rounded-lg bg-muted text-sm text-muted-foreground overflow-hidden"
-                              >
-                                {beat.originalTreatmentExcerpt}
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => handleBrainstorm(beat.id)}
-                        title="Brainstorm alternatives"
-                      >
-                        <Sparkles className={cn(
-                          'w-4 h-4',
-                          selectedBeatForBrainstorm === beat.id && 'animate-pulse text-primary'
-                        )} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => addBeatAfter(beat.id)}
-                        title="Add beat after"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                        onClick={() => deleteBeat(beat.id)}
-                        title="Delete beat"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </motion.div>
-              </Reorder.Item>
-            ))}
-          </Reorder.Group>
-
-          {/* Add Beat at End */}
-          <Button
-            variant="outline"
-            onClick={() => addBeatAfter(beats[beats.length - 1].id)}
-            className="w-full mt-4 gap-2 border-dashed"
-          >
-            <Plus className="w-4 h-4" />
-            Add Beat
-          </Button>
-        </div>
+            {/* Add Beat at End */}
+            {stageContent.beats.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => addBeatAfter(stageContent.beats[stageContent.beats.length - 1].id)}
+                disabled={isRegenerating || isGenerating}
+                className="w-full mt-4 gap-2 border-dashed"
+              >
+                <Plus className="w-4 h-4" />
+                Add Beat
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Regeneration Dialog */}
@@ -370,13 +720,17 @@ export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatShe
                   </Button>
                   <Button
                     variant="gold"
-                    disabled={regenerateGuidance.length < 10}
-                    onClick={() => {
-                      toast.success('Beat sheet regeneration queued');
-                      setShowRegenerateDialog(false);
-                    }}
+                    disabled={regenerateGuidance.length < 10 || isRegenerating}
+                    onClick={handleFullRegenerate}
                   >
-                    Regenerate
+                    {isRegenerating ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        Regenerating...
+                      </>
+                    ) : (
+                      'Regenerate'
+                    )}
                   </Button>
                 </div>
               </div>

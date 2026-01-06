@@ -21,6 +21,9 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { useStageState } from '@/lib/hooks/useStageState';
+import { projectService } from '@/lib/services/projectService';
+import { inputProcessingService } from '@/lib/services/inputProcessingService';
+import type { Project } from '@/types/project';
 
 interface InputModeOption {
   id: InputMode;
@@ -81,7 +84,7 @@ const genres = [
 
 interface Stage1InputModeProps {
   projectId: string;
-  onComplete: () => void;
+  onComplete: (project?: Project) => void;
 }
 
 interface Stage1Content {
@@ -111,11 +114,11 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
       uploadedFiles: [],
       ideaText: ''
     },
-    autoSave: true
+    autoSave: projectId !== 'new' // Only auto-save if we have a real project ID
   });
 
-
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
 
   // Helper function to update a single field in content
   const updateField = <K extends keyof Stage1Content>(field: K, value: Stage1Content[K]) => {
@@ -135,6 +138,83 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
     (content.uploadedFiles.length > 0 || (content.selectedMode === 'expansion' && content.ideaText.length >= 20));
 
   const selectedModeData = inputModes.find(m => m.id === content.selectedMode);
+
+  const handleComplete = async () => {
+    if (!canProceed) return;
+
+    // Validate input first
+    const validation = inputProcessingService.validateInput({
+      selectedMode: content.selectedMode!,
+      selectedProjectType: content.selectedProjectType!,
+      selectedRating: content.selectedRating,
+      selectedGenres: content.selectedGenres,
+      targetLength: content.targetLength,
+      tonalPrecision: content.tonalPrecision,
+      uploadedFiles: content.uploadedFiles,
+      ideaText: content.ideaText
+    });
+
+    if (!validation.isValid) {
+      console.error('Validation errors:', validation.errors);
+      // Show validation errors to user
+      return;
+    }
+
+    try {
+      setIsCreatingProject(true);
+
+      let project: Project;
+
+      if (projectId === 'new') {
+        // Create new project with configuration
+        project = await projectService.createProject({
+          title: `${content.selectedMode} Project - ${new Date().toLocaleDateString()}`
+        });
+
+        // Update the project with Stage 1 configuration
+        project = await projectService.updateProject(project.id, {
+          project_type: content.selectedProjectType!,
+          content_rating: content.selectedRating,
+          genre: content.selectedGenres,
+          tonal_precision: content.tonalPrecision,
+          target_length_min: content.targetLength[0] * 60, // Convert minutes to seconds
+          target_length_max: content.targetLength[1] * 60
+        });
+      } else {
+        // Update existing project configuration
+        project = await projectService.updateProject(projectId, {
+          project_type: content.selectedProjectType!,
+          content_rating: content.selectedRating,
+          genre: content.selectedGenres,
+          tonal_precision: content.tonalPrecision,
+          target_length_min: content.targetLength[0] * 60,
+          target_length_max: content.targetLength[1] * 60
+        });
+      }
+
+      // Process the input for Stage 2
+      const processedInput = inputProcessingService.processInput({
+        selectedMode: content.selectedMode!,
+        selectedProjectType: content.selectedProjectType!,
+        selectedRating: content.selectedRating,
+        selectedGenres: content.selectedGenres,
+        targetLength: content.targetLength,
+        tonalPrecision: content.tonalPrecision,
+        uploadedFiles: content.uploadedFiles,
+        ideaText: content.ideaText
+      });
+
+      // Store processed input in Stage 1 state for Stage 2 to use
+      // This will be saved automatically by the useStageState hook
+
+      onComplete(project);
+    } catch (error) {
+      console.error('Failed to save project configuration:', error);
+      // Handle error - maybe show a toast
+    } finally {
+      setIsCreatingProject(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -222,13 +302,19 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
             animate={{ opacity: 1, height: 'auto' }}
             className="space-y-4"
           >
-            <div className="flex items-center justify-between">
+            <div className="space-y-2">
               <h3 className="font-display text-xl font-semibold text-foreground">
                 Input Content
               </h3>
-              <span className="text-sm text-muted-foreground">
-                {selectedModeData?.fileHint}
-              </span>
+              <p className="text-sm text-muted-foreground">
+                {inputProcessingService.getModeInstructions(content.selectedMode)}
+              </p>
+              {inputProcessingService.getRecommendedFileTypes(content.selectedMode).length > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  <span className="font-medium">Recommended:</span>{' '}
+                  {inputProcessingService.getRecommendedFileTypes(content.selectedMode).join(', ')}
+                </div>
+              )}
             </div>
 
             {content.selectedMode === 'expansion' ? (
@@ -387,11 +473,11 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
           <Button
             variant="gold"
             size="lg"
-            disabled={!canProceed}
-            onClick={onComplete}
+            disabled={!canProceed || isCreatingProject}
+            onClick={handleComplete}
             className="min-w-[200px]"
           >
-            Continue to Treatment
+            {isCreatingProject ? 'Creating Project...' : 'Continue to Treatment'}
           </Button>
         </div>
       </motion.div>
