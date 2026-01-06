@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useStageState } from '@/lib/hooks/useStageState';
 import { treatmentService, type TreatmentVariation } from '@/lib/services/treatmentService';
+import { stageStateService } from '@/lib/services/stageStateService';
 import { inputProcessingService, type ProcessedInput } from '@/lib/services/inputProcessingService';
 
 interface Stage2Content {
@@ -128,38 +129,24 @@ export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2Treatme
       setIsGenerating(true);
 
       // Get Stage 1 processed input
-      // This should be available from Stage 1's state
-      // For now, we'll need to fetch it or pass it as a prop
-      // TODO: Implement proper Stage 1 data retrieval
+      const stage1State = await stageStateService.getStageState(projectId, 1);
+      if (!stage1State?.content?.processedInput) {
+        throw new Error('No processed input found from Stage 1. Please complete Stage 1 first.');
+      }
       
       toast.info('Generating treatment variations...', {
         description: 'This may take a few moments'
       });
 
-      // Mock for now - in real implementation, get from Stage 1
-      const mockProcessedInput: ProcessedInput = {
-        mode: 'expansion',
-        primaryContent: 'A retired astronaut receives a terminal diagnosis and embarks on a journey to reconnect with his estranged daughter.',
-        contextFiles: [],
-        projectParams: {
-          targetLengthMin: 180,
-          targetLengthMax: 300,
-          projectType: 'narrative',
-          contentRating: 'PG-13',
-          genres: ['Drama'],
-          tonalPrecision: 'Emotional and contemplative with moments of hope'
-        }
-      };
-
       const result = await treatmentService.generateTreatments({
-        processedInput: mockProcessedInput,
+        processedInput: stage1State.content.processedInput,
         projectId
       });
 
       setStageContent(prev => ({
         ...prev,
         variations: result.variations,
-        processedInput: mockProcessedInput,
+        processedInput: stage1State.content.processedInput,
         langsmithTraceId: result.langsmithTraceId,
         promptTemplateVersion: result.promptTemplateVersion
       }));

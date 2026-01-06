@@ -22,7 +22,8 @@ import {
 } from '@/components/ui/collapsible';
 import { useStageState } from '@/lib/hooks/useStageState';
 import { projectService } from '@/lib/services/projectService';
-import { inputProcessingService } from '@/lib/services/inputProcessingService';
+import { stageStateService } from '@/lib/services/stageStateService';
+import { inputProcessingService, type ProcessedInput } from '@/lib/services/inputProcessingService';
 import type { Project } from '@/types/project';
 
 interface InputModeOption {
@@ -96,6 +97,7 @@ interface Stage1Content {
   tonalPrecision: string;
   uploadedFiles: UploadedFile[];
   ideaText: string;
+  processedInput?: ProcessedInput;
 }
 
 export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps) {
@@ -205,7 +207,18 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
       });
 
       // Store processed input in Stage 1 state for Stage 2 to use
-      // This will be saved automatically by the useStageState hook
+      const updatedContent = {
+        ...content,
+        processedInput
+      };
+      
+      setContent(updatedContent);
+
+      // Manually save the stage state with processed input before completing
+      await stageStateService.saveStageState(project.id, 1, {
+        content: updatedContent,
+        status: 'locked'
+      });
 
       onComplete(project);
     } catch (error) {

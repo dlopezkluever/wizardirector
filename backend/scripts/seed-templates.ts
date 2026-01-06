@@ -148,7 +148,7 @@ Extract the structural beats from this treatment. Focus on the key plot points a
   let createdCount = 0;
   for (const template of templates) {
     try {
-      const created = await promptTemplateService.create(template);
+      const created = await promptTemplateService.createTemplate(template);
       console.log(`✅ Created template: ${template.name}`);
       createdCount++;
     } catch (error) {
