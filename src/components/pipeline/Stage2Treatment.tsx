@@ -128,14 +128,42 @@ export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2Treatme
     try {
       setIsGenerating(true);
 
+      console.log('🔍 [DEBUG] Starting generateInitialTreatments for projectId:', projectId);
+
       // Get Stage 1 processed input
+      console.log('🔍 [DEBUG] Fetching Stage 1 state...');
       const stage1State = await stageStateService.getStageState(projectId, 1);
+      
+      console.log('🔍 [DEBUG] Stage 1 state received:', {
+        exists: !!stage1State,
+        id: stage1State?.id,
+        stageNumber: stage1State?.stage_number,
+        version: stage1State?.version,
+        status: stage1State?.status,
+        contentKeys: stage1State?.content ? Object.keys(stage1State.content) : 'no content',
+        hasProcessedInput: !!stage1State?.content?.processedInput,
+        processedInputKeys: stage1State?.content?.processedInput ? Object.keys(stage1State.content.processedInput) : 'no processedInput'
+      });
+
       if (!stage1State?.content?.processedInput) {
+        console.error('❌ [DEBUG] No processed input found from Stage 1');
         throw new Error('No processed input found from Stage 1. Please complete Stage 1 first.');
       }
+
+      console.log('🔍 [DEBUG] Stage 1 processed input details:', {
+        mode: stage1State.content.processedInput.mode,
+        primaryContentLength: stage1State.content.processedInput.primaryContent?.length || 0,
+        contextFilesCount: stage1State.content.processedInput.contextFiles?.length || 0,
+        projectParams: stage1State.content.processedInput.projectParams
+      });
       
       toast.info('Generating treatment variations...', {
         description: 'This may take a few moments'
+      });
+
+      console.log('🔍 [DEBUG] Calling treatmentService.generateTreatments with:', {
+        processedInput: stage1State.content.processedInput,
+        projectId
       });
 
       const result = await treatmentService.generateTreatments({

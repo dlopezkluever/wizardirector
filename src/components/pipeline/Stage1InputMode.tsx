@@ -195,6 +195,17 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
       }
 
       // Process the input for Stage 2
+      console.log('🔍 [DEBUG] Stage 1 - Processing input with:', {
+        selectedMode: content.selectedMode,
+        selectedProjectType: content.selectedProjectType,
+        selectedRating: content.selectedRating,
+        selectedGenres: content.selectedGenres,
+        targetLength: content.targetLength,
+        tonalPrecision: content.tonalPrecision,
+        uploadedFilesCount: content.uploadedFiles?.length || 0,
+        ideaTextLength: content.ideaText?.length || 0
+      });
+
       const processedInput = inputProcessingService.processInput({
         selectedMode: content.selectedMode!,
         selectedProjectType: content.selectedProjectType!,
@@ -206,19 +217,30 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
         ideaText: content.ideaText
       });
 
+      console.log('🔍 [DEBUG] Stage 1 - Processed input result:', {
+        mode: processedInput.mode,
+        primaryContentLength: processedInput.primaryContent?.length || 0,
+        contextFilesCount: processedInput.contextFiles?.length || 0,
+        projectParams: processedInput.projectParams
+      });
+
       // Store processed input in Stage 1 state for Stage 2 to use
       const updatedContent = {
         ...content,
         processedInput
       };
       
+      console.log('🔍 [DEBUG] Stage 1 - Updated content keys:', Object.keys(updatedContent));
+      
       setContent(updatedContent);
 
       // Manually save the stage state with processed input before completing
+      console.log('🔍 [DEBUG] Stage 1 - Saving stage state for project:', project.id);
       await stageStateService.saveStageState(project.id, 1, {
         content: updatedContent,
         status: 'locked'
       });
+      console.log('🔍 [DEBUG] Stage 1 - Stage state saved successfully');
 
       onComplete(project);
     } catch (error) {

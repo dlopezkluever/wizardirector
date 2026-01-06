@@ -138,8 +138,18 @@ router.post('/generate-from-template', async (req, res) => {
     const template = templates[0];
     
     // Validate variables
+    console.log(`[API] Validating template variables for template: ${template.name}`);
+    console.log(`[API] Template system_prompt variables:`, promptTemplateService.extractVariables({ ...template, user_prompt_template: '' }));
+    console.log(`[API] Template user_prompt_template variables:`, promptTemplateService.extractVariables({ ...template, system_prompt: '' }));
+    console.log(`[API] All template variables required:`, promptTemplateService.extractVariables(template));
+    console.log(`[API] Variables provided:`, Object.keys(validatedRequest.variables));
+    console.log(`[API] Variable values:`, validatedRequest.variables);
+    
     const validation = promptTemplateService.validateVariables(template, validatedRequest.variables);
+    console.log(`[API] Validation result:`, validation);
+    
     if (!validation.valid) {
+      console.error(`[API] Template validation failed - Missing variables:`, validation.missing);
       return res.status(400).json({
         success: false,
         error: 'Missing required template variables',

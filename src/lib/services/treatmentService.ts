@@ -38,28 +38,47 @@ class TreatmentService {
     }
 
     // Prepare the LLM request
+    console.log('🔍 [DEBUG] treatmentService.generateTreatments - Processing request:', {
+      projectId: request.projectId,
+      processedInputKeys: Object.keys(request.processedInput),
+      mode: request.processedInput.mode,
+      primaryContentLength: request.processedInput.primaryContent?.length || 0,
+      contextFilesCount: request.processedInput.contextFiles?.length || 0,
+      projectParams: request.processedInput.projectParams
+    });
+
+    const variables = {
+      input_mode: request.processedInput.mode,
+      primary_content: request.processedInput.primaryContent,
+      context_files: request.processedInput.contextFiles.map(f => 
+        `${f.name}${f.tag ? ` (${f.tag})` : ''}:\n${f.content}`
+      ).join('\n\n---\n\n'),
+      target_length_min: request.processedInput.projectParams.targetLengthMin,
+      target_length_max: request.processedInput.projectParams.targetLengthMax,
+      project_type: request.processedInput.projectParams.projectType,
+      content_rating: request.processedInput.projectParams.contentRating,
+      genres: request.processedInput.projectParams.genres.join(', '),
+      tonal_precision: request.processedInput.projectParams.tonalPrecision,
+      rag_retrieved_style_examples: '' // TODO: Implement RAG retrieval later
+    };
+
+    console.log('🔍 [DEBUG] Template variables being sent:', {
+      templateName: 'treatment_expansion',
+      variableKeys: Object.keys(variables),
+      variables: variables
+    });
+
     const llmRequest = {
       templateName: 'treatment_expansion',
-      variables: {
-        input_mode: request.processedInput.mode,
-        primary_content: request.processedInput.primaryContent,
-        context_files: request.processedInput.contextFiles.map(f => 
-          `${f.name}${f.tag ? ` (${f.tag})` : ''}:\n${f.content}`
-        ).join('\n\n---\n\n'),
-        target_length_min: request.processedInput.projectParams.targetLengthMin,
-        target_length_max: request.processedInput.projectParams.targetLengthMax,
-        project_type: request.processedInput.projectParams.projectType,
-        content_rating: request.processedInput.projectParams.contentRating,
-        genres: request.processedInput.projectParams.genres.join(', '),
-        tonal_precision: request.processedInput.projectParams.tonalPrecision,
-        rag_retrieved_style_examples: '' // TODO: Implement RAG retrieval later
-      },
+      variables,
       metadata: {
         projectId: request.projectId,
         stage: 2,
         inputMode: request.processedInput.mode
       }
     };
+
+    console.log('🔍 [DEBUG] Full LLM request:', llmRequest);
 
     const response = await fetch('/api/llm/generate-from-template', {
       method: 'POST',
