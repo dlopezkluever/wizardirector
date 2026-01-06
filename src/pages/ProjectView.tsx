@@ -90,7 +90,7 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
     // Find the highest stage number with a locked or draft status
     let highestStage = 1;
     const updatedStages = initialPhaseAStages.map(stageProgress => {
-      const stageState = getStageState(stageProgress.stage);
+      const stageState = stageStates.find(s => s.stage_number === stageProgress.stage);
       
       if (stageState) {
         highestStage = Math.max(highestStage, stageProgress.stage);
@@ -116,7 +116,7 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
 
     setStages(finalStages);
     setCurrentStage(nextStage);
-  }, [stageStates, isLoadingStates, getStageState, projectId]);
+  }, [stageStates, isLoadingStates, projectId]);
 
   const handleStageComplete = (stageNumber: number) => {
     setStages(prev => prev.map(s => 
