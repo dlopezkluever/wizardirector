@@ -239,9 +239,21 @@ Rewrite only the selected text portion according to the guidance, ensuring it fi
       console.log('🔍 [TREATMENT PARSE] Content is already an object');
       parsed = content;
     } else if (typeof content === 'string') {
+      // Strip markdown code block markers if present
+      let cleanedContent = content.trim();
+      if (cleanedContent.startsWith('```')) {
+        console.log('🔍 [TREATMENT PARSE] Removing markdown code block markers');
+        // Remove opening ```json or ```
+        cleanedContent = cleanedContent.replace(/^```(?:json)?\s*\n?/, '');
+        // Remove closing ```
+        cleanedContent = cleanedContent.replace(/\n?```\s*$/, '');
+        cleanedContent = cleanedContent.trim();
+        console.log('🔍 [TREATMENT PARSE] Cleaned content preview:', cleanedContent.substring(0, 100));
+      }
+
       // Try to parse string as JSON
       try {
-        parsed = JSON.parse(content);
+        parsed = JSON.parse(cleanedContent);
         console.log('🔍 [TREATMENT PARSE] Successfully parsed JSON string');
       } catch (error) {
         console.warn('⚠️ [TREATMENT PARSE] Failed to parse as JSON, attempting text extraction');

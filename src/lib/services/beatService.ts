@@ -274,9 +274,21 @@ Split this beat into 2-3 more detailed beats that collectively tell the same sto
       console.log('🔍 [BEAT PARSE] Content is already an object');
       parsed = content;
     } else if (typeof content === 'string') {
+      // Strip markdown code block markers if present
+      let cleanedContent = content.trim();
+      if (cleanedContent.startsWith('```')) {
+        console.log('🔍 [BEAT PARSE] Removing markdown code block markers');
+        // Remove opening ```json or ```
+        cleanedContent = cleanedContent.replace(/^```(?:json)?\s*\n?/, '');
+        // Remove closing ```
+        cleanedContent = cleanedContent.replace(/\n?```\s*$/, '');
+        cleanedContent = cleanedContent.trim();
+        console.log('🔍 [BEAT PARSE] Cleaned content preview:', cleanedContent.substring(0, 100));
+      }
+
       // Try to parse string as JSON
       try {
-        parsed = JSON.parse(content);
+        parsed = JSON.parse(cleanedContent);
         console.log('🔍 [BEAT PARSE] Successfully parsed JSON string');
       } catch (error) {
         console.warn('⚠️ [BEAT PARSE] Failed to parse as JSON, attempting text extraction');
