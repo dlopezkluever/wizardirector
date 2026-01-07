@@ -114,7 +114,18 @@ export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2Treatme
         // Set editable content from current variation
         const currentVariation = stageContent.variations[stageContent.activeVariation];
         if (currentVariation) {
-          setEditableContent(currentVariation.content);
+          // Validate that content is a string, not an object
+          const content = typeof currentVariation.content === 'string' 
+            ? currentVariation.content 
+            : JSON.stringify(currentVariation.content);
+          
+          console.log('🔍 [STAGE2 UI] Setting editable content:', {
+            isString: typeof currentVariation.content === 'string',
+            contentType: typeof currentVariation.content,
+            contentLength: content.length
+          });
+          
+          setEditableContent(content);
         }
       }
     };
@@ -180,7 +191,19 @@ export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2Treatme
       }));
 
       if (result.variations.length > 0) {
-        setEditableContent(result.variations[0].content);
+        // Validate that content is a string before setting
+        const firstVariation = result.variations[0];
+        const content = typeof firstVariation.content === 'string'
+          ? firstVariation.content
+          : JSON.stringify(firstVariation.content);
+        
+        console.log('🔍 [STAGE2 UI] Initial variation content:', {
+          isString: typeof firstVariation.content === 'string',
+          contentType: typeof firstVariation.content,
+          contentLength: content.length
+        });
+        
+        setEditableContent(content);
       }
 
       toast.success(`Generated ${result.variations.length} treatment variations`);
@@ -198,7 +221,18 @@ export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2Treatme
     }
     
     setStageContent(prev => ({ ...prev, activeVariation: index }));
-    setEditableContent(stageContent.variations[index]?.content || '');
+    
+    // Validate content type before setting
+    const selectedVariation = stageContent.variations[index];
+    if (selectedVariation) {
+      const content = typeof selectedVariation.content === 'string'
+        ? selectedVariation.content
+        : JSON.stringify(selectedVariation.content);
+      setEditableContent(content);
+    } else {
+      setEditableContent('');
+    }
+    
     setHasUnsavedChanges(false);
   }, [stageContent.variations, hasUnsavedChanges, setStageContent]);
 
@@ -290,7 +324,12 @@ export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2Treatme
       }));
 
       if (result.variations.length > 0) {
-        setEditableContent(result.variations[0].content);
+        // Validate content type
+        const firstVariation = result.variations[0];
+        const content = typeof firstVariation.content === 'string'
+          ? firstVariation.content
+          : JSON.stringify(firstVariation.content);
+        setEditableContent(content);
       }
 
       toast.success(`Regenerated ${result.variations.length} treatment variations`);

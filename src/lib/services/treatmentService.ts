@@ -228,41 +228,95 @@ Rewrite only the selected text portion according to the guidance, ensuring it fi
   /**
    * Parse LLM response to extract treatment variations
    */
-  private parseTreatmentResponse(content: string): TreatmentVariation[] {
-    try {
-      // Try to parse as JSON first
-      const parsed = JSON.parse(content);
-      if (parsed.treatments && Array.isArray(parsed.treatments)) {
-        return parsed.treatments.map((t: any, index: number) => ({
-          id: `treatment-${Date.now()}-${index}`,
-          content: t.prose || t.content || '',
-          structuralEmphasis: t.structural_emphasis || t.emphasis || `Variation ${index + 1}`,
-          estimatedRuntimeSeconds: t.estimated_runtime_seconds || 300,
+  private parseTreatmentResponse(content: string | any): TreatmentVariation[] {
+    console.log('🔍 [TREATMENT PARSE] Input type:', typeof content);
+    console.log('🔍 [TREATMENT PARSE] Input preview:', typeof content === 'string' ? content.substring(0, 200) : content);
+
+    let parsed: any;
+
+    // Handle case where content is already parsed
+    if (typeof content === 'object' && content !== null) {
+      console.log('🔍 [TREATMENT PARSE] Content is already an object');
+      parsed = content;
+    } else if (typeof content === 'string') {
+      // Try to parse string as JSON
+      try {
+        parsed = JSON.parse(content);
+        console.log('🔍 [TREATMENT PARSE] Successfully parsed JSON string');
+      } catch (error) {
+        console.warn('⚠️ [TREATMENT PARSE] Failed to parse as JSON, attempting text extraction');
+        // Fallback: Split content into 3 parts if structured response fails
+        const sections = content.split(/(?:TREATMENT|VARIATION)\s*[123]/i).filter(s => s.trim());
+        
+        if (sections.length >= 3) {
+          return sections.slice(0, 3).map((section, index) => ({
+            id: `treatment-${Date.now()}-${index}`,
+            content: section.trim(),
+            structuralEmphasis: `Variation ${index + 1}`,
+            estimatedRuntimeSeconds: 300,
+            createdAt: new Date()
+          }));
+        }
+
+        // Ultimate fallback: Return single treatment
+        return [{
+          id: `treatment-${Date.now()}-0`,
+          content: content.trim(),
+          structuralEmphasis: 'Single Variation',
+          estimatedRuntimeSeconds: 300,
           createdAt: new Date()
-        }));
+        }];
       }
-    } catch (error) {
-      // If JSON parsing fails, try to extract treatments from text
-      console.warn('Failed to parse JSON response, attempting text extraction');
+    } else {
+      console.error('❌ [TREATMENT PARSE] Unexpected content type:', typeof content);
+      return [];
     }
 
-    // Fallback: Split content into 3 parts if structured response fails
-    const sections = content.split(/(?:TREATMENT|VARIATION)\s*[123]/i).filter(s => s.trim());
+    // Now we have a parsed object, extract treatments
+    if (parsed.treatments && Array.isArray(parsed.treatments)) {
+      console.log('✅ [TREATMENT PARSE] Found treatments array with', parsed.treatments.length, 'items');
+      
+      return parsed.treatments.map((t: any, index: number) => {
+        // Extract the prose text - ensure we get a string, not an object
+        let proseContent = '';
+        if (typeof t.prose === 'string') {
+          proseContent = t.prose;
+        } else if (typeof t.content === 'string') {
+          proseContent = t.content;
+        } else if (typeof t.text === 'string') {
+          proseContent = t.text;
+        } else if (typeof t === 'string') {
+          proseContent = t;
+        } else {
+          // If we got an object, stringify it as last resort (but log warning)
+          console.warn('⚠️ [TREATMENT PARSE] Treatment prose is not a string:', t);
+          proseContent = JSON.stringify(t);
+        }
+
+        const variation: TreatmentVariation = {
+          id: `treatment-${Date.now()}-${index}`,
+          content: proseContent,
+          structuralEmphasis: t.structural_emphasis || t.emphasis || t.structuralEmphasis || `Variation ${index + 1}`,
+          estimatedRuntimeSeconds: t.estimated_runtime_seconds || t.estimatedRuntimeSeconds || 300,
+          createdAt: new Date()
+        };
+
+        console.log(`✅ [TREATMENT PARSE] Variation ${index + 1} parsed:`, {
+          contentLength: variation.content.length,
+          structuralEmphasis: variation.structuralEmphasis,
+          isString: typeof variation.content === 'string'
+        });
+
+        return variation;
+      });
+    }
+
+    console.warn('⚠️ [TREATMENT PARSE] No treatments array found in parsed object:', Object.keys(parsed));
     
-    if (sections.length >= 3) {
-      return sections.slice(0, 3).map((section, index) => ({
-        id: `treatment-${Date.now()}-${index}`,
-        content: section.trim(),
-        structuralEmphasis: `Variation ${index + 1}`,
-        estimatedRuntimeSeconds: 300,
-        createdAt: new Date()
-      }));
-    }
-
-    // Ultimate fallback: Return single treatment
+    // Fallback: Return entire content as single treatment
     return [{
       id: `treatment-${Date.now()}-0`,
-      content: content.trim(),
+      content: typeof parsed === 'string' ? parsed : JSON.stringify(parsed),
       structuralEmphasis: 'Single Variation',
       estimatedRuntimeSeconds: 300,
       createdAt: new Date()

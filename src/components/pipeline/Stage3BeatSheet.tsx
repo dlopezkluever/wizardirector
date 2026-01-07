@@ -311,9 +311,21 @@ export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatShe
 
       const result = await beatService.generateBeats(mockTreatmentData);
 
+      // Validate beats have string text fields
+      const validatedBeats = result.beats.map((beat, index) => ({
+        ...beat,
+        text: typeof beat.text === 'string' ? beat.text : JSON.stringify(beat.text)
+      }));
+
+      console.log('🔍 [STAGE3 UI] Validated beats:', {
+        count: validatedBeats.length,
+        firstBeatTextType: typeof validatedBeats[0]?.text,
+        firstBeatTextLength: validatedBeats[0]?.text?.length
+      });
+
       setStageContent(prev => ({
         ...prev,
-        beats: result.beats,
+        beats: validatedBeats,
         totalEstimatedRuntime: result.totalEstimatedRuntime,
         narrativeStructure: result.narrativeStructure,
         treatmentSource: {
@@ -491,9 +503,15 @@ export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatShe
         regenerateGuidance
       );
 
+      // Validate beats have string text fields
+      const validatedBeats = result.beats.map((beat) => ({
+        ...beat,
+        text: typeof beat.text === 'string' ? beat.text : JSON.stringify(beat.text)
+      }));
+
       setStageContent(prev => ({
         ...prev,
-        beats: result.beats,
+        beats: validatedBeats,
         totalEstimatedRuntime: result.totalEstimatedRuntime,
         narrativeStructure: result.narrativeStructure,
         langsmithTraceId: result.langsmithTraceId,

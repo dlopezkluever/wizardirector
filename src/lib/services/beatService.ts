@@ -259,65 +259,130 @@ Split this beat into 2-3 more detailed beats that collectively tell the same sto
   /**
    * Parse LLM response for beat generation
    */
-  private parseBeatsResponse(content: string): {
+  private parseBeatsResponse(content: string | any): {
     beats: Beat[];
     totalEstimatedRuntime: number;
     narrativeStructure: string;
   } {
-    try {
-      const parsed = JSON.parse(content);
-      if (parsed.beats && Array.isArray(parsed.beats)) {
-        const beats: Beat[] = parsed.beats.map((b: any, index: number) => ({
-          id: b.beat_id || `beat-${Date.now()}-${index}`,
-          order: b.order || index + 1,
-          text: b.text || '',
-          rationale: b.rationale || '',
-          estimatedScreenTimeSeconds: b.estimated_screen_time_seconds || 20,
-          isExpanded: false
-        }));
+    console.log('🔍 [BEAT PARSE] Input type:', typeof content);
+    console.log('🔍 [BEAT PARSE] Input preview:', typeof content === 'string' ? content.substring(0, 200) : content);
+
+    let parsed: any;
+
+    // Handle case where content is already parsed
+    if (typeof content === 'object' && content !== null) {
+      console.log('🔍 [BEAT PARSE] Content is already an object');
+      parsed = content;
+    } else if (typeof content === 'string') {
+      // Try to parse string as JSON
+      try {
+        parsed = JSON.parse(content);
+        console.log('🔍 [BEAT PARSE] Successfully parsed JSON string');
+      } catch (error) {
+        console.warn('⚠️ [BEAT PARSE] Failed to parse as JSON, attempting text extraction');
+        // Fallback: Parse text format
+        const lines = content.split('\n').filter(line => line.trim());
+        const beats: Beat[] = [];
+        let currentBeat = 1;
+
+        for (const line of lines) {
+          if (line.match(/^\d+\.|Beat \d+/i)) {
+            const text = line.replace(/^\d+\.\s*|Beat \d+:?\s*/i, '').trim();
+            if (text) {
+              beats.push({
+                id: `beat-${Date.now()}-${currentBeat}`,
+                order: currentBeat,
+                text,
+                rationale: '',
+                estimatedScreenTimeSeconds: 20,
+                isExpanded: false
+              });
+              currentBeat++;
+            }
+          }
+        }
 
         return {
-          beats,
-          totalEstimatedRuntime: parsed.total_estimated_runtime || beats.reduce((sum, b) => sum + b.estimatedScreenTimeSeconds, 0),
-          narrativeStructure: parsed.narrative_structure || '3-act structure'
+          beats: beats.length > 0 ? beats : [{
+            id: `beat-${Date.now()}-1`,
+            order: 1,
+            text: content.trim(),
+            rationale: '',
+            estimatedScreenTimeSeconds: 60,
+            isExpanded: false
+          }],
+          totalEstimatedRuntime: beats.length * 20,
+          narrativeStructure: '3-act structure'
         };
       }
-    } catch (error) {
-      console.warn('Failed to parse JSON response, attempting text extraction');
+    } else {
+      console.error('❌ [BEAT PARSE] Unexpected content type:', typeof content);
+      return {
+        beats: [],
+        totalEstimatedRuntime: 0,
+        narrativeStructure: '3-act structure'
+      };
     }
 
-    // Fallback: Parse text format
-    const lines = content.split('\n').filter(line => line.trim());
-    const beats: Beat[] = [];
-    let currentBeat = 1;
-
-    for (const line of lines) {
-      if (line.match(/^\d+\.|Beat \d+/i)) {
-        const text = line.replace(/^\d+\.\s*|Beat \d+:?\s*/i, '').trim();
-        if (text) {
-          beats.push({
-            id: `beat-${Date.now()}-${currentBeat}`,
-            order: currentBeat,
-            text,
-            rationale: '',
-            estimatedScreenTimeSeconds: 20,
-            isExpanded: false
-          });
-          currentBeat++;
+    // Now we have a parsed object, extract beats
+    if (parsed.beats && Array.isArray(parsed.beats)) {
+      console.log('✅ [BEAT PARSE] Found beats array with', parsed.beats.length, 'items');
+      
+      const beats: Beat[] = parsed.beats.map((b: any, index: number) => {
+        // Extract the beat text - ensure we get a string, not an object
+        let beatText = '';
+        if (typeof b.text === 'string') {
+          beatText = b.text;
+        } else if (typeof b.content === 'string') {
+          beatText = b.content;
+        } else if (typeof b.description === 'string') {
+          beatText = b.description;
+        } else if (typeof b === 'string') {
+          beatText = b;
+        } else {
+          // If we got an object, stringify it as last resort (but log warning)
+          console.warn('⚠️ [BEAT PARSE] Beat text is not a string:', b);
+          beatText = JSON.stringify(b);
         }
-      }
+
+        const beat: Beat = {
+          id: b.beat_id || b.id || `beat-${Date.now()}-${index}`,
+          order: b.order || index + 1,
+          text: beatText,
+          rationale: b.rationale || '',
+          estimatedScreenTimeSeconds: b.estimated_screen_time_seconds || b.estimatedScreenTimeSeconds || 20,
+          isExpanded: false
+        };
+
+        console.log(`✅ [BEAT PARSE] Beat ${index + 1} parsed:`, {
+          textLength: beat.text.length,
+          order: beat.order,
+          isString: typeof beat.text === 'string'
+        });
+
+        return beat;
+      });
+
+      return {
+        beats,
+        totalEstimatedRuntime: parsed.total_estimated_runtime || parsed.totalEstimatedRuntime || beats.reduce((sum, b) => sum + b.estimatedScreenTimeSeconds, 0),
+        narrativeStructure: parsed.narrative_structure || parsed.narrativeStructure || '3-act structure'
+      };
     }
 
+    console.warn('⚠️ [BEAT PARSE] No beats array found in parsed object:', Object.keys(parsed));
+    
+    // Fallback: Return entire content as single beat
     return {
-      beats: beats.length > 0 ? beats : [{
+      beats: [{
         id: `beat-${Date.now()}-1`,
         order: 1,
-        text: content.trim(),
+        text: typeof parsed === 'string' ? parsed : JSON.stringify(parsed),
         rationale: '',
         estimatedScreenTimeSeconds: 60,
         isExpanded: false
       }],
-      totalEstimatedRuntime: beats.length * 20,
+      totalEstimatedRuntime: 60,
       narrativeStructure: '3-act structure'
     };
   }
