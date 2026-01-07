@@ -118,5 +118,3 @@ treatmentService.ts:83
 Stage2Treatment.tsx:188 Failed to generate treatments: Error: Internal server error
     at TreatmentService.generateTreatments (treatmentService.ts:94:13)
     at async generateInitialTreatments (Stage2Treatment.tsx:169:22)
-
-﻿

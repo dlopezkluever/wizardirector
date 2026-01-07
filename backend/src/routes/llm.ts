@@ -190,13 +190,13 @@ router.post('/generate-from-template', async (req, res) => {
     // Interpolate the template
     console.log(`[API] Interpolating template with variables...`);
     const interpolated = promptTemplateService.interpolateTemplate(template, validatedRequest.variables);
-    console.log(`[API] Template interpolated successfully. System prompt length: ${interpolated.systemPrompt.length}, User prompt length: ${interpolated.userPrompt.length}`);
+    console.log(`[API] Template interpolated successfully. System prompt length: ${interpolated.system_prompt.length}, User prompt length: ${interpolated.user_prompt.length}`);
     
     // Generate using the interpolated prompts
     console.log(`[API] Calling LLM client to generate response...`);
     const response = await llmClient.generate({
-      systemPrompt: interpolated.systemPrompt,
-      userPrompt: interpolated.userPrompt,
+      systemPrompt: interpolated.system_prompt,
+      userPrompt: interpolated.user_prompt,
       model: validatedRequest.model,
       temperature: validatedRequest.temperature,
       maxTokens: validatedRequest.maxTokens,
