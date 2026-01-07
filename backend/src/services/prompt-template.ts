@@ -304,7 +304,9 @@ export class PromptTemplateService {
     const variables = new Set<string>();
     const text = template.system_prompt + ' ' + template.user_prompt_template;
     
-    const matches = text.match(/\{([^}]+)\}/g);
+    // Match only valid template variable patterns: {variable_name}
+    // Variable names should be alphanumeric, underscore, or hyphen only
+    const matches = text.match(/\{([a-zA-Z_][a-zA-Z0-9_-]*)\}/g);
     if (matches) {
       matches.forEach(match => {
         const variableName = match.slice(1, -1); // Remove { and }
