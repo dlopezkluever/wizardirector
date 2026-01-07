@@ -1,6 +1,15 @@
 
+In the Response body of the 500 error{ Request URL
+http://localhost:8080/api/llm/generate-from-template
+Request Method
+POST
+Status Code
+500 Internal Server Error
+Remote Address
+[::1]:8080
+Referrer Policy
+strict-origin-when-cross-origin} : {"success":false,"error":"Internal server error"}
 
----
 ﻿
 Stage2Treatment.tsx:164 🔍 [DEBUG] Calling treatmentService.generateTreatments with: 
 {processedInput: {…}, projectId: 'c73ce3c8-d00a-45df-ad13-4697695a3d7d'}
@@ -81,7 +90,49 @@ status
 Object
 stageStateService.ts:112 📥 Response status: 200
 stageStateService.ts:121 ✅ Save successful: 
-{id: '27cfb3db-e161-4a79-808c-1e1b9a9ce015', branch_id: 'ba86625d-0c4c-47cd-951d-67322ee7adc3', stage_number: 2, version: 1, status: 'draft', …}
+{id: '0760f115-3272-40c1-a846-aa9bbe9e132b', branch_id: 'ba86625d-0c4c-47cd-951d-67322ee7adc3', stage_number: 2, version: 2, status: 'draft', …}
+branch_id
+: 
+"ba86625d-0c4c-47cd-951d-67322ee7adc3"
+content
+: 
+{variations: Array(0), activeVariation: 0}
+created_at
+: 
+"2026-01-07T00:53:58.884255+00:00"
+created_by
+: 
+"fa58ace1-ae7e-4dd8-ab54-1fbe453701f2"
+final_prompt
+: 
+""
+id
+: 
+"0760f115-3272-40c1-a846-aa9bbe9e132b"
+inherited_from_stage_id
+: 
+"27cfb3db-e161-4a79-808c-1e1b9a9ce015"
+langsmith_trace_id
+: 
+null
+prompt_template_version
+: 
+""
+regeneration_guidance
+: 
+""
+stage_number
+: 
+2
+status
+: 
+"draft"
+version
+: 
+2
+[[Prototype]]
+: 
+Object
 stageStateService.ts:175 ✅ Auto-save completed successfully
 useStageState.ts:127 📋 Auto-save callback: 
 {success: true, error: undefined}
@@ -96,30 +147,9 @@ true
 Object
 treatmentService.ts:83 
  POST http://localhost:8080/api/llm/generate-from-template 500 (Internal Server Error)
-generateTreatments	@	treatmentService.ts:83
-await in generateTreatments		
-generateInitialTreatments	@	Stage2Treatment.tsx:169
-await in generateInitialTreatments		
-initializeTreatments	@	Stage2Treatment.tsx:112
-(anonymous)	@	Stage2Treatment.tsx:123
 Stage2Treatment.tsx:188 Failed to generate treatments: Error: Internal server error
     at TreatmentService.generateTreatments (treatmentService.ts:94:13)
     at async generateInitialTreatments (Stage2Treatment.tsx:169:22)
     at async initializeTreatments (Stage2Treatment.tsx:112:9)
-generateInitialTreatments	@	Stage2Treatment.tsx:188
-await in generateInitialTreatments		
-initializeTreatments	@	Stage2Treatment.tsx:112
-(anonymous)	@	Stage2Treatment.tsx:123
 
-
-In the Response body of the 500 error{ Request URL
-http://localhost:8080/api/llm/generate-from-template
-Request Method
-POST
-Status Code
-500 Internal Server Error
-Remote Address
-[::1]:8080
-Referrer Policy
-strict-origin-when-cross-origin} : {"success":false,"error":"Internal server error"}
-
+﻿

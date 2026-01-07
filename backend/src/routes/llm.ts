@@ -85,8 +85,11 @@ router.post('/generate', async (req, res) => {
     });
   } catch (error) {
     console.error('[API] LLM generation error:', error);
+    console.error('[API] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    console.error('[API] Error type:', error?.constructor?.name);
     
     if (error instanceof z.ZodError) {
+      console.error('[API] Zod validation error details:', error.errors);
       return res.status(400).json({
         success: false,
         error: 'Validation error',
@@ -95,6 +98,7 @@ router.post('/generate', async (req, res) => {
     }
     
     if (error instanceof LLMClientError) {
+      console.error('[API] LLMClientError details:', { message: error.message, code: error.code, retryable: error.retryable });
       const statusCode = error.statusCode || 500;
       return res.status(statusCode).json({
         success: false,
@@ -104,9 +108,25 @@ router.post('/generate', async (req, res) => {
       });
     }
     
+    if (error instanceof PromptTemplateError) {
+      console.error('[API] PromptTemplateError details:', { message: error.message, code: error.code });
+      return res.status(400).json({
+        success: false,
+        error: error.message,
+        code: error.code,
+      });
+    }
+    
+    // Generic error
+    console.error('[API] Generic error details:', { 
+      message: error instanceof Error ? error.message : 'Unknown error',
+      name: error instanceof Error ? error.name : 'Unknown',
+    });
+    
     res.status(500).json({
       success: false,
       error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
@@ -117,6 +137,13 @@ router.post('/generate', async (req, res) => {
  */
 router.post('/generate-from-template', async (req, res) => {
   try {
+    console.log(`[API] ===== GENERATE FROM TEMPLATE REQUEST START =====`);
+    console.log(`[API] Environment check:`, {
+      hasGoogleAIKey: !!process.env.GOOGLE_AI_API_KEY,
+      hasLangSmithKey: !!process.env.LANGSMITH_API_KEY,
+      nodeEnv: process.env.NODE_ENV
+    });
+    
     const validatedRequest = generateFromTemplateSchema.parse(req.body);
     
     console.log(`[API] Template-based generation request from user ${req.user?.id}`);
@@ -158,10 +185,15 @@ router.post('/generate-from-template', async (req, res) => {
       });
     }
     
+    console.log(`[API] Template validation passed! Proceeding with interpolation...`);
+    
     // Interpolate the template
+    console.log(`[API] Interpolating template with variables...`);
     const interpolated = promptTemplateService.interpolateTemplate(template, validatedRequest.variables);
+    console.log(`[API] Template interpolated successfully. System prompt length: ${interpolated.systemPrompt.length}, User prompt length: ${interpolated.userPrompt.length}`);
     
     // Generate using the interpolated prompts
+    console.log(`[API] Calling LLM client to generate response...`);
     const response = await llmClient.generate({
       systemPrompt: interpolated.systemPrompt,
       userPrompt: interpolated.userPrompt,
@@ -177,6 +209,8 @@ router.post('/generate-from-template', async (req, res) => {
         templateVersion: template.version,
       },
     });
+    
+    console.log(`[API] LLM generation completed successfully!`);
 
     res.json({
       success: true,
