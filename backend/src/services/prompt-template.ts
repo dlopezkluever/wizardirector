@@ -266,7 +266,9 @@ export class PromptTemplateService {
     
     // Helper function to replace variables in text
     const interpolateText = (text: string): string => {
-      return text.replace(/\{([^}]+)\}/g, (match, variableName) => {
+      // Only match valid template variable patterns: {variable_name}
+      // Variable names should be alphanumeric, underscore, or hyphen only
+      return text.replace(/\{([a-zA-Z_][a-zA-Z0-9_-]*)\}/g, (match, variableName) => {
         variablesUsed.push(variableName);
         
         if (variableName in variables) {
