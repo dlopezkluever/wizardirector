@@ -1049,7 +1049,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 \#\#\# Feature 1.1: LLM Service Integration  
 \*\*Purpose\*\*: Connect to text generation AI services  
-\- \[ \] Set up OpenAI/Anthropic client with API key management  
+\- \[ \] Set up Gemini/OpenAI/Anthropic client with API key management  
 \- \[ \] Create \`llm-client.ts\` service with retry logic  
 \- \[ \] Implement prompt template system (database-stored)  
 \- \[ \] Add token counting and cost estimation utilities  

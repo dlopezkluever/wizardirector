@@ -32,7 +32,7 @@ export function Dashboard({ onProjectSelect, onNewProject }: DashboardProps) {
     try {
       setLoading(true);
       setError(null);
-      const fetchedProjects = await projectService.getProjects();
+      const fetchedProjects = await projectService.listProjects();
       setProjects(fetchedProjects);
     } catch (err) {
       console.error('Error loading projects:', err);

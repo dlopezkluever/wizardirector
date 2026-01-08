@@ -62,15 +62,16 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 \*\*Goal\*\*: Deliver core narrative creation pipeline (Phase A: Stages 1-4) with real LLM integration. Users can input a story idea and get a structured script output.
 
-\#\#\# Feature 1.1: LLM Service Integration  
-\*\*Purpose\*\*: Connect to text generation AI services  
-\- \[ \] Set up OpenAI/Anthropic client with API key management  
-\- \[ \] Create \`llm-client.ts\` service with retry logic  
-\- \[ \] Implement prompt template system (database-stored)  
-\- \[ \] Add token counting and cost estimation utilities  
-\- \[ \] Test LLM connectivity with simple prompt
+### Feature 1.1 **DONE**: LLM Service Integration & Observability
+**Purpose**: Connect to text generation AI services with full debugging visibility
+- [ ] Set up LangSmith project and API keys
+- [ ] Set up Gemini/OpenAI/Anthropic client wrapped with LangSmith tracer
+- [ ] Create `llm-client.ts` service with retry logic
+- [ ] Implement prompt template system (database-stored)
+- [ ] Add token counting and cost estimation utilities
+- [ ] Test LLM connectivity and verify trace appearance in LangSmith
 
-\#\#\# Feature 1.2: Stage 1 \- Input Modes (Complete)  
+\#\#\# Feature 1.2: Stage 1 \- Input Modes (semi-complete)  
 \*\*Purpose\*\*: Functional narrative input system  
 \- \[ \] Implement file upload component for multi-file staging  
 \- \[ \] Add file type validation (text, PDF, screenplay formats)  
@@ -78,7 +79,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 \- \[ \] Store Stage 1 configuration in database  
 \- \[ \] Implement mode-specific processing logic
 
-\#\#\# Feature 1.3: Stage 2 \- Treatment Generation (Complete)  
+\#\#\# Feature 1.3: Stage 2 \- Treatment Generation (semi-complete)  
 \*\*Purpose\*\*: AI-powered prose treatment generation  
 \- \[ \] Build prompt template for treatment generation  
 \- \[ \] Implement 3-variant generation system  
@@ -86,7 +87,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 \- \[ \] Add rich text editor with manual editing  
 \- \[ \] Implement targeted regeneration (highlight \+ right-click)
 
-\#\#\# Feature 1.4: Stage 3 \- Beat Sheet Editor (Complete)  
+\#\#\# Feature 1.4: Stage 3 \- Beat Sheet Editor (semi-complete)  
 \*\*Purpose\*\*: Interactive structural editing  
 \- \[ \] Implement drag-and-drop beat reordering with @dnd-kit  
 \- \[ \] Create beat extraction LLM agent  
@@ -94,7 +95,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 \- \[ \] Implement beat splitting/merging actions  
 \- \[ \] Add "Confirm Beat Sheet" gatekeeper logic
 
-\#\#\# Feature 1.5: Stage 4 \- Master Script Generator (Complete)  
+\#\#\# Feature 1.5: Stage 4 \- Master Script Generator (semi-complete)  
 \*\*Purpose\*\*: Generate production-ready screenplay  
 \- \[ \] Build verbose script generation prompt template  
 \- \[ \] Implement screenplay formatting (INT/EXT, character names, dialogue)  
@@ -694,13 +695,18 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 \- \[ \] Create health check endpoints  
 \- \[ \] Build alerting system for incidents
 
-\#\#\# Feature 14.2: LLM Observability (LangSmith)  
-\*\*Purpose\*\*: Debug AI generation quality  
-\- \[ \] Integrate LangSmith tracing  
-\- \[ \] Add prompt/response logging  
-\- \[ \] Implement RAG retrieval tracking  
-\- \[ \] Create LLM performance metrics  
-\- \[ \] Build prompt experiment tracking
+### Feature 14.2: Advanced Debugging & Regression Testing (LangSmith)
+**Purpose**: Leverage collected traces for quality assurance and prompt refinement
+- [ ] Configure dataset creation from production traces
+- [ ] Implement regression testing pipeline for core prompts (Stage 4 Script, Stage 7 Shot List)
+- [ ] Set up RAG retrieval relevance scoring (LLM-as-a-judge)
+- [ ] Build "Open in Playground" workflow for failed generations
+- [ ] Create dashboard for latency and token usage trends
+
+### **Note**: Possible Additonal LangSmith Integration Tasks:
+    Integrate tracing for all (or just the relevant) pipeline stages (1–12).
+    Utilize LangSmith Playground for prompt iteration and regression testing.
+    Implement RAG retrieval tracking to validate "Global-to-Local" context injection
 
 \#\#\# Feature 14.3: Cost Analytics  
 \*\*Purpose\*\*: Monitor and optimize AI spending  

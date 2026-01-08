@@ -35,13 +35,7 @@ export function NewProjectDialog({ open, onOpenChange, onProjectCreated }: NewPr
       setLoading(true);
       // Create project with minimal data - only title
       const project = await projectService.createProject({
-        projectTitle: projectTitle,
-        inputMode: 'expansion', // Default values
-        projectType: 'narrative',
-        contentRating: 'PG',
-        genres: [],
-        tonalPrecision: '',
-        targetLength: { min: 180, max: 300 }
+        title: projectTitle.trim()
       });
       toast({
         title: 'Success',

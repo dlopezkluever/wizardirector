@@ -150,7 +150,7 @@ src/
 
 This project is currently **frontend-only** with no backend components:
 
-- **No Database**: No data persistence layer (Firestore, PostgreSQL, etc.)
+- **No Database**: No data persistence layer (Supabase, PostgreSQL, etc.)
 - **No APIs**: No external API integrations for AI services
 - **No Server**: No backend server or serverless functions
 - **No Authentication**: No user management or auth system
@@ -166,7 +166,7 @@ Based on the PRD, the following backend services will need to be integrated:
    - RAG vector databases (written/visual styles)
 
 2. **Data Storage**
-   - Firestore or similar for project data
+   - Supabase or similar for project data
    - Cloud storage for assets and generated content
 
 3. **Version Control**

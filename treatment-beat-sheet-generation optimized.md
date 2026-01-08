@@ -1,0 +1,10 @@
+Stage 2 Output:
+NOTE BY USER: THE "prose" & "structural_emphasis" have much more content actually outputed, BUT I REMOVED IT FOR Token OPTIMIZATIOn)
+
+```json { "treatments": [ { "variant_id": 1, "prose": "ARTHUR (30s, earnest, a little rumpled) navigates.... ", "structural_emphasis": "This variation follows a linear progression of Arthur's attempts.....", "estimated_runtime_seconds": 300 }, { "variant_id": 2, "prose": "The city is Arthur’s personal obstacle course....", "structural_emphasis": "This variation begins...", "estimated_runtime_seconds": 300 }, { "variant_id": 3, "prose": "Arthur’s pursuit of Chloe is....", "structural_emphasis": "This variation utilizes a montage of Arthur's...", "estimated_runtime_seconds": 300 } ] } ```
+
+Stage 3 Output: 
+NOTE BY USER: beats 3-15 removed for context optimization
+
+
+```json { "beats": [ { "beat_id": "beat_01", "order": 1, "text": "A retired astronaut, MARK, lives a solitary life, haunted by past missions and unspoken regrets.", "rationale": "Establishes the protagonist, his current state, and hints at internal conflict, setting the initial mood.", "estimated_screen_time_seconds": 15 }, { "beat_id": "beat_02", "order": 2, "text": "Mark receives a devastating terminal diagnosis, forcing him to confront his mortality.", "rationale": "The inciting incident that disrupts Mark's status quo and provides the primary motivation for the story.", "estimated_screen_time_seconds": 10 }, ........ , { "beat_id": "beat_16", "order": 16, "text": "In his final moments, Mark feels at peace, his journey fulfilled by reconnecting with his daughter.", "rationale": "The ultimate resolution for Mark, achieving his goal of finding peace and connection before his passing.", "estimated_screen_time_seconds": 15 } ], "total_estimated_runtime": 275, "narrative_structure": "3-act structure" } ```

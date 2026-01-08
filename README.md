@@ -185,6 +185,7 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 # AI Services
 OPENAI_API_KEY=your_openai_key
 ANTHROPIC_API_KEY=your_anthropic_key
+GEMINI_API_KEY=your_gemini-key
 GOOGLE_VEO3_API_KEY=your_veo3_key
 NANO_BANANA_API_KEY=your_nano_banana_key
 

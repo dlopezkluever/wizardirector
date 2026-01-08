@@ -145,11 +145,18 @@ CREATE TABLE stage\_states (
       
     \-- Content Storage (stage-specific data)  
     content JSONB NOT NULL, \-- varies by stage (see Stage Content Schemas below)  
-      
+
+**OLD IDEA**:{   
     \-- Prompt Engineering  
     prompt\_template\_version TEXT, \-- references versioned prompt  
     final\_prompt TEXT, \-- the exact prompt sent to LLM/API  
-      
+}
+**CORRECTED FOR LANGSMITH**:{
+    \-- Prompt Engineering & Observability
+    prompt_template_version TEXT, -- references versioned prompt  
+    final_prompt TEXT,            -- the exact prompt sent to LLM/API
+    langsmith_trace_id TEXT,      -- link to the LangSmith trace for this generation
+}
     \-- Regeneration Context  
     regeneration\_guidance TEXT, \-- user's "why" for regeneration  
       

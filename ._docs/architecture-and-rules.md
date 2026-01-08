@@ -23,22 +23,23 @@
                                    │
                                    │ HTTP/REST APIs
                                    ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                 Backend Services (Fly.io)                       │
+┌──────────────────────────────────────────────────────────────────┐
+│                 Backend Services (Fly.io)                        │
 │  ┌─────────────────────────────────────────────────────────────┐ │
-│  │ API Orchestration Layer                                    │ │
+│  │ API Orchestration Layer                                     │ │
 │  │ - Explicit Stage Transitions                                │ │
-│  │ - Context Management (Global ↔ Local)                      │ │
-│  │ - Cost Estimation & Validation                             │ │
+│  │ - Context Management (Global ↔ Local)                       │ │
+│  │ - Cost Estimation & Validation                              │ │
 │  └─────────────────────────────────────────────────────────────┘ │
 │  ┌─────────────────────────────────────────────────────────────┐ │
 │  │ AI Service Integration                                      │ │
 │  │ - Google Veo3 (Video Generation)                            │ │
 │  │ - Nano Banana (Image Generation)                            │ │
+│  │ - LangChain + LangSmith (RAG & Observability)               │ │
 │  │ - OpenAI/Anthropic/Gemini (LLM)                             │ │
-│  │ - pgvector RAG (Style Databases)                            │ │
+│  │ - pgvector RAG (Style Databases) *IGNORE*                   │ │
 │  └─────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────────────────────┘
                                    │
                                    │ PostgreSQL + pgvector
                                    ▼
@@ -49,12 +50,12 @@
 │  │ - Projects & Branches (Git-style Versioning)               │ │
 │  │ - Stage States & Inheritance Tracking                      │ │
 │  │ - Asset Management & State Transitions                     │ │
-│  │ - RAG Vector Storage & Retrieval                            │ │
+│  │ - RAG Vector Storage & Retrieval     IGONORE               │ │
 │  └─────────────────────────────────────────────────────────────┘ │
 │  ┌─────────────────────────────────────────────────────────────┐ │
 │  │ Supabase Storage                                            │ │
 │  │ - Generated Images/Videos                                   │ │
-│  │ - User-uploaded RAG Documents                               │ │
+│  │ - User-uploaded RAG Documents **IGNORE**                    │ │
 │  └─────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -71,7 +72,7 @@ User Action → Frontend → API Gateway → Orchestration Service → AI Servic
 
 #### **Phase A (Stages 1-5): Global Narrative Engine**
 
-1. **Input Processing**: User provides narrative → RAG initialization
+1. **IGNORE** Input Processing: User provides narrative → RAG initialization **IGNORE**
 2. **LLM Processing**: Treatment generation → Beat sheet atomization → Script formatting
 3. **Asset Extraction**: Parse script → Generate visual keys → Lock global style
 4. **Context Storage**: All outputs stored as immutable global context
@@ -96,8 +97,9 @@ User Action → Frontend → API Gateway → Orchestration Service → AI Servic
 |---------|---------|-----------|------------|
 | **Google Veo3** | Video generation with audio | Start frame + End frame + Prompt → MP4 | Per-second credits |
 | **Nano Banana** | High-volume image generation | Text prompt + Style RAG → Images | Per-image credits |
-| **OpenAI/Anthropic** | LLM text generation | Context + Prompt → Structured output | Per-token credits |
-| **pgvector** | Style RAG retrieval | Text chunks → Embeddings → Semantic search | Storage-based |
+| **Gemini/OpenAI/Anthropic** | LLM text generation | Context + Prompt → Structured output | Per-token credits |
+| **LangSmith** | Unified Prompt Engineering & Observability | Traces + Prompt Metadata → UI | Tiered (Free/Pro) |
+| **IGNORE**: **pgvector** | Style RAG retrieval | Text chunks → Embeddings → Semantic search | Storage-based |
 
 ---
 
@@ -168,7 +170,7 @@ aiuteur/
 │   │   ├── use-project.ts          # Project state management
 │   │   ├── use-stage.ts            # Pipeline stage logic
 │   │   ├── use-assets.ts           # Asset management
-│   │   ├── use-rag.ts              # RAG retrieval logic
+│   │   ├── use-rag.ts              # RAG retrieval logic **IGNORE**
 │   │   └── use-cost-estimation.ts  # Cost calculation
 │   ├── lib/                        # Utilities and configurations
 │   │   ├── utils.ts                # General utility functions
@@ -189,7 +191,7 @@ aiuteur/
 │   │   │   ├── veo3-client.ts      # Google Veo3 integration
 │   │   │   ├── nano-banana-client.ts # Image generation
 │   │   │   ├── llm-client.ts       # LLM orchestration
-│   │   │   └── rag-client.ts       # Vector database queries
+│   │   │   └── rag-client.ts       # Vector database queries **IGNORE**
 │   │   ├── api/                    # Backend API calls
 │   │   │   ├── projects.ts
 │   │   │   ├── stages.ts
@@ -306,7 +308,7 @@ shots (1) ──→ (N) videos
 global_assets (N) ←── promotes from ──→ (N) project_assets
 project_assets (N) ──→ (N) scene_asset_instances
 
-stage_states (N) ──→ (N) rag_retrievals
+stage_states (N) ──→ (N)**IGNORE** rag_retrievals **IGNORE**
 stage_states (N) ──→ (N) invalidation_logs
 ```
 

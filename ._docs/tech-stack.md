@@ -32,11 +32,10 @@
 
 ### **Prompting, RAG & Observability**
 
-* Prompt Templates: Custom, DB-stored, versioned  
-* Prompt Experimentation: PromptLayer  
-* RAG & Context Management: LangChain  
-* Workflow Automation: n8n (for async, high-cost pipelines)  
-* LLM Observability & Debugging: LangSmith
+* Prompt Templates: Custom, DB-stored, versioned
+* Prompt Engineering & Observability: LangSmith (Unified platform for tracing, debugging, and iterative prompt testing/playground)
+* RAG & Context Management: LangChain
+* Workflow Automation: n8n (for async, high-cost pipelines)
 
 ### **Deployment**
 
@@ -168,26 +167,9 @@ Prompts are not static strings. They are versioned creative artifacts.
 
 ---
 
-### **PromptLayer (Creative Nuance & Experimentation)**
+### **LangSmith (Prompt Engineering & Observability):**
 
-**Use Case (in this app):**  
-PromptLayer is used specifically for *creative iteration*, not specifically core execution. Your system relies on hundreds of subtle prompt refinements (e.g. visual verbosity vs narrative beats).
-
-PromptLayer enables:
-
-* A/B testing of prompt variants without backend code changes  
-* Comparing how different stylistic framings affect downstream generations  
-* Rapid iteration on system and style prompts
-
-**Best Practices:**
-
-* Use for high-level system and style prompts  
-* Treat as an experimentation layer, not a runtime dependency
-
-**Limitations:**
-
-* External service dependency
-
+LangSmith (Unified platform for tracing, debugging, and iterative prompt testing/playground).
 ---
 
 ### **LangChain (RAG & Global-to-Local State Management)**
@@ -269,18 +251,6 @@ Key Advantages:
 **Limitations:**
 
 * Most powerful when paired with LangChain
-
----
-
-### **Helicone (Optional, Later-Stage Cost Tracking)**
-
-**Use Case (in this app):**  
-Helicone is a future-facing option for cost tracking and API-level observability once the system stabilizes.
-
-**Note:**
-
-* Not a priority for early development  
-* Secondary to correctness of inheritance logic
 
 ---
 

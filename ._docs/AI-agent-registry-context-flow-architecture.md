@@ -88,8 +88,9 @@ json
       "estimated\_runtime\_seconds": "number"  
     }  
   \],  
-  "rag\_retrievals\_used": \["array of rag\_documents.id"\],  
-  "prompt\_template\_version": "string"  
+  "rag_retrievals_used": ["array of rag_documents.id"],
+  "prompt_template_version": "string",
+  "langsmith_trace_id": "string (for observability)"  
 }  
 \`\`\`
 
@@ -163,7 +164,9 @@ json
   \],  
   "total\_estimated\_runtime": "number",  
   "narrative\_structure": "string (e.g., '3-act', 'hero journey', 'non-linear')",  
-  "rag\_retrievals\_used": \["array of rag\_documents.id"\]  
+  "rag\_retrievals\_used": \["array of rag\_documents.id"\],
+  "prompt_template_version": "string",
+  "langsmith_trace_id": "string (for observability)"
 }  
 \`\`\`
 
@@ -251,7 +254,9 @@ json
     }  
   \],  
   "sync\_status": "synced",  
-  "rag\_retrievals\_used": \["array of rag\_documents.id"\]  
+  "rag\_retrievals\_used": \["array of rag\_documents.id"\],
+  "prompt_template_version": "string",
+  "langsmith_trace_id": "string (for observability)"  
 }  
 \`\`\`
 
@@ -328,7 +333,9 @@ json
   \],  
   "total\_characters": "number",  
   "total\_props": "number",  
-  "total\_settings": "number"  
+  "total\_settings": "number",
+  "prompt_template_version": "string",
+  "langsmith_trace_id": "string (for observability)"  
 }  
 \`\`\`
 
@@ -550,7 +557,9 @@ json
     }  
   \],  
   "total\_estimated\_duration": "number",  
-  "continuity\_notes": "string (how this scene connects to prior/next)"  
+  "continuity\_notes": "string" (how this scene connects to prior/next),
+  "prompt_template_version": "string",
+  "langsmith_trace_id": "string (for observability)"  
 }  
 \`\`\`
 
@@ -862,7 +871,9 @@ json
     "style\_cues": \["array of strings"\]  
   },  
   "rag\_retrievals\_used": \["array of rag\_documents.id"\],  
-  "continuity\_references": \["array of frame\_ids or asset\_ids"\]  
+  "continuity\_references": \["array of frame\_ids or asset\_ids"\]
+  "prompt_template_version": "string",
+  "langsmith_trace_id": "string (for observability)"  
 }  
 \`\`\`
 

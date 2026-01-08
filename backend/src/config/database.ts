@@ -1,6 +1,7 @@
 import { supabase } from './supabase.js';
 
 export class DatabaseService {
+  public supabase = supabase;
   static async testConnection(): Promise<boolean> {
     try {
       // Try to get a simple response from Supabase
@@ -60,5 +61,61 @@ export class DatabaseService {
       console.error('Migration execution failed:', error);
       throw error;
     }
+  }
+
+  /**
+   * Update stage state with LangSmith trace ID
+   */
+  async updateStageStateTraceId(stageStateId: string, traceId: string): Promise<void> {
+    const { error } = await supabase
+      .from('stage_states')
+      .update({ langsmith_trace_id: traceId })
+      .eq('id', stageStateId);
+
+    if (error) {
+      throw new Error(`Failed to update stage state trace ID: ${error.message}`);
+    }
+  }
+
+  /**
+   * Create stage state with trace ID
+   */
+  async createStageState(stageState: {
+    branch_id: string;
+    stage_number: number;
+    content: any;
+    prompt_template_version?: string;
+    final_prompt?: string;
+    langsmith_trace_id?: string;
+    regeneration_guidance?: string;
+    created_by?: string;
+  }): Promise<string> {
+    const { data, error } = await supabase
+      .from('stage_states')
+      .insert(stageState)
+      .select('id')
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to create stage state: ${error.message}`);
+    }
+
+    return data.id;
+  }
+
+  /**
+   * Get stage states by trace ID for debugging
+   */
+  async getStageStatesByTraceId(traceId: string): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('stage_states')
+      .select('*')
+      .eq('langsmith_trace_id', traceId);
+
+    if (error) {
+      throw new Error(`Failed to get stage states by trace ID: ${error.message}`);
+    }
+
+    return data || [];
   }
 }
