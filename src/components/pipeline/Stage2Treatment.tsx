@@ -460,11 +460,6 @@ export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2Treatme
                 disabled={isGenerating || isRegenerating}
               >
                 Version {index + 1}
-                {variation.structuralEmphasis && (
-                  <span className="ml-1 text-xs opacity-70">
-                    ({variation.structuralEmphasis})
-                  </span>
-                )}
               </Button>
             ))}
           </div>
@@ -576,17 +571,36 @@ export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2Treatme
                   disabled={isRegenerating}
                 />
               ) : (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="p-6 rounded-xl bg-card border border-border"
-                >
-                  {editableContent.split('\n\n').map((paragraph, index) => (
-                    <p key={index} className="mb-4 last:mb-0 text-foreground leading-relaxed">
-                      {paragraph}
-                    </p>
-                  ))}
-                </motion.div>
+                <>
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="p-6 rounded-xl bg-card border border-border"
+                  >
+                    {editableContent.split('\n\n').map((paragraph, index) => (
+                      <p key={index} className="mb-4 last:mb-0 text-foreground leading-relaxed">
+                        {paragraph}
+                      </p>
+                    ))}
+                  </motion.div>
+
+                  {/* Structural Emphasis Section */}
+                  {stageContent.variations[stageContent.activeVariation]?.structuralEmphasis && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="mt-4 p-4 rounded-xl bg-muted/50 border border-border"
+                    >
+                      <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                        <span className="text-primary">●</span>
+                        Structural Emphasis
+                      </h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        {stageContent.variations[stageContent.activeVariation].structuralEmphasis}
+                      </p>
+                    </motion.div>
+                  )}
+                </>
               )}
             </div>
           </div>

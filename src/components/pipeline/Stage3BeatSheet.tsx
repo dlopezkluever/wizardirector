@@ -38,6 +38,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useStageState } from '@/lib/hooks/useStageState';
 import { beatService, type Beat } from '@/lib/services/beatService';
+import { stageStateService } from '@/lib/services/stageStateService';
 
 interface Stage3Content {
   beats: Beat[];
@@ -296,20 +297,38 @@ export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatShe
         description: 'Extracting structural beats from your treatment'
       });
 
-      // TODO: Get Stage 2 treatment data
-      // For now, using mock data
-      const mockTreatmentData = {
-        treatmentProse: 'A retired astronaut receives a terminal diagnosis and embarks on a journey to reconnect with his estranged daughter.',
-        selectedVariantId: '1',
-        projectParams: {
+      console.log('🔍 [STAGE3] Fetching Stage 2 treatment data...');
+      
+      // Get Stage 2 treatment data
+      const stage2State = await stageStateService.getStageState(projectId, 2);
+      
+      if (!stage2State?.content?.variations || stage2State.content.variations.length === 0) {
+        throw new Error('No treatment found from Stage 2. Please complete Stage 2 first.');
+      }
+
+      const activeVariationIndex = stage2State.content.activeVariation || 0;
+      const selectedTreatment = stage2State.content.variations[activeVariationIndex];
+      
+      console.log('🔍 [STAGE3] Stage 2 data retrieved:', {
+        variationsCount: stage2State.content.variations.length,
+        activeVariation: activeVariationIndex,
+        treatmentContentLength: selectedTreatment.content.length,
+        hasProcessedInput: !!stage2State.content.processedInput
+      });
+
+      const treatmentData = {
+        treatmentProse: selectedTreatment.content,
+        selectedVariantId: selectedTreatment.id,
+        projectParams: stage2State.content.processedInput?.projectParams || {
           targetLengthMin: 180,
           targetLengthMax: 300,
           genres: ['Drama'],
-          tonalPrecision: 'Emotional and contemplative with moments of hope'
+          tonalPrecision: 'Emotional and contemplative'
         }
       };
 
-      const result = await beatService.generateBeats(mockTreatmentData);
+      console.log('🔍 [STAGE3] Calling beatService.generateBeats with actual treatment data');
+      const result = await beatService.generateBeats(treatmentData);
 
       // Validate beats have string text fields
       const validatedBeats = result.beats.map((beat, index) => ({
@@ -329,8 +348,8 @@ export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatShe
         totalEstimatedRuntime: result.totalEstimatedRuntime,
         narrativeStructure: result.narrativeStructure,
         treatmentSource: {
-          content: mockTreatmentData.treatmentProse,
-          variantId: mockTreatmentData.selectedVariantId
+          content: treatmentData.treatmentProse,
+          variantId: treatmentData.selectedVariantId
         },
         langsmithTraceId: result.langsmithTraceId,
         promptTemplateVersion: result.promptTemplateVersion

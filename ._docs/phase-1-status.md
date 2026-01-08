@@ -45,6 +45,12 @@ The system successfully generated treatments and saved them to the database with
 \- \*\*Problem\*\*: Code tried to access \`interpolated.systemPrompt\` but interface returns \`system\_prompt\`  
 \- \*\*Fix\*\*: Updated property access to use correct underscore format
 
+\#\#\# 7\. Treatment Parse Fix
+Problem: The LLM was returning responses wrapped in markdown code blocks
+Fix: Removes** the opening marker ( ```json or ``` ) 3. **Removes** the closing marker ( ``` ) 4. **Trims** whitespace 5. **Then** attempts JSON parsingThis happens before the JSON.parse() call, so now the parser receives clean JSON.## Expected ResultWhen you test again: - Stage 2 should show **3 prose treatment variations** in readable text - Stage 3 should show **multiple beat cards** with individual beat text
+
+### 8. 
+
 \#\# 📊 Current Status by Feature
 
 \#\#\# ✅ \*\*Feature 1.2: Stage 1 \- Input Modes\*\* (COMPLETE)  
