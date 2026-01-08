@@ -49,7 +49,20 @@ The system successfully generated treatments and saved them to the database with
 Problem: The LLM was returning responses wrapped in markdown code blocks
 Fix: Removes** the opening marker ( ```json or ``` ) 3. **Removes** the closing marker ( ``` ) 4. **Trims** whitespace 5. **Then** attempts JSON parsingThis happens before the JSON.parse() call, so now the parser receives clean JSON.## Expected ResultWhen you test again: - Stage 2 should show **3 prose treatment variations** in readable text - Stage 3 should show **multiple beat cards** with individual beat text
 
-### 8. 
+### 8. Stage 3 Now Uses Real Stage 2 Data
+What Changed:
+Removed all mock data from Stage3BeatSheet.tsx
+Now fetches the actual Stage 2 state using stageStateService
+Uses the selected treatment variation and project parameters for beat generation
+Added debug console logs to track the data flow
+Result: Beat sheets will now be generated from your actual treatment content, not generic placeholder text!
+
+### 9. Fixed Treatment Tab Overflow
+Solution Chosen: Simplified tabs + dedicated structural emphasis section
+What Changed:
+Tabs are now clean - Just show "Version 1", "Version 2", "Version 3"
+Structural emphasis moved below - Appears as a styled card below the treatment content
+Smart visibility - Only shows in read mode (disappears when editing)
 
 \#\# 📊 Current Status by Feature
 
@@ -67,13 +80,13 @@ Fix: Removes** the opening marker ( ```json or ``` ) 3. **Removes** the closing 
 \- \[x\] Database storage with metadata tracking  
 \- \*\*Needs Work\*\*: UI formatting and variation selection interface
 
-\#\#\# 🔄 \*\*Feature 1.4: Stage 3 \- Beat Sheet Editor\*\* (NEEDS TESTING)  
+\#\#\# ✅  \*\*Feature 1.4: Stage 3 \- Beat Sheet Editor\*\* (WORKS!)  
 \- \[x\] Beat extraction template exists in database  
 \- \[x\] Backend API endpoints ready  
 \- \*\*Needs Testing\*\*:   
-  \- Does Stage 2 → Stage 3 data flow work?  
-  \- Does beat extraction from treatment work?  
-  \- UI functionality and beat editing
+  \- WORKS: Does Stage 2 → Stage 3 data flow work? YES 
+  \ WORKS - Does beat extraction from treatment work? YES 
+  \ WORKS- UI functionality and beat editing: YES
 
 \#\#\# ❌ \*\*Feature 1.5: Stage 4 \- Master Script Generator\*\* (NOT STARTED)  
 \- \[ \] Build verbose script generation prompt template  
@@ -89,17 +102,7 @@ Fix: Removes** the opening marker ( ```json or ``` ) 3. **Removes** the closing 
 
 \#\# 🎯 Immediate Next Steps
 
-\#\#\# 1\. \*\*Fix Stage 2 UI Formatting\*\* (High Priority)  
-\- The treatments are generating but likely need proper UI display  
-\- Implement variation selection interface  
-\- Add rich text editor for manual editing
-
-\#\#\# 2\. \*\*Test Stage 3 Data Flow\*\* (High Priority)  
-\- Verify Stage 2 → Stage 3 data passing  
-\- Test beat extraction from generated treatments  
-\- Ensure beat sheet UI works properly
-
-\#\#\# 3\. \*\*Complete Stage 4 & 5\*\* (Medium Priority)  
+\#\#\# 1\. \*\*Complete Stage 4 & 5\*\* (Medium Priority)  
 \- Create script generation templates  
 \- Implement screenplay formatting  
 \- Build progression gating system
@@ -111,6 +114,10 @@ Fix: Removes** the opening marker ( ```json or ``` ) 3. **Removes** the closing 
 \- Template parsing and interpolation    
 \- Data flow between stages  
 \- API validation and error handling  
-\- Property naming mismatches
+\- Property naming mismatches:
+\-.*Fix Stage 2 UI Formatting
+\- Stage 2 → Stage 3 data passing  
+\- Test beat extraction from generated treatments  
+\- Ensure beat sheet UI works properly
 
-The core AI pipeline is now functional \- users can input a story idea in Stage 1 and get AI-generated treatment variations in Stage 2\! This represents the first major milestone of value delivery in the application.  
+The core AI pipeline is now functional \- users can input a story idea in Stage 1 and get AI-generated treatment variations in Stage 2\ and a interactive beat sheet on Stage 3! This represents the first major milestone of value delivery in the application.  
