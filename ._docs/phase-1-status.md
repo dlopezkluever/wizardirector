@@ -121,3 +121,5 @@ Smart visibility - Only shows in read mode (disappears when editing)
 \- Ensure beat sheet UI works properly
 
 The core AI pipeline is now functional \- users can input a story idea in Stage 1 and get AI-generated treatment variations in Stage 2\ and a interactive beat sheet on Stage 3! This represents the first major milestone of value delivery in the application.  
+
+
