@@ -19,6 +19,7 @@ import { useStageState } from '@/lib/hooks/useStageState';
 import { stageStateService } from '@/lib/services/stageStateService';
 import { scriptService, type Scene } from '@/lib/services/scriptService';
 import type { Beat } from '@/lib/services/beatService';
+import { supabase } from '@/lib/supabase';
 
 interface Stage4Content {
   formattedScript: string;
@@ -89,21 +90,42 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
 
         console.log(`✅ [STAGE 4] Loaded ${stage3State.content.beats.length} beats from Stage 3`);
 
-        // Fetch project configuration (from Stage 1)
-        const stage1State = await stageStateService.getStageState(projectId, 1);
+        // Fetch project configuration (stored in projects table, not stage_states)
+        const { data: { session } } = await supabase.auth.getSession();
         
-        if (!stage1State) {
-          console.error('❌ [STAGE 4] No project configuration found');
-          toast.error('Project configuration not found');
+        if (!session?.access_token) {
+          console.error('❌ [STAGE 4] No auth session found');
+          toast.error('Authentication required');
           return;
         }
 
+        const response = await fetch(`/api/projects/${projectId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch project configuration');
+        }
+
+        const project = await response.json();
+        
+        console.log('📊 [STAGE 4] Project config:', {
+          targetLength: project.targetLength,
+          contentRating: project.contentRating,
+          genres: project.genres,
+          tonalPrecision: project.tonalPrecision
+        });
+
         const params = {
-          targetLengthMin: stage1State.content.targetLengthMin,
-          targetLengthMax: stage1State.content.targetLengthMax,
-          contentRating: stage1State.content.contentRating,
-          genres: stage1State.content.genres || [],
-          tonalPrecision: stage1State.content.tonalPrecision || ''
+          targetLengthMin: project.targetLength?.min || 180,
+          targetLengthMax: project.targetLength?.max || 300,
+          contentRating: project.contentRating || 'PG-13',
+          genres: project.genres || [],
+          tonalPrecision: project.tonalPrecision || ''
         };
 
         setProjectParams(params);

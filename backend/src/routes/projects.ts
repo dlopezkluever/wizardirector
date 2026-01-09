@@ -50,6 +50,7 @@ router.get('/', async (req, res) => {
       projectType: project.project_type,
       contentRating: project.content_rating,
       genres: project.genre || [],
+      tonalPrecision: project.tonal_precision || '',
       targetLength: {
         min: project.target_length_min,
         max: project.target_length_max
@@ -114,6 +115,7 @@ router.get('/:id', async (req, res) => {
       projectType: project.project_type,
       contentRating: project.content_rating,
       genres: project.genre || [],
+      tonalPrecision: project.tonal_precision || '',
       targetLength: {
         min: project.target_length_min,
         max: project.target_length_max

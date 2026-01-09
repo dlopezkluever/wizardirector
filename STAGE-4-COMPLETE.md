@@ -108,7 +108,7 @@ All features from the project overview and implementation plan have been success
 ### Layout
 ```
 ┌──────────────────────────────────────────────────────┐
-│  [← Back]  Master Script        [Regenerate] [Approve]│
+│  [← Back]  Master Script     [Regenerate] [Approve]  │
 ├────────────────────────────────┬─────────────────────┤
 │                                │  Beat Alignment     │
 │  Script Editor                 │  ┌───────────────┐  │
