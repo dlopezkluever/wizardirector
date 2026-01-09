@@ -183,3 +183,12 @@ Stage4MasterScript.tsx:169 ❌ [STAGE 4] Script generation failed: Error: Missin
     "extra": []
 }
 
+---------------------------------------------------------------------
+
+Okay so we have some UI issues to address:
+
+1. the script text is unreadable in the screen. Like i can see the amber colored headings (amber with INT/EXT & location & time), which looks good, but the reamining text is illegable as it is the same color as the background. When I highlight I can see the text, so just change the color to white/ 
+
+2. The headings (amber with INT/EXT & location & time) do not scroll with the rest of the text as you scroll; they appear stuck on the screen. (I believe the rest of the text scrolls well and will automatically move if a beat is selected).
+
+3. Looking through the page again, I actually see the headings are in the body too of the text that scrolls, so be warry to remove the duplicate headings, perhaps let's think through how to fix this, cause i do like the idea of the scene headigns & character names being syntax highlighted. 

@@ -382,6 +382,14 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
     scriptEditorRef.current.scrollTop = (targetLine / lines.length) * scriptEditorRef.current.scrollHeight;
   }, [stageContent.beatSheetSource, localScript]);
 
+  // Synchronize scroll between textarea and pre
+  const handleScroll = useCallback(() => {
+    if (scriptEditorRef.current && highlightPreRef.current) {
+      highlightPreRef.current.scrollTop = scriptEditorRef.current.scrollTop;
+      highlightPreRef.current.scrollLeft = scriptEditorRef.current.scrollLeft;
+    }
+  }, []);
+
   // Render syntax-highlighted script
   const renderHighlightedScript = useCallback(() => {
     const lines = localScript.split('\n');
@@ -391,21 +399,21 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       
       // Scene headings (INT./EXT.)
       if (/^(INT\.|EXT\.)/.test(trimmedLine)) {
-        return <div key={index} className="text-primary font-bold">{line}</div>;
+        return <div key={index} className="text-amber-400 font-bold">{line}</div>;
       }
       
       // Character names (all caps line)
       if (/^[A-Z\s]+$/.test(trimmedLine) && trimmedLine.length > 0 && trimmedLine.length < 50) {
-        return <div key={index} className="text-accent font-semibold">{line}</div>;
+        return <div key={index} className="text-blue-400 font-semibold">{line}</div>;
       }
       
       // Parentheticals
       if (/^\(.*\)$/.test(trimmedLine)) {
-        return <div key={index} className="text-muted-foreground italic">{line}</div>;
+        return <div key={index} className="text-gray-400 italic">{line}</div>;
       }
       
-      // Default (action lines, dialogue)
-      return <div key={index}>{line || '\u00A0'}</div>;
+      // Default (action lines, dialogue) - white text
+      return <div key={index} className="text-foreground">{line || '\u00A0'}</div>;
     });
   }, [localScript]);
 
@@ -524,21 +532,21 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
         {/* Script Editor */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 relative overflow-hidden">
-            {/* Syntax-highlighted overlay */}
+            {/* Syntax-highlighted overlay - non-scrollable, follows textarea scroll */}
             <pre
               ref={highlightPreRef}
-              className="absolute inset-0 p-6 font-mono text-sm leading-relaxed whitespace-pre-wrap overflow-auto pointer-events-none bg-transparent"
-              style={{ color: 'transparent' }}
+              className="absolute inset-0 p-6 font-mono text-sm leading-relaxed whitespace-pre-wrap overflow-hidden pointer-events-none bg-transparent"
             >
               {renderHighlightedScript()}
             </pre>
             
-            {/* Editable textarea */}
+            {/* Editable textarea - user interacts with this, text is transparent */}
             <textarea
               ref={scriptEditorRef}
               value={localScript}
               onChange={(e) => handleScriptChange(e.target.value)}
               onSelect={handleTextSelect}
+              onScroll={handleScroll}
               disabled={isGenerating}
               className="absolute inset-0 p-6 font-mono text-sm leading-relaxed whitespace-pre-wrap overflow-auto resize-none bg-transparent focus:outline-none disabled:opacity-50"
               style={{ 
