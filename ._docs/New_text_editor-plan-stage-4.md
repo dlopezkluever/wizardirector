@@ -602,17 +602,19 @@ import './styles/screenplay.css';
 2. Old projects keep textarea editor
 3. Add flag: `useRichTextEditor` in project settings
 
-### Option B: Gradual Migration
+### Option B: Gradual Migration (DO NOT TRY FOR NOW)
 1. Detect if script has HTML tags
 2. If yes, convert to Tiptap format
 3. Otherwise, use as-is
 
-### Option C: Full Migration
+### Option C: Full Migration  (DO NOT TRY FOR NOW)
 1. Create migration script
 2. Convert all existing scripts to Tiptap format
 3. Deploy with downtime window
 
-**Recommendation**: Start with Option A, then move to Option B.
+**Recommendation**: Start with Option A, then if desired later, move to Option B.
+
+*NOTE*: I dont really care about past projects, they have all been for testing, so as long as what is implemented works for all future projects once we finish development, we are good! 
 
 ---
 
@@ -712,39 +714,10 @@ import './styles/screenplay.css';
 
 ---
 
-## Alternative: Quick Fix (Not Recommended)
-
-If you want a faster solution that keeps the textarea:
-
-1. **Strip HTML tags** from LLM output (30 mins)
-2. **Accept left-aligned formatting** (no changes needed)
-3. **Live with highlighting quirk** (documented limitation)
-
-**Pros**: Fast, minimal changes
-**Cons**: Still looks unprofessional, doesn't solve core issues
-
----
-
-## Recommendation
-
-**Implement the full Tiptap solution.** The 11-14 hour investment will:
-- Solve all current formatting issues permanently
-- Provide a professional screenplay editing experience
-- Enable future enhancements
-- Make Stage 4 a standout feature
-
-The textarea approach was a good starting point, but professional screenplay formatting requires a proper rich text editor.
-
----
-
 ## Next Steps
 
-1. Review this guide
-2. Confirm you want to proceed with Tiptap
-3. I'll implement Phase 1 (setup) and Phase 2 (extensions)
-4. You test the basic editor
-5. I'll continue with remaining phases
-6. Full testing and polish
-
-**Ready to proceed?** Let me know and I'll start with the installation and basic setup!
+1. I'll implement Phase 1 (setup) and Phase 2 (extensions)
+2. You test the basic editor
+3. Continue with remaining phases
+4. Full testing and polish
 

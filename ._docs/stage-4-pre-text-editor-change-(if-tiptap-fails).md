@@ -1,3 +1,31 @@
+Summary:
+
+## Alternative: Quick Fix (Not Recommended) **IF TIPTAP Fails**
+
+If you want a faster solution that keeps the textarea:
+
+1. **Strip HTML tags** from LLM output (30 mins)
+2. **Accept left-aligned formatting** (no changes needed)
+3. **Live with highlighting quirk** (documented limitation)
+
+**Pros**: Fast, minimal changes
+**Cons**: Still looks unprofessional, doesn't solve core issues
+
+---
+
+## Recommendation
+
+**Implement the full Tiptap solution.** The 11-14 hour investment will:
+- Solve all current formatting issues permanently
+- Provide a professional screenplay editing experience
+- Enable future enhancements
+- Make Stage 4 a standout feature
+
+The textarea approach was a good starting point, but professional screenplay formatting requires a proper rich text editor.
+
+
+Past Message we left off on: 
+
 Let me look at the images to understand the highlighting issue:
 
 [3 tools called]
