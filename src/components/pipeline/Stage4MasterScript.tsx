@@ -58,7 +58,8 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
     content: stageContent, 
     setContent: setStageContent, 
     isLoading, 
-    isSaving 
+    isSaving,
+    save // Manual save for custom debouncing
   } = useStageState<Stage4Content>({
     projectId,
     stageNumber: 4,
@@ -67,7 +68,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       scenes: [],
       syncStatus: 'synced'
     },
-    autoSave: true
+    autoSave: false // Disabled - using custom debounced save
   });
 
   // Component state
@@ -84,6 +85,8 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
   
   // Track if we're programmatically setting content to prevent cursor jumps
   const isProgrammaticUpdate = useRef(false);
+  // Ref for debounced save timeout
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
 
   // Initialize Tiptap editor
@@ -109,16 +112,32 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       },
     },
     onUpdate: ({ editor }) => {
-      // Auto-save on change
       const html = editor.getHTML();
       const plainText = tiptapToPlainText(html);
 
+      // Update local state immediately for UI responsiveness
       const updatedContent: Stage4Content = {
         ...stageContent,
         formattedScript: plainText,
         scenes: scriptService.extractScenes(plainText)
       };
       setStageContent(updatedContent);
+
+      // Clear existing timeout
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+
+      // Set new timeout for 2-second debounced save
+      saveTimeoutRef.current = setTimeout(async () => {
+        console.log('💾 [STAGE 4] Auto-saving after 2s of inactivity...');
+        try {
+          await save({ status: 'draft' });
+          console.log('✅ [STAGE 4] Auto-save successful');
+        } catch (error) {
+          console.error('❌ [STAGE 4] Auto-save failed:', error);
+        }
+      }, 2000);
     },
     onSelectionUpdate: ({ editor }) => {
       // Track selection state for "Edit Selection" button
@@ -133,6 +152,31 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       isProgrammaticUpdate.current = true;
     }
   }, []); // Only run once on mount
+
+  // Update editor content when stage content loads from DB
+  useEffect(() => {
+    if (!editor || isLoading) return;
+    
+    if (stageContent.formattedScript) {
+      const currentPlainText = tiptapToPlainText(editor.getHTML());
+      
+      // Only update if content changed (avoid infinite loops)
+      if (currentPlainText !== stageContent.formattedScript) {
+        console.log('📝 [STAGE 4] Syncing loaded content to editor');
+        const tiptapHtml = plainTextToTiptap(stageContent.formattedScript);
+        editor.commands.setContent(tiptapHtml);
+      }
+    }
+  }, [stageContent.formattedScript, editor, isLoading]);
+
+  // Cleanup save timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Load Stage 3 beat sheet and project parameters
   useEffect(() => {
@@ -208,15 +252,6 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
 
     loadDependencies();
   }, [projectId]);
-
-  // Sync editor content only when loading from external source (not user edits)
-  useEffect(() => {
-    if (editor && stageContent.formattedScript && isProgrammaticUpdate.current) {
-      const html = plainTextToTiptap(stageContent.formattedScript);
-      editor.commands.setContent(html);
-      isProgrammaticUpdate.current = false; // Reset flag
-    }
-  }, [stageContent.formattedScript, editor]);
 
   // Generate initial script
   const handleGenerateScript = useCallback(async () => {
