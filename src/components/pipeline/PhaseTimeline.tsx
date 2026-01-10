@@ -6,6 +6,7 @@ import type { StageProgress, StageStatus } from '@/types/project';
 interface PhaseTimelineProps {
   stages: StageProgress[];
   currentStage: number;
+  onStageClick?: (stageNumber: number) => void;
 }
 
 const stageIcons: Record<StageStatus, React.ElementType> = {
@@ -15,7 +16,7 @@ const stageIcons: Record<StageStatus, React.ElementType> = {
   outdated: AlertTriangle,
 };
 
-export function PhaseTimeline({ stages, currentStage }: PhaseTimelineProps) {
+export function PhaseTimeline({ stages, currentStage, onStageClick }: PhaseTimelineProps) {
   return (
     <div className="flex items-center gap-2 px-6 py-4 bg-card border-b border-border overflow-x-auto">
       {stages.map((stage, index) => {
@@ -37,8 +38,14 @@ export function PhaseTimeline({ stages, currentStage }: PhaseTimelineProps) {
                   stage.status === 'locked' && 'stage-node-locked',
                   stage.status === 'active' && 'stage-node-active',
                   stage.status === 'pending' && 'stage-node-pending',
-                  stage.status === 'outdated' && 'stage-node-outdated'
+                  stage.status === 'outdated' && 'stage-node-outdated',
+                  onStageClick && stage.status !== 'pending' && 'cursor-pointer hover:scale-110 transition-transform'
                 )}
+                onClick={() => {
+                  if (onStageClick && stage.status !== 'pending') {
+                    onStageClick(stage.stage);
+                  }
+                }}
               >
                 <Icon className="w-4 h-4" />
               </div>

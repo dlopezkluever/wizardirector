@@ -282,6 +282,34 @@ router.post('/:projectId/stages/:stageNumber/lock', async (req, res) => {
       return res.status(404).json({ error: 'Stage state not found' });
     }
 
+    // Sequential locking validation: Check if previous stage is locked (except for stage 1)
+    if (stage > 1) {
+      const { data: previousStageState, error: previousError } = await supabase
+        .from('stage_states')
+        .select('id, status')
+        .eq('branch_id', project.active_branch_id)
+        .eq('stage_number', stage - 1)
+        .order('version', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (previousError) {
+        console.error('Error checking previous stage:', previousError);
+        return res.status(500).json({ error: 'Failed to validate stage prerequisites' });
+      }
+
+      if (!previousStageState || previousStageState.status !== 'locked') {
+        return res.status(400).json({
+          error: `Cannot lock stage ${stage}. Stage ${stage - 1} must be locked first.`,
+          details: {
+            requiredStage: stage - 1,
+            requiredStatus: 'locked',
+            currentStatus: previousStageState?.status || 'not found'
+          }
+        });
+      }
+    }
+
     // Create a new version with locked status
     const { data: lockedState, error: lockError } = await supabase
       .from('stage_states')

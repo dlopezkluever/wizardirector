@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { User, MapPin, Package, Sparkles, Check, Image, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { useStageState } from '@/lib/hooks/useStageState';
+import { stageStateService } from '@/lib/services/stageStateService';
 
 interface Asset {
   id: string;
@@ -13,17 +15,14 @@ interface Asset {
   hasImageKey: boolean;
 }
 
-const mockAssets: Asset[] = [
-  { id: '1', type: 'character', name: 'James Callahan', description: 'Retired astronaut, 65, gaunt but dignified. Silver hair, weathered face with kind eyes.', hasImageKey: false },
-  { id: '2', type: 'character', name: 'Elena Callahan', description: 'Successful architect, 38, polished and precise. Dark hair in professional updo.', hasImageKey: false },
-  { id: '3', type: 'character', name: 'Marcus', description: 'Teenager, 16, lanky with headphones. Curious eyes, guarded demeanor.', hasImageKey: false },
-  { id: '4', type: 'location', name: "James's Home", description: 'Modest suburban living room with faded photographs, worn leather furniture, afternoon light.', hasImageKey: false },
-  { id: '5', type: 'location', name: 'Architecture Firm', description: 'Modern glass and steel office. Clean lines, natural light, professional atmosphere.', hasImageKey: false },
-  { id: '6', type: 'prop', name: 'Medical Report', description: 'Official hospital document with terminal diagnosis details.', hasImageKey: false },
-  { id: '7', type: 'prop', name: 'Unopened Letter', description: 'Aged envelope with feminine handwriting, postmarked 5 years ago from Seattle.', hasImageKey: false },
-];
-
 const visualStyles = ['Cinematic Realism', 'Neo-Noir', 'Warm Nostalgia', 'Modern Minimalist', 'Documentary Style'];
+
+// Default content structure for Stage 5
+const getDefaultContent = () => ({
+  selectedVisualStyle: '',
+  assets: [] as Asset[],
+  assetsLocked: false
+});
 
 interface Stage5AssetsProps {
   projectId: string;
@@ -32,8 +31,31 @@ interface Stage5AssetsProps {
 }
 
 export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProps) {
-  const [assets, setAssets] = useState<Asset[]>(mockAssets);
-  const [selectedStyle, setSelectedStyle] = useState<string | null>(null);
+  const { stageState, updateStageState, isLoading } = useStageState(projectId, 5);
+
+  const content = stageState?.content || getDefaultContent();
+  const [assets, setAssets] = useState<Asset[]>(content.assets || []);
+  const [selectedStyle, setSelectedStyle] = useState<string>(content.selectedVisualStyle || '');
+  const [isLocking, setIsLocking] = useState(false);
+
+  // Load assets from Stage 4 script extraction (this would come from a service call)
+  useEffect(() => {
+    // TODO: Load assets from Stage 4 script analysis
+    // For now, use mock assets until script analysis is implemented
+    const mockAssets: Asset[] = [
+      { id: '1', type: 'character', name: 'James Callahan', description: 'Retired astronaut, 65, gaunt but dignified. Silver hair, weathered face with kind eyes.', hasImageKey: false },
+      { id: '2', type: 'character', name: 'Elena Callahan', description: 'Successful architect, 38, polished and precise. Dark hair in professional updo.', hasImageKey: false },
+      { id: '3', type: 'character', name: 'Marcus', description: 'Teenager, 16, lanky with headphones. Curious eyes, guarded demeanor.', hasImageKey: false },
+      { id: '4', type: 'location', name: "James's Home", description: 'Modest suburban living room with faded photographs, worn leather furniture, afternoon light.', hasImageKey: false },
+      { id: '5', type: 'location', name: 'Architecture Firm', description: 'Modern glass and steel office. Clean lines, natural light, professional atmosphere.', hasImageKey: false },
+      { id: '6', type: 'prop', name: 'Medical Report', description: 'Official hospital document with terminal diagnosis details.', hasImageKey: false },
+      { id: '7', type: 'prop', name: 'Unopened Letter', description: 'Aged envelope with feminine handwriting, postmarked 5 years ago from Seattle.', hasImageKey: false },
+    ];
+
+    if (assets.length === 0) {
+      setAssets(mockAssets);
+    }
+  }, [assets.length]);
 
   const getAssetIcon = (type: Asset['type']) => {
     switch (type) { case 'character': return User; case 'location': return MapPin; case 'prop': return Package; }
@@ -47,8 +69,34 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
     }, 1500);
   };
 
+  const handleLockAssets = async () => {
+    if (!canProceed) return;
+
+    try {
+      setIsLocking(true);
+
+      // Save the current state
+      await updateStageState({
+        selectedVisualStyle: selectedStyle,
+        assets,
+        assetsLocked: true
+      });
+
+      // Lock the stage in the backend
+      await stageStateService.lockStage(projectId, 5);
+
+      toast.success('Assets locked and Phase A completed!');
+      onComplete();
+    } catch (error) {
+      console.error('Failed to lock assets:', error);
+      toast.error('Failed to lock assets. Please try again.');
+    } finally {
+      setIsLocking(false);
+    }
+  };
+
   const allAssetsHaveKeys = assets.every(a => a.hasImageKey);
-  const canProceed = selectedStyle && allAssetsHaveKeys;
+  const canProceed = selectedStyle && allAssetsHaveKeys && !content.assetsLocked;
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -60,8 +108,15 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
             <p className="text-sm text-muted-foreground">Define visual keys for all characters, locations, and props</p>
           </div>
         </div>
-        <Button variant="gold" size="sm" onClick={onComplete} disabled={!canProceed} className="gap-2">
-          <Lock className="w-4 h-4" />Lock Assets & Begin Production
+        <Button
+          variant="gold"
+          size="sm"
+          onClick={handleLockAssets}
+          disabled={!canProceed || isLocking}
+          className="gap-2"
+        >
+          <Lock className="w-4 h-4" />
+          {isLocking ? 'Locking Assets...' : 'Lock Assets & Begin Production'}
         </Button>
       </div>
 
@@ -72,7 +127,19 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
             <h3 className="font-display text-xl font-semibold text-foreground">Visual Style</h3>
             <div className="flex flex-wrap gap-2">
               {visualStyles.map(style => (
-                <Button key={style} variant={selectedStyle === style ? 'stage-active' : 'stage'} size="sm" onClick={() => setSelectedStyle(style)}>
+                <Button
+                  key={style}
+                  variant={selectedStyle === style ? 'stage-active' : 'stage'}
+                  size="sm"
+                  onClick={async () => {
+                    setSelectedStyle(style);
+                    await updateStageState({
+                      selectedVisualStyle: style,
+                      assets,
+                      assetsLocked: content.assetsLocked
+                    });
+                  }}
+                >
                   {style}
                 </Button>
               ))}

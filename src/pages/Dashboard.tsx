@@ -122,6 +122,7 @@ export function Dashboard({ onProjectSelect, onNewProject }: DashboardProps) {
                 key={project.id}
                 project={project}
                 onClick={() => onProjectSelect(project.id)}
+                onDelete={loadProjects}
                 index={index + 1}
               />
             ))}
