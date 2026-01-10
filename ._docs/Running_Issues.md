@@ -5,9 +5,9 @@
 
 ### Add ability to delete projects
 
-### have ability tot projects into folder
+### have ability to put projects into folder in dashboard
 
 ### have ability export individual writing assets (Treatment; Beat Sheet: Script)
 
-### Have ability to customize system prompts
+### Have ability to customize system prompts?
 
