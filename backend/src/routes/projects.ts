@@ -50,6 +50,7 @@ router.get('/', async (req, res) => {
       projectType: project.project_type,
       contentRating: project.content_rating,
       genres: project.genre || [],
+      tonalPrecision: project.tonal_precision || '',
       targetLength: {
         min: project.target_length_min,
         max: project.target_length_max
@@ -114,6 +115,7 @@ router.get('/:id', async (req, res) => {
       projectType: project.project_type,
       contentRating: project.content_rating,
       genres: project.genre || [],
+      tonalPrecision: project.tonal_precision || '',
       targetLength: {
         min: project.target_length_min,
         max: project.target_length_max
@@ -352,6 +354,80 @@ router.put('/:id', async (req, res) => {
     res.json(transformedProject);
   } catch (error) {
     console.error('Error in PUT /api/projects/:id:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/projects/:id/scenes - Persist extracted scenes to database
+router.put('/:id/scenes', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+    const { scenes } = req.body;
+
+    if (!scenes || !Array.isArray(scenes)) {
+      return res.status(400).json({ error: 'Scenes array is required' });
+    }
+
+    console.log(`💾 [SCENES] Persisting ${scenes.length} scenes for project ${id}...`);
+
+    // Get the project to ensure user owns it
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      console.error('❌ Error fetching project:', projectError);
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    if (!project.active_branch_id) {
+      console.error('❌ Project has no active branch');
+      return res.status(400).json({ error: 'Project has no active branch' });
+    }
+
+    // Delete existing scenes for this branch
+    const { error: deleteError } = await supabase
+      .from('scenes')
+      .delete()
+      .eq('branch_id', project.active_branch_id);
+
+    if (deleteError) {
+      console.error('❌ Error deleting existing scenes:', deleteError);
+      return res.status(500).json({ error: 'Failed to delete existing scenes' });
+    }
+
+    // Insert new scenes
+    const scenesToInsert = scenes.map((scene: any) => ({
+      branch_id: project.active_branch_id,
+      scene_number: scene.sceneNumber,
+      slug: scene.slug,
+      script_excerpt: scene.scriptExcerpt,
+      status: 'draft'
+    }));
+
+    const { data: insertedScenes, error: insertError } = await supabase
+      .from('scenes')
+      .insert(scenesToInsert)
+      .select('id, scene_number, slug');
+
+    if (insertError) {
+      console.error('❌ Error inserting scenes:', insertError);
+      return res.status(500).json({ error: 'Failed to insert scenes' });
+    }
+
+    console.log(`✅ [SCENES] Successfully persisted ${insertedScenes.length} scenes`);
+
+    res.json({ 
+      success: true,
+      sceneCount: insertedScenes.length,
+      scenes: insertedScenes
+    });
+  } catch (error) {
+    console.error('Error in PUT /api/projects/:id/scenes:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -123,6 +123,7 @@ FORMAT REQUIREMENTS:
 - ALL CAPS for Scene Headings (INT./EXT.), Character Names, and SFX
 - Detailed action lines with rich visual descriptions
 - Natural dialogue that serves the story
+- Each scene must start with a proper scene heading: INT. or EXT. [LOCATION] - [TIME]
 
 PROJECT CONSTRAINTS:
 - Target length: {target_length_min} to {target_length_max} seconds
@@ -134,11 +135,15 @@ WRITTEN STYLE CONTEXT:
 {rag_retrieved_style_examples}
 
 VISUAL DESCRIPTION FOCUS:
-- Character appearance, clothing, expressions
-- Setting details, lighting, atmosphere
+- Character appearance, clothing, expressions, body language
+- Setting details, lighting, atmosphere, mood
 - Props and their visual significance
 - Camera-ready action descriptions
-- Emotional subtext through visual cues`,
+- Emotional subtext through visual cues
+- Detailed descriptions of every mise-en-scène element
+
+OUTPUT FORMAT:
+Return ONLY the formatted screenplay text. Do NOT wrap it in JSON or markdown code blocks. Use standard screenplay format throughout.`,
         user_prompt_template: `BEAT SHEET TO CONVERT:
 {beat_sheet_content}
 
@@ -148,7 +153,14 @@ PROJECT PARAMETERS:
 - Genres: {genres}
 - Tonal Precision: {tonal_precision}
 
-Convert this beat sheet into a complete, industry-standard screenplay with rich visual descriptions. Each scene should be detailed enough for a director to visualize exactly what happens.`,
+Convert this beat sheet into a complete, industry-standard screenplay with rich visual descriptions. Each scene should be detailed enough for a director to visualize exactly what happens. Remember:
+
+1. Start each scene with INT. or EXT. scene heading
+2. Describe every visual element in detail
+3. Use character names in ALL CAPS when they first appear
+4. Write vivid action lines that paint a clear picture
+5. Keep dialogue natural but purposeful
+6. Include camera-ready descriptions of movements, expressions, and atmosphere`,
         description: 'Template for converting beat sheets into visually detailed master scripts',
         is_active: true
       }

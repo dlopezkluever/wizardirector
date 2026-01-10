@@ -1,65 +1,37 @@
-import { useState, useCallback } from 'react';
-import { motion } from 'framer-motion';
-import { Check, RefreshCw, Edit3, Lock } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Check, 
+  RefreshCw, 
+  Edit3, 
+  Lock, 
+  Loader2, 
+  AlertTriangle,
+  FileText,
+  ChevronRight,
+  ChevronLeft,
+  Sparkles
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { useStageState } from '@/lib/hooks/useStageState';
+import { stageStateService } from '@/lib/services/stageStateService';
+import { scriptService, type Scene } from '@/lib/services/scriptService';
+import type { Beat } from '@/lib/services/beatService';
+import { supabase } from '@/lib/supabase';
 
-const mockScript = `FADE IN:
-
-INT. JAMES CALLAHAN'S HOME - DAY
-
-A modest suburban living room. Faded photographs line the walls - handshakes with presidents, the iconic Mars mission shot. Dust particles float in slanted afternoon light.
-
-JAMES CALLAHAN (65), gaunt but dignified, sits in a worn leather chair. His hands tremble slightly as he holds a medical report.
-
-JAMES (V.O.)
-Six months. Maybe less. That's what they gave me.
-
-He sets the paper down. His gaze drifts to a photograph of a young woman - ELENA, his daughter.
-
-JAMES (V.O.) (CONT'D)
-Funny how distance works. Three hundred million miles to Mars felt closer than the twenty blocks to her apartment.
-
-James stands, joints protesting. He moves to a desk drawer, retrieves an unopened envelope. The handwriting is feminine, the postmark five years old.
-
-INSERT - ENVELOPE
-"Dad" written in Elena's handwriting. Return address: Seattle, WA.
-
-BACK TO SCENE
-
-James's fingers hover over the seal. He takes a breath.
-
-JAMES
-(to himself)
-I'm sorry, Maria. I should have opened this years ago.
-
-He tears it open.
-
-CUT TO:
-
-INT. ELENA'S ARCHITECTURE FIRM - DAY
-
-Modern glass and steel. ELENA CALLAHAN (38), polished and precise, reviews blueprints. Her phone buzzes. She ignores it.
-
-MARCUS (16), her son, appears in the doorway. Lanky, headphones around his neck.
-
-MARCUS
-Mom. Dad called again.
-
-ELENA
-(not looking up)
-Tell him I'm in a meeting.
-
-MARCUS
-You're always in a meeting.
-
-Elena finally looks up. Something flickers in her eyes - recognition of her father's patterns in her own behavior.
-
-ELENA
-Marcus, I...
-
-But he's already gone.`;
+interface Stage4Content {
+  formattedScript: string;
+  scenes: Scene[];
+  syncStatus: 'synced' | 'out_of_date_with_beats';
+  beatSheetSource?: {
+    beats: Beat[];
+    stageId: string;
+  };
+  langsmithTraceId?: string;
+  promptTemplateVersion?: string;
+}
 
 interface Stage4MasterScriptProps {
   projectId: string;
@@ -68,56 +40,713 @@ interface Stage4MasterScriptProps {
 }
 
 export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4MasterScriptProps) {
-  const [content, setContent] = useState(mockScript);
-  const [isEditing, setIsEditing] = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
+  // Use stage state for persistence
+  const { 
+    content: stageContent, 
+    setContent: setStageContent, 
+    isLoading, 
+    isSaving 
+  } = useStageState<Stage4Content>({
+    projectId,
+    stageNumber: 4,
+    initialContent: {
+      formattedScript: '',
+      scenes: [],
+      syncStatus: 'synced'
+    },
+    autoSave: true
+  });
 
-  const handleApprove = useCallback(() => {
-    toast.success('Master Script approved and locked');
-    onComplete();
-  }, [onComplete]);
+  // Component state
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [localScript, setLocalScript] = useState('');
+  const [selectedText, setSelectedText] = useState<{ start: number; end: number; text: string } | null>(null);
+  const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
+  const [regenerateGuidance, setRegenerateGuidance] = useState('');
+  const [showSectionEditDialog, setShowSectionEditDialog] = useState(false);
+  const [sectionEditRequest, setSectionEditRequest] = useState('');
+  const [activeBeatIndex, setActiveBeatIndex] = useState(0);
+  const [beatPanelCollapsed, setBeatPanelCollapsed] = useState(false);
+  const [projectParams, setProjectParams] = useState<any>(null);
+  
+  const scriptEditorRef = useRef<HTMLTextAreaElement>(null);
+  const highlightPreRef = useRef<HTMLPreElement>(null);
+
+  // Load Stage 3 beat sheet and project parameters
+  useEffect(() => {
+    const loadDependencies = async () => {
+      try {
+        console.log('📥 [STAGE 4] Loading Stage 3 beat sheet and project parameters...');
+        
+        // Fetch Stage 3 state
+        const stage3State = await stageStateService.getStageState(projectId, 3);
+        
+        if (!stage3State || !stage3State.content.beats) {
+          console.error('❌ [STAGE 4] No beat sheet found in Stage 3');
+          toast.error('Please complete Stage 3 (Beat Sheet) first');
+          return;
+        }
+
+        console.log(`✅ [STAGE 4] Loaded ${stage3State.content.beats.length} beats from Stage 3`);
+
+        // Fetch project configuration (stored in projects table, not stage_states)
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session?.access_token) {
+          console.error('❌ [STAGE 4] No auth session found');
+          toast.error('Authentication required');
+          return;
+        }
+
+        const response = await fetch(`/api/projects/${projectId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch project configuration');
+        }
+
+        const project = await response.json();
+        
+        console.log('📊 [STAGE 4] Project config:', {
+          targetLength: project.targetLength,
+          contentRating: project.contentRating,
+          genres: project.genres,
+          tonalPrecision: project.tonalPrecision
+        });
+
+        const params = {
+          targetLengthMin: project.targetLength?.min || 180,
+          targetLengthMax: project.targetLength?.max || 300,
+          contentRating: project.contentRating || 'PG-13',
+          genres: project.genres || [],
+          tonalPrecision: project.tonalPrecision || ''
+        };
+
+        setProjectParams(params);
+
+        // Update stage content with beat sheet source
+        setStageContent({
+          ...stageContent,
+          beatSheetSource: {
+            beats: stage3State.content.beats,
+            stageId: stage3State.id
+          }
+        });
+
+      } catch (error) {
+        console.error('❌ [STAGE 4] Error loading dependencies:', error);
+        toast.error('Failed to load dependencies');
+      }
+    };
+
+    loadDependencies();
+  }, [projectId]);
+
+  // Sync local script with stage content
+  useEffect(() => {
+    if (stageContent.formattedScript) {
+      setLocalScript(stageContent.formattedScript);
+    }
+  }, [stageContent.formattedScript]);
+
+  // Generate initial script
+  const handleGenerateScript = useCallback(async () => {
+    if (!stageContent.beatSheetSource?.beats || !projectParams) {
+      toast.error('Missing required data for script generation');
+      return;
+    }
+
+    setIsGenerating(true);
+    
+    try {
+      console.log('🎬 [STAGE 4] Generating master script...');
+      
+      const result = await scriptService.generateScript({
+        beatSheet: stageContent.beatSheetSource.beats,
+        projectParams
+      });
+
+      // Update stage content
+      const updatedContent: Stage4Content = {
+        formattedScript: result.formattedScript,
+        scenes: result.scenes,
+        syncStatus: 'synced',
+        beatSheetSource: stageContent.beatSheetSource,
+        langsmithTraceId: result.langsmithTraceId,
+        promptTemplateVersion: result.promptTemplateVersion
+      };
+
+      setStageContent(updatedContent);
+      setLocalScript(result.formattedScript);
+      
+      toast.success(`Script generated with ${result.scenes.length} scenes`);
+      
+    } catch (error: any) {
+      console.error('❌ [STAGE 4] Script generation failed:', error);
+      toast.error(error.message || 'Failed to generate script');
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [stageContent.beatSheetSource, projectParams, setStageContent]);
+
+  // Full script regeneration
+  const handleRegenerateScript = useCallback(async () => {
+    if (regenerateGuidance.length < 10) {
+      toast.error('Please provide at least 10 characters of guidance');
+      return;
+    }
+
+    if (!stageContent.beatSheetSource?.beats || !projectParams) {
+      toast.error('Missing required data for regeneration');
+      return;
+    }
+
+    setIsGenerating(true);
+    setShowRegenerateDialog(false);
+    
+    try {
+      console.log('🔄 [STAGE 4] Regenerating master script with guidance...');
+      
+      const result = await scriptService.regenerateScript({
+        beatSheet: stageContent.beatSheetSource.beats,
+        projectParams,
+        guidance: regenerateGuidance
+      });
+
+      const updatedContent: Stage4Content = {
+        formattedScript: result.formattedScript,
+        scenes: result.scenes,
+        syncStatus: 'synced',
+        beatSheetSource: stageContent.beatSheetSource,
+        langsmithTraceId: result.langsmithTraceId,
+        promptTemplateVersion: result.promptTemplateVersion
+      };
+
+      setStageContent(updatedContent);
+      setLocalScript(result.formattedScript);
+      setRegenerateGuidance('');
+      
+      toast.success('Script regenerated successfully');
+      
+    } catch (error: any) {
+      console.error('❌ [STAGE 4] Script regeneration failed:', error);
+      toast.error(error.message || 'Failed to regenerate script');
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [regenerateGuidance, stageContent.beatSheetSource, projectParams, setStageContent]);
+
+  // Section regeneration (highlight and rewrite)
+  const handleRegenerateSection = useCallback(async () => {
+    if (!selectedText || sectionEditRequest.length < 10) {
+      toast.error('Please provide at least 10 characters of guidance');
+      return;
+    }
+
+    setIsGenerating(true);
+    setShowSectionEditDialog(false);
+
+    try {
+      console.log('✏️ [STAGE 4] Regenerating selected section...');
+
+      // Get context around the selection
+      const beforeText = localScript.substring(Math.max(0, selectedText.start - 500), selectedText.start);
+      const afterText = localScript.substring(selectedText.end, Math.min(localScript.length, selectedText.end + 500));
+
+      const rewrittenSection = await scriptService.regenerateSection({
+        scriptContext: {
+          beforeText,
+          highlightedText: selectedText.text,
+          afterText
+        },
+        editRequest: sectionEditRequest
+      });
+
+      // Replace the selected text with the rewritten section
+      const newScript = 
+        localScript.substring(0, selectedText.start) + 
+        rewrittenSection + 
+        localScript.substring(selectedText.end);
+
+      setLocalScript(newScript);
+      
+      // Save to stage content
+      const updatedContent: Stage4Content = {
+        ...stageContent,
+        formattedScript: newScript,
+        scenes: scriptService.extractScenes(newScript)
+      };
+      setStageContent(updatedContent);
+      
+      setSelectedText(null);
+      setSectionEditRequest('');
+      
+      toast.success('Section regenerated successfully');
+      
+    } catch (error: any) {
+      console.error('❌ [STAGE 4] Section regeneration failed:', error);
+      toast.error(error.message || 'Failed to regenerate section');
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [selectedText, sectionEditRequest, localScript, stageContent, setStageContent]);
+
+  // Handle script changes
+  const handleScriptChange = useCallback((newScript: string) => {
+    setLocalScript(newScript);
+    
+    // Auto-save with debounce
+    const updatedContent: Stage4Content = {
+      ...stageContent,
+      formattedScript: newScript,
+      scenes: scriptService.extractScenes(newScript)
+    };
+    setStageContent(updatedContent);
+  }, [stageContent, setStageContent]);
+
+  // Handle text selection
+  const handleTextSelect = useCallback(() => {
+    if (!scriptEditorRef.current) return;
+
+    const start = scriptEditorRef.current.selectionStart;
+    const end = scriptEditorRef.current.selectionEnd;
+
+    if (start !== end) {
+      const text = localScript.substring(start, end);
+      setSelectedText({ start, end, text });
+    } else {
+      setSelectedText(null);
+    }
+  }, [localScript]);
+
+  // Approve and lock script
+  const handleApproveScript = useCallback(async () => {
+    if (!localScript || localScript.trim().length === 0) {
+      toast.error('Cannot approve an empty script');
+      return;
+    }
+
+    try {
+      console.log('🔒 [STAGE 4] Approving master script...');
+      
+      // Extract scenes if not already done
+      let scenes = stageContent.scenes;
+      if (scenes.length === 0) {
+        scenes = scriptService.extractScenes(localScript);
+      }
+
+      // Persist scenes to database
+      await scriptService.persistScenes(projectId, scenes);
+
+      // Lock the stage
+      await stageStateService.lockStage(projectId, 4);
+
+      toast.success(`Master Script approved! ${scenes.length} scenes extracted and ready for production.`);
+      
+      // Navigate to Stage 5
+      onComplete();
+      
+    } catch (error: any) {
+      console.error('❌ [STAGE 4] Failed to approve script:', error);
+      toast.error(error.message || 'Failed to approve script');
+    }
+  }, [localScript, stageContent.scenes, projectId, onComplete]);
+
+  // Scroll to beat
+  const handleBeatClick = useCallback((beatIndex: number) => {
+    setActiveBeatIndex(beatIndex);
+    
+    if (!scriptEditorRef.current || !stageContent.beatSheetSource?.beats) return;
+
+    // Simple approach: divide script into beat-sized chunks
+    const beats = stageContent.beatSheetSource.beats;
+    const lines = localScript.split('\n');
+    const linesPerBeat = Math.ceil(lines.length / beats.length);
+    const targetLine = beatIndex * linesPerBeat;
+    
+    // Calculate approximate character position
+    let charPosition = 0;
+    for (let i = 0; i < targetLine && i < lines.length; i++) {
+      charPosition += lines[i].length + 1; // +1 for newline
+    }
+
+    // Scroll textarea
+    scriptEditorRef.current.focus();
+    scriptEditorRef.current.setSelectionRange(charPosition, charPosition);
+    scriptEditorRef.current.scrollTop = (targetLine / lines.length) * scriptEditorRef.current.scrollHeight;
+  }, [stageContent.beatSheetSource, localScript]);
+
+  // Synchronize scroll between textarea and pre
+  const handleScroll = useCallback(() => {
+    if (scriptEditorRef.current && highlightPreRef.current) {
+      highlightPreRef.current.scrollTop = scriptEditorRef.current.scrollTop;
+      highlightPreRef.current.scrollLeft = scriptEditorRef.current.scrollLeft;
+    }
+  }, []);
+
+  // Render syntax-highlighted script
+  const renderHighlightedScript = useCallback(() => {
+    const lines = localScript.split('\n');
+    
+    return lines.map((line, index) => {
+      const trimmedLine = line.trim();
+      
+      // Scene headings (INT./EXT.)
+      if (/^(INT\.|EXT\.)/.test(trimmedLine)) {
+        return <div key={index} className="text-amber-400 font-bold">{line}</div>;
+      }
+      
+      // Character names (all caps line)
+      if (/^[A-Z\s]+$/.test(trimmedLine) && trimmedLine.length > 0 && trimmedLine.length < 50) {
+        return <div key={index} className="text-blue-400 font-semibold">{line}</div>;
+      }
+      
+      // Parentheticals
+      if (/^\(.*\)$/.test(trimmedLine)) {
+        return <div key={index} className="text-gray-400 italic">{line}</div>;
+      }
+      
+      // Default (action lines, dialogue) - white text
+      return <div key={index} className="text-foreground">{line || '\u00A0'}</div>;
+    });
+  }, [localScript]);
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading master script...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Initial generation state
+  if (!stageContent.formattedScript) {
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={onBack}>
+              <ChevronLeft className="w-4 h-4 mr-1" />Back
+            </Button>
+            <div>
+              <h2 className="font-display text-xl font-semibold text-foreground">Master Script</h2>
+              <p className="text-sm text-muted-foreground">Generate production-ready screenplay</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="text-center max-w-md">
+            <FileText className="w-16 h-16 text-primary mx-auto mb-4" />
+            <h3 className="text-xl font-semibold mb-2">Ready to Generate Your Script</h3>
+            <p className="text-muted-foreground mb-6">
+              Transform your beat sheet into a detailed, production-ready screenplay with rich visual descriptions.
+            </p>
+            <Button 
+              onClick={handleGenerateScript} 
+              disabled={isGenerating || !stageContent.beatSheetSource?.beats}
+              className="gap-2"
+              size="lg"
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  Generate Master Script
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={onBack}>← Back</Button>
+          <Button variant="ghost" size="sm" onClick={onBack}>
+            <ChevronLeft className="w-4 h-4 mr-1" />Back
+          </Button>
           <div>
             <h2 className="font-display text-xl font-semibold text-foreground">Master Script</h2>
-            <p className="text-sm text-muted-foreground">Finalized narrative blueprint</p>
+            <p className="text-sm text-muted-foreground">
+              {stageContent.scenes.length} scenes • {isSaving ? 'Saving...' : 'Saved'}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" className="gap-2">
-            <RefreshCw className="w-4 h-4" />Regenerate
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setShowRegenerateDialog(true)}
+            disabled={isGenerating}
+            className="gap-2"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Regenerate
           </Button>
-          <Button variant="gold" size="sm" onClick={handleApprove} className="gap-2">
-            <Lock className="w-4 h-4" />Approve Script
+          {selectedText && (
+            <Button 
+              variant="secondary" 
+              size="sm" 
+              onClick={() => setShowSectionEditDialog(true)}
+              disabled={isGenerating}
+              className="gap-2"
+            >
+              <Edit3 className="w-4 h-4" />
+              Edit Selection
+            </Button>
+          )}
+          <Button 
+            variant="gold" 
+            size="sm" 
+            onClick={handleApproveScript}
+            disabled={isGenerating}
+            className="gap-2"
+          >
+            <Lock className="w-4 h-4" />
+            Approve Script
           </Button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-3xl mx-auto">
-          <div className="flex items-center justify-between mb-4">
-            <Button variant={isEditing ? 'stage-active' : 'ghost'} size="sm" onClick={() => setIsEditing(!isEditing)} className="gap-2">
-              <Edit3 className="w-4 h-4" />{isEditing ? 'Editing' : 'Edit Mode'}
+      {/* Main Content Area */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Script Editor */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 relative overflow-hidden">
+            {/* Syntax-highlighted overlay - non-scrollable, follows textarea scroll */}
+            <pre
+              ref={highlightPreRef}
+              className="absolute inset-0 p-6 font-mono text-sm leading-relaxed whitespace-pre-wrap overflow-hidden pointer-events-none bg-transparent"
+            >
+              {renderHighlightedScript()}
+            </pre>
+            
+            {/* Editable textarea - user interacts with this, text is transparent */}
+            <textarea
+              ref={scriptEditorRef}
+              value={localScript}
+              onChange={(e) => handleScriptChange(e.target.value)}
+              onSelect={handleTextSelect}
+              onScroll={handleScroll}
+              disabled={isGenerating}
+              className="absolute inset-0 p-6 font-mono text-sm leading-relaxed whitespace-pre-wrap overflow-auto resize-none bg-transparent focus:outline-none disabled:opacity-50"
+              style={{ 
+                caretColor: 'currentColor',
+                color: 'transparent'
+              }}
+              spellCheck={false}
+            />
+          </div>
+        </div>
+
+        {/* Beat Alignment Panel */}
+        <AnimatePresence>
+          {!beatPanelCollapsed && stageContent.beatSheetSource?.beats && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 320, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="border-l border-border bg-card overflow-hidden"
+            >
+              <div className="flex items-center justify-between p-4 border-b border-border">
+                <h3 className="font-semibold text-sm">Beat Alignment</h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setBeatPanelCollapsed(true)}
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+              
+              <div className="overflow-auto h-[calc(100%-57px)] p-4 space-y-2">
+                {stageContent.beatSheetSource.beats.map((beat, index) => (
+                  <button
+                    key={beat.id}
+                    onClick={() => handleBeatClick(index)}
+                    className={cn(
+                      'w-full text-left p-3 rounded-lg border transition-all',
+                      activeBeatIndex === index
+                        ? 'border-primary bg-primary/10 shadow-sm'
+                        : 'border-border bg-card hover:border-primary/30'
+                    )}
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className={cn(
+                        'flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold shrink-0',
+                        activeBeatIndex === index
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-secondary text-muted-foreground'
+                      )}>
+                        {beat.order}
+                      </div>
+                      <p className="text-sm leading-relaxed">{beat.text}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Collapsed beat panel toggle */}
+        {beatPanelCollapsed && (
+          <div className="border-l border-border bg-card">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setBeatPanelCollapsed(false)}
+              className="h-full px-2"
+            >
+              <ChevronLeft className="w-4 h-4" />
             </Button>
           </div>
-          
-          {isEditing ? (
-            <textarea
-              value={content}
-              onChange={(e) => { setContent(e.target.value); setHasChanges(true); }}
-              className="w-full min-h-[700px] p-6 rounded-xl bg-card border border-border text-foreground font-mono text-sm leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          ) : (
-            <pre className="p-6 rounded-xl bg-card border border-border text-foreground font-mono text-sm leading-relaxed whitespace-pre-wrap">
-              {content}
-            </pre>
-          )}
-        </div>
+        )}
       </div>
+
+      {/* Full Regeneration Dialog */}
+      <AnimatePresence>
+        {showRegenerateDialog && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowRegenerateDialog(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-card border border-border rounded-xl p-6 max-w-md w-full"
+            >
+              <h3 className="text-lg font-semibold mb-2">Regenerate Master Script</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Provide guidance for how you want the script regenerated (minimum 10 characters).
+              </p>
+              
+              <textarea
+                value={regenerateGuidance}
+                onChange={(e) => setRegenerateGuidance(e.target.value)}
+                placeholder="E.g., Make the dialogue more snappy and witty..."
+                className="w-full h-32 p-3 rounded-lg bg-secondary border border-border text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              
+              <div className="flex items-center justify-between mt-4">
+                <span className="text-sm text-muted-foreground">
+                  {regenerateGuidance.length} / 10 characters
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowRegenerateDialog(false);
+                      setRegenerateGuidance('');
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleRegenerateScript}
+                    disabled={regenerateGuidance.length < 10}
+                  >
+                    Regenerate
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Section Edit Dialog */}
+      <AnimatePresence>
+        {showSectionEditDialog && selectedText && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowSectionEditDialog(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-card border border-border rounded-xl p-6 max-w-2xl w-full"
+            >
+              <h3 className="text-lg font-semibold mb-2">Edit Selected Section</h3>
+              
+              <div className="mb-4 p-3 bg-secondary rounded-lg border border-border">
+                <p className="text-sm text-muted-foreground mb-1">Selected text:</p>
+                <p className="text-sm font-mono">{selectedText.text.substring(0, 200)}{selectedText.text.length > 200 ? '...' : ''}</p>
+              </div>
+              
+              <p className="text-sm text-muted-foreground mb-2">
+                What would you like to change? (minimum 10 characters)
+              </p>
+              
+              <textarea
+                value={sectionEditRequest}
+                onChange={(e) => setSectionEditRequest(e.target.value)}
+                placeholder="E.g., Make this description more atmospheric and add details about the lighting..."
+                className="w-full h-32 p-3 rounded-lg bg-secondary border border-border text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              
+              <div className="flex items-center justify-between mt-4">
+                <span className="text-sm text-muted-foreground">
+                  {sectionEditRequest.length} / 10 characters
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowSectionEditDialog(false);
+                      setSectionEditRequest('');
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleRegenerateSection}
+                    disabled={sectionEditRequest.length < 10}
+                  >
+                    Regenerate Section
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
