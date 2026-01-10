@@ -1,11 +1,22 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Check, 
-  RefreshCw, 
-  Edit3, 
-  Lock, 
-  Loader2, 
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Placeholder from '@tiptap/extension-placeholder';
+import {
+  SceneHeading,
+  Character,
+  Dialogue,
+  Action,
+  Parenthetical,
+  Transition
+} from '@/lib/tiptap-extensions';
+import {
+  Check,
+  RefreshCw,
+  Edit3,
+  Lock,
+  Loader2,
   AlertTriangle,
   FileText,
   ChevronRight,
@@ -13,8 +24,10 @@ import {
   Sparkles
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { plainTextToTiptap, tiptapToPlainText } from '@/lib/utils/screenplay-converter';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { ScreenplayToolbar } from './ScreenplayToolbar';
 import { useStageState } from '@/lib/hooks/useStageState';
 import { stageStateService } from '@/lib/services/stageStateService';
 import { scriptService, type Scene } from '@/lib/services/scriptService';
@@ -60,8 +73,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
   // Component state
   const [isGenerating, setIsGenerating] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [localScript, setLocalScript] = useState('');
-  const [selectedText, setSelectedText] = useState<{ start: number; end: number; text: string } | null>(null);
+  const [hasSelection, setHasSelection] = useState(false);
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
   const [regenerateGuidance, setRegenerateGuidance] = useState('');
   const [showSectionEditDialog, setShowSectionEditDialog] = useState(false);
@@ -70,8 +82,48 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
   const [beatPanelCollapsed, setBeatPanelCollapsed] = useState(false);
   const [projectParams, setProjectParams] = useState<any>(null);
   
-  const scriptEditorRef = useRef<HTMLTextAreaElement>(null);
-  const highlightPreRef = useRef<HTMLPreElement>(null);
+
+  // Initialize Tiptap editor
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        // Disable default paragraph behavior
+        paragraph: false,
+      }),
+      Placeholder.configure({
+        placeholder: 'Start writing your screenplay...',
+      }),
+      SceneHeading,
+      Character,
+      Dialogue,
+      Action,
+      Parenthetical,
+      Transition,
+    ],
+    content: stageContent.formattedScript ? plainTextToTiptap(stageContent.formattedScript) : '',
+    editorProps: {
+      attributes: {
+        class: 'prose prose-invert max-w-none p-6 focus:outline-none min-h-full',
+      },
+    },
+    onUpdate: ({ editor }) => {
+      // Auto-save on change
+      const html = editor.getHTML();
+      const plainText = tiptapToPlainText(html);
+
+      const updatedContent: Stage4Content = {
+        ...stageContent,
+        formattedScript: plainText,
+        scenes: scriptService.extractScenes(plainText)
+      };
+      setStageContent(updatedContent);
+    },
+    onSelectionUpdate: ({ editor }) => {
+      // Track selection state for "Edit Selection" button
+      const { from, to } = editor.state.selection;
+      setHasSelection(from !== to);
+    },
+  });
 
   // Load Stage 3 beat sheet and project parameters
   useEffect(() => {
@@ -150,10 +202,11 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
 
   // Sync local script with stage content
   useEffect(() => {
-    if (stageContent.formattedScript) {
-      setLocalScript(stageContent.formattedScript);
+    if (editor && stageContent.formattedScript) {
+      const html = plainTextToTiptap(stageContent.formattedScript);
+      editor.commands.setContent(html);
     }
-  }, [stageContent.formattedScript]);
+  }, [stageContent.formattedScript, editor]);
 
   // Generate initial script
   const handleGenerateScript = useCallback(async () => {
@@ -183,8 +236,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       };
 
       setStageContent(updatedContent);
-      setLocalScript(result.formattedScript);
-      
+
       toast.success(`Script generated with ${result.scenes.length} scenes`);
       
     } catch (error: any) {
@@ -229,7 +281,6 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       };
 
       setStageContent(updatedContent);
-      setLocalScript(result.formattedScript);
       setRegenerateGuidance('');
       
       toast.success('Script regenerated successfully');
@@ -244,7 +295,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
 
   // Section regeneration (highlight and rewrite)
   const handleRegenerateSection = useCallback(async () => {
-    if (!selectedText || sectionEditRequest.length < 10) {
+    if (!editor || sectionEditRequest.length < 10) {
       toast.error('Please provide at least 10 characters of guidance');
       return;
     }
@@ -255,90 +306,61 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
     try {
       console.log('✏️ [STAGE 4] Regenerating selected section...');
 
-      // Get context around the selection
-      const beforeText = localScript.substring(Math.max(0, selectedText.start - 500), selectedText.start);
-      const afterText = localScript.substring(selectedText.end, Math.min(localScript.length, selectedText.end + 500));
+      // Get selected text from Tiptap
+      const { from, to } = editor.state.selection;
+      const selectedText = editor.state.doc.textBetween(from, to);
+
+      // Get context around the selection (500 chars before/after)
+      const beforeText = editor.state.doc.textBetween(Math.max(0, from - 500), from);
+      const afterText = editor.state.doc.textBetween(to, Math.min(editor.state.doc.content.size, to + 500));
 
       const rewrittenSection = await scriptService.regenerateSection({
         scriptContext: {
           beforeText,
-          highlightedText: selectedText.text,
+          highlightedText: selectedText,
           afterText
         },
         editRequest: sectionEditRequest
       });
 
-      // Replace the selected text with the rewritten section
-      const newScript = 
-        localScript.substring(0, selectedText.start) + 
-        rewrittenSection + 
-        localScript.substring(selectedText.end);
+      // Replace selection in Tiptap
+      editor.chain()
+        .focus()
+        .deleteRange({ from, to })
+        .insertContent(rewrittenSection)
+        .run();
 
-      setLocalScript(newScript);
-      
-      // Save to stage content
-      const updatedContent: Stage4Content = {
-        ...stageContent,
-        formattedScript: newScript,
-        scenes: scriptService.extractScenes(newScript)
-      };
-      setStageContent(updatedContent);
-      
-      setSelectedText(null);
       setSectionEditRequest('');
-      
+
       toast.success('Section regenerated successfully');
-      
+
     } catch (error: any) {
       console.error('❌ [STAGE 4] Section regeneration failed:', error);
       toast.error(error.message || 'Failed to regenerate section');
     } finally {
       setIsGenerating(false);
     }
-  }, [selectedText, sectionEditRequest, localScript, stageContent, setStageContent]);
+  }, [editor, sectionEditRequest]);
 
-  // Handle script changes
-  const handleScriptChange = useCallback((newScript: string) => {
-    setLocalScript(newScript);
-    
-    // Auto-save with debounce
-    const updatedContent: Stage4Content = {
-      ...stageContent,
-      formattedScript: newScript,
-      scenes: scriptService.extractScenes(newScript)
-    };
-    setStageContent(updatedContent);
-  }, [stageContent, setStageContent]);
 
-  // Handle text selection
-  const handleTextSelect = useCallback(() => {
-    if (!scriptEditorRef.current) return;
-
-    const start = scriptEditorRef.current.selectionStart;
-    const end = scriptEditorRef.current.selectionEnd;
-
-    if (start !== end) {
-      const text = localScript.substring(start, end);
-      setSelectedText({ start, end, text });
-    } else {
-      setSelectedText(null);
-    }
-  }, [localScript]);
 
   // Approve and lock script
   const handleApproveScript = useCallback(async () => {
-    if (!localScript || localScript.trim().length === 0) {
+    if (!editor) return;
+
+    const plainText = tiptapToPlainText(editor.getHTML());
+    if (!plainText || plainText.trim().length === 0) {
       toast.error('Cannot approve an empty script');
       return;
     }
 
     try {
       console.log('🔒 [STAGE 4] Approving master script...');
-      
+
       // Extract scenes if not already done
       let scenes = stageContent.scenes;
       if (scenes.length === 0) {
-        scenes = scriptService.extractScenes(localScript);
+        scenes = scriptService.extractScenes(plainText);
       }
 
       // Persist scenes to database
@@ -348,74 +370,46 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       await stageStateService.lockStage(projectId, 4);
 
       toast.success(`Master Script approved! ${scenes.length} scenes extracted and ready for production.`);
-      
+
       // Navigate to Stage 5
       onComplete();
-      
+
     } catch (error: any) {
       console.error('❌ [STAGE 4] Failed to approve script:', error);
       toast.error(error.message || 'Failed to approve script');
     }
-  }, [localScript, stageContent.scenes, projectId, onComplete]);
+  }, [editor, stageContent.scenes, projectId, onComplete]);
 
   // Scroll to beat
   const handleBeatClick = useCallback((beatIndex: number) => {
     setActiveBeatIndex(beatIndex);
-    
-    if (!scriptEditorRef.current || !stageContent.beatSheetSource?.beats) return;
+
+    if (!editor || !stageContent.beatSheetSource?.beats) return;
 
     // Simple approach: divide script into beat-sized chunks
     const beats = stageContent.beatSheetSource.beats;
-    const lines = localScript.split('\n');
+    const plainText = tiptapToPlainText(editor.getHTML());
+    const lines = plainText.split('\n');
     const linesPerBeat = Math.ceil(lines.length / beats.length);
     const targetLine = beatIndex * linesPerBeat;
-    
+
     // Calculate approximate character position
     let charPosition = 0;
     for (let i = 0; i < targetLine && i < lines.length; i++) {
       charPosition += lines[i].length + 1; // +1 for newline
     }
 
-    // Scroll textarea
-    scriptEditorRef.current.focus();
-    scriptEditorRef.current.setSelectionRange(charPosition, charPosition);
-    scriptEditorRef.current.scrollTop = (targetLine / lines.length) * scriptEditorRef.current.scrollHeight;
-  }, [stageContent.beatSheetSource, localScript]);
-
-  // Synchronize scroll between textarea and pre
-  const handleScroll = useCallback(() => {
-    if (scriptEditorRef.current && highlightPreRef.current) {
-      highlightPreRef.current.scrollTop = scriptEditorRef.current.scrollTop;
-      highlightPreRef.current.scrollLeft = scriptEditorRef.current.scrollLeft;
+    // Scroll Tiptap editor to position
+    editor.commands.focus();
+    editor.commands.setTextSelection(charPosition);
+    // Scroll the editor container to the calculated position
+    const editorElement = document.querySelector('.ProseMirror') as HTMLElement;
+    if (editorElement) {
+      const lineHeight = 20; // Approximate line height
+      editorElement.scrollTop = targetLine * lineHeight;
     }
-  }, []);
+  }, [editor, stageContent.beatSheetSource]);
 
-  // Render syntax-highlighted script
-  const renderHighlightedScript = useCallback(() => {
-    const lines = localScript.split('\n');
-    
-    return lines.map((line, index) => {
-      const trimmedLine = line.trim();
-      
-      // Scene headings (INT./EXT.)
-      if (/^(INT\.|EXT\.)/.test(trimmedLine)) {
-        return <div key={index} className="text-amber-400 font-bold">{line}</div>;
-      }
-      
-      // Character names (all caps line)
-      if (/^[A-Z\s]+$/.test(trimmedLine) && trimmedLine.length > 0 && trimmedLine.length < 50) {
-        return <div key={index} className="text-blue-400 font-semibold">{line}</div>;
-      }
-      
-      // Parentheticals
-      if (/^\(.*\)$/.test(trimmedLine)) {
-        return <div key={index} className="text-gray-400 italic">{line}</div>;
-      }
-      
-      // Default (action lines, dialogue) - white text
-      return <div key={index} className="text-foreground">{line || '\u00A0'}</div>;
-    });
-  }, [localScript]);
 
   // Loading state
   if (isLoading) {
@@ -502,7 +496,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
             <RefreshCw className="w-4 h-4" />
             Regenerate
           </Button>
-          {selectedText && (
+          {hasSelection && (
             <Button 
               variant="secondary" 
               size="sm" 
@@ -531,30 +525,12 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       <div className="flex-1 flex overflow-hidden">
         {/* Script Editor */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 relative overflow-hidden">
-            {/* Syntax-highlighted overlay - non-scrollable, follows textarea scroll */}
-            <pre
-              ref={highlightPreRef}
-              className="absolute inset-0 p-6 font-mono text-sm leading-relaxed whitespace-pre-wrap overflow-hidden pointer-events-none bg-transparent"
-            >
-              {renderHighlightedScript()}
-            </pre>
-            
-            {/* Editable textarea - user interacts with this, text is transparent */}
-            <textarea
-              ref={scriptEditorRef}
-              value={localScript}
-              onChange={(e) => handleScriptChange(e.target.value)}
-              onSelect={handleTextSelect}
-              onScroll={handleScroll}
-              disabled={isGenerating}
-              className="absolute inset-0 p-6 font-mono text-sm leading-relaxed whitespace-pre-wrap overflow-auto resize-none bg-transparent focus:outline-none disabled:opacity-50"
-              style={{ 
-                caretColor: 'currentColor',
-                color: 'transparent'
-              }}
-              spellCheck={false}
-            />
+          {/* Screenplay Toolbar */}
+          <ScreenplayToolbar editor={editor} />
+
+          {/* Tiptap Editor */}
+          <div className="flex-1 overflow-auto bg-background">
+            <EditorContent editor={editor} />
           </div>
         </div>
 
@@ -685,7 +661,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
 
       {/* Section Edit Dialog */}
       <AnimatePresence>
-        {showSectionEditDialog && selectedText && (
+        {showSectionEditDialog && hasSelection && editor && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -704,7 +680,13 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
               
               <div className="mb-4 p-3 bg-secondary rounded-lg border border-border">
                 <p className="text-sm text-muted-foreground mb-1">Selected text:</p>
-                <p className="text-sm font-mono">{selectedText.text.substring(0, 200)}{selectedText.text.length > 200 ? '...' : ''}</p>
+                <p className="text-sm font-mono">
+                  {(() => {
+                    const { from, to } = editor.state.selection;
+                    const selectedText = editor.state.doc.textBetween(from, to);
+                    return selectedText.substring(0, 200) + (selectedText.length > 200 ? '...' : '');
+                  })()}
+                </p>
               </div>
               
               <p className="text-sm text-muted-foreground mb-2">
