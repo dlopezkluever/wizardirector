@@ -1,4 +1,53 @@
- Auto-save scheduled in 1000ms
+I got some errors trying to test; did i have to run an sql or something 
+ 
+2
+chunk-BXPIEAEW.js?v=803cb60c:1796 Uncaught SyntaxError: No node type or group 'paragraph' found (in content expression 'paragraph block*')
+    at TokenStream.err (chunk-BXPIEAEW.js?v=803cb60c:1796:11)
+    at resolveName (chunk-BXPIEAEW.js?v=803cb60c:1859:12)
+    at parseExprAtom (chunk-BXPIEAEW.js?v=803cb60c:1869:17)
+    at parseExprSubscript (chunk-BXPIEAEW.js?v=803cb60c:1814:14)
+    at parseExprSeq (chunk-BXPIEAEW.js?v=803cb60c:1809:16)
+    at parseExpr (chunk-BXPIEAEW.js?v=803cb60c:1802:16)
+    at _ContentMatch.parse (chunk-BXPIEAEW.js?v=803cb60c:1621:16)
+    at new Schema (chunk-BXPIEAEW.js?v=803cb60c:2355:106)
+    at getSchemaByResolvedExtensions (chunk-BXPIEAEW.js?v=803cb60c:13502:10)
+    at new ExtensionManager (chunk-BXPIEAEW.js?v=803cb60c:15231:19)
+
+chunk-R6S4VRB5.js?v=803cb60c:14032 The above error occurred in the <Stage4MasterScript> component:
+
+    at Stage4MasterScript (http://localhost:8080/src/components/pipeline/Stage4MasterScript.tsx:38:38)
+    at div
+    at ProjectView (http://localhost:8080/src/pages/ProjectView.tsx:69:42)
+    at main
+    at div
+    at MainLayout (http://localhost:8080/src/components/layout/MainLayout.tsx:25:30)
+    at ProtectedRoute (http://localhost:8080/src/components/auth/ProtectedRoute.tsx:25:34)
+    at RenderedRoute (http://localhost:8080/node_modules/.vite/deps/react-router-dom.js?v=803cb60c:4088:5)
+    at Routes (http://localhost:8080/node_modules/.vite/deps/react-router-dom.js?v=803cb60c:4558:5)
+    at Router (http://localhost:8080/node_modules/.vite/deps/react-router-dom.js?v=803cb60c:4501:15)
+    at BrowserRouter (http://localhost:8080/node_modules/.vite/deps/react-router-dom.js?v=803cb60c:5247:5)
+    at Provider (http://localhost:8080/node_modules/.vite/deps/chunk-PLT6GTVM.js?v=803cb60c:38:15)
+    at TooltipProvider (http://localhost:8080/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=803cb60c:2244:5)
+    at QueryClientProvider (http://localhost:8080/node_modules/.vite/deps/@tanstack_react-query.js?v=803cb60c:2934:3)
+    at App
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+chunk-R6S4VRB5.js?v=803cb60c:9129 Uncaught SyntaxError: No node type or group 'paragraph' found (in content expression 'paragraph block*')
+    at TokenStream.err (chunk-BXPIEAEW.js?v=803cb60c:1796:11)
+    at resolveName (chunk-BXPIEAEW.js?v=803cb60c:1859:12)
+    at parseExprAtom (chunk-BXPIEAEW.js?v=803cb60c:1869:17)
+    at parseExprSubscript (chunk-BXPIEAEW.js?v=803cb60c:1814:14)
+    at parseExprSeq (chunk-BXPIEAEW.js?v=803cb60c:1809:16)
+    at parseExpr (chunk-BXPIEAEW.js?v=803cb60c:1802:16)
+    at _ContentMatch.parse (chunk-BXPIEAEW.js?v=803cb60c:1621:16)
+    at new Schema (chunk-BXPIEAEW.js?v=803cb60c:2355:106)
+    at getSchemaByResolvedExtensions (chunk-BXPIEAEW.js?v=803cb60c:13502:10)
+    at new ExtensionManager (chunk-BXPIEAEW.js?v=803cb60c:15231:19)
+
+
+
+Auto-save scheduled in 1000ms
 stageStateService.ts:93 ✅ Auth session found, making API request...
 stageStateService.ts:101 📤 Request body: 
 {content: {…}, status: 'draft', regenerationGuidance: ''}

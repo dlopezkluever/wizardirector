@@ -7,6 +7,7 @@ export function tiptapToPlainText(html: string): string {
 
   let screenplay = '';
 
+  // Handle custom screenplay elements
   doc.querySelectorAll('[data-type]').forEach((element) => {
     const type = element.getAttribute('data-type');
     const text = element.textContent || '';
@@ -30,6 +31,14 @@ export function tiptapToPlainText(html: string): string {
       case 'transition':
         screenplay += `${' '.repeat(50)}${text.toUpperCase()}\n\n`;
         break;
+    }
+  });
+
+  // Handle regular paragraphs (fallback for regular text)
+  doc.querySelectorAll('p').forEach((element) => {
+    const text = element.textContent || '';
+    if (text.trim()) {
+      screenplay += `${text}\n\n`;
     }
   });
 

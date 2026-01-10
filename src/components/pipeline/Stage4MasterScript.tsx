@@ -87,8 +87,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        // Disable default paragraph behavior
-        paragraph: false,
+        // Keep default paragraph for compatibility
       }),
       Placeholder.configure({
         placeholder: 'Start writing your screenplay...',

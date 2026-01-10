@@ -44,6 +44,12 @@
   margin-bottom: 1rem;
 }
 
+/* Default paragraphs (fallback for regular text) */
+.ProseMirror p {
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
 /* Selection styling */
 .ProseMirror ::selection {
   background: rgba(59, 130, 246, 0.3); /* blue with opacity */
