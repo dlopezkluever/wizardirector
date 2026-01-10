@@ -115,13 +115,12 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       const html = editor.getHTML();
       const plainText = tiptapToPlainText(html);
 
-      // Update local state immediately for UI responsiveness
-      const updatedContent: Stage4Content = {
-        ...stageContent,
+      // Update local state immediately for UI responsiveness (functional update to preserve all fields)
+      setStageContent(prev => ({
+        ...prev,
         formattedScript: plainText,
         scenes: scriptService.extractScenes(plainText)
-      };
-      setStageContent(updatedContent);
+      }));
 
       // Clear existing timeout
       if (saveTimeoutRef.current) {
@@ -155,17 +154,28 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
 
   // Update editor content when stage content loads from DB
   useEffect(() => {
-    if (!editor || isLoading) return;
+    if (!editor || isLoading) {
+      console.log('⏭️ [STAGE 4] Skipping editor sync:', { hasEditor: !!editor, isLoading });
+      return;
+    }
     
     if (stageContent.formattedScript) {
       const currentPlainText = tiptapToPlainText(editor.getHTML());
       
       // Only update if content changed (avoid infinite loops)
       if (currentPlainText !== stageContent.formattedScript) {
-        console.log('📝 [STAGE 4] Syncing loaded content to editor');
+        console.log('📝 [STAGE 4] Syncing loaded content to editor', {
+          contentLength: stageContent.formattedScript.length,
+          currentLength: currentPlainText.length,
+          scenesCount: stageContent.scenes?.length || 0
+        });
         const tiptapHtml = plainTextToTiptap(stageContent.formattedScript);
         editor.commands.setContent(tiptapHtml);
+      } else {
+        console.log('✅ [STAGE 4] Editor already has correct content');
       }
+    } else {
+      console.log('ℹ️ [STAGE 4] No formattedScript to sync');
     }
   }, [stageContent.formattedScript, editor, isLoading]);
 
@@ -235,14 +245,14 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
 
         setProjectParams(params);
 
-        // Update stage content with beat sheet source
-        setStageContent({
-          ...stageContent,
+        // Update stage content with beat sheet source (functional update to preserve existing content)
+        setStageContent(prev => ({
+          ...prev,
           beatSheetSource: {
             beats: stage3State.content.beats,
             stageId: stage3State.id
           }
-        });
+        }));
 
       } catch (error) {
         console.error('❌ [STAGE 4] Error loading dependencies:', error);
