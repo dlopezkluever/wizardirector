@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { stripHtmlTags } from '@/lib/utils/screenplay-converter';
 import type { Beat } from './beatService';
 
 export interface Scene {
@@ -342,7 +343,8 @@ Rewrite only the highlighted section based on the user's request. Maintain scree
     }
 
     // Extract formatted script from parsed object
-    const formattedScript = parsed.formatted_script || parsed.formattedScript || parsed.script || '';
+    let formattedScript = parsed.formatted_script || parsed.formattedScript || parsed.script || '';
+    formattedScript = stripHtmlTags(formattedScript);
     
     // Extract or generate scenes
     let scenes: Scene[] = [];

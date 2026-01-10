@@ -1,0 +1,78 @@
+/* Screenplay editor styles */
+.ProseMirror {
+  font-family: 'Courier Prime', 'Courier New', monospace;
+  font-size: 12pt;
+  line-height: 1.5;
+  padding: 1in;
+  background: var(--background);
+  color: var(--foreground);
+  min-height: 100%;
+}
+
+/* Scene Headings */
+.ProseMirror [data-type="scene-heading"] {
+  font-weight: bold;
+  text-transform: uppercase;
+  color: rgb(251, 191, 36); /* amber-400 */
+  margin-top: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+/* Character Names */
+.ProseMirror [data-type="character"] {
+  text-transform: uppercase;
+  color: rgb(147, 197, 253); /* blue-300 */
+  margin-left: 3.5in;
+  margin-top: 0.5rem;
+  margin-bottom: 0;
+}
+
+/* Dialogue */
+.ProseMirror [data-type="dialogue"] {
+  margin-left: 2in;
+  margin-right: 2in;
+  margin-top: 0;
+  margin-bottom: 0;
+  line-height: 1.3;
+}
+
+/* Parentheticals */
+.ProseMirror [data-type="parenthetical"] {
+  font-style: italic;
+  color: rgb(156, 163, 175); /* gray-400 */
+  margin-left: 2.5in;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+/* Action */
+.ProseMirror [data-type="action"] {
+  margin-top: 0;
+  margin-bottom: 0.25rem;
+}
+
+/* Default paragraphs (fallback for regular text) */
+.ProseMirror p {
+  margin-top: 0;
+  margin-bottom: 0.25rem;
+  line-height: 1.3;
+}
+
+/* Selection styling */
+.ProseMirror ::selection {
+  background: rgba(59, 130, 246, 0.3); /* blue with opacity */
+}
+
+/* Placeholder */
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: rgb(107, 114, 128); /* gray-500 */
+  pointer-events: none;
+  height: 0;
+}
+
+/* Focus outline */
+.ProseMirror-focused {
+  outline: none;
+}
