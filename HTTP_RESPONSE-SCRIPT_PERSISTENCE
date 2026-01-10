@@ -1,0 +1,175 @@
+{
+    "id": "dfcb87e5-b1b8-4b75-b32e-77ad36aa0c10",
+    "branch_id": "8429f61d-dc31-44ef-ae95-faf999840537",
+    "stage_number": 4,
+    "version": 1,
+    "status": "draft",
+    "inherited_from_stage_id": null,
+    "content": {
+        "scenes": [
+            {
+                "id": "scene-1-1768075213967",
+                "slug": "ext-duckeraiine-countryside-day",
+                "content": "EXT. DUCKERAIINE COUNTRYSIDE - DAY\n\nA vast, impossibly green meadow stretches under a cerulean sky dotted with fluffy, cartoon-like clouds. SUNLIGHT glints off a tranquil pond where plump, happy DUCKLINGS, no bigger than fluffy dandelions, splash and play. Their MOTHER, ANYA, a strikingly beautiful duck with intelligent, alert eyes and pristine white feathers, watches them with a gentle, proud smile. She preens a stray feather on her wing, her movements graceful and serene. The air is filled with the sweet, innocent QUACKING of the ducklings.\n\nSuddenly, a guttural, industrial HORN BLAST tears through the pastoral calm. The idyllic scene shatters.\n\nFrom the horizon, a legion of GEESE, clad in stark, militaristic grey uniforms, march with unnerving synchronicity. Their beaks are sharp, their eyes cold, unblinking orbs of obsidian. Leading them is DUCK STALIN, a formidable, unnaturally large goose with a perpetually scowling, bulbous head, adorned with a single, menacing black feather that droops like a dark omen. He wears a miniature, ill-fitting military greatcoat, buttons straining. His webbed feet slap the earth with brutal efficiency.\n\nThe goose legion descends like a plague. They move with shocking speed and violence, their honks now aggressive, percussive commands. They snatch ducklings with their beaks, tossing them unceremoniously into crude, wire-mesh crates being hauled by hulking, goose guards. The ducklings’ happy quacks turn to terrified, high-pitched PEALS of distress.\n\nAnya’s eyes widen in horror. Her beak drops open, a silent scream caught in her throat. She scrambles forward, a desperate, futile attempt to shield her young.\n\n                    ANYA\n               (A choked, desperate sound)\n          No!\nBut the geese are too many, too fast. One of the larger guards, a brute with a scarred beak, shoves Anya roughly aside with a feathered wing, sending her tumbling into the soft grass. She watches, helpless, as the last of her precious ducklings is bundled away, their tiny forms disappearing into the oppressive grey of the goose army.",
+                "heading": "EXT. DUCKERAIINE COUNTRYSIDE - DAY",
+                "sceneNumber": 1
+            },
+            {
+                "id": "scene-2-1768075213967",
+                "slug": "ext-duckeraiine-countryside-continuous",
+                "content": "EXT. DUCKERAIINE COUNTRYSIDE - CONTINUOUS\n\nAnya lies on the grass, the vibrant green mocking her despair. Her pristine white feathers are ruffled, smudged with dirt. Her eyes, moments ago filled with maternal love, are now pools of raw grief, brimming with unshed tears. Her chest heaves with ragged breaths. She clutches a single, tiny, yellow feather – a relic of her lost child. The world has gone from Technicolor to a stark, brutal monochrome. Her entire being trembles with a nascent, potent rage.",
+                "heading": "EXT. DUCKERAIINE COUNTRYSIDE - CONTINUOUS",
+                "sceneNumber": 2
+            },
+            {
+                "id": "scene-3-1768075213967",
+                "slug": "ext-duck-gulag-day",
+                "content": "EXT. DUCK GULAG - DAY\n\nA brutalist landscape of grey concrete and rusting metal. Towering, barbed-wire fences encircle a sprawling complex of grim, utilitarian barracks. The air is thick with a palpable sense of oppression, a chilling silence broken only by the distant, mournful HONKS of guards.\n\nAnya, having traversed an unimaginable distance, crouches behind a mound of rubble, her white feathers now grimy and torn. Her eyes, once soft, are now narrowed, burning with a fierce, unyielding determination. She peers through a gap in the fence.\n\nInside, the ducklings are crammed into cramped, filthy pens. Their vibrant yellow has dulled to a sickly pale. They huddle together, shivering, their small bodies gaunt. They are no longer playing; they are simply surviving, their eyes vacant, devoid of their former spark. Guards, identical to the ones who raided her home, patrol with heavy, clanking boots, their faces impassive, cruel. The environment is deliberately devoid of any warmth, any color, any sign of life beyond mere existence.\n\n                    ANYA\n               (Whispering, a growl in her throat)\nMy babies…\n\nA cold, hard resolve settles over Anya. The grief has transmuted into a pure, unadulterated maternal fury.",
+                "heading": "EXT. DUCK GULAG - DAY",
+                "sceneNumber": 3
+            },
+            {
+                "id": "scene-4-1768075213967",
+                "slug": "ext-duck-gulag-gates-day",
+                "content": "EXT. DUCK GULAG GATES - DAY\n\nThe imposing, rusted gates of the Duck Gulag stand shut, a symbol of impenetrable authority. Two GEESE GUARDS, armed with long, sharpened poles, stand sentinel. Their posture is bored, almost lethargic, a testament to their perceived security.\n\nAnya emerges from the shadows, no longer a cowering mother but a force of nature. She stands at the full height of her avian form, her wings spread wide, her head held high. Her eyes blaze like twin embers. She is a figure of pure, primal wrath.\n\n                    ANYA\n               (A guttural, earth-shattering ROAR)\nRAAAAAAAAAAAAAAAAWWWWWWWWWWWWWWWWWWRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+                "heading": "EXT. DUCK GULAG GATES - DAY",
+                "sceneNumber": 4
+            }
+        ],
+        "syncStatus": "synced",
+        "beatSheetSource": {
+            "beats": [
+                {
+                    "id": "beat-1",
+                    "text": "The idyllic \"Duckraine\" is violently disrupted by Duck Stalin and his goose legion, who brutally raid and abduct ducklings.",
+                    "order": 1,
+                    "rationale": "This establishes the inciting incident, introducing the antagonist and the central conflict: the loss of the ducklings.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 20
+                },
+                {
+                    "id": "beat-2",
+                    "text": "Anya witnesses the abduction, experiencing profound grief that fuels her future actions.",
+                    "order": 2,
+                    "rationale": "This is an emotional beat that defines the protagonist's motivation and internal state, setting up her character arc.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 15
+                },
+                {
+                    "id": "beat-3",
+                    "text": "Anya discovers her ducklings in the oppressive, dehumanizing environment of the Duck Gulag.",
+                    "order": 3,
+                    "rationale": "This beat raises the stakes by showing the dire situation of the abducted ducklings and the nature of the antagonist's regime.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 20
+                },
+                {
+                    "id": "beat-4",
+                    "text": "Driven by maternal rage, Anya abandons stealth and approaches the gulag as a direct, forceful presence.",
+                    "order": 4,
+                    "rationale": "This marks a turning point in Anya's approach, shifting from passive victim to active aggressor, building momentum.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 15
+                },
+                {
+                    "id": "beat-5",
+                    "text": "Anya storms the gulag gates with a primal roar, initiating a chaotic and audacious assault.",
+                    "order": 5,
+                    "rationale": "This is the point of no return, where Anya directly confronts the established order, kicking off the main action sequence.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 20
+                },
+                {
+                    "id": "beat-6",
+                    "text": "The guards, initially confused, react with aggression to Anya's unexpected attack.",
+                    "order": 6,
+                    "rationale": "This beat shows the immediate consequence of Anya's actions and escalates the physical conflict.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 10
+                },
+                {
+                    "id": "beat-7",
+                    "text": "The ducklings, inspired by Anya's bravery, begin to riot and surge against their captors.",
+                    "order": 7,
+                    "rationale": "This beat shows the impact of the protagonist's actions on the oppressed, creating a collective uprising and shifting the power dynamic.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 20
+                },
+                {
+                    "id": "beat-8",
+                    "text": "Duck Stalin emerges, enraged by the rebellion and Anya's direct challenge to his authority.",
+                    "order": 8,
+                    "rationale": "This reintroduces the primary antagonist in a position of conflict with the protagonist, setting up the climax.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 15
+                },
+                {
+                    "id": "beat-9",
+                    "text": "Anya and Duck Stalin engage in an over-the-top, primal battle, fueled by maternal love versus tyrannical fury.",
+                    "order": 9,
+                    "rationale": "This is the central confrontation of the climax, a dramatic showdown between the protagonist and antagonist.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 25
+                },
+                {
+                    "id": "beat-10",
+                    "text": "Anya cleverly uses the chaotic environment and Duck Stalin's brute force against him, dodging his attacks.",
+                    "order": 10,
+                    "rationale": "This beat demonstrates Anya's resourcefulness and the escalating nature of the conflict, highlighting her unique strengths.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 20
+                },
+                {
+                    "id": "beat-11",
+                    "text": "Duck Stalin makes a desperate, all-out charge, lowering his head to impale Anya.",
+                    "order": 11,
+                    "rationale": "This is the peak of the antagonist's aggression, representing his final, desperate attempt to win.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 15
+                },
+                {
+                    "id": "beat-12",
+                    "text": "Anya unleashes her powerful 'duck beat' directly against Duck Stalin's charging beak, causing it to buckle comically.",
+                    "order": 12,
+                    "rationale": "This is the turning point of the climax, the decisive blow where the protagonist defeats the antagonist through a unique, absurd method.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 20
+                },
+                {
+                    "id": "beat-13",
+                    "text": "Duck Stalin is left broken and humiliated, his authority and beak equally shattered.",
+                    "order": 13,
+                    "rationale": "This shows the immediate consequence of Anya's victory and the antagonist's defeat, emphasizing the absurdity.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 10
+                },
+                {
+                    "id": "beat-14",
+                    "text": "Inspired by Anya and the chaos, other mothers emerge, and a triumphant, chaotic procession of families flees the gulag.",
+                    "order": 14,
+                    "rationale": "This beat shows the wider impact of Anya's victory, leading to the resolution of the immediate conflict and the liberation of the others.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 20
+                },
+                {
+                    "id": "beat-15",
+                    "text": "Anya and her reunited family fly towards the horizon, bathed in a heroic golden glow, leaving the disarrayed Duck Gulag behind.",
+                    "order": 15,
+                    "rationale": "This is the resolution and final image, depicting the protagonist's success, the restoration of order (albeit a chaotic one), and the ultimate triumph.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 25
+                }
+            ],
+            "stageId": "21a59b6d-8a10-42f9-9452-0068dd69cb90"
+        },
+        "formattedScript": "EXT. DUCKERAIINE COUNTRYSIDE - DAY\n\nA vast, impossibly green meadow stretches under a cerulean sky dotted with fluffy, cartoon-like clouds. SUNLIGHT glints off a tranquil pond where plump, happy DUCKLINGS, no bigger than fluffy dandelions, splash and play. Their MOTHER, ANYA, a strikingly beautiful duck with intelligent, alert eyes and pristine white feathers, watches them with a gentle, proud smile. She preens a stray feather on her wing, her movements graceful and serene. The air is filled with the sweet, innocent QUACKING of the ducklings.\n\nSuddenly, a guttural, industrial HORN BLAST tears through the pastoral calm. The idyllic scene shatters.\n\nFrom the horizon, a legion of GEESE, clad in stark, militaristic grey uniforms, march with unnerving synchronicity. Their beaks are sharp, their eyes cold, unblinking orbs of obsidian. Leading them is DUCK STALIN, a formidable, unnaturally large goose with a perpetually scowling, bulbous head, adorned with a single, menacing black feather that droops like a dark omen. He wears a miniature, ill-fitting military greatcoat, buttons straining. His webbed feet slap the earth with brutal efficiency.\n\nThe goose legion descends like a plague. They move with shocking speed and violence, their honks now aggressive, percussive commands. They snatch ducklings with their beaks, tossing them unceremoniously into crude, wire-mesh crates being hauled by hulking, goose guards. The ducklings’ happy quacks turn to terrified, high-pitched PEALS of distress.\n\nAnya’s eyes widen in horror. Her beak drops open, a silent scream caught in her throat. She scrambles forward, a desperate, futile attempt to shield her young.\n\n                    ANYA\n               (A choked, desperate sound)\n          No!\nBut the geese are too many, too fast. One of the larger guards, a brute with a scarred beak, shoves Anya roughly aside with a feathered wing, sending her tumbling into the soft grass. She watches, helpless, as the last of her precious ducklings is bundled away, their tiny forms disappearing into the oppressive grey of the goose army.\n\nEXT. DUCKERAIINE COUNTRYSIDE - CONTINUOUS\n\nAnya lies on the grass, the vibrant green mocking her despair. Her pristine white feathers are ruffled, smudged with dirt. Her eyes, moments ago filled with maternal love, are now pools of raw grief, brimming with unshed tears. Her chest heaves with ragged breaths. She clutches a single, tiny, yellow feather – a relic of her lost child. The world has gone from Technicolor to a stark, brutal monochrome. Her entire being trembles with a nascent, potent rage.\n\nEXT. DUCK GULAG - DAY\n\nA brutalist landscape of grey concrete and rusting metal. Towering, barbed-wire fences encircle a sprawling complex of grim, utilitarian barracks. The air is thick with a palpable sense of oppression, a chilling silence broken only by the distant, mournful HONKS of guards.\n\nAnya, having traversed an unimaginable distance, crouches behind a mound of rubble, her white feathers now grimy and torn. Her eyes, once soft, are now narrowed, burning with a fierce, unyielding determination. She peers through a gap in the fence.\n\nInside, the ducklings are crammed into cramped, filthy pens. Their vibrant yellow has dulled to a sickly pale. They huddle together, shivering, their small bodies gaunt. They are no longer playing; they are simply surviving, their eyes vacant, devoid of their former spark. Guards, identical to the ones who raided her home, patrol with heavy, clanking boots, their faces impassive, cruel. The environment is deliberately devoid of any warmth, any color, any sign of life beyond mere existence.\n\n                    ANYA\n               (Whispering, a growl in her throat)\nMy babies…\n\nA cold, hard resolve settles over Anya. The grief has transmuted into a pure, unadulterated maternal fury.\n\nEXT. DUCK GULAG GATES - DAY\n\nThe imposing, rusted gates of the Duck Gulag stand shut, a symbol of impenetrable authority. Two GEESE GUARDS, armed with long, sharpened poles, stand sentinel. Their posture is bored, almost lethargic, a testament to their perceived security.\n\nAnya emerges from the shadows, no longer a cowering mother but a force of nature. She stands at the full height of her avian form, her wings spread wide, her head held high. Her eyes blaze like twin embers. She is a figure of pure, primal wrath.\n\n                    ANYA\n               (A guttural, earth-shattering ROAR)\nRAAAAAAAAAAAAAAAAWWWWWWWWWWWWWWWWWWRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+        "langsmithTraceId": "d7fbfc1a-7ed4-4d0a-9a2f-bbab822a1a65",
+        "promptTemplateVersion": "1.0.0"
+    },
+    "prompt_template_version": "",
+    "final_prompt": "",
+    "regeneration_guidance": "",
+    "created_at": "2026-01-10T19:58:13.745368+00:00",
+    "created_by": "fa58ace1-ae7e-4dd8-ab54-1fbe453701f2",
+    "langsmith_trace_id": null
+}
