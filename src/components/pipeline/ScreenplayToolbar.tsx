@@ -39,6 +39,16 @@ export function ScreenplayToolbar({ editor }: ScreenplayToolbarProps) {
     },
   ];
 
+  const handleFormatClick = (type: string) => {
+    // Convert the current block to the screenplay element type
+    // This will maintain cursor position and convert the paragraph/block at cursor
+    editor
+      .chain()
+      .focus()
+      .setNode(type)
+      .run();
+  };
+
   return (
     <div className="flex items-center gap-2 px-6 py-3 border-b border-border bg-card">
       {buttons.map((btn) => (
@@ -46,7 +56,7 @@ export function ScreenplayToolbar({ editor }: ScreenplayToolbarProps) {
           key={btn.type}
           variant={btn.active ? 'default' : 'outline'}
           size="sm"
-          onClick={() => editor.chain().focus().setNode(btn.type).run()}
+          onClick={() => handleFormatClick(btn.type)}
           title={btn.shortcut}
         >
           {btn.label}

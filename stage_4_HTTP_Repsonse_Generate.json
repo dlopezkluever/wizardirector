@@ -1,0 +1,307 @@
+// Example HTTP Response for Stage 4 Master Script Generation
+
+{
+    "id": "af54bfc6-e835-476f-82e0-380362029ecd",
+    "branch_id": "ef15e5a1-bc52-4f78-99c7-369e42511a75",
+    "stage_number": 4,
+    "version": 6,
+    "status": "draft",
+    "inherited_from_stage_id": "1db898e8-090e-46b6-a47b-1a2f316ecfa4",
+    "content": {
+        "scenes": [
+            {
+                "id": "scene-1-1768056010497",
+                "slug": "ext-rolling-hills-day",
+                "content": "EXT. ROLLING HILLS - DAY\n\nSunlight dapples a vibrant, green landscape. Three small, distinct houses stand scattered across a gentle slope.\n\nTo the left, a whimsical structure of straw, meticulously woven, stands precariously. This is PERCY'S HOUSE.\n\nIn the center, a more robust dwelling constructed from sturdy, interlocking wooden planks. This is PENELOPE'S HOUSE.\n\nTo the right, a squat, solid fortress of carefully stacked, weathered stones. This is PIP'S HOUSE.\n\nPERCY (30s, slender, bespectacled, wearing a crisp, slightly-too-small architect's smock) pores over a rolled-up BLUEPRINT, his brow furrowed in concentration. He meticulously places a single piece of straw, adjusting it with a tiny, precise movement.\n\nPENELOPE (20s, robust, energetic, clad in practical overalls and a tool belt adorned with various hammers and wrenches) energetically hammers a nail into the wooden wall of her house. Sweat beads on her forehead, but her movements are efficient and strong.\n\nPIP (teens, small, nimble, dressed in simple, earth-toned clothes) carefully balances a smooth, grey STONE atop an already impressive, spiraling tower. His tongue pokes out in concentration, his small frame radiating quiet determination.\n\nThe pigs work with focused intensity, each absorbed in their craft.",
+                "heading": "EXT. ROLLING HILLS - DAY",
+                "sceneNumber": 1
+            },
+            {
+                "id": "scene-2-1768056010497",
+                "slug": "ext-woodline-day",
+                "content": "EXT. WOODLINE - DAY\n\nA dense, shadowy treeline borders the rolling hills.\n\nBARTHOLOMEW (ageless, gaunt, with hollow eyes and perpetually chattering teeth) peeks out from behind a thick oak. His fur is matted, his ribs visible beneath his ragged coat. His eyes, like two dark marbles, fix on the pigs.\n\nA low GROWL rumbles in his throat. His gaze drifts from the straw house to the wood, then to the stone. His stomach GURGLES audibly, a hollow, desperate sound.\n\nHis eyes widen, a flicker of predatory hunger igniting. He licks his dry lips, a slow, deliberate movement.\n\nHe begins to creep forward, a shadow detaching itself from the deeper shadows of the woods. His movements are initially stealthy, paws padding silently on the grass. Then, a surge of resolve. He breaks into a determined, slightly awkward, loping run.",
+                "heading": "EXT. WOODLINE - DAY",
+                "sceneNumber": 2
+            },
+            {
+                "id": "scene-3-1768056010497",
+                "slug": "ext-percys-straw-house-day",
+                "content": "EXT. PERCY'S STRAW HOUSE - DAY\n\nPercy is adding a final flourish to his straw roof, a tiny flag made of a leaf. He beams with pride.\n\nSuddenly, Percy's ears perk up. His head snaps towards the treeline. His eyes widen behind his spectacles.\n\nHe sees Bartholomew, no longer stealthy, but a determined, albeit slightly comical, figure hurtling towards them.\n\nPercy's jaw drops. He frantically waves his blueprint.\n\n                    PERCY\n          > (Panicked squeal)\n> Siblings! Wolf!\n\nPenelope freezes, hammer mid-swing. Pip fumbles his stone, which rolls harmlessly away. Their faces, moments before filled with industry, contort into expressions of pure alarm.",
+                "heading": "EXT. PERCY'S STRAW HOUSE - DAY",
+                "sceneNumber": 3
+            },
+            {
+                "id": "scene-4-1768056010497",
+                "slug": "ext-percys-straw-house-day",
+                "content": "EXT. PERCY'S STRAW HOUSE - DAY\n\nBartholomew arrives at the straw house, panting heavily. He surveys the flimsy structure with a sneer.\n\nHe plants his feet, puffs out his chest, and takes a deep, theatrical breath. His cheeks swell like a bellows.\n\nHe EXHALES with a mighty ROAR, a torrent of wind that tears through the straw.\n\nCHAFF and debris explode outwards in a chaotic, swirling vortex. The straw house disintegrates in seconds, scattering like confetti.\n\nPercy, caught in the gale, yelps. He tumbles out of the collapsing structure, landing in a heap of straw. He clutches his precious BLUEPRINT to his chest, his spectacles askew, his smock covered in bits of straw.",
+                "heading": "EXT. PERCY'S STRAW HOUSE - DAY",
+                "sceneNumber": 4
+            },
+            {
+                "id": "scene-5-1768056010497",
+                "slug": "ext-field-between-houses-day",
+                "content": "EXT. FIELD BETWEEN HOUSES - DAY\n\nPercy, wide-eyed and disheveled, scrambles to his feet. He doesn't look back. He sprints across the green field, his little legs churning. His face is a mask of pure terror, a silent plea etched into his features.",
+                "heading": "EXT. FIELD BETWEEN HOUSES - DAY",
+                "sceneNumber": 5
+            },
+            {
+                "id": "scene-6-1768056010497",
+                "slug": "ext-penelopes-wooden-house-day",
+                "content": "EXT. PENELOPE'S WOODEN HOUSE - DAY\n\nPenelope is already at the door, her toolbox clutched in one hand. She pulls Percy inside just as Bartholomew arrives.\n\nThe wolf eyes the wooden house. He takes another deep breath, this one even more profound, his gaunt frame visibly straining. His eyes bulge.\n\nHe unleashes another powerful gust. The wooden planks GROAN, then SPLINTER. The walls buckle and crack. With a final, resounding CRACK, the house EXPLODES outwards.\n\nPenelope, with surprising agility, shoves Percy ahead of her and grabs her TOOLBOX. They are thrown clear of the collapsing structure.",
+                "heading": "EXT. PENELOPE'S WOODEN HOUSE - DAY",
+                "sceneNumber": 6
+            },
+            {
+                "id": "scene-7-1768056010497",
+                "slug": "ext-field-between-houses-day",
+                "content": "EXT. FIELD BETWEEN HOUSES - DAY\n\nPenelope and Percy land hard, a tangle of limbs and tools. They disentangle themselves quickly.\n\nPenelope glances at Pip's stone house, a beacon of solidity in the distance. Percy is already halfway there.\n\nPenelope grabs Percy's arm, and they both sprint towards the stone structure.",
+                "heading": "EXT. FIELD BETWEEN HOUSES - DAY",
+                "sceneNumber": 7
+            },
+            {
+                "id": "scene-8-1768056010497",
+                "slug": "ext-pips-stone-house-day",
+                "content": "EXT. PIP'S STONE HOUSE - DAY\n\nPip's stone house stands firm and unyielding. The door is already open.\n\nPercy and Penelope tumble inside, breathless. Pip is already there, his small face etched with worry. He quickly shuts and bolts the heavy stone door.\n\nThe three siblings huddle together, panting, looking out through a small, reinforced window.",
+                "heading": "EXT. PIP'S STONE HOUSE - DAY",
+                "sceneNumber": 8
+            },
+            {
+                "id": "scene-9-1768056010497",
+                "slug": "ext-pips-stone-house-day",
+                "content": "EXT. PIP'S STONE HOUSE - DAY\n\nBartholomew arrives at the stone house. He circles it, sniffing at the base. He confronts the solid stone walls.\n\nHe takes a breath, smaller this time, and blows. A pathetic PUFF of air escapes his lips, barely ruffling a loose pebble.\n\nHe tries again, puffing his cheeks until they are red. This time, a weak WHISTLE. He coughs, a dry, rasping sound.\n\nFrustration contorts his gaunt features. He stomps his foot.",
+                "heading": "EXT. PIP'S STONE HOUSE - DAY",
+                "sceneNumber": 9
+            },
+            {
+                "id": "scene-10-1768056010497",
+                "slug": "ext-pips-stone-house-day",
+                "content": "EXT. PIP'S STONE HOUSE - DAY\n\nBartholomew, defeated in his primary strategy, resorts to brute force. He begins POUNDING on the heavy stone door with his fists.\n\nTHUMP. THUMP. THUMP.\n\nHis growls, once menacing, are now tinged with exasperation. They devolve into frustrated GRUMBLES.\n\nInside, the pigs flinch with each blow. Percy clutches his blueprint, Penelope grips a hammer, and Pip trembles slightly, but his eyes are fixed on the wolf outside.",
+                "heading": "EXT. PIP'S STONE HOUSE - DAY",
+                "sceneNumber": 10
+            },
+            {
+                "id": "scene-11-1768056010497",
+                "slug": "ext-pips-stone-house-interior-day",
+                "content": "EXT. PIP'S STONE HOUSE - INTERIOR - DAY\n\nPip, his initial fear subsiding, his gaze shifts upwards. He points a small, determined finger towards the CHIMNEY. His expression is one of dawning realization. He mouths words to his siblings.\n\n                    PIP\n> (Whispering)\n\n> Chimney.\n\nPercy and Penelope follow his gaze, their expressions shifting from fear to contemplation.",
+                "heading": "EXT. PIP'S STONE HOUSE - INTERIOR - DAY",
+                "sceneNumber": 11
+            },
+            {
+                "id": "scene-12-1768056010497",
+                "slug": "ext-pips-stone-house-rooftop-day",
+                "content": "EXT. PIP'S STONE HOUSE - ROOFTOP - DAY\n\nBartholomew, his ears catching the muffled sounds from within, glances upwards. He sees the chimney. A sly grin spreads across his wolfish face.\n\nWith surprising agility for his gaunt frame, he begins to CLIMB onto the roof, his claws finding purchase on the rough stone.",
+                "heading": "EXT. PIP'S STONE HOUSE - ROOFTOP - DAY",
+                "sceneNumber": 12
+            },
+            {
+                "id": "scene-13-1768056010497",
+                "slug": "ext-pips-stone-house-interior-day",
+                "content": "EXT. PIP'S STONE HOUSE - INTERIOR - DAY\n\nPercy and Penelope exchange a look. Pip, with renewed purpose, scurries to the hearth. He hefts a large, cast-iron POT, filled to the brim with bubbling, steaming WATER, and shoves it directly beneath the chimney opening.\n\nPercy and Penelope watch with tense anticipation, their hearts pounding.",
+                "heading": "EXT. PIP'S STONE HOUSE - INTERIOR - DAY",
+                "sceneNumber": 13
+            },
+            {
+                "id": "scene-14-1768056010497",
+                "slug": "ext-pips-stone-house-chimneyrooftop-day",
+                "content": "EXT. PIP'S STONE HOUSE - CHIMNEY/ROOFTOP - DAY\n\nBartholomew reaches the chimney opening. He pauses, licking his lips, picturing a delicious pig dinner.\n\nHe takes a final, determined breath and slides headfirst down the chimney.\n\nSFX: A loud, sudden YELP and a violent SPLASH.\n\nBartholomew erupts from the pot, yelping in surprise and searing pain. Steam rises from his fur.",
+                "heading": "EXT. PIP'S STONE HOUSE - CHIMNEY/ROOFTOP - DAY",
+                "sceneNumber": 14
+            },
+            {
+                "id": "scene-15-1768056010497",
+                "slug": "ext-pips-stone-house-interior-day",
+                "content": "EXT. PIP'S STONE HOUSE - INTERIOR - DAY\n\nBartholomew lands in a heap on the floor, soaked and sputtering. He shakes his head, his fur singed, his tail tucked between his legs.\n\nHe lets out a pathetic, whimpering SQUEAL. He looks at the three pigs, his eyes wide with a mixture of pain and humiliation. He shakes his head slowly, a defeated gesture.\n\nWithout another sound, he scrambles back towards the door, yanks it open, and flees into the daylight, a steaming, dejected shadow.",
+                "heading": "EXT. PIP'S STONE HOUSE - INTERIOR - DAY",
+                "sceneNumber": 15
+            },
+            {
+                "id": "scene-16-1768056010497",
+                "slug": "ext-pips-stone-house-day",
+                "content": "EXT. PIP'S STONE HOUSE - DAY\n\nThe three pigs watch from the window as Bartholomew slinks away across the field, a trail of steam rising from his miserable form.\n\nA collective SIGH of relief washes over them.\n\nPercy straightens his spectacles, a small smile playing on his lips. Penelope grins, clapping Pip on the back. Pip does a little victory dance, a series of happy hops.\n\nThey look at the sturdy stone walls of Pip's house. Then, they look at each other. A new understanding passes between them.",
+                "heading": "EXT. PIP'S STONE HOUSE - DAY",
+                "sceneNumber": 16
+            },
+            {
+                "id": "scene-17-1768056010497",
+                "slug": "ext-rolling-hills-sunset",
+                "content": "EXT. ROLLING HILLS - SUNSET\n\nThe sun dips below the horizon, casting a warm, golden glow over the landscape.\n\nThe three pigs are working together. They are constructing a single, magnificent house. Its foundation is solid stone, its walls are reinforced wood, and its roof is a sturdy thatch. It is a harmonious blend of all their individual strengths.\n\nPercy consults a shared blueprint, Penelope expertly hammers, and Pip carefully places stones. They move with a newfound rhythm, a synchronized dance of collaboration.\n\nA warm, hopeful light surrounds them, bathing them in its gentle embrace.\n\nFADE OUT.",
+                "heading": "EXT. ROLLING HILLS - SUNSET",
+                "sceneNumber": 17
+            }
+        ],
+        "syncStatus": "synced",
+        "beatSheetSource": {
+            "beats": [
+                {
+                    "id": "intro-pigs-and-houses",
+                    "text": "Three distinct pig siblings, Percy (architect), Penelope (builder), and Pip (stone stacker), are shown diligently constructing their individual homes: straw, wood, and stone, respectively. Their differing approaches are immediately apparent.",
+                    "order": 1,
+                    "rationale": "Establishes the main characters, their personalities, and the initial setup of their differing approaches to building, which will be crucial to the plot.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 15
+                },
+                {
+                    "id": "wolf-observes",
+                    "text": "Bartholomew, a gaunt and perpetually hungry wolf, spots the pigs from the treeline, his eyes widening with desperate craving. He begins a stealthy, then comically determined, approach.",
+                    "order": 2,
+                    "rationale": "Introduces the antagonist and his motivation, setting the stage for conflict.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 10
+                },
+                {
+                    "id": "wolf-spotted-by-percy",
+                    "text": "Percy, the vigilant elder, spots Bartholomew and alerts his siblings, causing their building to halt and their expressions to turn to alarm.",
+                    "order": 3,
+                    "rationale": "The inciting incident: the threat is perceived, and the protagonists react, initiating the rising action.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 5
+                },
+                {
+                    "id": "wolf-destroys-straw-house",
+                    "text": "Bartholomew reaches Percy's straw house, takes a theatrical breath, and blows it down in a comical flurry of chaff and debris. Percy scrambles out, clutching his blueprint.",
+                    "order": 4,
+                    "rationale": "The first major obstacle and failure. Demonstrates the wolf's power and the vulnerability of the initial defenses.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 15
+                },
+                {
+                    "id": "percy-flees-to-penelope",
+                    "text": "Percy, wide-eyed and disheveled, sprints towards Penelope's house, a silent plea on his face.",
+                    "order": 5,
+                    "rationale": "Shows the immediate consequence of the first attack and the protagonist's reaction (flight).",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 5
+                },
+                {
+                    "id": "wolf-destroys-wood-house",
+                    "text": "Bartholomew arrives at Penelope's wooden house, takes an even deeper breath with visible strain, and blows it apart. Penelope grabs her toolbox and flees.",
+                    "order": 6,
+                    "rationale": "The second obstacle and failure. Shows a slightly more difficult but ultimately successful attack by the wolf, raising the stakes.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 15
+                },
+                {
+                    "id": "pigs-reunite-at-stone-house",
+                    "text": "Penelope dashes to Pip's sturdy stone house, where Percy is already waiting, looking exasperated. The three siblings are now together.",
+                    "order": 7,
+                    "rationale": "The protagonists are forced to unite, creating a new dynamic and a shared goal for survival.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 10
+                },
+                {
+                    "id": "wolf-fails-to-blow-stone-house",
+                    "text": "Bartholomew attempts to blow down Pip's stone house but only manages pathetic puffs and a wheezing cough, his frustration mounting.",
+                    "order": 8,
+                    "rationale": "The antagonist's primary method fails, signaling a turning point and forcing him to adapt.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 15
+                },
+                {
+                    "id": "wolf-bangs-on-door",
+                    "text": "Frustrated, Bartholomew begins banging on the stone house door, his growls turning to exasperated grumbles as the pigs huddle inside.",
+                    "order": 9,
+                    "rationale": "Shows the antagonist's increasing desperation and the pigs' fear and determination.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 10
+                },
+                {
+                    "id": "pip-gets-an-idea",
+                    "text": "Pip, observing the situation, points to the chimney, indicating a new strategy.",
+                    "order": 10,
+                    "rationale": "The 'aha!' moment. The protagonist(s) devise a plan to overcome the antagonist.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 5
+                },
+                {
+                    "id": "wolf-climbs-roof",
+                    "text": "Seeing the chimney, Bartholomew devises his own plan and climbs onto the roof, his movements surprisingly agile.",
+                    "order": 11,
+                    "rationale": "The antagonist reacts to the perceived vulnerability and initiates his counter-plan.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 10
+                },
+                {
+                    "id": "pigs-prepare-trap",
+                    "text": "Inside, Pip quickly shoves a large pot of boiling water under the chimney opening as Percy and Penelope watch with tense anticipation.",
+                    "order": 12,
+                    "rationale": "The protagonists set their trap, building suspense and demonstrating their teamwork.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 10
+                },
+                {
+                    "id": "wolf-falls-into-trap",
+                    "text": "Bartholomew slides down the chimney and lands with a yelp and a splash in the boiling water, yelping in surprise and pain.",
+                    "order": 13,
+                    "rationale": "The climax of the conflict: the trap is sprung, and the antagonist is defeated.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 15
+                },
+                {
+                    "id": "wolf-scrambles-away-defeated",
+                    "text": "Bartholomew scrambles out, steaming and singed, his tail tucked. He lets out a pathetic squeal, looks back at the pigs, shakes his head, and slinks away defeated.",
+                    "order": 14,
+                    "rationale": "The resolution of the conflict. The antagonist is vanquished and retreats.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 15
+                },
+                {
+                    "id": "pigs-relief-and-rebuilding",
+                    "text": "The pigs watch him go, sighing in relief. Percy straightens his spectacles, Penelope grins, and Pip dances. They then turn to rebuilding, appreciating Pip's sturdy construction.",
+                    "order": 15,
+                    "rationale": "The immediate aftermath and emotional release for the protagonists. A shift towards reconciliation and learning.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 15
+                },
+                {
+                    "id": "unified-rebuilding-shot",
+                    "text": "The final shot shows the three pigs working together harmoniously on a new, unified structure, a warm, hopeful glow surrounding them as the sun sets.",
+                    "order": 16,
+                    "rationale": "The resolution and thematic conclusion. The protagonists have learned from their experience and achieved a new state of unity and strength.",
+                    "isExpanded": false,
+                    "estimatedScreenTimeSeconds": 15
+                }
+            ],
+            "stageId": "5d89a5cf-b9da-40af-adb9-a8b54ed92f15"
+        },
+        "formattedScript": "EXT. ROLLING HILLS - DAY\n\nSunlight dapples a vibrant, green landscape. Three small, distinct houses stand scattered across a gentle slope.\n\nTo the left, a whimsical structure of straw, meticulously woven, stands precariously. This is PERCY'S HOUSE.\n\nIn the center, a more robust dwelling constructed from sturdy, interlocking wooden planks. This is PENELOPE'S HOUSE.\n\nTo the right, a squat, solid fortress of carefully stacked, weathered stones. This is PIP'S HOUSE.\n\nPERCY (30s, slender, bespectacled, wearing a crisp, slightly-too-small architect's smock) pores over a rolled-up BLUEPRINT, his brow furrowed in concentration. He meticulously places a single piece of straw, adjusting it with a tiny, precise movement.\n\nPENELOPE (20s, robust, energetic, clad in practical overalls and a tool belt adorned with various hammers and wrenches) energetically hammers a nail into the wooden wall of her house. Sweat beads on her forehead, but her movements are efficient and strong.\n\nPIP (teens, small, nimble, dressed in simple, earth-toned clothes) carefully balances a smooth, grey STONE atop an already impressive, spiraling tower. His tongue pokes out in concentration, his small frame radiating quiet determination.\n\nThe pigs work with focused intensity, each absorbed in their craft.\n\nEXT. WOODLINE - DAY\n\nA dense, shadowy treeline borders the rolling hills.\n\nBARTHOLOMEW (ageless, gaunt, with hollow eyes and perpetually chattering teeth) peeks out from behind a thick oak. His fur is matted, his ribs visible beneath his ragged coat. His eyes, like two dark marbles, fix on the pigs.\n\nA low GROWL rumbles in his throat. His gaze drifts from the straw house to the wood, then to the stone. His stomach GURGLES audibly, a hollow, desperate sound.\n\nHis eyes widen, a flicker of predatory hunger igniting. He licks his dry lips, a slow, deliberate movement.\n\nHe begins to creep forward, a shadow detaching itself from the deeper shadows of the woods. His movements are initially stealthy, paws padding silently on the grass. Then, a surge of resolve. He breaks into a determined, slightly awkward, loping run.\n\nEXT. PERCY'S STRAW HOUSE - DAY\n\nPercy is adding a final flourish to his straw roof, a tiny flag made of a leaf. He beams with pride.\n\nSuddenly, Percy's ears perk up. His head snaps towards the treeline. His eyes widen behind his spectacles.\n\nHe sees Bartholomew, no longer stealthy, but a determined, albeit slightly comical, figure hurtling towards them.\n\nPercy's jaw drops. He frantically waves his blueprint.\n\n                    PERCY\n          > (Panicked squeal)\n> Siblings! Wolf!\n\nPenelope freezes, hammer mid-swing. Pip fumbles his stone, which rolls harmlessly away. Their faces, moments before filled with industry, contort into expressions of pure alarm.\n\nEXT. PERCY'S STRAW HOUSE - DAY\n\nBartholomew arrives at the straw house, panting heavily. He surveys the flimsy structure with a sneer.\n\nHe plants his feet, puffs out his chest, and takes a deep, theatrical breath. His cheeks swell like a bellows.\n\nHe EXHALES with a mighty ROAR, a torrent of wind that tears through the straw.\n\nCHAFF and debris explode outwards in a chaotic, swirling vortex. The straw house disintegrates in seconds, scattering like confetti.\n\nPercy, caught in the gale, yelps. He tumbles out of the collapsing structure, landing in a heap of straw. He clutches his precious BLUEPRINT to his chest, his spectacles askew, his smock covered in bits of straw.\n\nEXT. FIELD BETWEEN HOUSES - DAY\n\nPercy, wide-eyed and disheveled, scrambles to his feet. He doesn't look back. He sprints across the green field, his little legs churning. His face is a mask of pure terror, a silent plea etched into his features.\n\nEXT. PENELOPE'S WOODEN HOUSE - DAY\n\nPenelope is already at the door, her toolbox clutched in one hand. She pulls Percy inside just as Bartholomew arrives.\n\nThe wolf eyes the wooden house. He takes another deep breath, this one even more profound, his gaunt frame visibly straining. His eyes bulge.\n\nHe unleashes another powerful gust. The wooden planks GROAN, then SPLINTER. The walls buckle and crack. With a final, resounding CRACK, the house EXPLODES outwards.\n\nPenelope, with surprising agility, shoves Percy ahead of her and grabs her TOOLBOX. They are thrown clear of the collapsing structure.\n\nEXT. FIELD BETWEEN HOUSES - DAY\n\nPenelope and Percy land hard, a tangle of limbs and tools. They disentangle themselves quickly.\n\nPenelope glances at Pip's stone house, a beacon of solidity in the distance. Percy is already halfway there.\n\nPenelope grabs Percy's arm, and they both sprint towards the stone structure.\n\nEXT. PIP'S STONE HOUSE - DAY\n\nPip's stone house stands firm and unyielding. The door is already open.\n\nPercy and Penelope tumble inside, breathless. Pip is already there, his small face etched with worry. He quickly shuts and bolts the heavy stone door.\n\nThe three siblings huddle together, panting, looking out through a small, reinforced window.\n\nEXT. PIP'S STONE HOUSE - DAY\n\nBartholomew arrives at the stone house. He circles it, sniffing at the base. He confronts the solid stone walls.\n\nHe takes a breath, smaller this time, and blows. A pathetic PUFF of air escapes his lips, barely ruffling a loose pebble.\n\nHe tries again, puffing his cheeks until they are red. This time, a weak WHISTLE. He coughs, a dry, rasping sound.\n\nFrustration contorts his gaunt features. He stomps his foot.\n\nEXT. PIP'S STONE HOUSE - DAY\n\nBartholomew, defeated in his primary strategy, resorts to brute force. He begins POUNDING on the heavy stone door with his fists.\n\nTHUMP. THUMP. THUMP.\n\nHis growls, once menacing, are now tinged with exasperation. They devolve into frustrated GRUMBLES.\n\nInside, the pigs flinch with each blow. Percy clutches his blueprint, Penelope grips a hammer, and Pip trembles slightly, but his eyes are fixed on the wolf outside.\n\nEXT. PIP'S STONE HOUSE - INTERIOR - DAY\n\nPip, his initial fear subsiding, his gaze shifts upwards. He points a small, determined finger towards the CHIMNEY. His expression is one of dawning realization. He mouths words to his siblings.\n\n                    PIP\n> (Whispering)\n\n> Chimney.\n\nPercy and Penelope follow his gaze, their expressions shifting from fear to contemplation.\n\nEXT. PIP'S STONE HOUSE - ROOFTOP - DAY\n\nBartholomew, his ears catching the muffled sounds from within, glances upwards. He sees the chimney. A sly grin spreads across his wolfish face.\n\nWith surprising agility for his gaunt frame, he begins to CLIMB onto the roof, his claws finding purchase on the rough stone.\n\nEXT. PIP'S STONE HOUSE - INTERIOR - DAY\n\nPercy and Penelope exchange a look. Pip, with renewed purpose, scurries to the hearth. He hefts a large, cast-iron POT, filled to the brim with bubbling, steaming WATER, and shoves it directly beneath the chimney opening.\n\nPercy and Penelope watch with tense anticipation, their hearts pounding.\n\nEXT. PIP'S STONE HOUSE - CHIMNEY/ROOFTOP - DAY\n\nBartholomew reaches the chimney opening. He pauses, licking his lips, picturing a delicious pig dinner.\n\nHe takes a final, determined breath and slides headfirst down the chimney.\n\nSFX: A loud, sudden YELP and a violent SPLASH.\n\nBartholomew erupts from the pot, yelping in surprise and searing pain. Steam rises from his fur.\n\nEXT. PIP'S STONE HOUSE - INTERIOR - DAY\n\nBartholomew lands in a heap on the floor, soaked and sputtering. He shakes his head, his fur singed, his tail tucked between his legs.\n\nHe lets out a pathetic, whimpering SQUEAL. He looks at the three pigs, his eyes wide with a mixture of pain and humiliation. He shakes his head slowly, a defeated gesture.\n\nWithout another sound, he scrambles back towards the door, yanks it open, and flees into the daylight, a steaming, dejected shadow.\n\nEXT. PIP'S STONE HOUSE - DAY\n\nThe three pigs watch from the window as Bartholomew slinks away across the field, a trail of steam rising from his miserable form.\n\nA collective SIGH of relief washes over them.\n\nPercy straightens his spectacles, a small smile playing on his lips. Penelope grins, clapping Pip on the back. Pip does a little victory dance, a series of happy hops.\n\nThey look at the sturdy stone walls of Pip's house. Then, they look at each other. A new understanding passes between them.\n\nEXT. ROLLING HILLS - SUNSET\n\nThe sun dips below the horizon, casting a warm, golden glow over the landscape.\n\nThe three pigs are working together. They are constructing a single, magnificent house. Its foundation is solid stone, its walls are reinforced wood, and its roof is a sturdy thatch. It is a harmonious blend of all their individual strengths.\n\nPercy consults a shared blueprint, Penelope expertly hammers, and Pip carefully places stones. They move with a newfound rhythm, a synchronized dance of collaboration.\n\nA warm, hopeful light surrounds them, bathing them in its gentle embrace.\n\nFADE OUT.",
+        "langsmithTraceId": "74f950df-4180-4a98-bc3b-446fcaf5a4dd",
+        "promptTemplateVersion": "1.0.0"
+    },
+    "prompt_template_version": "",
+    "final_prompt": "",
+    "regeneration_guidance": "",
+    "created_at": "2026-01-10T14:38:09.11557+00:00",
+    "created_by": "fa58ace1-ae7e-4dd8-ab54-1fbe453701f2",
+    "langsmith_trace_id": null
+}
+
+// -----------------------------------------------------------------------------------
+// generate-from-template:
+
+{
+    "success": true,
+    "data": {
+        "content": "EXT. ROLLING HILLS - DAY\n\nSunlight dapples a vibrant, green landscape. Three small, distinct houses stand scattered across a gentle slope.\n\nTo the left, a whimsical structure of straw, meticulously woven, stands precariously. This is PERCY'S HOUSE.\n\nIn the center, a more robust dwelling constructed from sturdy, interlocking wooden planks. This is PENELOPE'S HOUSE.\n\nTo the right, a squat, solid fortress of carefully stacked, weathered stones. This is PIP'S HOUSE.\n\nPERCY (30s, slender, bespectacled, wearing a crisp, slightly-too-small architect's smock) pores over a rolled-up BLUEPRINT, his brow furrowed in concentration. He meticulously places a single piece of straw, adjusting it with a tiny, precise movement.\n\nPENELOPE (20s, robust, energetic, clad in practical overalls and a tool belt adorned with various hammers and wrenches) energetically hammers a nail into the wooden wall of her house. Sweat beads on her forehead, but her movements are efficient and strong.\n\nPIP (teens, small, nimble, dressed in simple, earth-toned clothes) carefully balances a smooth, grey STONE atop an already impressive, spiraling tower. His tongue pokes out in concentration, his small frame radiating quiet determination.\n\nThe pigs work with focused intensity, each absorbed in their craft.\n\nEXT. WOODLINE - DAY\n\nA dense, shadowy treeline borders the rolling hills.\n\nBARTHOLOMEW (ageless, gaunt, with hollow eyes and perpetually chattering teeth) peeks out from behind a thick oak. His fur is matted, his ribs visible beneath his ragged coat. His eyes, like two dark marbles, fix on the pigs.\n\nA low GROWL rumbles in his throat. His gaze drifts from the straw house to the wood, then to the stone. His stomach GURGLES audibly, a hollow, desperate sound.\n\nHis eyes widen, a flicker of predatory hunger igniting. He licks his dry lips, a slow, deliberate movement.\n\nHe begins to creep forward, a shadow detaching itself from the deeper shadows of the woods. His movements are initially stealthy, paws padding silently on the grass. Then, a surge of resolve. He breaks into a determined, slightly awkward, loping run.\n\nEXT. PERCY'S STRAW HOUSE - DAY\n\nPercy is adding a final flourish to his straw roof, a tiny flag made of a leaf. He beams with pride.\n\nSuddenly, Percy's ears perk up. His head snaps towards the treeline. His eyes widen behind his spectacles.\n\nHe sees Bartholomew, no longer stealthy, but a determined, albeit slightly comical, figure hurtling towards them.\n\nPercy's jaw drops. He frantically waves his blueprint.\n\n<center>PERCY</center>\n> (Panicked squeal)\n> Siblings! Wolf!\n\nPenelope freezes, hammer mid-swing. Pip fumbles his stone, which rolls harmlessly away. Their faces, moments before filled with industry, contort into expressions of pure alarm.\n\nEXT. PERCY'S STRAW HOUSE - DAY\n\nBartholomew arrives at the straw house, panting heavily. He surveys the flimsy structure with a sneer.\n\nHe plants his feet, puffs out his chest, and takes a deep, theatrical breath. His cheeks swell like a bellows.\n\nHe EXHALES with a mighty ROAR, a torrent of wind that tears through the straw.\n\nCHAFF and debris explode outwards in a chaotic, swirling vortex. The straw house disintegrates in seconds, scattering like confetti.\n\nPercy, caught in the gale, yelps. He tumbles out of the collapsing structure, landing in a heap of straw. He clutches his precious BLUEPRINT to his chest, his spectacles askew, his smock covered in bits of straw.\n\nEXT. FIELD BETWEEN HOUSES - DAY\n\nPercy, wide-eyed and disheveled, scrambles to his feet. He doesn't look back. He sprints across the green field, his little legs churning. His face is a mask of pure terror, a silent plea etched into his features.\n\nEXT. PENELOPE'S WOODEN HOUSE - DAY\n\nPenelope is already at the door, her toolbox clutched in one hand. She pulls Percy inside just as Bartholomew arrives.\n\nThe wolf eyes the wooden house. He takes another deep breath, this one even more profound, his gaunt frame visibly straining. His eyes bulge.\n\nHe unleashes another powerful gust. The wooden planks GROAN, then SPLINTER. The walls buckle and crack. With a final, resounding CRACK, the house EXPLODES outwards.\n\nPenelope, with surprising agility, shoves Percy ahead of her and grabs her TOOLBOX. They are thrown clear of the collapsing structure.\n\nEXT. FIELD BETWEEN HOUSES - DAY\n\nPenelope and Percy land hard, a tangle of limbs and tools. They disentangle themselves quickly.\n\nPenelope glances at Pip's stone house, a beacon of solidity in the distance. Percy is already halfway there.\n\nPenelope grabs Percy's arm, and they both sprint towards the stone structure.\n\nEXT. PIP'S STONE HOUSE - DAY\n\nPip's stone house stands firm and unyielding. The door is already open.\n\nPercy and Penelope tumble inside, breathless. Pip is already there, his small face etched with worry. He quickly shuts and bolts the heavy stone door.\n\nThe three siblings huddle together, panting, looking out through a small, reinforced window.\n\nEXT. PIP'S STONE HOUSE - DAY\n\nBartholomew arrives at the stone house. He circles it, sniffing at the base. He confronts the solid stone walls.\n\nHe takes a breath, smaller this time, and blows. A pathetic PUFF of air escapes his lips, barely ruffling a loose pebble.\n\nHe tries again, puffing his cheeks until they are red. This time, a weak WHISTLE. He coughs, a dry, rasping sound.\n\nFrustration contorts his gaunt features. He stomps his foot.\n\nEXT. PIP'S STONE HOUSE - DAY\n\nBartholomew, defeated in his primary strategy, resorts to brute force. He begins POUNDING on the heavy stone door with his fists.\n\nTHUMP. THUMP. THUMP.\n\nHis growls, once menacing, are now tinged with exasperation. They devolve into frustrated GRUMBLES.\n\nInside, the pigs flinch with each blow. Percy clutches his blueprint, Penelope grips a hammer, and Pip trembles slightly, but his eyes are fixed on the wolf outside.\n\nEXT. PIP'S STONE HOUSE - INTERIOR - DAY\n\nPip, his initial fear subsiding, his gaze shifts upwards. He points a small, determined finger towards the CHIMNEY. His expression is one of dawning realization. He mouths words to his siblings.\n\n<center>PIP</center>\n> (Whispering)\n> Chimney.\n\nPercy and Penelope follow his gaze, their expressions shifting from fear to contemplation.\n\nEXT. PIP'S STONE HOUSE - ROOFTOP - DAY\n\nBartholomew, his ears catching the muffled sounds from within, glances upwards. He sees the chimney. A sly grin spreads across his wolfish face.\n\nWith surprising agility for his gaunt frame, he begins to CLIMB onto the roof, his claws finding purchase on the rough stone.\n\nEXT. PIP'S STONE HOUSE - INTERIOR - DAY\n\nPercy and Penelope exchange a look. Pip, with renewed purpose, scurries to the hearth. He hefts a large, cast-iron POT, filled to the brim with bubbling, steaming WATER, and shoves it directly beneath the chimney opening.\n\nPercy and Penelope watch with tense anticipation, their hearts pounding.\n\nEXT. PIP'S STONE HOUSE - CHIMNEY/ROOFTOP - DAY\n\nBartholomew reaches the chimney opening. He pauses, licking his lips, picturing a delicious pig dinner.\n\nHe takes a final, determined breath and slides headfirst down the chimney.\n\nSFX: A loud, sudden YELP and a violent SPLASH.\n\nBartholomew erupts from the pot, yelping in surprise and searing pain. Steam rises from his fur.\n\nEXT. PIP'S STONE HOUSE - INTERIOR - DAY\n\nBartholomew lands in a heap on the floor, soaked and sputtering. He shakes his head, his fur singed, his tail tucked between his legs.\n\nHe lets out a pathetic, whimpering SQUEAL. He looks at the three pigs, his eyes wide with a mixture of pain and humiliation. He shakes his head slowly, a defeated gesture.\n\nWithout another sound, he scrambles back towards the door, yanks it open, and flees into the daylight, a steaming, dejected shadow.\n\nEXT. PIP'S STONE HOUSE - DAY\n\nThe three pigs watch from the window as Bartholomew slinks away across the field, a trail of steam rising from his miserable form.\n\nA collective SIGH of relief washes over them.\n\nPercy straightens his spectacles, a small smile playing on his lips. Penelope grins, clapping Pip on the back. Pip does a little victory dance, a series of happy hops.\n\nThey look at the sturdy stone walls of Pip's house. Then, they look at each other. A new understanding passes between them.\n\nEXT. ROLLING HILLS - SUNSET\n\nThe sun dips below the horizon, casting a warm, golden glow over the landscape.\n\nThe three pigs are working together. They are constructing a single, magnificent house. Its foundation is solid stone, its walls are reinforced wood, and its roof is a sturdy thatch. It is a harmonious blend of all their individual strengths.\n\nPercy consults a shared blueprint, Penelope expertly hammers, and Pip carefully places stones. They move with a newfound rhythm, a synchronized dance of collaboration.\n\nA warm, hopeful light surrounds them, bathing them in its gentle embrace.\n\nFADE OUT.",
+        "usage": {
+            "tokens": {
+                "inputTokens": 1710,
+                "outputTokens": 2193,
+                "totalTokens": 3903
+            },
+            "cost": {
+                "inputCost": 0.000128,
+                "outputCost": 0.000658,
+                "totalCost": 0.000786,
+                "currency": "USD"
+            },
+            "model": "gemini-2.5-flash-lite",
+            "timestamp": "2026-01-10T14:40:10.371Z"
+        },
+        "traceId": "74f950df-4180-4a98-bc3b-446fcaf5a4dd",
+        "requestId": "74f950df-4180-4a98-bc3b-446fcaf5a4dd",
+        "model": "gemini-2.5-flash-lite",
+        "finishReason": "stop",
+        "promptTemplateVersion": "1.0.0",
+        "templateId": "1beacc6a-eaa1-4219-b956-b6efb5765053"
+    }
+}

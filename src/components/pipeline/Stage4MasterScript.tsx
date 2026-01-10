@@ -82,6 +82,9 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
   const [beatPanelCollapsed, setBeatPanelCollapsed] = useState(false);
   const [projectParams, setProjectParams] = useState<any>(null);
   
+  // Track if we're programmatically setting content to prevent cursor jumps
+  const isProgrammaticUpdate = useRef(false);
+  
 
   // Initialize Tiptap editor
   const editor = useEditor({
@@ -123,6 +126,13 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       setHasSelection(from !== to);
     },
   });
+
+  // Set initial content flag on mount if there's existing content
+  useEffect(() => {
+    if (stageContent.formattedScript) {
+      isProgrammaticUpdate.current = true;
+    }
+  }, []); // Only run once on mount
 
   // Load Stage 3 beat sheet and project parameters
   useEffect(() => {
@@ -199,11 +209,12 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
     loadDependencies();
   }, [projectId]);
 
-  // Sync local script with stage content
+  // Sync editor content only when loading from external source (not user edits)
   useEffect(() => {
-    if (editor && stageContent.formattedScript) {
+    if (editor && stageContent.formattedScript && isProgrammaticUpdate.current) {
       const html = plainTextToTiptap(stageContent.formattedScript);
       editor.commands.setContent(html);
+      isProgrammaticUpdate.current = false; // Reset flag
     }
   }, [stageContent.formattedScript, editor]);
 
@@ -234,6 +245,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
         promptTemplateVersion: result.promptTemplateVersion
       };
 
+      isProgrammaticUpdate.current = true; // Flag programmatic update
       setStageContent(updatedContent);
 
       toast.success(`Script generated with ${result.scenes.length} scenes`);
@@ -279,6 +291,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
         promptTemplateVersion: result.promptTemplateVersion
       };
 
+      isProgrammaticUpdate.current = true; // Flag programmatic update
       setStageContent(updatedContent);
       setRegenerateGuidance('');
       
