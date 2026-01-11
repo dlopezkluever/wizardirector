@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { styleCapsuleService } from './styleCapsuleService';
 import { stripHtmlTags } from '@/lib/utils/screenplay-converter';
 import type { Beat } from './beatService';
 
@@ -56,6 +57,17 @@ class ScriptService {
     // Format beat sheet content for the LLM
     const beatSheetContent = this.formatBeatSheetForPrompt(request.beatSheet);
 
+    // Get writing style capsule injection
+    let writingStyleContext = '';
+    if (request.projectParams.writingStyleCapsuleId) {
+      try {
+        const capsule = await styleCapsuleService.getCapsule(request.projectParams.writingStyleCapsuleId);
+        writingStyleContext = styleCapsuleService.formatWritingStyleInjection(capsule);
+      } catch (error) {
+        console.warn('Failed to load writing style capsule:', error);
+      }
+    }
+
     const llmRequest = {
       templateName: 'master_script_generation',
       variables: {
@@ -65,7 +77,7 @@ class ScriptService {
         content_rating: request.projectParams.contentRating,
         genres: request.projectParams.genres.join(', '),
         tonal_precision: request.projectParams.tonalPrecision,
-        rag_retrieved_style_examples: '' // TODO: Implement RAG retrieval later
+        writing_style_context: writingStyleContext
       },
       metadata: {
         stage: 4,

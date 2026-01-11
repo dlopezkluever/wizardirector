@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Home,
-  FileText,
-  Image,
+  Palette,
   Box,
   ChevronLeft,
   ChevronRight,
@@ -23,8 +22,7 @@ interface SidebarItem {
 
 const sidebarItems: SidebarItem[] = [
   { id: 'home', label: 'Projects', icon: Home, href: '/' },
-  { id: 'written-rag', label: 'Written Style RAG', icon: FileText, href: '/rag/written' },
-  { id: 'visual-rag', label: 'Visual Style RAG', icon: Image, href: '/rag/visual' },
+  { id: 'style-capsules', label: 'Style Capsule Library', icon: Palette, href: '/style-capsules' },
   { id: 'assets', label: 'Asset Library', icon: Box, href: '/assets' },
 ];
 

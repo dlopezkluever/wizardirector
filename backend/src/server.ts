@@ -8,6 +8,7 @@ import { projectsRouter } from './routes/projects.js';
 import { stageStatesRouter } from './routes/stageStates.js';
 import { llmRouter } from './routes/llm.js';
 import { seedRouter } from './routes/seed.js';
+import styleCapsulesRouter from './routes/styleCapsules.js';
 import { authenticateUser } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -46,6 +47,9 @@ app.use('/api/llm', authenticateUser, llmRouter);
 
 // Seed routes (protected)
 app.use('/api/seed', authenticateUser, seedRouter);
+
+// Style Capsules routes (protected)
+app.use('/api/style-capsules', authenticateUser, styleCapsulesRouter);
 
 // Error handling middleware (must be last)
 app.use(errorHandler);

@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useStageState } from '@/lib/hooks/useStageState';
 import { stageStateService } from '@/lib/services/stageStateService';
+import { imageService } from '@/lib/services/imageService';
+import { StyleCapsuleSelector } from '@/components/styleCapsules/StyleCapsuleSelector';
 
 interface Asset {
   id: string;
@@ -13,13 +15,12 @@ interface Asset {
   name: string;
   description: string;
   hasImageKey: boolean;
+  imageUrl?: string;
 }
-
-const visualStyles = ['Cinematic Realism', 'Neo-Noir', 'Warm Nostalgia', 'Modern Minimalist', 'Documentary Style'];
 
 // Default content structure for Stage 5
 const getDefaultContent = () => ({
-  selectedVisualStyle: '',
+  visualStyleCapsuleId: '',
   assets: [] as Asset[],
   assetsLocked: false
 });
@@ -35,7 +36,7 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
 
   const content = stageState?.content || getDefaultContent();
   const [assets, setAssets] = useState<Asset[]>(content.assets || []);
-  const [selectedStyle, setSelectedStyle] = useState<string>(content.selectedVisualStyle || '');
+  const [visualStyleCapsuleId, setVisualStyleCapsuleId] = useState<string>(content.visualStyleCapsuleId || '');
   const [isLocking, setIsLocking] = useState(false);
 
   // Load assets from Stage 4 script extraction (this would come from a service call)
@@ -61,12 +62,31 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
     switch (type) { case 'character': return User; case 'location': return MapPin; case 'prop': return Package; }
   };
 
-  const generateImageKey = (assetId: string) => {
-    toast.info('Generating image key...');
-    setTimeout(() => {
-      setAssets(prev => prev.map(a => a.id === assetId ? { ...a, hasImageKey: true } : a));
-      toast.success('Image key generated');
-    }, 1500);
+  const generateImageKey = async (assetId: string) => {
+    const asset = assets.find(a => a.id === assetId);
+    if (!asset) return;
+
+    try {
+      toast.info('Generating image key...');
+
+      const result = await imageService.generateAssetImageKey(
+        projectId,
+        asset.description,
+        visualStyleCapsuleId || undefined
+      );
+
+      // Update the asset with the generated image key
+      setAssets(prev => prev.map(a =>
+        a.id === assetId
+          ? { ...a, hasImageKey: true, imageUrl: result.imageUrl }
+          : a
+      ));
+
+      toast.success('Image key generated successfully');
+    } catch (error) {
+      console.error('Failed to generate image key:', error);
+      toast.error('Failed to generate image key. Please try again.');
+    }
   };
 
   const handleLockAssets = async () => {
@@ -77,7 +97,7 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
 
       // Save the current state
       await updateStageState({
-        selectedVisualStyle: selectedStyle,
+        visualStyleCapsuleId,
         assets,
         assetsLocked: true
       });
@@ -96,7 +116,7 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
   };
 
   const allAssetsHaveKeys = assets.every(a => a.hasImageKey);
-  const canProceed = selectedStyle && allAssetsHaveKeys && !content.assetsLocked;
+  const canProceed = visualStyleCapsuleId && allAssetsHaveKeys && !content.assetsLocked;
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -124,26 +144,24 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
         <div className="max-w-4xl mx-auto space-y-8">
           {/* Visual Style Selection */}
           <section className="space-y-4">
-            <h3 className="font-display text-xl font-semibold text-foreground">Visual Style</h3>
-            <div className="flex flex-wrap gap-2">
-              {visualStyles.map(style => (
-                <Button
-                  key={style}
-                  variant={selectedStyle === style ? 'stage-active' : 'stage'}
-                  size="sm"
-                  onClick={async () => {
-                    setSelectedStyle(style);
-                    await updateStageState({
-                      selectedVisualStyle: style,
-                      assets,
-                      assetsLocked: content.assetsLocked
-                    });
-                  }}
-                >
-                  {style}
-                </Button>
-              ))}
-            </div>
+            <h3 className="font-display text-xl font-semibold text-foreground">Visual Style Capsule</h3>
+            <p className="text-sm text-muted-foreground">
+              Select a visual style capsule to define the aesthetic for all generated images and videos in this project.
+            </p>
+            <StyleCapsuleSelector
+              type="visual"
+              value={visualStyleCapsuleId}
+              onChange={async (capsuleId) => {
+                setVisualStyleCapsuleId(capsuleId);
+                await updateStageState({
+                  visualStyleCapsuleId: capsuleId,
+                  assets,
+                  assetsLocked: content.assetsLocked
+                });
+              }}
+              required={true}
+              showPreview={true}
+            />
           </section>
 
           {/* Assets Grid */}

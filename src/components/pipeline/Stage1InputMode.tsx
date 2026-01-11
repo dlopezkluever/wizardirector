@@ -25,6 +25,7 @@ import { projectService } from '@/lib/services/projectService';
 import { stageStateService } from '@/lib/services/stageStateService';
 import { inputProcessingService, type ProcessedInput } from '@/lib/services/inputProcessingService';
 import type { Project } from '@/types/project';
+import { StyleCapsuleSelector } from '@/components/styleCapsules/StyleCapsuleSelector';
 
 interface InputModeOption {
   id: InputMode;
@@ -95,6 +96,7 @@ interface Stage1Content {
   selectedGenres: string[];
   targetLength: [number, number];
   tonalPrecision: string;
+  writingStyleCapsuleId?: string;
   uploadedFiles: UploadedFile[];
   ideaText: string;
   processedInput?: ProcessedInput;
@@ -113,6 +115,7 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
       selectedGenres: [],
       targetLength: [3, 5],
       tonalPrecision: '',
+      writingStyleCapsuleId: undefined,
       uploadedFiles: [],
       ideaText: ''
     },
@@ -486,6 +489,24 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
             onChange={(e) => updateField('tonalPrecision', e.target.value)}
             placeholder="Describe the specific tone and atmosphere you want (e.g., 'Dark and moody with moments of dry humor, reminiscent of early Coen Brothers films...')"
             className="w-full h-32 px-4 py-3 rounded-xl bg-secondary border border-border text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+          />
+        </section>
+
+        {/* Writing Style Capsule Selection */}
+        <section className="space-y-4">
+          <h3 className="font-display text-xl font-semibold text-foreground">
+            Writing Style (Optional)
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            Select a writing style capsule to guide the AI's prose generation. You can change this later or leave it blank for a neutral style.
+          </p>
+          <StyleCapsuleSelector
+            type="writing"
+            value={content.writingStyleCapsuleId || ''}
+            onChange={(capsuleId) => updateField('writingStyleCapsuleId', capsuleId || undefined)}
+            placeholder="Choose a writing style capsule..."
+            required={false}
+            showPreview={true}
           />
         </section>
 

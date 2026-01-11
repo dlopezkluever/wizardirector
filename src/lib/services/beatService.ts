@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { styleCapsuleService } from './styleCapsuleService';
 
 export interface Beat {
   id: string;
@@ -40,6 +41,17 @@ class BeatService {
       throw new Error('User not authenticated');
     }
 
+    // Get writing style capsule injection
+    let writingStyleContext = '';
+    if (request.projectParams.writingStyleCapsuleId) {
+      try {
+        const capsule = await styleCapsuleService.getCapsule(request.projectParams.writingStyleCapsuleId);
+        writingStyleContext = styleCapsuleService.formatWritingStyleInjection(capsule);
+      } catch (error) {
+        console.warn('Failed to load writing style capsule:', error);
+      }
+    }
+
     const llmRequest = {
       templateName: 'beat_extraction',
       variables: {
@@ -49,7 +61,7 @@ class BeatService {
         target_length_max: request.projectParams.targetLengthMax,
         genres: request.projectParams.genres.join(', '),
         tonal_precision: request.projectParams.tonalPrecision,
-        rag_retrieved_style_examples: '' // TODO: Implement RAG retrieval later
+        writing_style_context: writingStyleContext
       },
       metadata: {
         stage: 3,
