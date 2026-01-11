@@ -24,7 +24,7 @@ This document defines the PostgreSQL schema and state transition rules for the 1
 
 * Every artifact records what it inherited from  
 * Overrides are logged, not silently applied  
-* RAG retrieval results are versioned and traceable
+* Style Capsule applications are versioned and traceable
 
 ### **3\. Deterministic Invalidation**
 
@@ -78,9 +78,9 @@ CREATE TABLE projects (
     genre TEXT\[\], \-- array of selected genres  
     tonal\_precision TEXT, \-- user's custom tone guidance  
       
-    \-- RAG Configuration  
-    written\_style\_rag\_id UUID REFERENCES rag\_databases(id),  
-    visual\_style\_rag\_id UUID REFERENCES rag\_databases(id),  
+    -- Style Capsule Configuration
+    writing_style_capsule_id UUID REFERENCES style_capsules(id),
+    visual_style_capsule_id UUID REFERENCES style_capsules(id),  
       
     \-- Metadata  
     active\_branch\_id UUID, \-- FK added after branches table  
@@ -522,77 +522,76 @@ CREATE INDEX idx\_scene\_instances\_inherited ON scene\_asset\_instances(inherit
 
 ---
 
-## **RAG & Retrieval Tracking**
+## **Style Capsule Management**
 
-### **`rag_databases`**
+### **`style_capsule_libraries`**
 
-**Purpose**: User-uploaded style vector databases
+**Purpose**: User-created Style Capsule collections
 
-CREATE TABLE rag\_databases (  
-    id UUID PRIMARY KEY DEFAULT gen\_random\_uuid(),  
-    user\_id UUID NOT NULL REFERENCES auth.users(id),  
-      
-    \-- Database Identity  
-    name TEXT NOT NULL,  
-    db\_type TEXT NOT NULL CHECK (db\_type IN ('written\_style', 'visual\_style')),  
-      
-    \-- Storage  
-    embedding\_version TEXT NOT NULL, \-- e.g., "text-embedding-3-small"  
-    document\_count INTEGER DEFAULT 0,  
-      
-    created\_at TIMESTAMPTZ DEFAULT NOW()  
+CREATE TABLE style\_capsule\_libraries (
+    id UUID PRIMARY KEY DEFAULT gen\_random\_uuid(),
+    user\_id UUID NOT NULL REFERENCES auth.users(id),
+
+    -- Library Identity
+    name TEXT NOT NULL,
+    library_type TEXT NOT NULL CHECK (library_type IN ('writing', 'visual')),
+
+    -- Metadata
+    capsule_count INTEGER DEFAULT 0,
+
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx\_rag\_user ON rag\_databases(user\_id);
+CREATE INDEX idx_style_capsule_libraries_user ON style_capsule_libraries(user_id);
 
 ---
 
-### **`rag_documents`**
+### **`style_capsules`**
 
-**Purpose**: Individual chunks in RAG databases (uses pgvector)
+**Purpose**: Individual Style Capsules for deterministic style injection
 
-CREATE EXTENSION IF NOT EXISTS vector;
+CREATE TABLE style\_capsules (
+    id UUID PRIMARY KEY DEFAULT gen\_random\_uuid(),
+    library_id UUID NOT NULL REFERENCES style_capsule_libraries(id) ON DELETE CASCADE,
 
-CREATE TABLE rag\_documents (  
-    id UUID PRIMARY KEY DEFAULT gen\_random\_uuid(),  
-    rag\_db\_id UUID NOT NULL REFERENCES rag\_databases(id) ON DELETE CASCADE,  
-      
-    \-- Content  
-    text\_content TEXT NOT NULL,  
-    embedding vector(1536), \-- OpenAI ada-002 or equivalent  
-      
-    \-- Metadata for Scoped Retrieval  
-    metadata JSONB, \-- e.g., {scene\_id, character\_id, verbosity\_flag}  
-      
-    created\_at TIMESTAMPTZ DEFAULT NOW()  
+    -- Capsule Identity
+    name TEXT NOT NULL,
+    capsule_type TEXT NOT NULL CHECK (capsule_type IN ('writing', 'visual')),
+
+    -- Content (Plain text + metadata, no embeddings)
+    text_content TEXT, -- For writing capsules: example text excerpts
+    image_urls TEXT[], -- For visual capsules: reference images
+    descriptors TEXT[], -- High-level descriptors (e.g., "minimalist", "ornate")
+    negative_constraints TEXT[], -- What NOT to imitate
+
+    -- Metadata
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx\_rag\_docs\_db ON rag\_documents(rag\_db\_id);  
-CREATE INDEX idx\_rag\_docs\_embedding ON rag\_documents USING hnsw (embedding vector\_cosine\_ops)  
-    WITH (m \= 16, ef\_construction \= 64); \-- tuned HNSW parameters
+CREATE INDEX idx_style_capsules_library ON style_capsules(library_id);
+CREATE INDEX idx_style_capsules_type ON style_capsules(capsule_type);
 
 ---
 
-### **`rag_retrievals`**
+### **`style_capsule_applications`**
 
-**Purpose**: Audit log of RAG queries per generation
+**Purpose**: Audit log of Style Capsule applications per generation
 
-CREATE TABLE rag\_retrievals (  
-    id UUID PRIMARY KEY DEFAULT gen\_random\_uuid(),  
-    stage\_state\_id UUID NOT NULL REFERENCES stage\_states(id) ON DELETE CASCADE,  
-      
-    \-- Query Context  
-    query\_embedding vector(1536),  
-    retrieval\_scope TEXT, \-- 'global\_only', 'scene\_only', 'combined'  
-      
-    \-- Results  
-    retrieved\_doc\_ids UUID\[\], \-- array of rag\_documents.id  
-    relevance\_scores NUMERIC\[\],  
-      
-    created\_at TIMESTAMPTZ DEFAULT NOW()  
+CREATE TABLE style\_capsule\_applications (
+    id UUID PRIMARY KEY DEFAULT gen\_random\_uuid(),
+    stage_state_id UUID NOT NULL REFERENCES stage_states(id) ON DELETE CASCADE,
+
+    -- Application Context
+    application_scope TEXT, -- 'global_only', 'scene_only', 'combined'
+
+    -- Applied Style Capsules
+    applied_capsule_ids UUID[], -- array of style_capsules.id
+    capsule_versions TEXT[], -- version identifiers for each capsule
+
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx\_rag\_retrievals\_stage ON rag\_retrievals(stage\_state\_id);
+CREATE INDEX idx_style_capsule_applications_stage ON style_capsule_applications(stage_state_id);
 
 ---
 
@@ -1097,7 +1096,7 @@ These are **PRD-mandated invariants** that must not rely on application code.
 ### **Indexing Strategy**
 
 * **Hot path queries**: Branch state, scene status, shot production  
-* **HNSW tuning**: `m=16, ef_construction=64` balances speed/accuracy for RAG  
+* **GIN/GIST indexes**: Optimized for JSONB metadata queries on Style Capsules  
 * **Partial indexes**: Only index active branches for write-heavy operations
 
 ### **Archival Strategy**
@@ -1151,7 +1150,7 @@ This schema provides:
 ✅ \*\*Explicit inheritance tracking\*\* at every stage    
 ✅ \*\*Asset promotion\*\* from project → global scope    
 ✅ \*\*Status tag continuity\*\* across scene boundaries    
-✅ \*\*RAG retrieval logging\*\* for debugging creative drift    
+✅ \*\*Style Capsule application logging\*\* for debugging creative drift    
 ✅ \*\*Performance optimization\*\* via tuned indexes and archival
 
 All state transitions are logged, reversible, and traceable through LangSmith integration points.

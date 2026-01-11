@@ -31,7 +31,7 @@ The contract ensures that **small changes in early stages deterministically affe
    - Every generation records:
      - What was inherited
      - What was overridden
-     - What was retrieved
+     - What Style Capsules were applied
 
 ---
 
@@ -151,20 +151,20 @@ Invalidation always triggers regeneration warnings.
 
 ---
 
-## Retrieval & RAG Contract
+## Style Capsule Application Contract
 
-### Retrieval Scope
+### Style Capsule Scope
 
-RAG queries must be explicitly scoped:
+Style Capsules must be explicitly scoped:
 - Global-only
 - Narrative-only
 - Scene-only
-- Combined (with weighting)
+- Combined (with inheritance)
 
-### Retrieval Guarantees
-- Retrieved documents are logged
-- Embedding versions are recorded
-- Retrieval scores are traceable
+### Application Guarantees
+- Applied Style Capsules are logged
+- Style Capsule versions are recorded
+- Application consistency is traceable
 
 ---
 
@@ -177,7 +177,7 @@ Prompt assembly follows a fixed pipeline:
 3. Load narrative context
 4. Load scene/character context
 5. Apply local overrides
-6. Inject retrieved exemplars
+6. Inject selected Style Capsules
 7. Freeze prompt snapshot
 
 The final prompt is immutable.
@@ -214,7 +214,7 @@ No fixes occur at the media stage.
 This contract is designed to:
 - Support migration to Temporal.io
 - Support additional media providers
-- Support alternative RAG engines
+- Support alternative Style Capsule management systems
 
 The inheritance rules remain invariant.
 

@@ -35,9 +35,9 @@
 │  │ AI Service Integration                                      │ │
 │  │ - Google Veo3 (Video Generation)                            │ │
 │  │ - Nano Banana (Image Generation)                            │ │
-│  │ - LangChain + LangSmith (RAG & Observability)               │ │
+│  │ - Style Capsule Management + LangSmith (Style Injection & Observability)               │ │
 │  │ - OpenAI/Anthropic/Gemini (LLM)                             │ │
-│  │ - pgvector RAG (Style Databases) *IGNORE*                   │ │
+│  │ - Structured Style Capsule Storage (Deterministic Style Injection)                   │ │
 │  └─────────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────┘
                                    │
@@ -72,7 +72,7 @@ User Action → Frontend → API Gateway → Orchestration Service → AI Servic
 
 #### **Phase A (Stages 1-5): Global Narrative Engine**
 
-1. **IGNORE** Input Processing: User provides narrative → RAG initialization **IGNORE**
+1. **Style Capsule Selection**: User provides narrative → Style Capsule initialization
 2. **LLM Processing**: Treatment generation → Beat sheet atomization → Script formatting
 3. **Asset Extraction**: Parse script → Generate visual keys → Lock global style
 4. **Context Storage**: All outputs stored as immutable global context
@@ -96,10 +96,10 @@ User Action → Frontend → API Gateway → Orchestration Service → AI Servic
 | Service | Purpose | Data Flow | Cost Model |
 |---------|---------|-----------|------------|
 | **Google Veo3** | Video generation with audio | Start frame + End frame + Prompt → MP4 | Per-second credits |
-| **Nano Banana** | High-volume image generation | Text prompt + Style RAG → Images | Per-image credits |
+| **Nano Banana** | High-volume image generation | Text prompt + Style Capsule → Images | Per-image credits |
 | **Gemini/OpenAI/Anthropic** | LLM text generation | Context + Prompt → Structured output | Per-token credits |
 | **LangSmith** | Unified Prompt Engineering & Observability | Traces + Prompt Metadata → UI | Tiered (Free/Pro) |
-| **IGNORE**: **pgvector** | Style RAG retrieval | Text chunks → Embeddings → Semantic search | Storage-based |
+| **Structured Storage** | Style Capsule management | Plain text + Metadata → Deterministic injection | Storage-based |
 
 ---
 
@@ -170,7 +170,7 @@ aiuteur/
 │   │   ├── use-project.ts          # Project state management
 │   │   ├── use-stage.ts            # Pipeline stage logic
 │   │   ├── use-assets.ts           # Asset management
-│   │   ├── use-rag.ts              # RAG retrieval logic **IGNORE**
+│   │   ├── use-style-capsules.ts   # Style Capsule management logic
 │   │   └── use-cost-estimation.ts  # Cost calculation
 │   ├── lib/                        # Utilities and configurations
 │   │   ├── utils.ts                # General utility functions
@@ -191,7 +191,7 @@ aiuteur/
 │   │   │   ├── veo3-client.ts      # Google Veo3 integration
 │   │   │   ├── nano-banana-client.ts # Image generation
 │   │   │   ├── llm-client.ts       # LLM orchestration
-│   │   │   └── rag-client.ts       # Vector database queries **IGNORE**
+│   │   │   └── style-capsule-client.ts # Style Capsule storage queries
 │   │   ├── api/                    # Backend API calls
 │   │   │   ├── projects.ts
 │   │   │   ├── stages.ts
