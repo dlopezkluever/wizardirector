@@ -343,8 +343,8 @@ outdated: AlertTriangle
 
 // Navigation icons
 Projects: Home
-Written RAG: FileText
-Visual RAG: Image
+Style Capsule Library: FileText
+Style Capsule Library: Image
 Asset Library: Box
 
 // Actions

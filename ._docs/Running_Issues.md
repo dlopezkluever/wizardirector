@@ -1,5 +1,7 @@
 ### Add debouncing to Auto-Save for stages 1-3
 
+## Update Sidebar to reflect Style Capsules
+
 ### Stage 4 needs to auto generate IF never have been generated before.
 ### Obviously plenty of UI Issues with Phase A, particularily regarding the regeneration box for Stage 4, and the stage pipeline graphic (sometimes they're green, other times yellow, despite being complete; not clear whats going on there)
 
@@ -19,3 +21,4 @@
 Update src/components/pipeline/Stage5Assets.tsx:
 Replace mock data with real state management using the useStageState hook.
 Implement the "Lock Assets" button to call lockStage(projectId, 5) and then navigate to Stage 6.
+
