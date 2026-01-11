@@ -19,6 +19,7 @@ import { SceneWorkflowSidebar } from '@/components/pipeline/SceneWorkflowSidebar
 import type { StageProgress, StageStatus } from '@/types/project';
 import { useProjectStageStates } from '@/lib/hooks/useStageState';
 import { projectService } from '@/lib/services/projectService';
+import { stageStateService } from '@/lib/services/stageStateService';
 
 const initialPhaseAStages: StageProgress[] = [
   { stage: 1, status: 'active' as StageStatus, label: 'Input' },
@@ -118,20 +119,59 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
     setCurrentStage(nextStage);
   }, [stageStates, isLoadingStates, projectId]);
 
-  const handleStageComplete = (stageNumber: number) => {
-    setStages(prev => prev.map(s => 
-      s.stage === stageNumber 
-        ? { ...s, status: 'locked' as StageStatus }
-        : s.stage === stageNumber + 1
-          ? { ...s, status: 'active' as StageStatus }
-          : s
-    ));
-    setCurrentStage(stageNumber + 1);
-    toast.success(`Stage ${stageNumber} completed`);
+  // Navigation guard: Ensure currentStage is always valid
+  useEffect(() => {
+    if (stages.length > 0) {
+      const currentStageData = stages.find(s => s.stage === currentStage);
+      if (!currentStageData || currentStageData.status === 'pending') {
+        // Find the highest stage that is not pending
+        const highestAllowedStage = stages
+          .filter(s => s.status !== 'pending')
+          .reduce((max, s) => s.stage > max.stage ? s : max, stages[0]);
+
+        if (highestAllowedStage && highestAllowedStage.stage !== currentStage) {
+          console.warn(`Redirecting from invalid stage ${currentStage} to highest allowed stage ${highestAllowedStage.stage}`);
+          setCurrentStage(highestAllowedStage.stage);
+        }
+      }
+    }
+  }, [stages, currentStage]);
+
+  const handleStageComplete = async (stageNumber: number) => {
+    try {
+      // Call backend to lock the stage
+      await stageStateService.lockStage(projectId!, stageNumber);
+
+      // Update local state
+      setStages(prev => prev.map(s =>
+        s.stage === stageNumber
+          ? { ...s, status: 'locked' as StageStatus }
+          : s.stage === stageNumber + 1 && stageNumber < 5 // Only advance to next stage in Phase A
+            ? { ...s, status: 'active' as StageStatus }
+            : s
+      ));
+
+      // Advance to next stage only in Phase A
+      if (stageNumber < 5) {
+        setCurrentStage(stageNumber + 1);
+      }
+
+      toast.success(`Stage ${stageNumber} completed and locked`);
+    } catch (error) {
+      console.error('Failed to complete stage:', error);
+      toast.error('Failed to complete stage. Please try again.');
+    }
   };
 
   const handleGoBack = (toStage: number) => {
     setCurrentStage(toStage);
+  };
+
+  const handleNavigate = (toStage: number) => {
+    const targetStage = stages.find(s => s.stage === toStage);
+    if (targetStage && targetStage.status !== 'pending') {
+      setCurrentStage(toStage);
+    }
   };
 
   const handleEnterScene = (sceneId: string) => {
@@ -272,7 +312,7 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
         onCreateBranch={() => toast.info('Branch creation coming soon')}
       />
       
-      <PhaseTimeline stages={stages} currentStage={currentStage} />
+      <PhaseTimeline stages={stages} currentStage={currentStage} onStageClick={handleNavigate} />
       
       {currentStage === 1 && (
         <Stage1InputMode projectId={projectId} onComplete={() => handleStageComplete(1)} />

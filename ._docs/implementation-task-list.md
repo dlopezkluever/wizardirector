@@ -107,9 +107,11 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 \*\*Purpose\*\*: Enforce pipeline dependencies and checkpoints  
 \- \[ \] Implement stage status state machine (draft/locked/invalidated)  
 \- \[ \] Add stage advancement validation logic  
-\- \[ \] Create visual progress timeline component  
+\- \[ \] Fix/Improve visual progress timeline component  
 \- \[ \] Implement "lock stage" functionality  
 \- \[ \] Add navigation guards for incomplete stages
+\- \[ \] Add ability to delete projects
+
 
 \*\*Deliverable\*\*: Users can input a story idea, iteratively refine it through AI-generated treatments and beat sheets, and receive a formatted master script. This is the first complete value delivery—users get a structured screenplay from a rough idea.
 

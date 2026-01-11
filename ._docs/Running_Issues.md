@@ -5,9 +5,17 @@
 
 ### Add ability to delete projects
 
-### have ability tot projects into folder
+### have ability to put projects into folder in dashboard
 
 ### have ability export individual writing assets (Treatment; Beat Sheet: Script)
 
-### Have ability to customize system prompts
+### Have ability to customize system prompts?
 
+### Consider having, apon opening old project, it opening to it's latest stage reached (so where you left off) not the one exactly after that
+
+### On dashboard view of projects: Include the stage the project is at on the card & for phase B show what Scene number along with stage (i.e. Scene 3, Stage 8)
+
+### 4.3 Stage 5 Assets Persistence
+Update src/components/pipeline/Stage5Assets.tsx:
+Replace mock data with real state management using the useStageState hook.
+Implement the "Lock Assets" button to call lockStage(projectId, 5) and then navigate to Stage 6.

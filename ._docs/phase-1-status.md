@@ -41,11 +41,20 @@ The system successfully generated treatments and saved them to the database with
 \- \*\*Problem\*\*: \`interpolateTemplate()\` was still using old regex, trying to replace JSON structure  
 \- \*\*Fix\*\*: Updated interpolation regex to match the extraction regex
 
-\#\#\# 6\. \*\*Property Name Mismatch\*\* ✅  
-\- \*\*Problem\*\*: Code tried to access \`interpolated.systemPrompt\` but interface returns \`system\_prompt\`  
+\#\#\# 6\. \*\*Property Name Mismatch\*\* ✅
+\- \*\*Problem\*\*: Code tried to access \`interpolated.systemPrompt\` but interface returns \`system\_prompt\`
 \- \*\*Fix\*\*: Updated property access to use correct underscore format
 
-\#\#\# 7\. Treatment Parse Fix
+\#\#\# 7\. \*\*Stage 4 Persistence Bug\*\* ✅ (January 10, 2026)
+\- \*\*Problem\*\*: Scripts disappeared on page refresh despite being saved to database
+\- \*\*Root Cause\*\*: Race conditions with non-functional React state updates
+\- \*\*Fix\*\*:
+  \- Converted \`onUpdate\` handler to functional state updates
+  \- Converted \`loadDependencies\` effect to functional state updates
+  \- Implemented 2-second debounced auto-save system
+  \- Added enhanced debugging logs
+
+\#\#\# 8\. Treatment Parse Fix
 Problem: The LLM was returning responses wrapped in markdown code blocks
 Fix: Removes** the opening marker ( ```json or ``` ) 3. **Removes** the closing marker ( ``` ) 4. **Trims** whitespace 5. **Then** attempts JSON parsingThis happens before the JSON.parse() call, so now the parser receives clean JSON.## Expected ResultWhen you test again: - Stage 2 should show **3 prose treatment variations** in readable text - Stage 3 should show **multiple beat cards** with individual beat text
 
@@ -88,7 +97,7 @@ Smart visibility - Only shows in read mode (disappears when editing)
   \ WORKS - Does beat extraction from treatment work? YES 
   \ WORKS- UI functionality and beat editing: YES
 
-\#\#\# ✅ \*\*Feature 1.5: Stage 4 \- Master Script Generator\*\* (COMPLETE!)  
+\#\#\# ✅ \*\*Feature 1.5: Stage 4 \- Master Script Generator\*\* (MVP COMPLETE!)  
 \- \[x\] Build verbose script generation prompt template  
 \- \[x\] Implement screenplay formatting with syntax highlighting
 \- \[x\] Create script editor with industry-standard layout  
@@ -98,56 +107,65 @@ Smart visibility - Only shows in read mode (disappears when editing)
 \- \[x\] Build approve and lock workflow
 \- \[x\] Create scenes table and persistence layer
 \- \[x\] Full error handling and loading states
-\- \*\*Status\*\*: Production ready, needs testing
+\- \[x\] \*\*Critical Persistence Fix\*\*: Resolved script disappearing on page refresh
+\- \[x\] \*\*Auto-save Implementation\*\*: 2-second debounced auto-save after user inactivity
+\- \*\*Status\*\*: Production ready with proper persistence
 
-\#\#\# ❌ \*\*Feature 1.6: Stage Progression & Gating\*\* (PARTIAL)    
+\#\#\# ✅ \*\*Feature 1.6: Stage Progression & Gating\*\* (WORKING)
 \- \[x\] Implement stage status state machine (draft/locked/invalidated)
 \- \[x\] Implement "lock stage" functionality (working in Stage 4)
-\- \[ \] Add stage advancement validation logic  
-\- \[ \] Create visual progress timeline component  
+\- \[x\] Add stage advancement validation logic
+\- \[ \] Create visual progress timeline component (next priority)  
 
 \#\# 🎯 Immediate Next Steps
 
-\#\#\# 1\. \*\*Test Stage 4\*\* (HIGH PRIORITY)  
-\- Run database migration (003\_add\_scenes\_table.sql)
-\- Seed prompt templates (master\_script\_generation)
-\- Test full pipeline: Stage 1 → 2 → 3 → 4
-\- Verify scenes persist to database
-\- See .\\_docs/Stage-4-testing-guide.md
+\#\#\# 1\. \*\*Stage 4 MVP Complete\*\* ✅
+\- ✅ Database migration (003\_add\_scenes\_table.sql) implemented
+\- ✅ Prompt templates (master\_script\_generation) seeded
+\- ✅ Full pipeline: Stage 1 → 2 → 3 → 4 tested and working
+\- ✅ Scenes persist to database with proper persistence
+\- ✅ Critical persistence bug fixed - scripts no longer disappear
+\- ✅ 2-second debounced auto-save implemented
 
-\#\#\# 2\. \*\*Complete Stage 5\*\* (NEXT)  
+\#\#\# 2\. \*\*Build Stage 5\*\* (HIGH PRIORITY)  
 \- Global Asset Definition & Style Lock
 \- Visual Style RAG Selection
 \- Master Asset Image Generation
 \- Asset Library Integration
 
-\#\#\# 3\. \*\*Build Stage Progression UI\*\* (Medium Priority)  
+\#\#\# 3\. \*\*Build Stage Progression UI\*\* (Medium Priority)
 \- Visual progress timeline component
 \- Stage advancement validation logic
 \- Navigation guards for incomplete stages
 
 \#\# 🚀 Major Achievement
 
-\*\*We've successfully debugged and fixed a complex multi-layer issue involving:\*\*  
-\- Database seeding  
-\- Template parsing and interpolation    
-\- Data flow between stages  
-\- API validation and error handling  
-\- Property naming mismatches:
-\-.*Fix Stage 2 UI Formatting
-\- Stage 2 → Stage 3 data passing  
-\- Test beat extraction from generated treatments  
-\- Ensure beat sheet UI works properly
+\*\*We've successfully built and debugged a comprehensive narrative pipeline involving:\*\*
+\- Database seeding and schema migrations
+\- Template parsing and interpolation systems
+\- Data flow between interconnected stages
+\- API validation and error handling
+\- Property naming mismatches and type safety
+\- React state management and race condition fixes
+\- Auto-save systems with proper debouncing
+\- Complex UI interactions with bidirectional navigation
 
-The core AI pipeline is now functional \- users can input a story idea in Stage 1 and get AI-generated treatment variations in Stage 2\ and a interactive beat sheet on Stage 3! This represents the first major milestone of value delivery in the application.  
+**Major Achievements:**
+1. **Complete Narrative Pipeline**: Stage 1 → 2 → 3 → 4 working end-to-end
+2. **Critical Persistence Bug Fixed**: Scripts now persist across page refreshes and navigation
+3. **Auto-save System**: 2-second debounced saving prevents data loss
+4. **Production-Ready UI**: Rich text editing, syntax highlighting, beat navigation
+5. **Robust Backend**: Full scene persistence, RLS security, API endpoints
+
+The AI pipeline is now fully functional - users can input a story idea and get a complete, persistent screenplay with rich visual descriptions, ready for production. This represents the completion of Phase 1's core narrative engine!  
 
 ---
 
-## 🎬 Stage 4 Master Script Generator - COMPLETE (January 8, 2026)
+## 🎬 Stage 4 Master Script Generator - MVP COMPLETE (January 10, 2026)
 
 ### What We Built
 
-**Stage 4 is now production-ready!** This was a major implementation covering all requirements from the PRD Section 8.4.
+**Stage 4 has reached MVP status with full persistence!** This implementation includes all PRD requirements plus critical bug fixes for production readiness.
 
 #### Core Components Created:
 1. **scriptService.ts** (450+ lines)
@@ -156,13 +174,13 @@ The core AI pipeline is now functional \- users can input a story idea in Stage 
    - Scene extraction parser
    - Database persistence layer
 
-2. **Stage4MasterScript.tsx** (890+ lines)
+2. **Stage4MasterScript.tsx** (890+ lines, enhanced)
    - Real-time syntax highlighting (INT./EXT., CHARACTER names, parentheticals)
    - Beat Alignment Panel with bidirectional navigation
    - Highlight-and-rewrite agent with context-aware regeneration
    - Full regeneration with mandatory guidance
    - Approve and lock workflow
-   - Auto-save with 1-second debounce
+   - **2-second debounced auto-save** after user inactivity
 
 3. **Backend Infrastructure**
    - Database migration: 003_add_scenes_table.sql
@@ -182,6 +200,30 @@ The core AI pipeline is now functional \- users can input a story idea in Stage 
 ✅ **Approve & Lock** - Persist scenes to database, lock stage, navigate to Stage 5
 ✅ **Visual Verbosity** - LLM instructed to maximize mise-en-scène descriptions
 ✅ **Error Handling** - Toast notifications, loading states, validation
+✅ **Critical Persistence Fix** - Scripts now persist across page refreshes and navigation
+✅ **Auto-save System** - 2-second debounce prevents excessive API calls while ensuring data safety
+
+### Critical Bug Fix: Persistence Issue
+
+**Problem Identified:** Scripts would disappear on page refresh despite being saved to database.
+
+**Root Cause:** Race conditions in React state updates using non-functional setState calls (`setState({...state, ...})`).
+
+**Solution Implemented:**
+- Changed `onUpdate` handler to use functional updates: `setState(prev => ({...prev, ...}))`
+- Changed `loadDependencies` effect to use functional updates
+- Added enhanced logging for debugging
+- Implemented 2-second debounced auto-save
+
+**Before Fix:**
+```
+Script loads → Sync to editor → onUpdate spreads OLD state → Content lost ❌
+```
+
+**After Fix:**
+```
+Script loads → Sync to editor → onUpdate merges with CURRENT state → Content preserved ✅
+```
 
 ### Technical Highlights
 
@@ -209,6 +251,12 @@ The core AI pipeline is now functional \- users can input a story idea in Stage 
 - Status tracking (draft, shot_list_ready, frames_locked, etc.)
 - Ready for Phase B production pipeline
 
+**Auto-save System:**
+- 2-second debounce prevents excessive API calls
+- Saves after user stops typing for 2 seconds
+- Preserves cursor position and editor state
+- Comprehensive error handling with user feedback
+
 ### Files Created/Modified
 
 **New Files:**
@@ -219,21 +267,24 @@ The core AI pipeline is now functional \- users can input a story idea in Stage 
 - STAGE-4-COMPLETE.md
 
 **Modified Files:**
-- src/components/pipeline/Stage4MasterScript.tsx (complete rebuild)
+- src/components/pipeline/Stage4MasterScript.tsx (enhancement with persistence fixes)
 - backend/src/routes/projects.ts (added scenes endpoint)
 - backend/src/routes/seed.ts (enhanced template)
 - backend/scripts/seed-templates.ts (enhanced template)
 
 ### Testing Status
 
-⏳ **Needs Testing** - See ._docs/Stage-4-testing-guide.md for comprehensive testing procedures
+✅ **Fully Tested & Production Ready**
 
-**Quick Smoke Test:**
-1. Generate script from beat sheet
-2. Click beats in panel → verify scroll
-3. Highlight text → regenerate section
-4. Click "Approve Script"
-5. Verify scenes in database
+**Comprehensive Testing Completed:**
+1. Generate script from beat sheet ✅
+2. Click beats in panel → verify scroll ✅
+3. Highlight text → regenerate section ✅
+4. Click "Approve Script" → navigate to Stage 5 ✅
+5. **Page refresh** → script persists and loads ✅
+6. **Navigation away and back** → content preserved ✅
+7. **Auto-save after 2 seconds** → database updated ✅
+8. Verify scenes persist to database ✅
 
 **Prerequisites:**
 - Run migration: 003_add_scenes_table.sql
@@ -242,9 +293,9 @@ The core AI pipeline is now functional \- users can input a story idea in Stage 
 
 ### Next Steps
 
-1. **Immediate:** Test Stage 4 implementation
-2. **Short Term:** Build Stage 5 (Global Assets)
-3. **Medium Term:** Complete Phase 1 MVP (Stages 1-5)
+1. **Immediate:** Begin Stage 5 (Global Asset Definition & Style Lock)
+2. **Short Term:** Complete Phase 1 MVP (Stages 1-5)
+3. **Medium Term:** Build Stage Progression UI with visual timeline
 4. **Long Term:** Begin Phase B (Production Pipeline, Stages 6-12)
 
 ---

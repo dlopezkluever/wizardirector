@@ -1,11 +1,17 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { GitBranch, Clock, ChevronRight } from 'lucide-react';
+import { GitBranch, Clock, ChevronRight, Trash2, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { projectService } from '@/lib/services/projectService';
+import { useToast } from '@/hooks/use-toast';
 import type { Project, StageStatus } from '@/types/project';
 
 interface ProjectCardProps {
   project: Project;
   onClick: () => void;
+  onDelete: () => void;
   index: number;
 }
 
@@ -22,18 +28,67 @@ function StageIndicator({ status }: { status: StageStatus }) {
   );
 }
 
-export function ProjectCard({ project, onClick, index }: ProjectCardProps) {
-  const progressPercentage = 
+export function ProjectCard({ project, onClick, onDelete, index }: ProjectCardProps) {
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const { toast } = useToast();
+
+  const progressPercentage =
     (project.stages.filter(s => s.status === 'locked').length / project.stages.length) * 100;
+
+  const handleDelete = async () => {
+    try {
+      setIsDeleting(true);
+      await projectService.deleteProject(project.id);
+      toast({
+        title: 'Project deleted',
+        description: `"${project.title}" has been permanently deleted.`,
+      });
+      onDelete();
+    } catch (error) {
+      console.error('Error deleting project:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete project. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
+    }
+  };
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: index * 0.1 }}
-      onClick={onClick}
-      className="group relative overflow-hidden rounded-xl bg-card border border-border card-hover cursor-pointer"
+      onClick={showDeleteDialog || isDeleting ? undefined : onClick}
+      className={cn(
+        "group relative overflow-hidden rounded-xl bg-card border border-border card-hover",
+        showDeleteDialog || isDeleting ? "" : "cursor-pointer"
+      )}
     >
+      {/* Delete button overlay */}
+      <div
+        className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity"
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          if (!isDeleting) {
+            setShowDeleteDialog(true);
+          }
+        }}
+      >
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+          disabled={isDeleting}
+        >
+          <Trash2 className="w-4 h-4" />
+        </Button>
+      </div>
       {/* Thumbnail/Gradient Background */}
       <div 
         className="h-32 bg-gradient-to-br from-primary/10 via-accent/5 to-transparent"
@@ -88,6 +143,38 @@ export function ProjectCard({ project, onClick, index }: ProjectCardProps) {
             <ChevronRight className="w-4 h-4" />
           </div>
         </div>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-destructive" />
+                Delete Project
+              </DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete "{project.title}"? This action cannot be undone.
+                All project data, scripts, and generated content will be permanently removed.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setShowDeleteDialog(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete Project'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </motion.div>
   );

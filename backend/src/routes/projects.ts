@@ -36,26 +36,91 @@ router.get('/', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch projects' });
     }
 
-    // Transform the data to match the frontend Project interface
-    const transformedProjects = projects.map(project => ({
-      id: project.id,
-      title: project.title,
-      description: project.tonal_precision || '',
-      status: 'draft' as const, // We'll derive this from stage states later
-      branch: project.branches?.[0]?.name || 'main',
-      currentStage: 1, // We'll calculate this from stage states later
-      stages: [], // We'll populate this from stage states later
-      createdAt: project.created_at,
-      updatedAt: project.updated_at,
-      projectType: project.project_type,
-      contentRating: project.content_rating,
-      genres: project.genre || [],
-      tonalPrecision: project.tonal_precision || '',
-      targetLength: {
-        min: project.target_length_min,
-        max: project.target_length_max
+    // Get stage states for all projects to calculate current stage and status
+    const projectIds = projects.map(p => p.id);
+    const { data: allStageStates, error: stagesError } = await supabase
+      .from('stage_states')
+      .select(`
+        id,
+        branch_id,
+        stage_number,
+        status,
+        created_at,
+        branches!inner (
+          project_id
+        )
+      `)
+      .in('branches.project_id', projectIds)
+      .eq('branches.is_main', true) // Only consider main branch stages for now
+      .order('stage_number', { ascending: false }); // Latest stage first
+
+    if (stagesError) {
+      console.error('Error fetching stage states:', stagesError);
+      return res.status(500).json({ error: 'Failed to fetch stage states' });
+    }
+
+    // Group stage states by project
+    const projectStages = new Map();
+    allStageStates.forEach(state => {
+      const projectId = state.branches.project_id;
+      if (!projectStages.has(projectId)) {
+        projectStages.set(projectId, []);
       }
-    }));
+      projectStages.get(projectId).push(state);
+    });
+
+    // Transform the data to match the frontend Project interface
+    const transformedProjects = projects.map(project => {
+      const stages = projectStages.get(project.id) || [];
+      const lockedStages = stages.filter(s => s.status === 'locked');
+      const highestLockedStage = lockedStages.length > 0 ? Math.max(...lockedStages.map(s => s.stage_number)) : 0;
+      const currentStage = Math.min(highestLockedStage + 1, 5); // Cap at 5 for Phase A
+
+      // Build stages array with status
+      const stagesArray = [];
+      for (let i = 1; i <= 5; i++) {
+        const stageState = stages.find(s => s.stage_number === i);
+        let status: 'locked' | 'active' | 'pending' | 'outdated' = 'pending';
+
+        if (stageState) {
+          if (stageState.status === 'locked') {
+            status = 'locked';
+          } else if (stageState.status === 'outdated') {
+            status = 'outdated';
+          } else if (stageState.status === 'draft' && i <= currentStage) {
+            status = 'active';
+          }
+        } else if (i <= currentStage) {
+          status = 'active';
+        }
+
+        stagesArray.push({
+          stage: i,
+          status,
+          label: i === 1 ? 'Input' : i === 2 ? 'Treatment' : i === 3 ? 'Beat Sheet' : i === 4 ? 'Script' : 'Assets'
+        });
+      }
+
+      return {
+        id: project.id,
+        title: project.title,
+        description: project.tonal_precision || '',
+        status: 'draft' as const,
+        branch: project.branches?.[0]?.name || 'main',
+        currentStage,
+        stages: stagesArray,
+        createdAt: project.created_at,
+        updatedAt: project.updated_at,
+        projectType: project.project_type,
+        contentRating: project.content_rating,
+        genres: project.genre || [],
+        tonalPrecision: project.tonal_precision || '',
+        targetLength: {
+          min: project.target_length_min,
+          max: project.target_length_max
+        }
+      };
+    });
 
     res.json(transformedProjects);
   } catch (error) {
@@ -421,13 +486,59 @@ router.put('/:id/scenes', async (req, res) => {
 
     console.log(`✅ [SCENES] Successfully persisted ${insertedScenes.length} scenes`);
 
-    res.json({ 
+    res.json({
       success: true,
       sceneCount: insertedScenes.length,
       scenes: insertedScenes
     });
   } catch (error) {
     console.error('Error in PUT /api/projects/:id/scenes:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/projects/:id - Delete a project
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    console.log('🔄 Deleting project:', id, 'for user:', userId);
+
+    // Validate project exists and user owns it
+    const { data: existingProject, error: fetchError } = await supabase
+      .from('projects')
+      .select('id, user_id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchError) {
+      if (fetchError.code === 'PGRST116') {
+        console.error('❌ Project not found:', id);
+        return res.status(404).json({ error: 'Project not found' });
+      }
+      console.error('❌ Error fetching project:', fetchError);
+      return res.status(500).json({ error: 'Failed to fetch project' });
+    }
+
+    // Delete the project (cascade deletes will handle related data)
+    const { error: deleteError } = await supabase
+      .from('projects')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (deleteError) {
+      console.error('❌ Error deleting project:', deleteError);
+      return res.status(500).json({ error: 'Failed to delete project' });
+    }
+
+    console.log('✅ Project deleted successfully:', id);
+
+    res.status(204).send(); // No Content
+  } catch (error) {
+    console.error('Error in DELETE /api/projects/:id:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
