@@ -121,18 +121,27 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 \*\*Goal\*\*: Add creative control through style customization. Users can upload reference materials to guide tone, pacing, and aesthetic.
 
+\#\#\# Feature 2.0: Style Capsule Database Migration
+\*\*Purpose\*\*: Migrate database schema from RAG to Style Capsule system  
+\- \[ \] Create migration 004: Replace RAG tables with Style Capsule schema  
+\- \[ \] Implement \`style\_capsule\_libraries\` table (user collections)  
+\- \[ \] Implement \`style\_capsules\` table (individual capsules with text/metadata)  
+\- \[ \] Implement \`style\_capsule\_applications\` table (audit logging)  
+\- \[ \] Update projects table: replace \`written\_style\_rag\_id\`/\`visual\_style\_rag\_id\` with Style Capsule references  
+\- \[ \] Remove any existing RAG-related database structures
+
 \#\#\# Feature 2.1: Writing Style Capsule Library
 \*\*Purpose\*\*: Enable tone/style consistency across text generation  
-\- \[ \] Implement \`rag\_databases\` and \`rag\_documents\` tables  
-\- \[ \] Create document upload UI for text samples  
-\- \[ \] Integrate text embedding generation (OpenAI embeddings)  
-\- \[ \] Implement pgvector indexing with HNSW  
-\- \[ \] Add Style Capsule injection logic to Stage 2-4 prompts
+\- \[ \] Create Style Capsule upload UI for text samples and descriptors  
+\- \[ \] Implement Style Capsule creation with text examples and metadata  
+\- \[ \] Build Style Capsule management interface (create/edit/delete)  
+\- \[ \] Add Style Capsule injection logic to Stage 2-4 prompts  
+\- \[ \] Implement preset Writing Style Capsules for common styles
 
 \#\#\# Feature 2.2: Visual Style Capsule Library  
 \*\*Purpose\*\*: Control visual aesthetic for image/video generation  
 \- \[ \] Create visual reference image upload interface  
-\- \[ \] Implement image embedding generation  
+\- \[ \] Implement Style Anchor creation with descriptors and design pillars  
 \- \[ \] Build visual style selector UI component  
 \- \[ \] Add Visual Style Capsule management page  
 \- \[ \] Link visual style selection to asset generation
@@ -148,9 +157,9 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 \#\#\# Feature 2.4: Style Capsule-Enhanced Generation  
 \*\*Purpose\*\*: Apply style guidance to AI outputs  
 \- \[ \] Modify Stage 2 prompts to include Writing Style Capsule injection  
-\- \[ \] Update Stage 4 script generation with style retrieval  
-\- \[ \] Add relevance scoring for retrieved documents  
-\- \[ \] Implement Style Capsule application logging in \`rag\_retrievals\` table  
+\- \[ \] Update Stage 4 script generation with Style Capsule application  
+\- \[ \] Implement deterministic Style Capsule selection logic  
+\- \[ \] Implement Style Capsule application logging in \`style\_capsule\_applications\` table  
 \- \[ \] Test style consistency across regenerations
 
 \*\*Deliverable\*\*: Users can define custom written and visual styles by uploading reference materials. Generated treatments and scripts reflect the uploaded style, making output more personalized and consistent with user vision.
