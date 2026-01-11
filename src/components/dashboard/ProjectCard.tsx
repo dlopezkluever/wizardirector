@@ -63,9 +63,32 @@ export function ProjectCard({ project, onClick, onDelete, index }: ProjectCardPr
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: index * 0.1 }}
-      onClick={onClick}
-      className="group relative overflow-hidden rounded-xl bg-card border border-border card-hover cursor-pointer"
+      onClick={showDeleteDialog || isDeleting ? undefined : onClick}
+      className={cn(
+        "group relative overflow-hidden rounded-xl bg-card border border-border card-hover",
+        showDeleteDialog || isDeleting ? "" : "cursor-pointer"
+      )}
     >
+      {/* Delete button overlay */}
+      <div
+        className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity"
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          if (!isDeleting) {
+            setShowDeleteDialog(true);
+          }
+        }}
+      >
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+          disabled={isDeleting}
+        >
+          <Trash2 className="w-4 h-4" />
+        </Button>
+      </div>
       {/* Thumbnail/Gradient Background */}
       <div 
         className="h-32 bg-gradient-to-br from-primary/10 via-accent/5 to-transparent"
@@ -115,22 +138,9 @@ export function ProjectCard({ project, onClick, onDelete, index }: ProjectCardPr
               Updated {formatRelativeTime(project.updatedAt)}
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowDeleteDialog(true);
-              }}
-              className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
-            >
-              <Trash2 className="w-4 h-4" />
-            </Button>
-            <div className="flex items-center gap-1 text-sm text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-              <span>Open</span>
-              <ChevronRight className="w-4 h-4" />
-            </div>
+          <div className="flex items-center gap-1 text-sm text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+            <span>Open</span>
+            <ChevronRight className="w-4 h-4" />
           </div>
         </div>
 
