@@ -24,10 +24,10 @@ Three test cases were selected to cover the pipeline's full range of capabilitie
 
 ### Phase A Success Criteria
 
-#### Stage 1: Input Modes & RAG Initialization
+#### Stage 1: Input Modes & Style Capsule Initialization
 **Success Definition:**
 - Correctly identifies 1-2 scenes from the input
-- Selects appropriate Written Style RAG (conversational, character-driven)
+- Selects appropriate Writing Style Capsule (conversational, character-driven)
 - Project parameters are properly configured and validated
 
 #### Stage 2: Treatment Generation (Iterative Prose)
@@ -63,7 +63,7 @@ Three test cases were selected to cover the pipeline's full range of capabilitie
 - Extracts 3-5 props: coffee cups, table, chairs, coffee shop elements
 - Extracts 1 setting: coffee shop interior
 - Generates appropriate image keys for each asset
-- Visual Style RAG selection is photorealistic/character-focused
+- Visual Style Capsule selection is photorealistic/character-focused
 - Master descriptions include age, appearance, clothing details
 
 ### Phase B Success Criteria
@@ -137,10 +137,10 @@ Three test cases were selected to cover the pipeline's full range of capabilitie
 
 ### Phase A Success Criteria
 
-#### Stage 1: Input Modes & RAG Initialization
+#### Stage 1: Input Modes & Style Capsule Initialization
 **Success Definition:**
 - Identifies complex multi-scene sequence
-- Selects technical/action-oriented Written Style RAG
+- Selects technical/action-oriented Writing Style Capsule
 - Project parameters accommodate fast-paced content
 
 #### Stage 2: Treatment Generation (Iterative Prose)
@@ -173,7 +173,7 @@ Three test cases were selected to cover the pipeline's full range of capabilitie
 - Extracts 3 main characters with distinct roles and appearances
 - Extracts 8-12 props: data drive, laser equipment, security systems, tools
 - Extracts 3-4 settings: exterior building, hallway, office, security room
-- Visual Style RAG selection is cinematic/action-oriented
+- Visual Style Capsule selection is cinematic/action-oriented
 - Image keys show dynamic poses and equipment
 
 ### Phase B Success Criteria
@@ -246,11 +246,11 @@ Three test cases were selected to cover the pipeline's full range of capabilitie
 
 ### Phase A Success Criteria
 
-#### Stage 1: Input Modes & RAG Initialization
+#### Stage 1: Input Modes & Style Capsule Initialization
 **Success Definition:**
 - Accepts audio file upload with transcript
 - Identifies timestamp-based structure
-- Selects documentary/educational Written Style RAG
+- Selects documentary/educational Writing Style Capsule
 - Project type correctly set to "Video Content for Audio"
 
 #### Stage 2: Treatment Generation (Iterative Prose)
@@ -281,7 +281,7 @@ Three test cases were selected to cover the pipeline's full range of capabilitie
 **Success Definition:**
 - Extracts 2 main characters (podcast hosts) from audio
 - Extracts visual props: charts, screens, background elements
-- Visual Style RAG selection is clean/professional
+- Visual Style Capsule selection is clean/professional
 - Assets support informational content
 - Image keys show speaking poses, presentation materials
 

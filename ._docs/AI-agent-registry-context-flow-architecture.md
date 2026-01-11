@@ -33,8 +33,8 @@ REQUIREMENTS:
 4\. Respect the content rating constraints  
 5\. Adhere to the tonal guidance provided
 
-WRITTEN STYLE CONTEXT:  
-{rag\_retrieved\_style\_examples}
+WRITING STYLE CONTEXT:
+{style_capsule_examples}
 
 OUTPUT STRUCTURE:
 
@@ -54,12 +54,13 @@ typescript
     genre: string\[\];  
     tonal\_precision: string;  
   };  
-  writtenStyleRAG?: {  
-    db\_id: string;  
-    retrieved\_chunks: Array\<{  
-      text: string;  
-      relevance\_score: number;  
-    }\>;  
+  writingStyleCapsule?: {
+    capsule_id: string;
+    capsule_content: {
+      text_examples: string[];
+      descriptors: string[];
+      negative_constraints: string[];
+    };
   };
 
 }
@@ -88,7 +89,7 @@ json
       "estimated\_runtime\_seconds": "number"  
     }  
   \],  
-  "rag_retrievals_used": ["array of rag_documents.id"],
+  "style_capsule_applications": ["array of style_capsule_applications.id"],
   "prompt_template_version": "string",
   "langsmith_trace_id": "string (for observability)"  
 }  
@@ -120,8 +121,8 @@ PROJECT CONSTRAINTS:
 \- Genre: {genre}  
 \- Tonal guidance: {tonal\_precision}
 
-WRITTEN STYLE CONTEXT:  
-{rag\_retrieved\_style\_examples}
+WRITING STYLE CONTEXT:
+{style_capsule_examples}
 
 OUTPUT REQUIREMENTS:  
 1. Each beat must be 1-3 sentences maximum  
@@ -142,9 +143,13 @@ typescript
     genre: string\[\];  
     tonal\_precision: string;  
   };  
-  writtenStyleRAG?: {  
-    db\_id: string;  
-    retrieved\_chunks: Array\<{text: string; relevance\_score: number}\>;  
+  writingStyleCapsule?: {
+    capsule_id: string;
+    capsule_content: {
+      text_examples: string[];
+      descriptors: string[];
+      negative_constraints: string[];
+    };
   };
 
 }
@@ -195,8 +200,8 @@ PROJECT CONSTRAINTS:
 \- Genre: {genre}  
 \- Tonal guidance: {tonal\_precision}
 
-WRITTEN STYLE CONTEXT:  
-{rag\_retrieved\_style\_examples}
+WRITING STYLE CONTEXT:
+{style_capsule_examples}
 
 FORMAT REQUIREMENTS:  
 1. Use industry-standard screenplay format:  
@@ -228,9 +233,13 @@ typescript
     genre: string\[\];  
     tonal\_precision: string;  
   };  
-  writtenStyleRAG?: {  
-    db\_id: string;  
-    retrieved\_chunks: Array\<{text: string; relevance\_score: number}\>;  
+  writingStyleCapsule?: {
+    capsule_id: string;
+    capsule_content: {
+      text_examples: string[];
+      descriptors: string[];
+      negative_constraints: string[];
+    };
   };
 
 }
@@ -354,8 +363,8 @@ Name: {asset\_name}
 Type: {asset\_type}  
 Master Description: {master\_description}
 
-VISUAL STYLE LOCK:  
-{visual\_style\_rag\_retrieved\_examples}
+VISUAL STYLE LOCK:
+{visual_style_capsule_content}
 
 PROJECT CONSTRAINTS:  
 \- Content rating: {content\_rating}  
@@ -365,7 +374,7 @@ PROMPT CONSTRUCTION RULES:
 1. Start with the asset type and name  
 2. Include all physical characteristics from the master description  
 3. Specify lighting, angle, and composition suitable for reference  
-4. Incorporate visual style cues from the RAG context  
+4. Incorporate visual style cues from the Style Capsule content  
 5. Avoid action or narrative elements (this is a reference image, not a scene)
 
 OUTPUT FORMAT:
@@ -382,9 +391,13 @@ typescript
     asset\_type: 'character' | 'prop' | 'location';  
     master\_description: string;  
   };  
-  visualStyleRAG: {  
-    db\_id: string;  
-    retrieved\_chunks: Array\<{text: string; relevance\_score: number}\>;  
+  visualStyleCapsule: {
+    capsule_id: string;
+    capsule_content: {
+      descriptors: string[];
+      reference_images: string[];
+      design_pillars: string[];
+    };
   };  
   projectParams: {  
     content\_rating: string;  
@@ -436,9 +449,9 @@ interface GlobalContextPackage {
   };  
     
   *// Visual Foundation*  
-  visualStyleLock: {  
-    rag\_db\_id: string;  
-    locked\_at: timestamp;  
+  visualStyleLock: {
+    capsule_id: string;
+    locked_at: timestamp;
   };  
     
   masterAssets: Array\<{  
@@ -743,13 +756,13 @@ Type: {asset\_type}
 Previous State: {previous\_description}  
 Current Scene Modifications: {user\_modifications}
 
-VISUAL STYLE LOCK:  
-{visual\_style\_rag\_retrieved\_examples}
+VISUAL STYLE LOCK:
+{visual_style_capsule_content}
 
 EVOLUTION RULES:  
 1. The new image must be visually consistent with the Master Asset (same character identity)  
 2. Apply only the scene-specific modifications (e.g., add mud, change clothing)  
-3. Maintain visual style coherence with the locked Visual Style RAG
+3. Maintain visual style coherence with the selected Visual Style Capsule
 
 OUTPUT:
 
@@ -768,9 +781,13 @@ typescript
     previous\_scene\_description?: string;  
     current\_scene\_modifications: string; *// User-provided text*  
   };  
-  visualStyleRAG: {  
-    db\_id: string;  
-    retrieved\_chunks: Array\<{text: string; relevance\_score: number}\>;  
+  visualStyleCapsule: {
+    capsule_id: string;
+    capsule_content: {
+      descriptors: string[];
+      reference_images: string[];
+      design_pillars: string[];
+    };
   };
 
 }
@@ -813,7 +830,7 @@ PROMPT CONSTRUCTION RULES:
 2. Describe spatial layout of characters and setting  
 3. Incorporate asset visual descriptions verbatim  
 4. Include action context only if relevant to the static frame  
-5. Apply Visual Style RAG cues
+5. Apply Visual Style Capsule cues
 
 CONTINUITY REQUIREMENTS (for START frames):  
 \- Reference the previous shot's end frame (if available)  
@@ -851,9 +868,13 @@ typescript
     frame\_id: string;  
     image\_url: string;  
   };  
-  visualStyleRAG: {  
-    db\_id: string;  
-    retrieved\_chunks: Array\<{text: string; relevance\_score: number}\>;  
+  visualStyleCapsule: {
+    capsule_id: string;
+    capsule_content: {
+      descriptors: string[];
+      reference_images: string[];
+      design_pillars: string[];
+    };
   };
 
 }
@@ -1454,7 +1475,7 @@ Stage 1 → Stage 2 → Stage 3 (EDITED beats) → \[Script Generation Agent re-
     version: 2    // Incremented version  
   },  
   projectParams: {...}, // Unchanged from Stage 1  
-  writtenStyleRAG: {...}, // Unchanged  
+  writingStyleCapsule: {...}, // Unchanged  
   previousScriptVersion: {...} // Optional: for comparison/guidance  
 }  
 \`\`\`
