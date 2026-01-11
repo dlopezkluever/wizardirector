@@ -13,10 +13,10 @@
 1. **Executive Summary & Core Utility** \* 1.1 Core Value Proposition  
    * 1.2 Core Problem & Solution (The Inversion)  
 2. **System Architecture & Data Strategy** \* 2.1 Context Management Strategy (Global vs. Local)  
-   * 2.2 RAG Vector Databases (Written and Visual Styles)  
+   * 2.2 Style Capsule System (Written and Visual Styles)  
    * 2.3 Stateful Asset Management (Inheritance Logic)  
 3. **Phase A: The Global Narrative & Style Engine (Stages 1–5)**  
-   * 3.1 Stage 1: Input Modes & RAG Initialization  
+   * 3.1 Stage 1: Input Modes & Style Capsule Initialization  
    * 3.2 Stage 2: Treatment Generation (Iterative Prose)  
    * 3.3 Stage 3: The Beat Sheet (Structural Anchor & Loop)  
    * 3.4 Stage 4: The Descriptive Master Script (Finalized Narrative)  
@@ -84,19 +84,22 @@ To prevent Large Language Model (LLM) hallucinations, token limit overflows, and
 
 | Context Type | Data Contained | LLM Access | Purpose |
 | ----- | ----- | ----- | ----- |
-| **Global Context** | Beat Sheet, Project Summary, Master Character Descriptions, Style RAG Selections. | Always (Phase A & B) | Maintains plot cohesion and stylistic tone across the entire project. |
+| **Global Context** | Beat Sheet, Project Summary, Master Character Descriptions, Style Capsule Selections. | Always (Phase A & B) | Maintains plot cohesion and stylistic tone across the entire project. |
 | **Local Context** | Current Scene Script (Stage 4), Current Shot List (Stage 7), **Previous Scene End-State** (Assets, Final Frame). | Only during the active Scene's lifecycle (Phase B). | Prevents token overflow; ensures continuity between Scene N and Scene N+1. |
 
-### **2.2 RAG Vector Databases (Written and Visual Styles)**
+### **2.2 Style Capsule System (Written and Visual Styles)**
 
-The application must allow users to upload and utilize custom Retrieval-Augmented Generation (RAG) vector databases to guide creative output.
+The application must allow users to create and utilize Style Capsules to guide creative output in a deterministic, transparent manner.
 
-* **Written Style Vector DB:**  
-  * **Data:** Stores text chunks from user-uploaded scripts, books, or writing samples.  
-  * **Application:** Used heavily in Stages 1, 2, 3, 4, 7 and 9 to dictate tone, vocabulary, dialogue delivery, and descriptive style (e.g., "Tarantino-esque dialogue," "Hemingway brevity").  
-* **Visual Style Vector DB:**  
-  * **Data:** Stores image embeddings/references of specific aesthetics (e.g., high-contrast black and white, specific anime artist, film grain presets).  
-  * **Application:** Primarily used in Stages 5, 8, and 10 (Asset and Frame Generation) to ensure the visual output adheres to the chosen aesthetic.
+* **Writing Style Capsules:**
+  * **Structure:** User- or system-defined stylistic reference packages containing example text excerpts, optional labels, negative constraints, and high-level descriptors (e.g., "minimalist," "ornate," "detached").
+  * **Storage:** Plain text + metadata, injected directly into system prompts.
+  * **Application:** Used in Stages 1, 2, 3, 4, 7 and 9 to dictate tone, vocabulary, dialogue delivery, and descriptive style through explicit style imitation rather than similarity search.
+
+* **Visual Style Capsules / Style Anchors:**
+  * **Structure:** Descriptor strings, structured Design Pillars (Color Palette, Mood, Medium, Lighting, Camera Language), reference image URLs, or locked example frames.
+  * **Storage:** Plain text descriptors + metadata, with optional reference images.
+  * **Application:** Used in Stages 5, 8, and 10 to ensure visual output adheres to selected design pillars and reference imagery through explicit adherence rather than vector similarity.
 
 ### **2.3 Stateful Asset Management (Inheritance Logic)**
 
@@ -112,7 +115,7 @@ Assets (Characters, Props, Wardrobe) must retain their state across scenes to en
 
 Note: Advanced detail for UI & Agentic Toolage & Iterative Design for each stage in Section 8
 
-### **3.1 Stage 1: Input Modes & RAG Initialization**
+### **3.1 Stage 1: Input Modes & Style Capsule Initialization**
 
 The user **MUST** select one of the four modes to initialize the narrative pipeline. The chosen mode defines the initial state of the story structure.
 
@@ -125,7 +128,7 @@ The user **MUST** select one of the four modes to initialize the narrative pipel
 
 ### **3.2 Stage 2: Treatment Generation (Iterative Prose)**
 
-**Input:** Processed text from Stage 1 \+ Selected Written Style RAG. **Output:** High-level, continuous prose story treatment (not yet segmented into scenes or beats).
+**Input:** Processed text from Stage 1 \+ Selected Writing Style Capsule. **Output:** High-level, continuous prose story treatment (not yet segmented into scenes or beats).
 
 **Iterative and Interactive Requirements:**
 
@@ -154,7 +157,7 @@ The user **MUST** select one of the four modes to initialize the narrative pipel
 
 ### **3.4 Stage 4: The Descriptive Master Script (Finalized Narrative)** 
 
-**Input:** Locked Beat Sheet (Stage 3\) \+ Written Style RAG. **Output:** The fully formatted **Traditional Film Script** (Dialogue, Action Lines, Scene Headings) for the entire project.
+**Input:** Locked Beat Sheet (Stage 3\) \+ Writing Style Capsule. **Output:** The fully formatted **Traditional Film Script** (Dialogue, Action Lines, Scene Headings) for the entire project.
 
 **Functional Requirements:**
 
@@ -168,12 +171,12 @@ The user **MUST** select one of the four modes to initialize the narrative pipel
 
 ### **3.5 Stage 5: Global Asset Definition & Style Lock (NEW)**
 
-**Input:** Locked Master Script (Stage 4). **Output:** A set of finalized **Master Assets** (Visual Keys) and the locked **Visual Style RAG**.
+**Input:** Locked Master Script (Stage 4). **Output:** A set of finalized **Master Assets** (Visual Keys) and the locked **Visual Style Capsule / Style Anchor**.
 
 **Functional Requirements:**
 
 * **Asset Extraction:** The system uses an LLM to automatically parse the Stage 4 script and deterministically extract all unique **Key Characters**, **Key Props**, and **Key Settings** mentioned.  
-* **Visual Style Lock:** The user selects the definitive **Visual Style Vector DB** (e.g., "Neo-Noir," "Pixar Animation"). This choice is locked as a **Global Context Constraint** for all subsequent image/video generation calls.  
+* **Visual Style Lock:** The user selects the definitive **Visual Style Capsule / Style Anchor** (e.g., "Neo-Noir," "Pixar Animation"). This choice is locked as a **Global Context Constraint** for all subsequent image/video generation calls.  
 * **Image Key Generation:** For each extracted asset, the user guides the Nano Banana API to generate a definitive **Master Asset Visual Key (Image)**, utilizing the locked Visual Style.  
 * **Gatekeeper:** All extracted **Master Assets** must have a locked **Image Key** before the user can proceed.
 
@@ -209,13 +212,13 @@ Note: Advanced detail for UI & Agentic Toolage & Iterative Design for each stage
 
 ### **4.3 Stage 8: Visual & Character Definition (Asset Assembly)**
 
-**Input:** Locked Shot List (Stage 7\) \+ Visual Style RAG. **Output:** A list of visual descriptions for all characters and settings in the current scene.
+**Input:** Locked Shot List (Stage 7\) \+ Visual Style Capsule / Style Anchor. **Output:** A list of visual descriptions for all characters and settings in the current scene.
 
 **Functional Requirements:**
 
 * **Asset Drawer Integration:** The **Asset Drawer UI (Section 5.3)** is the primary input tool. Users drag "Master" or "Scene N Instance" assets into the current scene's list.  
 * **Stateful Modification:** A dedicated text field must allow modification of the inherited state, generating a new, unique **Scene Instance** description. (e.g., Original: "Clean shirt." Modification: "Shirt is now ripped and bloody."). This modification must be saved back to the Asset Library history.  
-* **Style Lock:** User confirms the **Visual Style Vector DB** selection for the scene (e.g., "Switching from Anime to Photorealistic"). This RAG selection will be critical for **Stage 8**.
+* **Style Lock:** User confirms the **Visual Style Capsule / Style Anchor** selection for the scene (e.g., "Switching from Anime to Photorealistic"). This style selection will be critical for **Stage 8**.
 
 ### **4.4 Stage 9: Prompt Segmentation (The Merger and Formatting)**
 
@@ -223,17 +226,17 @@ Note: Advanced detail for UI & Agentic Toolage & Iterative Design for each stage
 
 **Process:** The system automatically synthesizes the final prompt by merging the data streams:
 
-* **Visual Elements (Image Gen Prompt):** Combines Camera, Characters, Action, and Setting with the selected Visual Style RAG.  
+* **Visual Elements (Image Gen Prompt):** Combines Camera, Characters, Action, and Setting with the selected Visual Style Capsule / Style Anchor.  
 * **Audio Elements (Veo3 Prompt):** Isolates Dialogue and adds SFX cues.
 
 **Veo3 Prompt Formatting Requirements (MANDATORY):**
 
 The prompt structure must adhere to the LLM's preferred format for generating video with integrated audio:
 
-* **Visual Section:** `[Camera]`  
-   $$Character$$$$Action$$  
-  . Style: \[Visual Style `Tag]`  
-* **Audio Section:** `Audio: [SFX Cues]. Character [Name] speaks: "[Dialogue Line]"`
+* **Visual Section:** `[Camera]`
+   $$Character$$$$Action$$
+  . [Style Capsule / Style Anchor injection - explicit design pillars and reference imagery adherence]
+* **Audio Section:** `Audio: [SFX Cues]. Character [Name] speaks: "[Dialogue Line]"
 
 **Iterative Tool:** Users must have a final, direct text editor view of the **full, final prompt string**. They can manually tweak keywords (e.g., changing "dimly lit" to "harsh fluorescent lighting") before proceeding.
 
@@ -283,11 +286,10 @@ This section details the explicit structure and functionality of the application
 The system separates project work from global resource management.
 
 * **The Projects Dashboard (Default Landing Page):** The user lands here immediately post-login. Project cards display the **Branch Status** and **Progress Meter**. A prominent **"+ New Project"** button initiates the workflow.  
-* **The Global Sidebar (Persistent Navigation):** The left-hand sidebar provides persistent access to global data and configuration tools:  
-  1. **Home (Projects):** Returns to the Project Dashboard.  
-  2. **Written Style RAG:** Management interface for the written vector database.  
-  3. **Visual Style RAG:** Management interface for the visual vector database.  
-  4. **Asset Library:** Global repository for defining and managing **Master Assets** (Characters, Props, Locations) independent of any specific project. Note: Important Integration: The Asset Library now accepts "Promoted" assets from individual projects, making them available as templates for new projects.
+* **The Global Sidebar (Persistent Navigation):** The left-hand sidebar provides persistent access to global data and configuration tools:
+  1. **Home (Projects):** Returns to the Project Dashboard.
+  2. **Style Capsule Library:** User-specific repository for creating, managing, and selecting Writing Style Capsules and Visual Style Capsules/Anchors. Includes preset capsules for common styles that can be duplicated and customized.
+  3. **Asset Library:** Global repository for defining and managing **Master Assets** (Characters, Props, Locations) independent of any specific project. Note: Important Integration: The Asset Library now accepts "Promoted" assets from individual projects, making them available as templates for new projects.
 
 ### **5.2 The In-Project UI (Pipeline Workflow)**
 
@@ -405,11 +407,11 @@ These parameters should be configured first and remain constant throughout the p
 
 ---
 
-### **2\. Written RAG Database Selection**
+### **2\. Writing Style Capsule Selection**
 
-Your requirement to only select the Written RAG Database here is logical, as the visual style isn't necessary until Phase B.
+Writing Style Capsules should be selected here as they influence the narrative generation in Phase A.
 
-* **RAG Selection:** The user selects a **Written Style Vector DB** (custom uploaded or system default).  
+* **Style Capsule Selection:** The user selects a **Writing Style Capsule** (from system presets, their personal library, or creates a new one inline).
 * **Optionality:** The selection should be clearly marked as **Optional**. If skipped, the AI defaults to a neutral, descriptive prose style.
 
 ---
@@ -483,10 +485,10 @@ Stage purpose is to extract, visualize, and lock the global visual components ba
 
 | Component | UI/UX Vision | Agentic Tooling / Logic |
 | :---- | :---- | :---- |
-| **Visual Style RAG Selection** | A prominent selector/dropdown at the top of the page. | **Style Lock:** User selects the **Visual Style Vector Database** (e.g., "Neo-Noir," "Pixar Animation," "Hyper-realistic VFX"). This selection is locked as a **Global Context Constraint** for all subsequent image/video generation calls (Nano Banana, Veo3). |
+| **Visual Style Capsule / Style Anchor Selection** | A prominent selector/dropdown at the top of the page. | **Style Lock:** User selects the **Visual Style Capsule / Style Anchor** (e.g., "Neo-Noir," "Pixar Animation," "Hyper-realistic VFX"). This selection is locked as a **Global Context Constraint** for all subsequent image/video generation calls (Nano Banana, Veo3). |
 | **Asset Extraction & List** | A vertical list/sidebar initially auto-populated by the system. The list includes the names of all **Key Characters**, **Key Props**, and **Key Settings** extracted from the Stage 4 script. | **Extraction Agent:** LLM parses the entire Stage 4 script to deterministically extract and list every unique character, prop, and setting mentioned. |
 | **Asset Definition Editor (Per Asset)** | Clicking an asset name opens a dedicated editor area. This area contains: **A. Descriptive Text Field** and **B. Image Key Generation.** | **Pre-Fill Agent:** The **Descriptive Text Field** is pre-filled with the *concatenated, cleaned* description of that asset as compiled from every mention in the Stage 4 Master Script. **Manual Editability & Targeted Regeneration Agent:** **1\. Manual Editability:** The Descriptive Text Field is fully editable. **2\. Targeted Regeneration:** User can highlight any portion of the descriptive text to trigger localized LLM edits via a prompt box (e.g., "Change the character's eye color to green"). |
-| **Image Key Generation** | A dedicated section with a "Generate Image Key" button and a viewport for the generated image. | **Nano Banana Agent (Initial Call):** This tool takes the user-edited **Descriptive Text** and the locked **Visual Style RAG** selection to call the Nano Banana API, generating the definitive **Master Asset Visual Key (Image)**. This image is stored in the Master Asset Library. |
+| **Image Key Generation** | A dedicated section with a "Generate Image Key" button and a viewport for the generated image. | **Nano Banana Agent (Initial Call):** This tool takes the user-edited **Descriptive Text** and the locked **Visual Style Capsule / Style Anchor** selection to call the Nano Banana API, generating the definitive **Master Asset Visual Key (Image)**. This image is stored in the Master Asset Library. |
 | **Asset Iteration & Locking** | **Regeneration Guidance Box (Image Focus):** A text box for inputting changes (e.g., "Make the character's hair redder"). | **Image Generation Iteration:** The user can repeatedly adjust the descriptive text and regenerate the image key until satisfied. **Mandatory Action:** A **"Lock Master Asset"** button must be pressed to finalize the asset before proceeding to the next stage, triggering a new version history state. |
 | **Gatekeeper** | A final approval button: **"Approve Master Assets & Proceed to Technical Shot List (Stage 6)."** | **Locking Mechanism:** All **Master Assets** (Characters, Props, Settings) must have a locked **Image Key** before the user can proceed. |
 | **Voice Profile Assignment** (Stretch Goal) |	A dropdown or "Gallery" button within the Asset Editor. |	**Character Voice Seed:** (Stretch Goal 12.1) Allows the user to link a character to a specific voice profile (e.g., ElevenLabs ID). This metadata is passed to Stage 9 for inclusion in the Audio section of the Video Prompt. |
