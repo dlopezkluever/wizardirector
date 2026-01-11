@@ -730,3 +730,39 @@ Success Criteria Updates:
 * Golden Tests: Updated evaluation criteria to reflect Style Capsule selection instead of RAG retrieval
 
 All documentation now consistently reflects a system that uses deterministic Style Capsule injection rather than retrieval-augmented generation, providing clearer, more controllable style guidance for users while maintaining the same powerful AI agent capabilities and evaluation frameworks.
+
+# **Changes Made: Fifth Effort**
+
+✅ RAG → Style Capsule Migration Complete
+Changes Made to implementation-task-list.md:
+1. Added New Feature 2.0: Style Capsule Database Migration
+Create migration 004 to replace RAG tables with Style Capsule schema
+Implement style_capsule_libraries table (user collections)
+Implement style_capsules table (individual capsules with text/metadata)
+Implement style_capsule_applications table (audit logging)
+Update projects table to replace written_style_rag_id/visual_style_rag_id with Style Capsule references
+Remove any existing RAG-related database structures
+2. Updated Feature 2.1: Writing Style Capsule Library
+Removed: rag_databases and rag_documents tables
+Removed: Text embedding generation (OpenAI embeddings)
+Removed: pgvector indexing with HNSW
+Added: Style Capsule upload UI for text samples and descriptors
+Added: Style Capsule creation with text examples and metadata
+Added: Style Capsule management interface (create/edit/delete)
+Added: Preset Writing Style Capsules for common styles
+3. Updated Feature 2.2: Visual Style Capsule Library
+Removed: Image embedding generation
+Added: Style Anchor creation with descriptors and design pillars
+4. Updated Feature 2.4: Style Capsule-Enhanced Generation
+Changed: "style retrieval" → "Style Capsule application"
+Removed: "relevance scoring for retrieved documents"
+Added: "deterministic Style Capsule selection logic"
+Changed: rag_retrievals table → style_capsule_applications table
+Database Migration Required:
+Based on the current schema in 001_initial_schema.sql, I can see there are placeholder RAG fields in the projects table:
+-- RAG Configuration (optional)written_style_rag_id UUID, -- FK to be added later when RAG tables existvisual_style_rag_id UUID, -- FK to be added later when RAG tables exist
+The new Feature 2.0 will create migration 004 to:
+Replace these RAG references with Style Capsule references
+Create the new Style Capsule table structure as defined in the migration document
+Ensure proper foreign key relationships and constraints
+This migration is now properly tracked in Phase 2 as Feature 2.0, making it clear that the database schema needs to be updated before implementing the Style Capsule features in Features 2.1-2.4.

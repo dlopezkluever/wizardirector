@@ -23,7 +23,7 @@ This approach guarantees **deterministic consistency** and **cost optimization**
 ### **12-Stage Deterministic Pipeline**
 
 **Phase A: Global Narrative Engine (Stages 1-5)**
-- **Stage 1**: Input Modes & RAG Initialization (Expansion, Condensation, Transformation, Script Skip)
+- **Stage 1**: Input Modes & Style Capsule Initialization (Expansion, Condensation, Transformation, Script Skip)
 - **Stage 2**: Treatment Generation (Iterative prose with 3 AI variants)
 - **Stage 3**: Beat Sheet (Structural anchor with drag-and-drop reordering)
 - **Stage 4**: Master Script (Verbose screenplay with visual blueprint)
@@ -42,7 +42,7 @@ This approach guarantees **deterministic consistency** and **cost optimization**
 - **Google Veo3**: High-quality video generation with audio
 - **Nano Banana**: Cost-effective image generation for anchor frames
 - **Multi-Provider LLMs**: OpenAI, Anthropic, Gemini with cost-aware routing
-- **RAG Vector Databases**: Written style and visual style retrieval
+- **Style Capsule System**: Deterministic style injection for writing and visuals
 - **Voice Profiles**: ElevenLabs integration for character consistency
 
 ### **Version Control & Continuity**
@@ -87,11 +87,11 @@ This approach guarantees **deterministic consistency** and **cost optimization**
 │  │ - Google Veo3 (Video Generation)                            │ │
 │  │ - Nano Banana (Image Generation)                            │ │
 │  │ - OpenAI/Anthropic/Gemini (LLM)                             │ │
-│  │ - pgvector RAG (Style Databases)                            │ │
+│  │ - Structured Style Capsule Storage (Deterministic Style Injection) │ │
 │  └─────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
                                    │
-                                   │ PostgreSQL + pgvector
+                                   │ PostgreSQL + Structured Storage
                                    ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                 Data Layer (Supabase)                          │
@@ -100,12 +100,12 @@ This approach guarantees **deterministic consistency** and **cost optimization**
 │  │ - Projects & Branches (Git-style Versioning)               │ │
 │  │ - Stage States & Inheritance Tracking                      │ │
 │  │ - Asset Management & State Transitions                     │ │
-│  │ - RAG Vector Storage & Retrieval                            │ │
+│  │ - Style Capsule Storage & Management                        │ │
 │  └─────────────────────────────────────────────────────────────┘ │
 │  ┌─────────────────────────────────────────────────────────────┐ │
 │  │ Supabase Storage                                            │ │
 │  │ - Generated Images/Videos                                   │ │
-│  │ - User-uploaded RAG Documents                               │ │
+│  │ - User-uploaded Style Capsule Content                       │ │
 │  └─────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -135,8 +135,8 @@ This approach guarantees **deterministic consistency** and **cost optimization**
 - **Storage**: Supabase Storage (S3 migration path)
 
 ### **Data & AI**
-- **Database**: Supabase PostgreSQL with pgvector for RAG
-- **Vector Search**: HNSW indexes for creative retrieval
+- **Database**: Supabase PostgreSQL with structured storage for Style Capsules
+- **Structured Storage**: Direct Style Capsule selection and injection
 - **LLM Providers**: OpenAI, Anthropic, Gemini (cost-aware routing)
 - **Image Generation**: Nano Banana API
 - **Video Generation**: Google Veo3 API
@@ -144,7 +144,7 @@ This approach guarantees **deterministic consistency** and **cost optimization**
 
 ### **Observability & Tools**
 - **Prompt Engineering**: Custom versioned templates
-- **RAG Framework**: LangChain for context management
+- **Style Capsule Management**: Direct injection for deterministic style control
 - **Workflow Automation**: n8n for async pipelines
 - **Debugging**: LangSmith for inheritance logic tracing
 

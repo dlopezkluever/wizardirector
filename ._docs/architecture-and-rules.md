@@ -41,7 +41,7 @@
 │  └─────────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────┘
                                    │
-                                   │ PostgreSQL + pgvector
+                                   │ PostgreSQL + Structured Storage
                                    ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                 Data Layer (Supabase)                          │
@@ -50,12 +50,12 @@
 │  │ - Projects & Branches (Git-style Versioning)               │ │
 │  │ - Stage States & Inheritance Tracking                      │ │
 │  │ - Asset Management & State Transitions                     │ │
-│  │ - RAG Vector Storage & Retrieval     IGONORE               │ │
+│  │ - Style Capsule Storage & Management                        │ │
 │  └─────────────────────────────────────────────────────────────┘ │
 │  ┌─────────────────────────────────────────────────────────────┐ │
 │  │ Supabase Storage                                            │ │
 │  │ - Generated Images/Videos                                   │ │
-│  │ - User-uploaded RAG Documents **IGNORE**                    │ │
+│  │ - User-uploaded Style Capsule Content                       │ │
 │  └─────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -308,7 +308,7 @@ shots (1) ──→ (N) videos
 global_assets (N) ←── promotes from ──→ (N) project_assets
 project_assets (N) ──→ (N) scene_asset_instances
 
-stage_states (N) ──→ (N)**IGNORE** rag_retrievals **IGNORE**
+stage_states (N) ──→ (N) style_capsule_applications 
 stage_states (N) ──→ (N) invalidation_logs
 ```
 
@@ -329,9 +329,9 @@ CREATE TABLE projects (
     genre TEXT[], -- array of selected genres
     tonal_precision TEXT, -- user's custom tone guidance
 
-    -- RAG Configuration
-    written_style_rag_id UUID REFERENCES rag_databases(id),
-    visual_style_rag_id UUID REFERENCES rag_databases(id),
+    -- Style Capsule Configuration
+    writing_style_capsule_id UUID REFERENCES style_capsule_libraries(id),
+    visual_style_capsule_id UUID REFERENCES style_capsule_libraries(id),
 
     -- Metadata
     active_branch_id UUID, -- FK added after branches table
@@ -431,7 +431,7 @@ CREATE TABLE stage_states (
 
 // Stage 5: Global Assets
 {
-    locked_visual_style_rag_id: UUID,
+    locked_visual_style_capsule_id: UUID,
     assets_locked: boolean
 }
 ```
@@ -513,7 +513,7 @@ CREATE TABLE frames (
 
     -- Generation Context
     prompt TEXT NOT NULL, -- exact prompt sent to Nano Banana
-    visual_style_rag_id UUID REFERENCES rag_databases(id),
+    visual_style_capsule_id UUID REFERENCES style_capsule_libraries(id),
     prior_frame_id UUID REFERENCES frames(id), -- for continuity seeding
 
     -- Storage
@@ -575,7 +575,7 @@ CREATE TABLE global_assets (
     -- Visual Definition
     description TEXT NOT NULL, -- master descriptive text
     image_key_url TEXT, -- Nano Banana generated reference image
-    visual_style_rag_id UUID REFERENCES rag_databases(id),
+    visual_style_capsule_id UUID REFERENCES style_capsule_libraries(id),
 
     -- Voice Profile (Stretch Goal)
     voice_profile_id TEXT, -- ElevenLabs ID or similar
@@ -603,7 +603,7 @@ CREATE TABLE project_assets (
     -- Visual Definition
     description TEXT NOT NULL,
     image_key_url TEXT NOT NULL,
-    visual_style_rag_id UUID REFERENCES rag_databases(id),
+    visual_style_capsule_id UUID REFERENCES style_capsule_libraries(id),
 
     -- Status
     locked BOOLEAN DEFAULT FALSE, -- Stage 5 gatekeeper
@@ -637,65 +637,67 @@ CREATE TABLE scene_asset_instances (
 );
 ```
 
-### **RAG & Retrieval Tracking**
+### **Style Capsule Management**
 
-#### **`rag_databases`**
+#### **`style_capsule_libraries`**
 
 ```sql
-CREATE TABLE rag_databases (
+CREATE TABLE style_capsule_libraries (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id),
 
-    -- Database Identity
+    -- Library Identity
     name TEXT NOT NULL,
-    db_type TEXT NOT NULL CHECK (db_type IN ('written_style', 'visual_style')),
+    description TEXT,
+    library_type TEXT NOT NULL CHECK (library_type IN ('writing_style', 'visual_style')),
 
-    -- Storage
-    embedding_version TEXT NOT NULL, -- e.g., "text-embedding-3-small"
-    document_count INTEGER DEFAULT 0,
+    -- Metadata
+    capsule_count INTEGER DEFAULT 0,
+    is_public BOOLEAN DEFAULT FALSE,
 
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 ```
 
-#### **`rag_documents`**
+#### **`style_capsules`**
 
 ```sql
-CREATE EXTENSION IF NOT EXISTS vector;
-
-CREATE TABLE rag_documents (
+CREATE TABLE style_capsules (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    rag_db_id UUID NOT NULL REFERENCES rag_databases(id) ON DELETE CASCADE,
+    library_id UUID NOT NULL REFERENCES style_capsule_libraries(id) ON DELETE CASCADE,
 
-    -- Content
-    text_content TEXT NOT NULL,
-    embedding vector(1536), -- OpenAI ada-002 or equivalent
+    -- Capsule Identity
+    name TEXT NOT NULL,
+    capsule_type TEXT NOT NULL CHECK (capsule_type IN ('writing_style', 'visual_style')),
 
-    -- Metadata for Scoped Retrieval
-    metadata JSONB, -- e.g., {scene_id, character_id, verbosity_flag}
+    -- Content (Plain text + metadata, no embeddings)
+    text_examples TEXT[], -- Array of example text excerpts
+    descriptors TEXT[], -- Array of style descriptors
+    negative_constraints TEXT[], -- Array of what to avoid
+    reference_images TEXT[], -- Array of image URLs for visual capsules
+    design_pillars JSONB, -- Structured design elements for visual capsules
 
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    -- Metadata
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-
-CREATE INDEX idx_rag_docs_embedding ON rag_documents
-    USING hnsw (embedding vector_cosine_ops)
-    WITH (m = 16, ef_construction = 64); -- tuned HNSW parameters
 ```
 
-#### **`rag_retrievals`**
+#### **`style_capsule_applications`**
 
 ```sql
-CREATE TABLE rag_retrievals (
+CREATE TABLE style_capsule_applications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     stage_state_id UUID NOT NULL REFERENCES stage_states(id) ON DELETE CASCADE,
 
-    -- Query Context
-    query_embedding vector(1536),
-    retrieval_scope TEXT, -- 'global_only', 'scene_only', 'combined'
+    -- Application Context
+    capsule_id UUID NOT NULL REFERENCES style_capsules(id),
+    application_scope TEXT, -- 'global', 'scene_specific', 'asset_specific'
 
-    -- Results
-    retrieved_doc_ids UUID[], -- array of rag_documents.id
-    relevance_scores NUMERIC[],
+    -- Audit Information
+    applied_by_user_id UUID REFERENCES auth.users(id),
+    application_reason TEXT, -- Why this capsule was selected
 
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -774,8 +776,9 @@ CREATE INDEX idx_scenes_branch_status ON scenes(branch_id, status);
 -- Asset inheritance queries
 CREATE INDEX idx_scene_instances_inheritance ON scene_asset_instances(inherited_from_scene_id);
 
--- RAG retrieval performance
-CREATE INDEX idx_rag_docs_db_type ON rag_documents(rag_db_id) WHERE metadata->>'type' = 'style';
+-- Style Capsule management performance
+CREATE INDEX idx_style_capsules_library_type ON style_capsules(library_id, capsule_type);
+CREATE INDEX idx_style_capsule_applications_stage ON style_capsule_applications(stage_state_id);
 ```
 
 #### **Cost Estimation Queries**
@@ -804,7 +807,7 @@ CREATE INDEX idx_invalidation_logs_cost ON invalidation_logs(estimated_regen_cos
 class StageOrchestrator {
     constructor(
         private llmClient: LLMClient,
-        private ragService: RAGService,
+        private styleCapsuleService: StyleCapsuleService,
         private validationService: ValidationService
     ) {}
 
@@ -812,11 +815,11 @@ class StageOrchestrator {
         // 1. Validate input
         await this.validationService.validateStage2Input(input);
 
-        // 2. Retrieve RAG context
-        const ragContext = await this.ragService.retrieveContext(input.writtenStyleRagId);
+        // 2. Get selected Style Capsule
+        const styleCapsule = await this.styleCapsuleService.getCapsule(input.writingStyleCapsuleId);
 
         // 3. Generate treatment variants
-        const treatments = await this.llmClient.generateTreatments(input, ragContext);
+        const treatments = await this.llmClient.generateTreatments(input, styleCapsule);
 
         // 4. Return structured output
         return { treatments, selectedVariant: 0 };
@@ -825,10 +828,10 @@ class StageOrchestrator {
 
 // ❌ Bad: Monolithic function with mixed concerns
 async function generateTreatment(projectId: string, input: any) {
-    // Validation, RAG, LLM, and data persistence all mixed together
+    // Validation, Style Capsule, LLM, and data persistence all mixed together
     if (!input.text) throw new Error('No text');
-    const rag = await fetchRagData(input.ragId);
-    const result = await callOpenAI({ prompt: input.text, context: rag });
+    const capsule = await fetchStyleCapsule(input.capsuleId);
+    const result = await callOpenAI({ prompt: input.text, context: capsule });
     await saveToDatabase(projectId, result);
     return result;
 }
@@ -889,7 +892,7 @@ describe('StageOrchestrator', () => {
     it('should generate 3 treatment variants', async () => {
         // Arrange
         const mockLLM = { generateTreatments: vi.fn().mockResolvedValue(mockTreatments) };
-        const orchestrator = new StageOrchestrator(mockLLM, mockRAG, mockValidation);
+        const orchestrator = new StageOrchestrator(mockLLM, mockStyleCapsuleService, mockValidation);
 
         // Act
         const result = await orchestrator.executeStage2(projectId, input);
@@ -1168,13 +1171,13 @@ async function advanceStage(stageNumber: number, data: any) {
 1. **Memoization**: Use React.memo, useMemo, useCallback appropriately
 2. **Lazy Loading**: Code-split route components and heavy dependencies
 3. **Virtualization**: Use virtual scrolling for large lists
-4. **Debouncing**: Debounce expensive operations like RAG searches
+4. **Debouncing**: Debounce expensive operations like Style Capsule lookups
 
 ```typescript
 // ✅ Good: Performance-conscious component
 const ShotList = memo(({ shots, onEdit }: ShotListProps) => {
     const debouncedSearch = useDebouncedCallback((query) => {
-        // Expensive RAG search
+        // Expensive Style Capsule lookup
     }, 300);
 
     return (
@@ -1197,7 +1200,7 @@ const ShotList = memo(({ shots, onEdit }: ShotListProps) => {
  *
  * @example
  * ```typescript
- * const orchestrator = new StageOrchestrator(llmClient, ragService);
+ * const orchestrator = new StageOrchestrator(llmClient, styleCapsuleService);
  * const result = await orchestrator.executeStage2(projectId, input);
  * ```
  */
@@ -1206,11 +1209,11 @@ export class StageOrchestrator {
      * Executes Stage 2 (Treatment Generation) of the pipeline.
      *
      * This stage generates multiple prose treatment variants based on the
-     * user's input and selected RAG context. The system ensures consistency
+     * user's input and selected Style Capsule. The system ensures consistency
      * with the project's global constraints (genre, tone, target length).
      *
      * @param projectId - The unique identifier of the project
-     * @param input - Stage 2 input parameters including narrative source and RAG selection
+     * @param input - Stage 2 input parameters including narrative source and Style Capsule selection
      * @returns Promise resolving to treatment variants with metadata
      * @throws {ValidationError} When input validation fails
      * @throws {APIError} When LLM service is unavailable
