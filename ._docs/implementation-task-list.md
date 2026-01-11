@@ -117,24 +117,24 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 \---
 
-\#\# Phase 2: RAG & Style System
+\#\# Phase 2: Style Capsule System
 
 \*\*Goal\*\*: Add creative control through style customization. Users can upload reference materials to guide tone, pacing, and aesthetic.
 
-\#\#\# Feature 2.1: Written Style RAG Database  
+\#\#\# Feature 2.1: Writing Style Capsule Library
 \*\*Purpose\*\*: Enable tone/style consistency across text generation  
 \- \[ \] Implement \`rag\_databases\` and \`rag\_documents\` tables  
 \- \[ \] Create document upload UI for text samples  
 \- \[ \] Integrate text embedding generation (OpenAI embeddings)  
 \- \[ \] Implement pgvector indexing with HNSW  
-\- \[ \] Add RAG retrieval logic to Stage 2-4 prompts
+\- \[ \] Add Style Capsule injection logic to Stage 2-4 prompts
 
-\#\#\# Feature 2.2: Visual Style RAG Database  
+\#\#\# Feature 2.2: Visual Style Capsule Library  
 \*\*Purpose\*\*: Control visual aesthetic for image/video generation  
 \- \[ \] Create visual reference image upload interface  
 \- \[ \] Implement image embedding generation  
 \- \[ \] Build visual style selector UI component  
-\- \[ \] Add visual RAG database management page  
+\- \[ \] Add Visual Style Capsule management page  
 \- \[ \] Link visual style selection to asset generation
 
 \#\#\# Feature 2.3: Context Management System  
@@ -145,12 +145,12 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 \- \[ \] Build context injection into LLM prompts  
 \- \[ \] Add context size monitoring and truncation
 
-\#\#\# Feature 2.4: RAG-Enhanced Generation  
+\#\#\# Feature 2.4: Style Capsule-Enhanced Generation  
 \*\*Purpose\*\*: Apply style guidance to AI outputs  
-\- \[ \] Modify Stage 2 prompts to include written RAG context  
+\- \[ \] Modify Stage 2 prompts to include Writing Style Capsule injection  
 \- \[ \] Update Stage 4 script generation with style retrieval  
 \- \[ \] Add relevance scoring for retrieved documents  
-\- \[ \] Implement RAG retrieval logging in \`rag\_retrievals\` table  
+\- \[ \] Implement Style Capsule application logging in \`rag\_retrievals\` table  
 \- \[ \] Test style consistency across regenerations
 
 \*\*Deliverable\*\*: Users can define custom written and visual styles by uploading reference materials. Generated treatments and scripts reflect the uploaded style, making output more personalized and consistent with user vision.
@@ -325,7 +325,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 \*\*Purpose\*\*: Merge shot \+ asset data into formatted prompts  
 \- \[ \] Build shot data → frame prompt logic  
 \- \[ \] Implement action \+ dialogue → video prompt logic  
-\- \[ \] Add visual style RAG injection  
+\- \[ \] Add Visual Style Capsule injection  
 \- \[ \] Create character profile merging  
 \- \[ \] Implement prompt sanity checker
 
@@ -701,14 +701,14 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 **Purpose**: Leverage collected traces for quality assurance and prompt refinement
 - [ ] Configure dataset creation from production traces
 - [ ] Implement regression testing pipeline for core prompts (Stage 4 Script, Stage 7 Shot List)
-- [ ] Set up RAG retrieval relevance scoring (LLM-as-a-judge)
+- [ ] Set up Style Capsule consistency scoring (LLM-as-a-judge)
 - [ ] Build "Open in Playground" workflow for failed generations
 - [ ] Create dashboard for latency and token usage trends
 
 ### **Note**: Possible Additonal LangSmith Integration Tasks:
     Integrate tracing for all (or just the relevant) pipeline stages (1–12).
     Utilize LangSmith Playground for prompt iteration and regression testing.
-    Implement RAG retrieval tracking to validate "Global-to-Local" context injection
+    Implement Style Capsule injection tracking to validate "Global-to-Local" context injection
 
 \#\#\# Feature 14.3: Cost Analytics  
 \*\*Purpose\*\*: Monitor and optimize AI spending  
@@ -1284,7 +1284,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 \- \[ \] Add content translation workflow  
 \- \[ \] Implement bilingual script editing  
 \- \[ \] Create translation memory system  
-\- \[ \] Add language-specific style RAG
+\- \[ \] Add language-specific Style Capsules
 
 \#\#\# Feature 26.3: Regional Adaptations  
 \*\*Purpose\*\*: Customize for different markets  

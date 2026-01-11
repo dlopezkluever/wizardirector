@@ -24,17 +24,17 @@
 
 ### **AI & ML**
 
-* LLM Providers: OpenAI, Anthropic, Gemini (multi-provider, cost-aware routing)  
-* Image Generation: Nano Banana  
-* Video Generation: Google Veo3  
-* Future Media Providers: Sora, Stability, ComfyUI  
+* LLM Providers: OpenAI, Anthropic, Gemini (multi-provider, cost-aware routing)
+* Image Generation: Nano Banana
+* Video Generation: Google Veo3
+* Future Media Providers: Sora, Stability, ComfyUI
 * Media Abstraction: mediaProvider interface (no hardcoded model assumptions)
 
-### **Prompting, RAG & Observability**
+### **Prompting, Style Capsules & Observability**
 
 * Prompt Templates: Custom, DB-stored, versioned
 * Prompt Engineering & Observability: LangSmith (Unified platform for tracing, debugging, and iterative prompt testing/playground)
-* RAG & Context Management: LangChain
+* Style Capsule Management: Structured storage for deterministic style injection
 * Workflow Automation: n8n (for async, high-cost pipelines)
 
 ### **Deployment**
@@ -112,44 +112,44 @@
 
 ---
 
-## **Data & Vector Search**
+## **Data & Style Capsule Storage**
 
-### **Supabase Postgres \+ pgvector**
+### **Supabase Postgres \+ Structured Storage**
 
-**Use Case (in this app):**  
-pgvector is used to power *stylistic, narrative, and visual-beat retrieval* across the pipeline. This includes retrieving subtle creative influences (tone, pacing, visual verbosity, character cadence) established in early stages (e.g. Stage 1–4) and ensuring they are faithfully inherited in later stages (e.g. Shot Lists, Image Prompts, Video Prompts).
+**Use Case (in this app):**
+Structured storage is used to maintain *stylistic, narrative, and visual consistency* across the pipeline. This includes storing Style Capsules (text examples, descriptors, constraints) established in early stages and ensuring they are deterministically injected into later stages (e.g. Shot Lists, Image Prompts, Video Prompts).
 
-This is not generic semantic search. It is *precision creative recall*.
+This is not retrieval-based similarity matching. It is *deterministic style application*.
 
-**Why pgvector (explicit rationale):**
+**Why structured storage (explicit rationale):**
 
-* **Stylistic Nuance \> Raw Speed:** Using HNSW indexes with tuned parameters (e.g. `ef_search`, `m`) allows prioritizing retrieval accuracy over latency. This is critical when retrieving subtle narrative or visual "beats" where small semantic differences matter.  
-* **Hybrid Search Superiority:** pgvector allows native SQL queries that combine vector similarity *and* structured filters in a single query. For example:  
-  * Scene ID  
-  * Character ID  
-  * Style lock version  
-  * Visual verbosity flags  
-    This is essential for scoped inheritance (global → scene → shot).  
-* **Performance Reality:** With modern extensions (e.g. `pgvectorscale`) and tuned indexes, recent benchmarks show pgvector can meet or exceed managed vector DBs like Pinecone for many real-world workloads.  
-* **Unified Architecture:** Assets, metadata, embeddings, and version history live in the same ACID-compliant Postgres environment. This guarantees consistency when prompts, embeddings, and pipeline state evolve together.
+* **Deterministic Control > Similarity Search:** Plain text + metadata storage ensures exact style reproduction without retrieval ambiguity. Style Capsules are explicitly selected and injected, providing full transparency and predictability.
+* **Query Flexibility:** Native SQL queries support complex filtering and inheritance logic. For example:
+  * Scene ID
+  * Character ID
+  * Style Capsule version
+  * Constraint flags
+    This enables precise scoped inheritance (global → scene → shot).
+* **Performance Simplicity:** No vector indexing complexity - standard Postgres indexes provide fast lookups for Style Capsule retrieval and inheritance.
+* **Unified Architecture:** Style Capsules, metadata, prompts, and version history live in the same ACID-compliant Postgres environment. This guarantees consistency when styles, prompts, and pipeline state evolve together.
 
 **Best Practices:**
 
-* Version embeddings alongside prompt and asset versions  
-* Maintain separate embedding spaces for:  
-  * Narrative text  
-  * Visual descriptions  
-  * Style exemplars  
-* Explicitly log which embeddings were retrieved for each generation
+* Version Style Capsules alongside prompt and asset versions
+* Maintain separate storage for:
+  * Writing Style Capsules (text examples, constraints)
+  * Visual Style Capsules (descriptors, reference images)
+  * Design Pillars (structured aesthetic definitions)
+* Explicitly log which Style Capsules were applied for each generation
 
 **Limitations:**
 
-* Requires careful index tuning  
-* Scaling requires database expertise (acceptable tradeoff for control)
+* Requires careful schema design
+* Style Capsules must be explicitly curated (no automatic similarity discovery)
 
 ---
 
-## **Prompting & RAG**
+## **Prompting & Style Capsules**
 
 ### **Prompt Templates (Custom, First-Class)**
 
@@ -172,35 +172,35 @@ Prompts are not static strings. They are versioned creative artifacts.
 LangSmith (Unified platform for tracing, debugging, and iterative prompt testing/playground).
 ---
 
-### **LangChain (RAG & Global-to-Local State Management)**
+### **Style Capsule Management System**
 
-**Use Case (in this app):**  
-LangChain is used to implement the *Global-to-Local inheritance strategy* across stages.
+**Use Case (in this app):**
+The Style Capsule system implements the *Global-to-Local inheritance strategy* across stages through deterministic style injection.
 
 Specifically:
 
-* Building RAG pipelines over pgvector  
-* Ensuring narrative and stylistic nuance established in early stages persists into later stages  
-* Programmatically joining:  
-  * Global project state  
-  * Character state  
-  * Scene state  
-  * Style lock state
+* Structured Style Capsule storage and retrieval
+* Ensuring narrative and stylistic consistency established in early stages persists into later stages
+* Programmatically assembling prompts with:
+  * Global project state
+  * Character state
+  * Scene state
+  * Style Capsule selections
 
 This is critical between stages such as:
 
-* Stage 4 (Master Script) → Stage 7 (Shot List)  
+* Stage 4 (Master Script) → Stage 7 (Shot List)
 * Stage 8–10 (Character / Visual refinement)
 
 **Best Practices:**
 
-* Use LangChain retrievers and memory components  
-* Keep orchestration logic outside LangChain  
-* Avoid agent-heavy abstractions
+* Use structured data models for Style Capsules
+* Keep style injection logic transparent and deterministic
+* Maintain clear separation between writing and visual styles
 
 **Limitations:**
 
-* Can obscure logic if overused
+* Requires explicit style curation and selection
 
 ---
 
@@ -227,30 +227,30 @@ Primary candidate use case:
 
 ## **Observability & Debugging**
 
-### **LangSmith (Inheritance Logic, RAG Quality, Creative Debugging)**
+### **LangSmith (Inheritance Logic, Style Consistency, Creative Debugging)**
 
-**Use Case (in this app):**  
+**Use Case (in this app):**
 LangSmith is used to *validate and debug the Global-to-Local inheritance logic* that underpins the entire system.
 
 Primary goals:
 
-* Ensure small changes in early stages correctly propagate to later stages  
+* Ensure small changes in early stages correctly propagate to later stages
 * Diagnose where stylistic or constraint violations originate
 
 Key Advantages:
 
-* **End-to-End Traces:** View the exact inputs and outputs of every stage in a single trace. If a Stage 12 video prompt becomes overly verbose, you can trace whether the issue originated in Stage 7 (Shot List) or Stage 4 (Script).  
-* **Creative Iteration via Playground:** Pull failing traces directly into the LangSmith Playground, tweak prompts (e.g. visual style constraints), and re-run against identical data. This enables tight feedback loops for maintaining style locks (e.g. Stage 5).  
-* **RAG Performance Monitoring:** Log which documents were retrieved from pgvector and evaluate relevance using LLM-as-a-judge metrics (Faithfulness, Relevance). This ensures subtle influences are actually being retrieved and used.
+* **End-to-End Traces:** View the exact inputs and outputs of every stage in a single trace. If a Stage 12 video prompt becomes overly verbose, you can trace whether the issue originated in Stage 7 (Shot List) or Stage 4 (Script).
+* **Creative Iteration via Playground:** Pull failing traces directly into the LangSmith Playground, tweak prompts (e.g. visual style constraints), and re-run against identical data. This enables tight feedback loops for maintaining style locks (e.g. Stage 5).
+* **Style Capsule Injection Monitoring:** Log which Style Capsules were applied and evaluate consistency using LLM-as-a-judge metrics (Faithfulness, Relevance). This ensures style elements are being properly injected and maintained.
 
 **Best Practices:**
 
-* Enable tracing for all pipeline runs  
+* Enable tracing for all pipeline runs
 * Treat traces as first-class debugging artifacts
 
 **Limitations:**
 
-* Most powerful when paired with LangChain
+* Most powerful when paired with structured style injection
 
 ---
 

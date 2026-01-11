@@ -20,7 +20,7 @@ Key action:
 
 * **Create New Project** → enters Phase A
 
-Global tools (RAG management, Asset Library, Version History, Artifact Vault) are accessible from persistent navigation but are not required to proceed.
+Global tools (Style Capsule Library, Asset Library, Version History, Artifact Vault) are accessible from persistent navigation but are not required to proceed.
 
 ---
 
@@ -131,7 +131,7 @@ System extracts:
 
 User actions:
 
-* Select a Visual Style RAG  
+* Select a Visual Style Capsule / Style Anchor  
 * Edit asset descriptions  
 * Generate and refine image keys for each asset  
 * Lock each master asset
