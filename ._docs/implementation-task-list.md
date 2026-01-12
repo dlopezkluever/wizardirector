@@ -10,7 +10,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 \---
 
-\#\# Phase 0: **DONE** Setup & Foundation (Barebones Functioning System)
+\#\# Phase 0: **DONE** Setup & Foundation (Barebones Functioning System) **DONE**
 
 \*\*Goal\*\*: Establish minimal infrastructure to support basic data flow and state persistence. No AI integrations yet—focus on making the skeleton "live" with mock data that persists.
 
@@ -58,11 +58,11 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 \---
 
-\#\# Phase 1: MVP \- Stage 1-4 Text Pipeline (Minimal Viable Product)
+\#\# **DONE** Phase 1: MVP \- Stage 1-4 Text Pipeline (Minimal Viable Product) **DONE**
 
 \*\*Goal\*\*: Deliver core narrative creation pipeline (Phase A: Stages 1-4) with real LLM integration. Users can input a story idea and get a structured script output.
 
-### Feature 1.1 **DONE**: LLM Service Integration & Observability
+### Feature 1.1 : LLM Service Integration & Observability
 **Purpose**: Connect to text generation AI services with full debugging visibility
 - [ ] Set up LangSmith project and API keys
 - [ ] Set up Gemini/OpenAI/Anthropic client wrapped with LangSmith tracer

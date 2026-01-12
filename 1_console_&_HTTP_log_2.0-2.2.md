@@ -1,3 +1,6 @@
+## Console log entering Stage 2:
+
+
 🔍 [DEBUG] Starting generateInitialTreatments for projectId: 51868784-7cfb-47e3-936e-73d648ba5175
 Stage2Treatment.tsx:145 🔍 [DEBUG] Fetching Stage 1 state...
 Stage2Treatment.tsx:148 🔍 [DEBUG] Stage 1 state received: 
@@ -114,3 +117,37 @@ Stage2Treatment.tsx:211 Failed to generate treatments: Error: Missing required t
     at TreatmentService.generateTreatments (treatmentService.ts:106:13)
     at async generateInitialTreatments (Stage2Treatment.tsx:180:22)
 generateInitialTreatments	@	Stage2Treatment.tsx:211
+
+## Network Responses (Relevant)
+
+### "2":
+{
+    "id": "2dc4c7f5-d37a-41b2-b44d-17952b85690d",
+    "branch_id": "074c83fe-445b-48a1-9d20-1204e951d729",
+    "stage_number": 2,
+    "version": 2,
+    "status": "draft",
+    "inherited_from_stage_id": "2690e03e-7e0a-4801-9562-8378a3ab2ec9",
+    "content": {
+        "variations": [],
+        "activeVariation": 0
+    },
+    "prompt_template_version": "",
+    "final_prompt": "",
+    "regeneration_guidance": "",
+    "created_at": "2026-01-12T19:58:52.717866+00:00",
+    "created_by": "fa58ace1-ae7e-4dd8-ab54-1fbe453701f2",
+    "langsmith_trace_id": null
+}
+
+### "generate_from_template":
+{
+    "success": false,
+    "error": "Missing required template variables",
+    "missing": [
+        "rag_retrieved_style_examples"
+    ],
+    "extra": [
+        "writing_style_context"
+    ]
+}

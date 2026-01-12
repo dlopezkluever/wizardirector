@@ -37,7 +37,7 @@ REQUIREMENTS:
 6. Each variation should have a different structural emphasis (e.g., different endings, chronology, or tonal approach)
 
 WRITTEN STYLE CONTEXT:
-{rag_retrieved_style_examples}
+{writing_style_context}
 
 OUTPUT STRUCTURE:
 Generate 3 complete treatments, each structurally different. Each treatment should be 800-1200 words and tell a complete story arc suitable for the target runtime.
@@ -106,7 +106,7 @@ PROJECT CONSTRAINTS:
 - Tonal guidance: {tonal_precision}
 
 WRITTEN STYLE CONTEXT:
-{rag_retrieved_style_examples}
+{writing_style_context}
 
 OUTPUT REQUIREMENTS:
 1. Each beat must be 1-3 sentences maximum
@@ -168,7 +168,7 @@ PROJECT CONSTRAINTS:
 - Tonal guidance: {tonal_precision}
 
 WRITTEN STYLE CONTEXT:
-{rag_retrieved_style_examples}
+{writing_style_context}
 
 VISUAL DESCRIPTION FOCUS:
 - Character appearance, clothing, expressions, body language

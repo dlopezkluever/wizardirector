@@ -129,6 +129,17 @@ class TreatmentService {
       throw new Error('User not authenticated');
     }
 
+    // Get writing style capsule injection
+    let writingStyleContext = '';
+    if (request.processedInput.projectParams.writingStyleCapsuleId) {
+      try {
+        const capsule = await styleCapsuleService.getCapsule(request.processedInput.projectParams.writingStyleCapsuleId);
+        writingStyleContext = styleCapsuleService.formatWritingStyleInjection(capsule);
+      } catch (error) {
+        console.warn('Failed to load writing style capsule:', error);
+      }
+    }
+
     // Enhanced prompt with regeneration guidance
     const llmRequest = {
       templateName: 'treatment_expansion',
@@ -144,7 +155,7 @@ class TreatmentService {
         content_rating: request.processedInput.projectParams.contentRating,
         genres: request.processedInput.projectParams.genres.join(', '),
         tonal_precision: request.processedInput.projectParams.tonalPrecision,
-        rag_retrieved_style_examples: '',
+        writing_style_context: writingStyleContext,
         regeneration_guidance: request.guidance
       },
       metadata: {

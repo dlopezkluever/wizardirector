@@ -19,6 +19,7 @@ export interface GenerateScriptRequest {
     contentRating: string;
     genres: string[];
     tonalPrecision: string;
+    writingStyleCapsuleId?: string;
   };
 }
 
@@ -127,6 +128,17 @@ class ScriptService {
 
     const beatSheetContent = this.formatBeatSheetForPrompt(request.beatSheet);
 
+    // Get writing style capsule injection
+    let writingStyleContext = '';
+    if (request.projectParams.writingStyleCapsuleId) {
+      try {
+        const capsule = await styleCapsuleService.getCapsule(request.projectParams.writingStyleCapsuleId);
+        writingStyleContext = styleCapsuleService.formatWritingStyleInjection(capsule);
+      } catch (error) {
+        console.warn('Failed to load writing style capsule:', error);
+      }
+    }
+
     const llmRequest = {
       templateName: 'master_script_generation',
       variables: {
@@ -136,7 +148,7 @@ class ScriptService {
         content_rating: request.projectParams.contentRating,
         genres: request.projectParams.genres.join(', '),
         tonal_precision: request.projectParams.tonalPrecision,
-        rag_retrieved_style_examples: '',
+        writing_style_context: writingStyleContext,
         regeneration_guidance: request.guidance
       },
       metadata: {
