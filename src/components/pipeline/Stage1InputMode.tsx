@@ -237,11 +237,12 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
       
       setContent(updatedContent);
 
-      // Manually save the stage state with processed input before completing
+      // Save the stage state with processed input before completing
+      // Note: We save as 'draft' here and let ProjectView's handleStageComplete handle the locking
       console.log('🔍 [DEBUG] Stage 1 - Saving stage state for project:', project.id);
       await stageStateService.saveStageState(project.id, 1, {
         content: updatedContent,
-        status: 'locked'
+        status: 'draft'
       });
       console.log('🔍 [DEBUG] Stage 1 - Stage state saved successfully');
 

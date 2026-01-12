@@ -1,5 +1,18 @@
 ### Add debouncing to Auto-Save for stages 1-3
 
+## Locking is bugging, unprecise (and idk, kinda stupid)
+
+(example HTTP response of error:
+{
+    "error": "Cannot lock stage 2. Stage 1 must be locked first.",
+    "details": {
+        "requiredStage": 1,
+        "requiredStatus": "locked",
+        "currentStatus": "draft"
+    }
+}
+)
+
 ## Update Sidebar to reflect Style Capsules
 
 ### Stage 4 needs to auto generate IF never have been generated before.
