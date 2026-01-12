@@ -86,7 +86,7 @@ const genres = [
 
 interface Stage1InputModeProps {
   projectId: string;
-  onComplete: (project?: Project) => void;
+  onComplete: () => void;
 }
 
 interface Stage1Content {
@@ -104,10 +104,11 @@ interface Stage1Content {
 
 export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps) {
   
-  // Use the stage state hook for persistence
+  // Use the stage state hook for persistence (auto-save disabled since we manually manage saving/locking)
   const { content, setContent, isLoading, isSaving } = useStageState<Stage1Content>({
     projectId,
     stageNumber: 1,
+    autoSave: false,
     initialContent: {
       selectedMode: null,
       selectedProjectType: null,
@@ -246,7 +247,7 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
       });
       console.log('🔍 [DEBUG] Stage 1 - Stage state saved successfully');
 
-      onComplete(project);
+      onComplete();
     } catch (error) {
       console.error('Failed to save project configuration:', error);
       // Handle error - maybe show a toast
