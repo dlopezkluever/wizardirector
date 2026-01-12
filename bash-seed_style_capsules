@@ -1,0 +1,39 @@
+Daniel Lopez@DanielLopez MINGW64 ~/Desktop/Aiuteur/wizardirector/backend (phase-2-a)
+$ npx tsx scripts/seed-style-capsules.ts
+🚀 Seeding Style Capsule presets...
+
+📚 Creating system preset library...
+✅ Created preset library with ID: ea9a1759-0598-4d75-b2d1-b431a5324f75
+
+✍️  Creating writing style presets...
+✅ Created writing preset: Hemingway Minimalist
+✅ Created writing preset: Victorian Ornate
+✅ Created writing preset: Hard-Boiled Noir
+✅ Created writing preset: Whimsical Fantasy
+
+🎨 Creating visual style presets...
+✅ Created visual preset: Neo-Noir
+✅ Created visual preset: Pixar Animation
+✅ Created visual preset: Cinéma Vérité
+✅ Created visual preset: Cyberpunk Neon
+
+🔍 Verifying seed data...
+📊 Seeded 4 writing style presets:
+   - Hemingway Minimalist
+   - Victorian Ornate
+   - Hard-Boiled Noir
+   - Whimsical Fantasy
+📊 Seeded 4 visual style presets:
+   - Neo-Noir
+   - Pixar Animation
+   - Cinéma Vérité
+   - Cyberpunk Neon
+
+✅ Style Capsule seeding completed successfully!
+
+🎯 Total presets created: 8
+
+📝 Next steps:
+1. Deploy the backend API routes
+2. Deploy the frontend components
+3. Test the style capsule library page
