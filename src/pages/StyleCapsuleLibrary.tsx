@@ -536,13 +536,11 @@ const StyleCapsuleLibrary = () => {
           </DialogHeader>
           {createCapsuleType === 'writing' ? (
             <WritingStyleCapsuleEditor
-              libraries={libraries}
               onSave={handleCapsuleCreated}
               onCancel={() => setShowCreateDialog(false)}
             />
           ) : (
             <VisualStyleCapsuleEditor
-              libraries={libraries}
               onSave={handleCapsuleCreated}
               onCancel={() => setShowCreateDialog(false)}
             />

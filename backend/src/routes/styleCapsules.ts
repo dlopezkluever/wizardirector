@@ -89,12 +89,12 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const userId = req.user!.id;
-    const { name, type, libraryId, ...capsuleData } = req.body;
+    const { name, type, ...capsuleData } = req.body;
 
     // Validate required fields
-    if (!name || !type || !libraryId) {
+    if (!name || !type) {
       return res.status(400).json({
-        error: 'Missing required fields: name, type, libraryId'
+        error: 'Missing required fields: name, type'
       });
     }
 
@@ -104,28 +104,15 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Verify library ownership
-    const { data: library, error: libraryError } = await supabase
-      .from('style_capsule_libraries')
-      .select('id, user_id')
-      .eq('id', libraryId)
-      .eq('user_id', userId)
-      .single();
-
-    if (libraryError || !library) {
-      return res.status(403).json({
-        error: 'Library not found or access denied'
-      });
-    }
-
-    // Create the capsule
+    // Create the capsule (user-created capsules are never presets)
     const { data: capsule, error } = await supabase
       .from('style_capsules')
       .insert({
         name,
         type,
-        library_id: libraryId,
+        library_id: null, // No library needed
         user_id: userId,
+        is_preset: false, // User capsules are always custom
         ...capsuleData
       })
       .select()
@@ -133,7 +120,16 @@ router.post('/', async (req, res) => {
 
     if (error) {
       console.error('Error creating style capsule:', error);
-      return res.status(500).json({ error: 'Failed to create style capsule' });
+      console.error('Full error details:', JSON.stringify(error, null, 2));
+      console.error('Attempted data:', JSON.stringify({
+        name,
+        type,
+        library_id: null,
+        user_id: userId,
+        is_preset: false,
+        ...capsuleData
+      }, null, 2));
+      return res.status(500).json({ error: 'Failed to create style capsule', details: error.message });
     }
 
     res.status(201).json({ data: capsule });
@@ -475,6 +471,38 @@ router.get('/libraries/all', async (req, res) => {
   try {
     const userId = req.user!.id;
 
+    // First, check if user has any personal libraries
+    const { data: userLibraries, error: userLibError } = await supabase
+      .from('style_capsule_libraries')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('is_preset', false);
+
+    if (userLibError) {
+      console.error('Error checking user libraries:', userLibError);
+      return res.status(500).json({ error: 'Failed to check user libraries' });
+    }
+
+    // If user has no personal libraries, create a default one
+    if (!userLibraries || userLibraries.length === 0) {
+      console.log(`Creating default library for user ${userId}`);
+      
+      const { error: createError } = await supabase
+        .from('style_capsule_libraries')
+        .insert({
+          name: 'My Style Capsules',
+          description: 'Your personal collection of style capsules',
+          user_id: userId,
+          is_preset: false
+        });
+
+      if (createError) {
+        console.error('Error creating default library:', createError);
+        // Don't fail the request, just log the error
+      }
+    }
+
+    // Now fetch all accessible libraries
     const { data: libraries, error } = await supabase
       .from('style_capsule_libraries')
       .select(`

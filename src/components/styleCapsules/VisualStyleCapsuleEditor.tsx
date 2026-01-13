@@ -14,7 +14,6 @@ import { useToast } from '@/hooks/use-toast';
 
 import { styleCapsuleService } from '@/lib/services/styleCapsuleService';
 import type {
-  StyleCapsuleLibrary,
   VisualStyleCapsuleFormData,
   VisualStyleCapsuleCreate,
   DesignPillars
@@ -23,7 +22,6 @@ import { validateVisualStyleCapsule, DEFAULT_VISUAL_CAPSULE_FORM } from '@/types
 import { ImageUploader } from './ImageUploader';
 
 interface VisualStyleCapsuleEditorProps {
-  libraries: StyleCapsuleLibrary[];
   capsule?: any; // For editing existing capsules
   onSave: () => void;
   onCancel: () => void;
@@ -109,20 +107,9 @@ export function VisualStyleCapsuleEditor({
     } : DEFAULT_VISUAL_CAPSULE_FORM
   );
 
-  const [selectedLibraryId, setSelectedLibraryId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [existingImages, setExistingImages] = useState<string[]>(capsule?.referenceImageUrls || []);
-
-  // Initialize selected library
-  useEffect(() => {
-    if (libraries.length > 0) {
-      const defaultLibrary = libraries.find(lib => lib.userId && !lib.isPreset);
-      if (defaultLibrary) {
-        setSelectedLibraryId(defaultLibrary.id);
-      }
-    }
-  }, [libraries]);
 
   const updateFormData = (updates: Partial<VisualStyleCapsuleFormData>) => {
     setFormData(prev => ({ ...prev, ...updates }));
@@ -168,7 +155,6 @@ export function VisualStyleCapsuleEditor({
   const validateForm = (): boolean => {
     const createData: Partial<VisualStyleCapsuleCreate> = {
       name: formData.name,
-      libraryId: selectedLibraryId,
       designPillars: formData.designPillars,
       descriptorStrings: formData.descriptorStrings.trim() || undefined,
       referenceImageUrls: existingImages
@@ -189,7 +175,6 @@ export function VisualStyleCapsuleEditor({
       const createData: VisualStyleCapsuleCreate = {
         name: formData.name,
         type: 'visual',
-        libraryId: selectedLibraryId,
         designPillars: formData.designPillars,
         descriptorStrings: formData.descriptorStrings.trim() || undefined,
         referenceImageUrls: existingImages
@@ -277,23 +262,6 @@ export function VisualStyleCapsuleEditor({
                 onChange={(e) => updateFormData({ name: e.target.value })}
                 placeholder="e.g., Neo-Noir Cinematic"
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="library">Library *</Label>
-              <Select value={selectedLibraryId} onValueChange={setSelectedLibraryId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a library" />
-                </SelectTrigger>
-                <SelectContent>
-                  {libraries
-                    .filter(lib => lib.userId) // Only user libraries for creation
-                    .map(library => (
-                      <SelectItem key={library.id} value={library.id}>
-                        {library.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
             </div>
           </div>
         </CardContent>

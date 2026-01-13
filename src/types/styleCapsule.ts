@@ -59,7 +59,6 @@ export type StyleCapsule = WritingStyleCapsule | VisualStyleCapsule;
 export interface WritingStyleCapsuleCreate {
   name: string;
   type: 'writing';
-  libraryId: string;
   exampleTextExcerpts?: string[];
   styleLabels?: string[];
   negativeConstraints?: string[];
@@ -69,7 +68,6 @@ export interface WritingStyleCapsuleCreate {
 export interface VisualStyleCapsuleCreate {
   name: string;
   type: 'visual';
-  libraryId: string;
   designPillars?: DesignPillars;
   referenceImageUrls?: string[];
   descriptorStrings?: string;
@@ -172,9 +170,6 @@ export function validateWritingStyleCapsule(data: Partial<WritingStyleCapsuleCre
     errors.push('Name is required');
   }
 
-  if (!data.libraryId) {
-    errors.push('Library selection is required');
-  }
 
   if (data.exampleTextExcerpts && data.exampleTextExcerpts.some(excerpt => !excerpt.trim())) {
     errors.push('Example text excerpts cannot be empty');
@@ -190,9 +185,6 @@ export function validateVisualStyleCapsule(data: Partial<VisualStyleCapsuleCreat
     errors.push('Name is required');
   }
 
-  if (!data.libraryId) {
-    errors.push('Library selection is required');
-  }
 
   return errors;
 }

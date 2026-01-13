@@ -15,21 +15,18 @@ import { useToast } from '@/hooks/use-toast';
 
 import { styleCapsuleService } from '@/lib/services/styleCapsuleService';
 import type {
-  StyleCapsuleLibrary,
   WritingStyleCapsuleFormData,
   WritingStyleCapsuleCreate
 } from '@/types/styleCapsule';
 import { validateWritingStyleCapsule, DEFAULT_WRITING_CAPSULE_FORM } from '@/types/styleCapsule';
 
 interface WritingStyleCapsuleEditorProps {
-  libraries: StyleCapsuleLibrary[];
   capsule?: any; // For editing existing capsules
   onSave: () => void;
   onCancel: () => void;
 }
 
 export function WritingStyleCapsuleEditor({
-  libraries,
   capsule,
   onSave,
   onCancel
@@ -47,20 +44,9 @@ export function WritingStyleCapsuleEditor({
     } : DEFAULT_WRITING_CAPSULE_FORM
   );
 
-  const [selectedLibraryId, setSelectedLibraryId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [previewMode, setPreviewMode] = useState(false);
-
-  // Initialize selected library
-  useEffect(() => {
-    if (libraries.length > 0) {
-      const defaultLibrary = libraries.find(lib => lib.userId && !lib.isPreset);
-      if (defaultLibrary) {
-        setSelectedLibraryId(defaultLibrary.id);
-      }
-    }
-  }, [libraries]);
 
   const updateFormData = (updates: Partial<WritingStyleCapsuleFormData>) => {
     setFormData(prev => ({ ...prev, ...updates }));
@@ -122,7 +108,6 @@ export function WritingStyleCapsuleEditor({
   const validateForm = (): boolean => {
     const createData: Partial<WritingStyleCapsuleCreate> = {
       name: formData.name,
-      libraryId: selectedLibraryId,
       exampleTextExcerpts: formData.exampleTextExcerpts.filter(ex => ex.trim()),
       styleLabels: formData.styleLabels.filter(label => label.trim()),
       negativeConstraints: formData.negativeConstraints.filter(constraint => constraint.trim()),
@@ -144,7 +129,6 @@ export function WritingStyleCapsuleEditor({
       const createData: WritingStyleCapsuleCreate = {
         name: formData.name,
         type: 'writing',
-        libraryId: selectedLibraryId,
         exampleTextExcerpts: formData.exampleTextExcerpts.filter(ex => ex.trim()),
         styleLabels: formData.styleLabels.filter(label => label.trim()),
         negativeConstraints: formData.negativeConstraints.filter(constraint => constraint.trim()),
@@ -262,23 +246,6 @@ ${formData.freeformNotes.trim() ? `Additional notes: ${formData.freeformNotes}` 
                     onChange={(e) => updateFormData({ name: e.target.value })}
                     placeholder="e.g., Hemingway Minimalist"
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="library">Library *</Label>
-                  <Select value={selectedLibraryId} onValueChange={setSelectedLibraryId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choose a library" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {libraries
-                        .filter(lib => lib.userId) // Only user libraries for creation
-                        .map(library => (
-                          <SelectItem key={library.id} value={library.id}>
-                            {library.name}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
                 </div>
               </div>
             </CardContent>
