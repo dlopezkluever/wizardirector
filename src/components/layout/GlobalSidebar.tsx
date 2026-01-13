@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/stores/auth-store';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 interface SidebarItem {
   id: string;
@@ -21,20 +21,20 @@ interface SidebarItem {
 }
 
 const sidebarItems: SidebarItem[] = [
-  { id: 'home', label: 'Projects', icon: Home, href: '/' },
+  { id: 'home', label: 'Projects', icon: Home, href: '/dashboard' },
   { id: 'style-capsules', label: 'Style Capsule Library', icon: Palette, href: '/style-capsules' },
   { id: 'assets', label: 'Asset Library', icon: Box, href: '/assets' },
 ];
 
 interface GlobalSidebarProps {
-  currentPath: string;
-  onNavigate: (path: string) => void;
+  // Remove custom navigation props - we'll use React Router directly
 }
 
-export function GlobalSidebar({ currentPath, onNavigate }: GlobalSidebarProps) {
+export function GlobalSidebar({}: GlobalSidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const { signOut, user } = useAuthStore();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleSignOut = async () => {
     await signOut();
@@ -74,14 +74,14 @@ export function GlobalSidebar({ currentPath, onNavigate }: GlobalSidebarProps) {
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1">
         {sidebarItems.map((item) => {
-          const isActive = currentPath === item.href || 
-            (item.href !== '/' && currentPath.startsWith(item.href));
+          const isActive = location.pathname === item.href || 
+            (item.href !== '/dashboard' && location.pathname.startsWith(item.href));
           const Icon = item.icon;
 
           return (
             <button
               key={item.id}
-              onClick={() => onNavigate(item.href)}
+              onClick={() => navigate(item.href)}
               className={cn(
                 'sidebar-item w-full',
                 isActive && 'sidebar-item-active'

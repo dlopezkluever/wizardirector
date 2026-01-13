@@ -117,7 +117,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 \---
 
-\#\# Phase 2: Style Capsule System
+\#\# **IN PROGRESS** Phase 2: Style Capsule System **IN PROGRESS**
 
 \*\*Goal\*\*: Add creative control through style customization. Users can upload reference materials to guide tone, pacing, and aesthetic.
 

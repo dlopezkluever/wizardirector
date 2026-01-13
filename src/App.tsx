@@ -9,6 +9,7 @@ import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { Auth } from "@/pages/Auth";
 import { Dashboard } from "@/pages/Dashboard";
 import { ProjectView } from "@/pages/ProjectView";
+import StyleCapsuleLibrary from "@/pages/StyleCapsuleLibrary";
 import { MainLayout } from "@/components/layout/MainLayout";
 import NotFound from "./pages/NotFound";
 
@@ -74,6 +75,16 @@ const App = () => (
               <ProtectedRoute>
                 <MainLayout>
                   <ProjectView />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/style-capsules"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <StyleCapsuleLibrary />
                 </MainLayout>
               </ProtectedRoute>
             }

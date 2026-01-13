@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+// import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Plus, Heart, Star, BookOpen, Image, Filter, Grid3X3, List } from 'lucide-react';
 
@@ -28,7 +28,7 @@ import { WritingStyleCapsuleEditor } from '@/components/styleCapsules/WritingSty
 import { VisualStyleCapsuleEditor } from '@/components/styleCapsules/VisualStyleCapsuleEditor';
 
 const StyleCapsuleLibrary = () => {
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
   const { toast } = useToast();
 
   // State
