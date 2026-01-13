@@ -65,5 +65,5 @@ export interface ProjectSettings {
     min: number;
     max: number;
   };
-  writtenRagId?: string;
+  writingStyleCapsuleId?: string;
 }

@@ -119,12 +119,13 @@ export function useStageState<T extends Record<string, any>>({
 
 
     // Trigger auto-save with debouncing
+    console.log('🔄 Auto-save triggered for stage', stageNumber, 'with content keys:', Object.keys(contentRef.current));
     stageStateService.autoSave(
       projectId,
       stageNumber,
       { content: contentRef.current },
       (success, error) => {
-        console.log('📋 Auto-save callback:', { success, error });
+        console.log('📋 Auto-save callback:', { stage: stageNumber, success, error });
         if (success) {
           onSaveSuccess?.();
         } else {

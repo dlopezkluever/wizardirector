@@ -16,6 +16,7 @@ export interface ProcessedInput {
     contentRating: ContentRating;
     genres: string[];
     tonalPrecision: string;
+    writingStyleCapsuleId?: string;
   };
 }
 

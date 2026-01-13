@@ -341,9 +341,16 @@ active: Circle
 pending: Circle
 outdated: AlertTriangle
 
-// Navigation icons
+// Navigation icons option 1
 Projects: Home
-Style Capsule Library: FileText
+Style Capsule Library: FileText 
+Asset Library: Box
+
+// OR
+
+// Navigation icons option 2
+Projects: Home
+Style Capsule Library: FileText 
 Style Capsule Library: Image
 Asset Library: Box
 

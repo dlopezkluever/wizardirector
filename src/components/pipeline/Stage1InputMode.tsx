@@ -25,6 +25,7 @@ import { projectService } from '@/lib/services/projectService';
 import { stageStateService } from '@/lib/services/stageStateService';
 import { inputProcessingService, type ProcessedInput } from '@/lib/services/inputProcessingService';
 import type { Project } from '@/types/project';
+import { StyleCapsuleSelector } from '@/components/styleCapsules/StyleCapsuleSelector';
 
 interface InputModeOption {
   id: InputMode;
@@ -85,7 +86,7 @@ const genres = [
 
 interface Stage1InputModeProps {
   projectId: string;
-  onComplete: (project?: Project) => void;
+  onComplete: () => void;
 }
 
 interface Stage1Content {
@@ -95,6 +96,7 @@ interface Stage1Content {
   selectedGenres: string[];
   targetLength: [number, number];
   tonalPrecision: string;
+  writingStyleCapsuleId?: string;
   uploadedFiles: UploadedFile[];
   ideaText: string;
   processedInput?: ProcessedInput;
@@ -102,10 +104,11 @@ interface Stage1Content {
 
 export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps) {
   
-  // Use the stage state hook for persistence
+  // Use the stage state hook for persistence (auto-save disabled since we manually manage saving/locking)
   const { content, setContent, isLoading, isSaving } = useStageState<Stage1Content>({
     projectId,
     stageNumber: 1,
+    autoSave: false, // Disabled to prevent race condition with manual lock operation
     initialContent: {
       selectedMode: null,
       selectedProjectType: null,
@@ -113,10 +116,10 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
       selectedGenres: [],
       targetLength: [3, 5],
       tonalPrecision: '',
+      writingStyleCapsuleId: undefined,
       uploadedFiles: [],
       ideaText: ''
-    },
-    autoSave: projectId !== 'new' // Only auto-save if we have a real project ID
+    }
   });
 
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -231,18 +234,24 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
       };
       
       console.log('🔍 [DEBUG] Stage 1 - Updated content keys:', Object.keys(updatedContent));
-      
-      setContent(updatedContent);
 
-      // Manually save the stage state with processed input before completing
+      // Save the stage state with processed input before completing
+      // Note: We save as 'draft' here and let ProjectView's handleStageComplete handle the locking
       console.log('🔍 [DEBUG] Stage 1 - Saving stage state for project:', project.id);
       await stageStateService.saveStageState(project.id, 1, {
         content: updatedContent,
-        status: 'locked'
+        status: 'draft'
       });
       console.log('🔍 [DEBUG] Stage 1 - Stage state saved successfully');
 
-      onComplete(project);
+      // Cancel any pending auto-saves to prevent race condition with lock operation
+      console.log('🔍 [DEBUG] Stage 1 - Cancelling pending auto-saves before completion');
+      stageStateService.cancelAutoSave(project.id, 1);
+
+      // Update local content after save (not before) to avoid triggering auto-save
+      setContent(updatedContent);
+
+      onComplete();
     } catch (error) {
       console.error('Failed to save project configuration:', error);
       // Handle error - maybe show a toast
@@ -486,6 +495,24 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
             onChange={(e) => updateField('tonalPrecision', e.target.value)}
             placeholder="Describe the specific tone and atmosphere you want (e.g., 'Dark and moody with moments of dry humor, reminiscent of early Coen Brothers films...')"
             className="w-full h-32 px-4 py-3 rounded-xl bg-secondary border border-border text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+          />
+        </section>
+
+        {/* Writing Style Capsule Selection */}
+        <section className="space-y-4">
+          <h3 className="font-display text-xl font-semibold text-foreground">
+            Writing Style (Optional)
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            Select a writing style capsule to guide the AI's prose generation. You can change this later or leave it blank for a neutral style.
+          </p>
+          <StyleCapsuleSelector
+            type="writing"
+            value={content.writingStyleCapsuleId || ''}
+            onChange={(capsuleId) => updateField('writingStyleCapsuleId', capsuleId || undefined)}
+            placeholder="Choose a writing style capsule..."
+            required={false}
+            showPreview={true}
           />
         </section>
 

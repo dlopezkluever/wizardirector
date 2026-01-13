@@ -128,8 +128,9 @@ router.put('/:projectId/stages/:stageNumber', async (req, res) => {
       stageNumber,
       userId,
       contentKeys: content ? Object.keys(content) : 'null',
-      status,
-      regenerationGuidance
+      providedStatus: status,
+      regenerationGuidance,
+      timestamp: new Date().toISOString()
     });
 
     // Validate stage number
@@ -180,7 +181,7 @@ router.put('/:projectId/stages/:stageNumber', async (req, res) => {
     // Check if a stage state already exists
     const { data: existingState, error: existingError } = await supabase
       .from('stage_states')
-      .select('id, version')
+      .select('id, version, status')
       .eq('branch_id', project.active_branch_id)
       .eq('stage_number', stage)
       .order('version', { ascending: false })
@@ -200,19 +201,38 @@ router.put('/:projectId/stages/:stageNumber', async (req, res) => {
       nextVersion = existingState.version + 1;
     }
 
+    // Prevent status regression: Once locked, stages cannot revert to draft
+    let finalStatus = status || 'draft';
+    if (existingState?.status === 'locked' && finalStatus === 'draft') {
+      console.warn('⚠️ Attempted to revert locked stage to draft - preserving locked status');
+      console.warn('Call stack:', {
+        stage,
+        existingStatus: existingState.status,
+        requestedStatus: status,
+        finalStatus: 'locked (preserved)'
+      });
+      finalStatus = 'locked';
+    }
+
     // Insert new version
     const insertData = {
       branch_id: project.active_branch_id,
       stage_number: stage,
       version: nextVersion,
-      status: status || 'draft',
+      status: finalStatus,
       content: content,
       regeneration_guidance: regenerationGuidance || '',
       created_by: userId,
       inherited_from_stage_id: existingState?.id || null
     };
 
-    console.log('💾 Inserting stage state:', insertData);
+    console.log('💾 Inserting stage state:', {
+      ...insertData,
+      existingStatus: existingState?.status || 'none',
+      requestedStatus: status,
+      finalStatus: insertData.status,
+      statusPreserved: existingState?.status === 'locked' && finalStatus === 'locked'
+    });
 
     const { data: newState, error: insertError } = await supabase
       .from('stage_states')
@@ -246,6 +266,13 @@ router.post('/:projectId/stages/:stageNumber/lock', async (req, res) => {
   try {
     const { projectId, stageNumber } = req.params;
     const userId = req.user!.id;
+
+    console.log('🔒 POST /api/projects/:projectId/stages/:stageNumber/lock called:', {
+      projectId,
+      stageNumber,
+      userId,
+      timestamp: new Date().toISOString()
+    });
 
     const stage = parseInt(stageNumber);
     if (isNaN(stage) || stage < 1 || stage > 12) {
@@ -311,6 +338,13 @@ router.post('/:projectId/stages/:stageNumber/lock', async (req, res) => {
     }
 
     // Create a new version with locked status
+    console.log('💾 Creating locked stage state:', {
+      stage,
+      previousVersion: currentState.version,
+      newVersion: currentState.version + 1,
+      previousStatus: currentState.status
+    });
+
     const { data: lockedState, error: lockError } = await supabase
       .from('stage_states')
       .insert({
@@ -327,9 +361,16 @@ router.post('/:projectId/stages/:stageNumber/lock', async (req, res) => {
       .single();
 
     if (lockError) {
-      console.error('Error locking stage:', lockError);
+      console.error('❌ Error locking stage:', lockError);
       return res.status(500).json({ error: 'Failed to lock stage' });
     }
+
+    console.log('✅ Stage locked successfully:', {
+      id: lockedState.id,
+      stage: lockedState.stage_number,
+      version: lockedState.version,
+      status: lockedState.status
+    });
 
     res.json(lockedState);
   } catch (error) {

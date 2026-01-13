@@ -1,5 +1,29 @@
 ### Add debouncing to Auto-Save for stages 1-3
 
+## Locking is bugging, unprecise (and idk, kinda stupid) *Handled*
+### Minor UX Enhancement (Do Later)
+    The only "issue" is when you go back to Stage 1 after it's locked and click "Continue" again, it creates a new version (but preserves locked status). We could add:
+    UI indicator that Stage 1 is already locked
+    Disable "Continue" button if already locked
+    Show a message like "Stage 1 is already complete"
+    But this is NOT a bug - just a potential UX improvement.
+    Option 3: Add More Safeguards (Overkill)
+    We could add more restrictions, but honestly, the current solution is solid and defensive enough.
+
+#### -- If locking issue continues:
+    sideline locking functionality until all stages implemented,    probably around (or in unision with) the  Branching & Versioning implementation
+
+    (example HTTP response of error: see "locking_error_console_log_2.md"
+    {
+        "error": "Cannot lock stage 2. Stage 1 must be locked first.",
+        "details": {
+            "requiredStage": 1,
+            "requiredStatus": "locked",
+            "currentStatus": "draft"
+        }
+    }
+    )
+
 ## Update Sidebar to reflect Style Capsules
 
 ### Stage 4 needs to auto generate IF never have been generated before.

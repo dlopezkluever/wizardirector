@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { GlobalSidebar } from '@/components/layout/GlobalSidebar';
 import { Dashboard } from '@/pages/Dashboard';
 import { ProjectView } from '@/pages/ProjectView';
+import StyleCapsuleLibrary from '@/pages/StyleCapsuleLibrary';
 
 const Index = () => {
   const [currentPath, setCurrentPath] = useState('/');
@@ -37,19 +38,21 @@ const Index = () => {
           onBack={handleBackToDashboard} 
         />
       ) : currentPath === '/' ? (
-        <Dashboard 
+        <Dashboard
           onProjectSelect={handleProjectSelect}
           onNewProject={handleNewProject}
         />
+      ) : currentPath === '/style-capsules' ? (
+        <StyleCapsuleLibrary />
       ) : (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-muted-foreground">
             <p className="text-xl font-display">
-              {currentPath === '/rag/written' && 'Written Style RAG'}
-              {currentPath === '/rag/visual' && 'Visual Style RAG'}
               {currentPath === '/assets' && 'Asset Library'}
             </p>
-            <p className="mt-2">This section is under development</p>
+            <p className="mt-2">
+              {currentPath === '/assets' ? 'This section is under development' : 'Page not found'}
+            </p>
           </div>
         </div>
       )}
