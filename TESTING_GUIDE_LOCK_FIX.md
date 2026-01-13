@@ -41,7 +41,11 @@
    Response: { ..., version: N+1, status: "locked" }
 
 3. GET /api/projects/{id}/stages (refresh stage states)
+
+
 ```
+*Note: I do see these all in the network*
+
 
 **❌ YOU SHOULD NOT SEE:**
 ```
@@ -49,6 +53,41 @@
    Request: { content: {...}, status: undefined }
    Response: { ..., version: N+2, status: "draft" }
 ```
+
+*NOTE: I do see:*
+Request URL
+http://localhost:8080/api/projects/a69a9049-97d4-4a66-9703-b5d360bc8d26/stages/1
+Request Method
+GET
+Status Code
+200 OK
+Remote Address
+[::1]:8080
+Referrer Policy
+strict-origin-when-cross-origin
+
+
+Request URL
+http://localhost:8080/api/projects/a69a9049-97d4-4a66-9703-b5d360bc8d26/stages/2
+Request Method
+PUT
+Status Code
+200 OK
+Remote Address
+[::1]:8080
+Referrer Policy
+strict-origin-when-cross-origin
+
+equest URL
+http://localhost:8080/api/projects/a69a9049-97d4-4a66-9703-b5d360bc8d26/stages/2
+Request Method
+PUT
+Status Code
+200 OK
+Remote Address
+[::1]:8080
+Referrer Policy
+strict-origin-when-cross-origin
 
 **In Backend Console**, look for:
 ```bash
@@ -65,17 +104,18 @@
 ⚠️ Attempted to revert locked stage to draft - preserving locked status
 💾 Inserting stage state: {..., finalStatus: 'locked', statusPreserved: true}
 ```
-
+*Great, I see all of these in backend Response*!
+-------------------------------------------------------------
 #### Step 5: Verify Stage 2 Loads
 1. After clicking "Continue to Treatment", you should navigate to Stage 2
 2. Stage 2 should load without errors
 3. You should NOT see an error like "Stage 1 must be locked first"
-
+*Works*
 #### Step 6: Verify Stage 1 Status
 1. Check the stage timeline/progress UI
 2. Stage 1 should show as "locked" or "completed"
 3. Stage 1 should NOT show as "active" or "draft"
-
+*Good to go*
 ## Debug Mode Test (If Issues Occur)
 
 ### Enable Verbose Logging
@@ -188,11 +228,11 @@ git checkout HEAD~1 -- src/lib/hooks/useStageState.ts
 
 ## Questions to Ask Yourself
 
-- [ ] Did Stage 1 lock successfully?
-- [ ] Did Stage 2 load without errors?
-- [ ] Were there any unexpected network requests?
-- [ ] Did the backend logs show the expected sequence?
-- [ ] Can I navigate back to Stage 1 and see it as locked?
+- [ YES] Did Stage 1 lock successfully?
+- [ YES] Did Stage 2 load without errors?
+- [ Kinda] Were there any unexpected network requests?
+- [ YES] Did the backend logs show the expected sequence?
+- [ YES] Can I navigate back to Stage 1 and see it as locked?
 
 If you answered "Yes" to all questions, the fix is working! 🎉
 
