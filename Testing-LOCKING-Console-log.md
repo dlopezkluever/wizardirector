@@ -162,3 +162,33 @@ stageStateService.ts:121 ✅ Save successful:
 stageStateService.ts:175 ✅ Auto-save completed successfully
 useStageState.ts:128 📋 Auto-save callback: 
 {stage: 2, success: true, error: undefined}
+
+
+✅ Stage state loaded: {id: '10f77e56-5de9-45a0-8fa6-c21f0e9911da', branch_id: '14f92570-8910-4534-b438-e90a63ace5af', stage_number: 1, version: 2, status: 'locked', …}branch_id: "14f92570-8910-4534-b438-e90a63ace5af"content: {ideaText: "2 self driving cars race eachother, but then they … no one can hear them, as people don't speak wifi", selectedMode: 'expansion', targetLength: Array(2), uploadedFiles: Array(0), processedInput: {…}, …}created_at: "2026-01-13T02:00:01.34762+00:00"created_by: "fa58ace1-ae7e-4dd8-ab54-1fbe453701f2"final_prompt: ""id: "10f77e56-5de9-45a0-8fa6-c21f0e9911da"inherited_from_stage_id: "6501f850-9450-4775-ae76-ab8e27272a91"langsmith_trace_id: nullprompt_template_version: ""regeneration_guidance: ""stage_number: 1status: "locked"version: 2[[Prototype]]: Object
+useStageState.ts:85 ✅ Load stage state completed
+useStageState.ts:116 ⏭️ Skipping auto-save - autoSave disabled
+2useStageState.ts:116 ⏭️ Skipping auto-save - autoSave disabled
+Stage1InputMode.tsx:201 🔍 [DEBUG] Stage 1 - Processing input with: {selectedMode: 'expansion', selectedProjectType: 'narrative', selectedRating: 'PG-13', selectedGenres: Array(2), targetLength: Array(2), …}
+Stage1InputMode.tsx:223 🔍 [DEBUG] Stage 1 - Processed input result: {mode: 'expansion', primaryContentLength: 353, contextFilesCount: 0, projectParams: {…}}
+Stage1InputMode.tsx:236 🔍 [DEBUG] Stage 1 - Updated content keys: (10) ['ideaText', 'selectedMode', 'targetLength', 'uploadedFiles', 'processedInput', 'selectedGenres', 'selectedRating', 'tonalPrecision', 'selectedProjectType', 'writingStyleCapsuleId']
+Stage1InputMode.tsx:240 🔍 [DEBUG] Stage 1 - Saving stage state for project: a69a9049-97d4-4a66-9703-b5d360bc8d26
+stageStateService.ts:93 ✅ Auth session found, making API request...
+stageStateService.ts:101 📤 Request body: {content: {…}, status: 'draft', regenerationGuidance: ''}
+stageStateService.ts:112 📥 Response status: 200
+stageStateService.ts:121 ✅ Save successful: {id: '3ae09bfd-d132-47d4-a9d1-cd8315c9ffa4', branch_id: '14f92570-8910-4534-b438-e90a63ace5af', stage_number: 1, version: 3, status: 'locked', …}
+Stage1InputMode.tsx:245 🔍 [DEBUG] Stage 1 - Stage state saved successfully
+Stage1InputMode.tsx:248 🔍 [DEBUG] Stage 1 - Cancelling pending auto-saves before completion
+useStageState.ts:116 ⏭️ Skipping auto-save - autoSave disabled
+useStageState.ts:70 📥 Loading stage state from API...
+useStageState.ts:104 ⏭️ Skipping auto-save - first render or loading: {isFirstRender: true, isLoading: true}
+useStageState.ts:75 ✅ Stage state loaded: {id: 'ee5480c8-ac8d-45bc-ac51-e2de9a559170', branch_id: '14f92570-8910-4534-b438-e90a63ace5af', stage_number: 2, version: 2, status: 'draft', …}
+useStageState.ts:85 ✅ Load stage state completed
+useStageState.ts:122 🔄 Auto-save triggered for stage 2 with content keys: (5) ['variations', 'processedInput', 'activeVariation', 'langsmithTraceId', 'promptTemplateVersion']
+stageStateService.ts:185 ⏳ Auto-save scheduled in 1000ms
+Stage2Treatment.tsx:122 🔍 [STAGE2 UI] Setting editable content: {isString: true, contentType: 'string', contentLength: 3722}
+stageStateService.ts:93 ✅ Auth session found, making API request...
+stageStateService.ts:101 📤 Request body: {content: {…}, status: 'draft', regenerationGuidance: ''}
+stageStateService.ts:112 📥 Response status: 200
+stageStateService.ts:121 ✅ Save successful: {id: '44bd643d-089c-47db-a572-9eeab2b5f640', branch_id: '14f92570-8910-4534-b438-e90a63ace5af', stage_number: 2, version: 3, status: 'draft', …}
+stageStateService.ts:175 ✅ Auto-save completed successfully
+useStageState.ts:128 📋 Auto-save callback: {stage: 2, success: true, error: undefined}
