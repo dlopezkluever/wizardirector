@@ -86,3 +86,5 @@ Despite autoSave: false, something is still calling the stage state PUT endpoint
 * Confirm if auto-save is the source
 
 The issue is likely a persistent auto-save mechanism or duplicate state management that's not respecting our autoSave: false setting. The backend logging will reveal exactly what's triggering the version 22 draft save
+
+# If issue continues; sideline locking functionality until all stages implemented, probably around (or in unision with) the  Branching & Versioning implementation

@@ -1,8 +1,9 @@
 ### Add debouncing to Auto-Save for stages 1-3
 
 ## Locking is bugging, unprecise (and idk, kinda stupid)
+#### -- If locking issue continues; sideline locking functionality until all stages implemented, probably around (or in unision with) the  Branching & Versioning implementation
 
-(example HTTP response of error:
+(example HTTP response of error: see "locking_error_console_log_2.md"
 {
     "error": "Cannot lock stage 2. Stage 1 must be locked first.",
     "details": {

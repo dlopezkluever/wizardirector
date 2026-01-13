@@ -108,7 +108,7 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
   const { content, setContent, isLoading, isSaving } = useStageState<Stage1Content>({
     projectId,
     stageNumber: 1,
-    autoSave: false,
+    autoSave: false, // Disabled to prevent race condition with manual lock operation
     initialContent: {
       selectedMode: null,
       selectedProjectType: null,
@@ -119,8 +119,7 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
       writingStyleCapsuleId: undefined,
       uploadedFiles: [],
       ideaText: ''
-    },
-    autoSave: projectId !== 'new' // Only auto-save if we have a real project ID
+    }
   });
 
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -235,8 +234,6 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
       };
       
       console.log('🔍 [DEBUG] Stage 1 - Updated content keys:', Object.keys(updatedContent));
-      
-      setContent(updatedContent);
 
       // Save the stage state with processed input before completing
       // Note: We save as 'draft' here and let ProjectView's handleStageComplete handle the locking
@@ -246,6 +243,13 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
         status: 'draft'
       });
       console.log('🔍 [DEBUG] Stage 1 - Stage state saved successfully');
+
+      // Cancel any pending auto-saves to prevent race condition with lock operation
+      console.log('🔍 [DEBUG] Stage 1 - Cancelling pending auto-saves before completion');
+      stageStateService.cancelAutoSave(project.id, 1);
+
+      // Update local content after save (not before) to avoid triggering auto-save
+      setContent(updatedContent);
 
       onComplete();
     } catch (error) {
