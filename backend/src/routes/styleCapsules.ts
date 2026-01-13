@@ -104,17 +104,34 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Create the capsule (user-created capsules are never presets)
+    // Map camelCase to snake_case for database
+    const dbData: any = {
+      name,
+      type,
+      library_id: null, // No library needed
+      user_id: userId,
+      is_preset: false, // User capsules are always custom
+    };
+
+    // Map writing style fields
+    if (type === 'writing') {
+      if (capsuleData.exampleTextExcerpts) dbData.example_text_excerpts = capsuleData.exampleTextExcerpts;
+      if (capsuleData.styleLabels) dbData.style_labels = capsuleData.styleLabels;
+      if (capsuleData.negativeConstraints) dbData.negative_constraints = capsuleData.negativeConstraints;
+      if (capsuleData.freeformNotes) dbData.freeform_notes = capsuleData.freeformNotes;
+    }
+
+    // Map visual style fields
+    if (type === 'visual') {
+      if (capsuleData.designPillars) dbData.design_pillars = capsuleData.designPillars;
+      if (capsuleData.referenceImageUrls) dbData.reference_image_urls = capsuleData.referenceImageUrls;
+      if (capsuleData.descriptorStrings) dbData.descriptor_strings = capsuleData.descriptorStrings;
+    }
+
+    // Create the capsule
     const { data: capsule, error } = await supabase
       .from('style_capsules')
-      .insert({
-        name,
-        type,
-        library_id: null, // No library needed
-        user_id: userId,
-        is_preset: false, // User capsules are always custom
-        ...capsuleData
-      })
+      .insert(dbData)
       .select()
       .single();
 
