@@ -207,12 +207,15 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
 
         // Fetch project configuration (stored in projects table, not stage_states)
         const { data: { session } } = await supabase.auth.getSession();
-        
+
         if (!session?.access_token) {
           console.error('❌ [STAGE 4] No auth session found');
           toast.error('Authentication required');
           return;
         }
+
+        // Get writing style capsule from Stage 1
+        const stage1State = await stageStateService.getStageState(projectId, 1);
 
         const response = await fetch(`/api/projects/${projectId}`, {
           method: 'GET',
@@ -227,12 +230,13 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
         }
 
         const project = await response.json();
-        
+
         console.log('📊 [STAGE 4] Project config:', {
           targetLength: project.targetLength,
           contentRating: project.contentRating,
           genres: project.genres,
-          tonalPrecision: project.tonalPrecision
+          tonalPrecision: project.tonalPrecision,
+          writingStyleCapsuleId: stage1State?.content?.writingStyleCapsuleId
         });
 
         const params = {
@@ -240,7 +244,8 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
           targetLengthMax: project.targetLength?.max || 300,
           contentRating: project.contentRating || 'PG-13',
           genres: project.genres || [],
-          tonalPrecision: project.tonalPrecision || ''
+          tonalPrecision: project.tonalPrecision || '',
+          writingStyleCapsuleId: stage1State?.content?.writingStyleCapsuleId
         };
 
         setProjectParams(params);

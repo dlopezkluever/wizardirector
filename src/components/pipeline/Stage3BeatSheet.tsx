@@ -297,19 +297,23 @@ export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatShe
         description: 'Extracting structural beats from your treatment'
       });
 
-      console.log('🔍 [STAGE3] Fetching Stage 2 treatment data...');
-      
+      console.log('🔍 [STAGE3] Fetching Stage 1 and Stage 2 data...');
+
+      // Get Stage 1 data for writing style capsule
+      const stage1State = await stageStateService.getStageState(projectId, 1);
+
       // Get Stage 2 treatment data
       const stage2State = await stageStateService.getStageState(projectId, 2);
-      
+
       if (!stage2State?.content?.variations || stage2State.content.variations.length === 0) {
         throw new Error('No treatment found from Stage 2. Please complete Stage 2 first.');
       }
 
       const activeVariationIndex = stage2State.content.activeVariation || 0;
       const selectedTreatment = stage2State.content.variations[activeVariationIndex];
-      
-      console.log('🔍 [STAGE3] Stage 2 data retrieved:', {
+
+      console.log('🔍 [STAGE3] Stage data retrieved:', {
+        stage1HasWritingStyle: !!stage1State?.content?.writingStyleCapsuleId,
         variationsCount: stage2State.content.variations.length,
         activeVariation: activeVariationIndex,
         treatmentContentLength: selectedTreatment.content.length,
@@ -319,11 +323,14 @@ export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatShe
       const treatmentData = {
         treatmentProse: selectedTreatment.content,
         selectedVariantId: selectedTreatment.id,
-        projectParams: stage2State.content.processedInput?.projectParams || {
-          targetLengthMin: 180,
-          targetLengthMax: 300,
-          genres: ['Drama'],
-          tonalPrecision: 'Emotional and contemplative'
+        projectParams: {
+          ...(stage2State.content.processedInput?.projectParams || {
+            targetLengthMin: 180,
+            targetLengthMax: 300,
+            genres: ['Drama'],
+            tonalPrecision: 'Emotional and contemplative'
+          }),
+          writingStyleCapsuleId: stage1State?.content?.writingStyleCapsuleId
         }
       };
 

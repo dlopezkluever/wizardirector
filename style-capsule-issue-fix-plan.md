@@ -1,10 +1,11 @@
 Fix Style Capsule System Issues
 Problem Summary
-Three critical issues preventing Style Capsule system from working:
+FOUR critical issues preventing Style Capsule system from working:
 
-Prompt injection always empty - writing_style_context variable is "" in all API calls
-Search doesn't work - Snake_case/camelCase property mismatch 
-Card clicks do nothing - No view/edit dialog implemented
+1. **Prompt injection always empty** - writing_style_context variable is "" in all API calls
+2. **Search doesn't work** - Snake_case/camelCase property mismatch
+3. **Card clicks do nothing** - No view/edit dialog implemented
+4. **CRUD functionality incomplete** - Editors only CREATE, never UPDATE existing capsules
 Issue #1: Fix Prompt Injection (Priority: CRITICAL)
 Root Cause
 The frontend services call styleCapsuleService.formatWritingStyleInjection() which doesn't exist. Only the backend has this method. The frontend should just pass the capsule ID, and the backend should handle formatting.
@@ -61,7 +62,9 @@ Issue #2: Fix Search (Priority: HIGH)
 Root Cause
 Backend returns snake_case (example_text_excerpts), frontend expects camelCase (exampleTextExcerpts).
 
-Solution: Add camelCase transformation in API response handler
+Solution Options:
+
+**Option A: Transform in frontend service (CURRENT - works but not ideal)**
 Files to modify:
 
 src/lib/services/styleCapsuleService.ts - Add transformer function:
@@ -95,6 +98,33 @@ toggleFavorite() - line 182
 duplicateCapsule() - line 210
 uploadImage() - line 240
 removeImage() - line 267
+
+**Option B: Fix API to return camelCase (RECOMMENDED - better architecture)**
+Files to modify:
+
+backend/src/routes/styleCapsules.ts
+- Update SQL queries to use AS aliases for camelCase column names:
+  ```sql
+  SELECT
+    id,
+    example_text_excerpts AS "exampleTextExcerpts",
+    style_labels AS "styleLabels",
+    negative_constraints AS "negativeConstraints",
+    freeform_notes AS "freeformNotes",
+    design_pillars,
+    reference_image_urls AS "referenceImageUrls",
+    descriptor_strings AS "descriptorStrings",
+    is_preset AS "isPreset",
+    is_favorite AS "isFavorite",
+    library_id AS "libraryId",
+    user_id AS "userId",
+    created_at AS "createdAt",
+    updated_at AS "updatedAt"
+  FROM style_capsules
+  ```
+- Remove transformation function from frontend service
+- Benefits: Cleaner architecture, follows frontend conventions, eliminates transformation layer
+
 Issue #3: Add Card Click View/Edit (Priority: MEDIUM)
 Solution: Add dialog that displays when selectedCapsule is set
 Files to modify:
@@ -154,6 +184,37 @@ Add readOnly prop support to editors:
 
 WritingStyleCapsuleEditor.tsx - Add readOnly prop, disable inputs when true
 VisualStyleCapsuleEditor.tsx - Add readOnly prop, disable inputs when true
+
+Issue #4: Fix CRUD Functionality (Priority: CRITICAL - COMPLETELY BROKEN)
+Root Cause
+Editors only support CREATE operations, never UPDATE existing capsules. The handleSave() function always calls createCapsule(), never checks if editing existing capsule.
+
+Current State:
+- ✅ Create: Works (but shows "Create" button even when editing)
+- ✅ Read: Works (get/list operations exist)
+- ❌ Update: Service supports it, UI does NOT use it
+- ✅ Delete: Works (via dropdown menu, but UX is poor)
+
+Solution: Implement proper Create vs Update logic
+Files to modify:
+
+src/components/styleCapsules/WritingStyleCapsuleEditor.tsx
+- Modify handleSave() to check if capsule exists
+- Call updateCapsule() for existing capsules, createCapsule() for new ones
+- Update button text: "Update Style Capsule" vs "Create Style Capsule"
+
+src/components/styleCapsules/VisualStyleCapsuleEditor.tsx
+- Same changes as WritingStyleCapsuleEditor
+
+src/pages/StyleCapsuleLibrary.tsx
+- Dialog title should reflect operation: "Edit Style Capsule" vs "Create Style Capsule"
+- Update success messages to reflect operation
+
+Additional UX Improvements:
+- Delete should be more accessible (not buried in dropdown)
+- Better visual distinction between create/edit modes
+- Form validation should work for both create and update
+
 Testing Checklist
 Issue #1 - Prompt Injection
 [ ] Start new project with "Airplane!" writing style
@@ -176,7 +237,40 @@ Issue #3 - Card Click
 [ ] Click on "Hemingway Minimalist" preset
 [ ] Dialog opens in read-only mode with "Duplicate" option
 [ ] Close dialog works correctly
-Additional Notes
-The seed templates already have {writing_style_context} placeholder - no changes needed
-The backend styleCapsuleService already has formatWritingStyleInjection() method
-Projects table has writing_style_capsule_id column but it's not being used yet
+
+Issue #4 - CRUD Functionality
+[ ] Create new writing capsule - should work
+[ ] Edit existing writing capsule - should update, not create duplicate
+[ ] Create new visual capsule - should work
+[ ] Edit existing visual capsule - should update, not create duplicate
+[ ] Delete capsule via dropdown - should work
+[ ] Button text should show "Update" when editing, "Create" when creating
+[ ] Dialog titles should reflect operation ("Edit" vs "Create")
+Additional Notes & Lessons Learned
+
+**Architecture Insights:**
+- The seed templates already have {writing_style_context} placeholder - no changes needed
+- The backend styleCapsuleService already has formatWritingStyleInjection() method
+- Projects table has writing_style_capsule_id column but it's not being used yet
+
+**Key Lesson: Complete CRUD Implementation**
+- UI components must support both CREATE and UPDATE operations
+- Never assume "edit" means "create new" - check if entity exists
+- Button text and UX should clearly indicate the operation
+- Service layer may support operations that UI doesn't use
+
+**UX Principles Identified:**
+- Delete functionality should be easily discoverable, not buried in menus
+- Button text should accurately reflect the action
+- Form validation should work for both create and update scenarios
+- Visual feedback should distinguish between operations
+
+**API Design Decision:**
+- Snake_case → CamelCase transformation works but adds complexity
+- Better: API should return camelCase to match frontend conventions
+- Avoid transformation layers when possible - fix at source
+
+**Testing Strategy:**
+- Test both create AND update paths for each entity type
+- Verify button text changes based on operation
+- Ensure delete UX is intuitive and discoverable

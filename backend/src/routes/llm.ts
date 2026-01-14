@@ -6,12 +6,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { llmClient, LLMClientError } from '../services/llm-client.js';
-import { 
-  promptTemplateService, 
+import {
+  promptTemplateService,
   PromptTemplateError,
   type PromptTemplateCreate,
-  type PromptTemplateUpdate 
+  type PromptTemplateUpdate
 } from '../services/prompt-template.js';
+import { styleCapsuleService } from '../services/styleCapsuleService.js';
 
 const router = Router();
 
@@ -186,10 +187,25 @@ router.post('/generate-from-template', async (req, res) => {
     }
     
     console.log(`[API] Template validation passed! Proceeding with interpolation...`);
-    
+
+    // Handle writing style capsule injection if provided
+    let variablesWithStyleContext = { ...validatedRequest.variables };
+    if (validatedRequest.variables.writing_style_capsule_id && validatedRequest.variables.writing_style_capsule_id !== '') {
+      try {
+        console.log(`[API] Fetching writing style capsule: ${validatedRequest.variables.writing_style_capsule_id}`);
+        const capsule = await styleCapsuleService.getCapsule(validatedRequest.variables.writing_style_capsule_id);
+        const writingStyleContext = styleCapsuleService.formatWritingStyleInjection(capsule);
+        variablesWithStyleContext.writing_style_context = writingStyleContext;
+        console.log(`[API] Writing style context injected: ${writingStyleContext.length} characters`);
+      } catch (error) {
+        console.warn(`[API] Failed to load writing style capsule:`, error);
+        variablesWithStyleContext.writing_style_context = '';
+      }
+    }
+
     // Interpolate the template
     console.log(`[API] Interpolating template with variables...`);
-    const interpolated = promptTemplateService.interpolateTemplate(template, validatedRequest.variables);
+    const interpolated = promptTemplateService.interpolateTemplate(template, variablesWithStyleContext);
     console.log(`[API] Template interpolated successfully. System prompt length: ${interpolated.system_prompt.length}, User prompt length: ${interpolated.user_prompt.length}`);
     
     // Generate using the interpolated prompts

@@ -25,6 +25,7 @@ interface VisualStyleCapsuleEditorProps {
   capsule?: any; // For editing existing capsules
   onSave: () => void;
   onCancel: () => void;
+  readOnly?: boolean;
 }
 
 const DESIGN_PILLAR_OPTIONS = {
@@ -91,10 +92,10 @@ const DESIGN_PILLAR_OPTIONS = {
 };
 
 export function VisualStyleCapsuleEditor({
-  libraries,
   capsule,
   onSave,
-  onCancel
+  onCancel,
+  readOnly = false
 }: VisualStyleCapsuleEditorProps) {
   const { toast } = useToast();
 
@@ -200,10 +201,11 @@ export function VisualStyleCapsuleEditor({
     options: string[]
   ) => (
     <div className="space-y-2">
-      <Label htmlFor={key}>{label}</Label>
+      <Label htmlFor={key as string}>{label}</Label>
       <Select
         value={formData.designPillars[key] || ''}
         onValueChange={(value) => updateDesignPillar(key, value)}
+        disabled={readOnly}
       >
         <SelectTrigger>
           <SelectValue placeholder={`Select ${label.toLowerCase()}...`} />
@@ -261,6 +263,7 @@ export function VisualStyleCapsuleEditor({
                 value={formData.name}
                 onChange={(e) => updateFormData({ name: e.target.value })}
                 placeholder="e.g., Neo-Noir Cinematic"
+                disabled={readOnly}
               />
             </div>
           </div>
@@ -361,6 +364,7 @@ export function VisualStyleCapsuleEditor({
             onChange={(e) => updateFormData({ descriptorStrings: e.target.value })}
             placeholder="e.g., Rain-slicked streets, neon signs reflecting in puddles, deep shadows obscuring faces..."
             rows={4}
+            disabled={readOnly}
           />
         </CardContent>
       </Card>
@@ -371,8 +375,8 @@ export function VisualStyleCapsuleEditor({
         <Button variant="outline" onClick={onCancel} disabled={loading}>
           Cancel
         </Button>
-        <Button onClick={handleSave} disabled={loading}>
-          {loading ? 'Creating...' : 'Create Visual Style Capsule'}
+        <Button onClick={handleSave} disabled={loading || readOnly}>
+          {loading ? 'Creating...' : readOnly ? 'Read Only' : 'Create Visual Style Capsule'}
         </Button>
       </div>
     </div>

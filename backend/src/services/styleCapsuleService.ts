@@ -472,3 +472,5 @@ export class StyleCapsuleService {
     return data;
   }
 }
+
+export const styleCapsuleService = new StyleCapsuleService();

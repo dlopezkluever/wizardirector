@@ -48,17 +48,6 @@ class TreatmentService {
       projectParams: request.processedInput.projectParams
     });
 
-    // Get writing style capsule injection
-    let writingStyleContext = '';
-    if (request.processedInput.projectParams.writingStyleCapsuleId) {
-      try {
-        const capsule = await styleCapsuleService.getCapsule(request.processedInput.projectParams.writingStyleCapsuleId);
-        writingStyleContext = styleCapsuleService.formatWritingStyleInjection(capsule);
-      } catch (error) {
-        console.warn('Failed to load writing style capsule:', error);
-      }
-    }
-
     const variables = {
       input_mode: request.processedInput.mode,
       primary_content: request.processedInput.primaryContent,
@@ -71,7 +60,7 @@ class TreatmentService {
       content_rating: request.processedInput.projectParams.contentRating,
       genres: request.processedInput.projectParams.genres.join(', '),
       tonal_precision: request.processedInput.projectParams.tonalPrecision,
-      writing_style_context: writingStyleContext
+      writing_style_capsule_id: request.processedInput.projectParams.writingStyleCapsuleId || ''
     };
 
     console.log('🔍 [DEBUG] Template variables being sent:', {
@@ -129,24 +118,13 @@ class TreatmentService {
       throw new Error('User not authenticated');
     }
 
-    // Get writing style capsule injection
-    let writingStyleContext = '';
-    if (request.processedInput.projectParams.writingStyleCapsuleId) {
-      try {
-        const capsule = await styleCapsuleService.getCapsule(request.processedInput.projectParams.writingStyleCapsuleId);
-        writingStyleContext = styleCapsuleService.formatWritingStyleInjection(capsule);
-      } catch (error) {
-        console.warn('Failed to load writing style capsule:', error);
-      }
-    }
-
     // Enhanced prompt with regeneration guidance
     const llmRequest = {
       templateName: 'treatment_expansion',
       variables: {
         input_mode: request.processedInput.mode,
         primary_content: request.processedInput.primaryContent,
-        context_files: request.processedInput.contextFiles.map(f => 
+        context_files: request.processedInput.contextFiles.map(f =>
           `${f.name}${f.tag ? ` (${f.tag})` : ''}:\n${f.content}`
         ).join('\n\n---\n\n'),
         target_length_min: request.processedInput.projectParams.targetLengthMin,
@@ -155,7 +133,7 @@ class TreatmentService {
         content_rating: request.processedInput.projectParams.contentRating,
         genres: request.processedInput.projectParams.genres.join(', '),
         tonal_precision: request.processedInput.projectParams.tonalPrecision,
-        writing_style_context: writingStyleContext,
+        writing_style_capsule_id: request.processedInput.projectParams.writingStyleCapsuleId || '',
         regeneration_guidance: request.guidance
       },
       metadata: {

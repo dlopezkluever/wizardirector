@@ -24,12 +24,14 @@ interface WritingStyleCapsuleEditorProps {
   capsule?: any; // For editing existing capsules
   onSave: () => void;
   onCancel: () => void;
+  readOnly?: boolean;
 }
 
 export function WritingStyleCapsuleEditor({
   capsule,
   onSave,
-  onCancel
+  onCancel,
+  readOnly = false
 }: WritingStyleCapsuleEditorProps) {
   const { toast } = useToast();
 
@@ -245,6 +247,7 @@ ${formData.freeformNotes.trim() ? `Additional notes: ${formData.freeformNotes}` 
                     value={formData.name}
                     onChange={(e) => updateFormData({ name: e.target.value })}
                     placeholder="e.g., Hemingway Minimalist"
+                    disabled={readOnly}
                   />
                 </div>
               </div>
@@ -273,6 +276,7 @@ ${formData.freeformNotes.trim() ? `Additional notes: ${formData.freeformNotes}` 
                         size="sm"
                         onClick={() => removeExampleExcerpt(index)}
                         className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                        disabled={readOnly}
                       >
                         <X className="w-4 h-4" />
                       </Button>
@@ -284,6 +288,7 @@ ${formData.freeformNotes.trim() ? `Additional notes: ${formData.freeformNotes}` 
                     onChange={(e) => updateExampleExcerpt(index, e.target.value)}
                     placeholder="Paste or write a sample paragraph that demonstrates your desired writing style..."
                     rows={4}
+                    disabled={readOnly}
                   />
                 </div>
               ))}
@@ -333,12 +338,14 @@ ${formData.freeformNotes.trim() ? `Additional notes: ${formData.freeformNotes}` 
                         value={label}
                         onChange={(e) => updateStyleLabel(index, e.target.value)}
                         placeholder="e.g., minimalist, terse, cynical"
+                        disabled={readOnly}
                       />
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => removeStyleLabel(index)}
                         className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                        disabled={readOnly}
                       >
                         <X className="w-4 h-4" />
                       </Button>
@@ -348,6 +355,7 @@ ${formData.freeformNotes.trim() ? `Additional notes: ${formData.freeformNotes}` 
                     variant="outline"
                     onClick={addStyleLabel}
                     className="w-full"
+                    disabled={readOnly}
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Add Style Label
@@ -370,12 +378,14 @@ ${formData.freeformNotes.trim() ? `Additional notes: ${formData.freeformNotes}` 
                         value={constraint}
                         onChange={(e) => updateNegativeConstraint(index, e.target.value)}
                         placeholder="e.g., avoid metaphors, no humor"
+                        disabled={readOnly}
                       />
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => removeNegativeConstraint(index)}
                         className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                        disabled={readOnly}
                       >
                         <X className="w-4 h-4" />
                       </Button>
@@ -385,6 +395,7 @@ ${formData.freeformNotes.trim() ? `Additional notes: ${formData.freeformNotes}` 
                     variant="outline"
                     onClick={addNegativeConstraint}
                     className="w-full"
+                    disabled={readOnly}
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Add Negative Constraint
@@ -408,6 +419,7 @@ ${formData.freeformNotes.trim() ? `Additional notes: ${formData.freeformNotes}` 
                 onChange={(e) => updateFormData({ freeformNotes: e.target.value })}
                 placeholder="Optional notes about tone, rhythm, or other stylistic considerations..."
                 rows={3}
+                disabled={readOnly}
               />
             </CardContent>
           </Card>
@@ -420,8 +432,8 @@ ${formData.freeformNotes.trim() ? `Additional notes: ${formData.freeformNotes}` 
         <Button variant="outline" onClick={onCancel} disabled={loading}>
           Cancel
         </Button>
-        <Button onClick={handleSave} disabled={loading}>
-          {loading ? 'Creating...' : 'Create Style Capsule'}
+        <Button onClick={handleSave} disabled={loading || readOnly}>
+          {loading ? 'Creating...' : readOnly ? 'Read Only' : 'Create Style Capsule'}
         </Button>
       </div>
     </div>

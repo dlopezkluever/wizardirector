@@ -493,7 +493,7 @@ router.get('/libraries/all', async (req, res) => {
       .from('style_capsule_libraries')
       .select('id')
       .eq('user_id', userId)
-      .eq('is_preset', false);
+      .eq('is_preset', false); 
 
     if (userLibError) {
       console.error('Error checking user libraries:', userLibError);
