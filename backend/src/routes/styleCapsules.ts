@@ -32,19 +32,10 @@ router.get('/', async (req, res) => {
         id,
         name,
         type,
-        library_id AS "libraryId",
-        user_id AS "userId",
-        example_text_excerpts AS "exampleTextExcerpts",
-        style_labels AS "styleLabels",
-        negative_constraints AS "negativeConstraints",
-        freeform_notes AS "freeformNotes",
-        design_pillars AS "designPillars",
-        reference_image_urls AS "referenceImageUrls",
-        descriptor_strings AS "descriptorStrings",
-        is_preset AS "isPreset",
-        is_favorite AS "isFavorite",
-        created_at AS "createdAt",
-        updated_at AS "updatedAt",
+        is_preset,
+        is_favorite,
+        created_at,
+        updated_at,
         style_capsule_libraries (
           name,
           user_id
@@ -74,24 +65,7 @@ router.get('/:id', async (req, res) => {
 
     const { data: capsule, error } = await supabase
       .from('style_capsules')
-      .select(`
-        id,
-        name,
-        type,
-        library_id AS "libraryId",
-        user_id AS "userId",
-        example_text_excerpts AS "exampleTextExcerpts",
-        style_labels AS "styleLabels",
-        negative_constraints AS "negativeConstraints",
-        freeform_notes AS "freeformNotes",
-        design_pillars AS "designPillars",
-        reference_image_urls AS "referenceImageUrls",
-        descriptor_strings AS "descriptorStrings",
-        is_preset AS "isPreset",
-        is_favorite AS "isFavorite",
-        created_at AS "createdAt",
-        updated_at AS "updatedAt"
-      `)
+      .select('*')
       .eq('id', capsuleId)
       .or(`user_id.eq.${userId},is_preset.eq.true`)
       .single();
@@ -158,24 +132,7 @@ router.post('/', async (req, res) => {
     const { data: capsule, error } = await supabase
       .from('style_capsules')
       .insert(dbData)
-      .select(`
-        id,
-        name,
-        type,
-        library_id AS "libraryId",
-        user_id AS "userId",
-        example_text_excerpts AS "exampleTextExcerpts",
-        style_labels AS "styleLabels",
-        negative_constraints AS "negativeConstraints",
-        freeform_notes AS "freeformNotes",
-        design_pillars AS "designPillars",
-        reference_image_urls AS "referenceImageUrls",
-        descriptor_strings AS "descriptorStrings",
-        is_preset AS "isPreset",
-        is_favorite AS "isFavorite",
-        created_at AS "createdAt",
-        updated_at AS "updatedAt"
-      `)
+      .select()
       .single();
 
     if (error) {
@@ -209,7 +166,7 @@ router.put('/:id', async (req, res) => {
     // Cannot update preset capsules
     const { data: existingCapsule, error: fetchError } = await supabase
       .from('style_capsules')
-      .select('is_preset AS "isPreset", user_id AS "userId"')
+      .select('is_preset, user_id')
       .eq('id', capsuleId)
       .single();
 
@@ -217,11 +174,11 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Style capsule not found' });
     }
 
-    if (existingCapsule.isPreset) {
+    if (existingCapsule.is_preset) {
       return res.status(403).json({ error: 'Cannot modify preset capsules' });
     }
 
-    if (existingCapsule.userId !== userId) {
+    if (existingCapsule.user_id !== userId) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -230,24 +187,7 @@ router.put('/:id', async (req, res) => {
       .from('style_capsules')
       .update(updates)
       .eq('id', capsuleId)
-      .select(`
-        id,
-        name,
-        type,
-        library_id AS "libraryId",
-        user_id AS "userId",
-        example_text_excerpts AS "exampleTextExcerpts",
-        style_labels AS "styleLabels",
-        negative_constraints AS "negativeConstraints",
-        freeform_notes AS "freeformNotes",
-        design_pillars AS "designPillars",
-        reference_image_urls AS "referenceImageUrls",
-        descriptor_strings AS "descriptorStrings",
-        is_preset AS "isPreset",
-        is_favorite AS "isFavorite",
-        created_at AS "createdAt",
-        updated_at AS "updatedAt"
-      `)
+      .select()
       .single();
 
     if (error) {
@@ -271,7 +211,7 @@ router.delete('/:id', async (req, res) => {
     // Check ownership and preset status
     const { data: capsule, error: fetchError } = await supabase
       .from('style_capsules')
-      .select('is_preset AS "isPreset", user_id AS "userId"')
+      .select('is_preset, user_id')
       .eq('id', capsuleId)
       .single();
 
@@ -279,11 +219,11 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Style capsule not found' });
     }
 
-    if (capsule.isPreset) {
+    if (capsule.is_preset) {
       return res.status(403).json({ error: 'Cannot delete preset capsules' });
     }
 
-    if (capsule.userId !== userId) {
+    if (capsule.user_id !== userId) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -314,7 +254,7 @@ router.post('/:id/favorite', async (req, res) => {
     // Check access
     const { data: capsule, error: fetchError } = await supabase
       .from('style_capsules')
-      .select('user_id AS "userId", is_favorite AS "isFavorite"')
+      .select('user_id, is_favorite')
       .eq('id', capsuleId)
       .or(`user_id.eq.${userId},is_preset.eq.true`)
       .single();
@@ -324,29 +264,12 @@ router.post('/:id/favorite', async (req, res) => {
     }
 
     // Toggle favorite status
-    const newFavoriteStatus = !capsule.isFavorite;
+    const newFavoriteStatus = !capsule.is_favorite;
     const { data: updatedCapsule, error } = await supabase
       .from('style_capsules')
       .update({ is_favorite: newFavoriteStatus })
       .eq('id', capsuleId)
-      .select(`
-        id,
-        name,
-        type,
-        library_id AS "libraryId",
-        user_id AS "userId",
-        example_text_excerpts AS "exampleTextExcerpts",
-        style_labels AS "styleLabels",
-        negative_constraints AS "negativeConstraints",
-        freeform_notes AS "freeformNotes",
-        design_pillars AS "designPillars",
-        reference_image_urls AS "referenceImageUrls",
-        descriptor_strings AS "descriptorStrings",
-        is_preset AS "isPreset",
-        is_favorite AS "isFavorite",
-        created_at AS "createdAt",
-        updated_at AS "updatedAt"
-      `)
+      .select()
       .single();
 
     if (error) {
@@ -375,24 +298,7 @@ router.post('/:id/duplicate', async (req, res) => {
     // Get the preset capsule
     const { data: presetCapsule, error: fetchError } = await supabase
       .from('style_capsules')
-      .select(`
-        id,
-        name,
-        type,
-        library_id AS "libraryId",
-        user_id AS "userId",
-        example_text_excerpts AS "exampleTextExcerpts",
-        style_labels AS "styleLabels",
-        negative_constraints AS "negativeConstraints",
-        freeform_notes AS "freeformNotes",
-        design_pillars AS "designPillars",
-        reference_image_urls AS "referenceImageUrls",
-        descriptor_strings AS "descriptorStrings",
-        is_preset AS "isPreset",
-        is_favorite AS "isFavorite",
-        created_at AS "createdAt",
-        updated_at AS "updatedAt"
-      `)
+      .select('*')
       .eq('id', capsuleId)
       .eq('is_preset', true)
       .single();
@@ -422,34 +328,17 @@ router.post('/:id/duplicate', async (req, res) => {
         type: presetCapsule.type,
         library_id: libraryId,
         user_id: userId,
-        example_text_excerpts: presetCapsule.exampleTextExcerpts,
-        style_labels: presetCapsule.styleLabels,
-        negative_constraints: presetCapsule.negativeConstraints,
-        freeform_notes: presetCapsule.freeformNotes,
-        design_pillars: presetCapsule.designPillars,
-        descriptor_strings: presetCapsule.descriptorStrings,
-        reference_image_urls: presetCapsule.referenceImageUrls,
+        example_text_excerpts: presetCapsule.example_text_excerpts,
+        style_labels: presetCapsule.style_labels,
+        negative_constraints: presetCapsule.negative_constraints,
+        freeform_notes: presetCapsule.freeform_notes,
+        design_pillars: presetCapsule.design_pillars,
+        descriptor_strings: presetCapsule.descriptor_strings,
+        reference_image_urls: presetCapsule.reference_image_urls,
         is_preset: false,
         is_favorite: false
       })
-      .select(`
-        id,
-        name,
-        type,
-        library_id AS "libraryId",
-        user_id AS "userId",
-        example_text_excerpts AS "exampleTextExcerpts",
-        style_labels AS "styleLabels",
-        negative_constraints AS "negativeConstraints",
-        freeform_notes AS "freeformNotes",
-        design_pillars AS "designPillars",
-        reference_image_urls AS "referenceImageUrls",
-        descriptor_strings AS "descriptorStrings",
-        is_preset AS "isPreset",
-        is_favorite AS "isFavorite",
-        created_at AS "createdAt",
-        updated_at AS "updatedAt"
-      `)
+      .select()
       .single();
 
     if (error) {
@@ -477,7 +366,7 @@ router.post('/:id/upload-image', upload.single('image'), async (req, res) => {
     // Check capsule ownership and type
     const { data: capsule, error: fetchError } = await supabase
       .from('style_capsules')
-      .select('user_id AS "userId", type, reference_image_urls AS "referenceImageUrls"')
+      .select('user_id, type, reference_image_urls')
       .eq('id', capsuleId)
       .single();
 
@@ -489,7 +378,7 @@ router.post('/:id/upload-image', upload.single('image'), async (req, res) => {
       return res.status(400).json({ error: 'Only visual style capsules can have reference images' });
     }
 
-    if (capsule.userId !== userId) {
+    if (capsule.user_id !== userId) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -516,31 +405,14 @@ router.post('/:id/upload-image', upload.single('image'), async (req, res) => {
       .getPublicUrl(fileName);
 
     // Update capsule with new image URL
-    const currentUrls = capsule.referenceImageUrls || [];
+    const currentUrls = capsule.reference_image_urls || [];
     const updatedUrls = [...currentUrls, urlData.publicUrl];
 
     const { data: updatedCapsule, error: updateError } = await supabase
       .from('style_capsules')
       .update({ reference_image_urls: updatedUrls })
       .eq('id', capsuleId)
-      .select(`
-        id,
-        name,
-        type,
-        library_id AS "libraryId",
-        user_id AS "userId",
-        example_text_excerpts AS "exampleTextExcerpts",
-        style_labels AS "styleLabels",
-        negative_constraints AS "negativeConstraints",
-        freeform_notes AS "freeformNotes",
-        design_pillars AS "designPillars",
-        reference_image_urls AS "referenceImageUrls",
-        descriptor_strings AS "descriptorStrings",
-        is_preset AS "isPreset",
-        is_favorite AS "isFavorite",
-        created_at AS "createdAt",
-        updated_at AS "updatedAt"
-      `)
+      .select()
       .single();
 
     if (updateError) {
@@ -569,7 +441,7 @@ router.delete('/:id/images/:imageIndex', async (req, res) => {
     // Check capsule ownership
     const { data: capsule, error: fetchError } = await supabase
       .from('style_capsules')
-      .select('user_id AS "userId", reference_image_urls AS "referenceImageUrls"')
+      .select('user_id, reference_image_urls')
       .eq('id', capsuleId)
       .single();
 
@@ -577,11 +449,11 @@ router.delete('/:id/images/:imageIndex', async (req, res) => {
       return res.status(404).json({ error: 'Style capsule not found' });
     }
 
-    if (capsule.userId !== userId) {
+    if (capsule.user_id !== userId) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const currentUrls = capsule.referenceImageUrls || [];
+    const currentUrls = capsule.reference_image_urls || [];
     if (imageIndex >= currentUrls.length) {
       return res.status(400).json({ error: 'Image index out of range' });
     }
@@ -593,24 +465,7 @@ router.delete('/:id/images/:imageIndex', async (req, res) => {
       .from('style_capsules')
       .update({ reference_image_urls: updatedUrls })
       .eq('id', capsuleId)
-      .select(`
-        id,
-        name,
-        type,
-        library_id AS "libraryId",
-        user_id AS "userId",
-        example_text_excerpts AS "exampleTextExcerpts",
-        style_labels AS "styleLabels",
-        negative_constraints AS "negativeConstraints",
-        freeform_notes AS "freeformNotes",
-        design_pillars AS "designPillars",
-        reference_image_urls AS "referenceImageUrls",
-        descriptor_strings AS "descriptorStrings",
-        is_preset AS "isPreset",
-        is_favorite AS "isFavorite",
-        created_at AS "createdAt",
-        updated_at AS "updatedAt"
-      `)
+      .select()
       .single();
 
     if (updateError) {
@@ -671,10 +526,9 @@ router.get('/libraries/all', async (req, res) => {
         id,
         name,
         description,
-        user_id AS "userId",
-        is_preset AS "isPreset",
-        created_at AS "createdAt",
-        updated_at AS "updatedAt",
+        is_preset,
+        created_at,
+        updated_at,
         style_capsules (
           id,
           name,
@@ -716,15 +570,7 @@ router.post('/libraries', async (req, res) => {
         user_id: userId,
         is_preset: false
       })
-      .select(`
-        id,
-        name,
-        description,
-        user_id AS "userId",
-        is_preset AS "isPreset",
-        created_at AS "createdAt",
-        updated_at AS "updatedAt"
-      `)
+      .select()
       .single();
 
     if (error) {
