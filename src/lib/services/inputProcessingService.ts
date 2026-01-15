@@ -27,6 +27,7 @@ export interface InputProcessingRequest {
   selectedGenres: string[];
   targetLength: [number, number];
   tonalPrecision: string;
+  writingStyleCapsuleId?: string;
   uploadedFiles: UploadedFile[];
   ideaText: string;
 }
@@ -43,6 +44,7 @@ class InputProcessingService {
       selectedGenres,
       targetLength,
       tonalPrecision,
+      writingStyleCapsuleId,
       uploadedFiles,
       ideaText
     } = request;
@@ -94,7 +96,8 @@ class InputProcessingService {
         projectType: selectedProjectType,
         contentRating: selectedRating,
         genres: selectedGenres,
-        tonalPrecision
+        tonalPrecision,
+        writingStyleCapsuleId
       }
     };
   }

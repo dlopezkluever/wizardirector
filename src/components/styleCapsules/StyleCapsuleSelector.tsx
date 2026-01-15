@@ -40,7 +40,6 @@ export function StyleCapsuleSelector({
   const [capsules, setCapsules] = useState<StyleCapsule[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [previewCapsule, setPreviewCapsule] = useState<StyleCapsule | null>(null);
 
   // Load capsules on mount
@@ -62,28 +61,14 @@ export function StyleCapsuleSelector({
     }
   };
 
-  // Filter capsules based on search
-  const filteredCapsules = useMemo(() => {
-    if (!searchQuery) return capsules;
-
-    return capsules.filter(capsule =>
-      capsule.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (isWritingStyleCapsule(capsule) && capsule.styleLabels?.some(label =>
-        label.toLowerCase().includes(searchQuery.toLowerCase())
-      )) ||
-      (isVisualStyleCapsule(capsule) && Object.values(capsule.designPillars || {}).some(value =>
-        value?.toLowerCase().includes(searchQuery.toLowerCase())
-      ))
-    );
-  }, [capsules, searchQuery]);
-
-  // Group capsules by preset vs custom
+  // Group capsules by favorites, custom, and presets
   const groupedCapsules = useMemo(() => {
-    const presets = filteredCapsules.filter(c => c.isPreset);
-    const custom = filteredCapsules.filter(c => !c.isPreset);
+    const favorites = capsules.filter(c => c.isFavorite);
+    const customNonFavorite = capsules.filter(c => !c.isPreset && !c.isFavorite);
+    const presets = capsules.filter(c => c.isPreset && !c.isFavorite);
 
-    return { presets, custom };
-  }, [filteredCapsules]);
+    return { favorites, custom: customNonFavorite, presets };
+  }, [capsules]);
 
   const selectedCapsule = capsules.find(c => c.id === value);
 
@@ -185,10 +170,17 @@ export function StyleCapsuleSelector({
     const isWriting = isWritingStyleCapsule(capsule);
     const isVisual = isVisualStyleCapsule(capsule);
 
+    // Create searchable value that includes name and labels for Command's built-in filter
+    const searchableValue = [
+      capsule.name,
+      isWriting && capsule.styleLabels ? capsule.styleLabels.join(' ') : '',
+      isVisual && capsule.designPillars ? Object.values(capsule.designPillars).join(' ') : ''
+    ].filter(Boolean).join(' ').toLowerCase();
+
     return (
       <CommandItem
         key={capsule.id}
-        value={capsule.id}
+        value={searchableValue}
         onSelect={() => handleSelect(capsule.id)}
         className="flex items-center justify-between p-3 cursor-pointer"
       >
@@ -294,25 +286,33 @@ export function StyleCapsuleSelector({
           <Command>
             <CommandInput
               placeholder={`Search ${type} style capsules...`}
-              value={searchQuery}
-              onValueChange={setSearchQuery}
             />
             <CommandList>
               <CommandEmpty>No style capsules found.</CommandEmpty>
 
-              {/* Preset Capsules */}
-              {groupedCapsules.presets.length > 0 && (
-                <CommandGroup heading="Preset Capsules">
-                  {groupedCapsules.presets.map(renderCapsuleItem)}
+              {/* Favorites */}
+              {groupedCapsules.favorites.length > 0 && (
+                <CommandGroup heading="Favorites">
+                  {groupedCapsules.favorites.map(renderCapsuleItem)}
                 </CommandGroup>
               )}
 
               {/* Custom Capsules */}
               {groupedCapsules.custom.length > 0 && (
                 <>
-                  {groupedCapsules.presets.length > 0 && <Separator className="my-2" />}
+                  {groupedCapsules.favorites.length > 0 && <Separator className="my-2" />}
                   <CommandGroup heading="Custom Capsules">
                     {groupedCapsules.custom.map(renderCapsuleItem)}
+                  </CommandGroup>
+                </>
+              )}
+
+              {/* Preset Capsules */}
+              {groupedCapsules.presets.length > 0 && (
+                <>
+                  {(groupedCapsules.favorites.length > 0 || groupedCapsules.custom.length > 0) && <Separator className="my-2" />}
+                  <CommandGroup heading="Preset Capsules">
+                    {groupedCapsules.presets.map(renderCapsuleItem)}
                   </CommandGroup>
                 </>
               )}

@@ -205,6 +205,9 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
 
         console.log(`✅ [STAGE 4] Loaded ${stage3State.content.beats.length} beats from Stage 3`);
 
+        // Also get Stage 2 state to retrieve processedInput (includes writingStyleCapsuleId)
+        const stage2State = await stageStateService.getStageState(projectId, 2);
+
         // Fetch project configuration (stored in projects table, not stage_states)
         const { data: { session } } = await supabase.auth.getSession();
         
@@ -240,7 +243,9 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
           targetLengthMax: project.targetLength?.max || 300,
           contentRating: project.contentRating || 'PG-13',
           genres: project.genres || [],
-          tonalPrecision: project.tonalPrecision || ''
+          tonalPrecision: project.tonalPrecision || '',
+          // Include writingStyleCapsuleId from Stage 2 processedInput
+          writingStyleCapsuleId: stage2State?.content?.processedInput?.projectParams?.writingStyleCapsuleId
         };
 
         setProjectParams(params);

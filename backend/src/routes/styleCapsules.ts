@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { supabase } from '../config/supabase.js';
 import multer from 'multer';
 import path from 'path';
+import { capsuleToApi, capsulesToApi, libraryToApi, librariesToApi } from '../transformers/styleCapsule.js';
 
 const router = Router();
 
@@ -50,7 +51,7 @@ router.get('/', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch style capsules' });
     }
 
-    res.json({ data: capsules });
+    res.json({ data: capsulesToApi(capsules) });
   } catch (error) {
     console.error('Unexpected error in style capsules list:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -78,7 +79,7 @@ router.get('/:id', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch style capsule' });
     }
 
-    res.json({ data: capsule });
+    res.json({ data: capsuleToApi(capsule) });
   } catch (error) {
     console.error('Unexpected error in style capsule fetch:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -149,7 +150,7 @@ router.post('/', async (req, res) => {
       return res.status(500).json({ error: 'Failed to create style capsule', details: error.message });
     }
 
-    res.status(201).json({ data: capsule });
+    res.status(201).json({ data: capsuleToApi(capsule) });
   } catch (error) {
     console.error('Unexpected error in style capsule creation:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -182,10 +183,23 @@ router.put('/:id', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
+    // Transform camelCase updates to snake_case for database
+    const dbUpdates: any = {};
+    if (updates.name !== undefined) dbUpdates.name = updates.name;
+    if (updates.exampleTextExcerpts !== undefined) dbUpdates.example_text_excerpts = updates.exampleTextExcerpts;
+    if (updates.styleLabels !== undefined) dbUpdates.style_labels = updates.styleLabels;
+    if (updates.negativeConstraints !== undefined) dbUpdates.negative_constraints = updates.negativeConstraints;
+    if (updates.freeformNotes !== undefined) dbUpdates.freeform_notes = updates.freeformNotes;
+    if (updates.designPillars !== undefined) dbUpdates.design_pillars = updates.designPillars;
+    if (updates.referenceImageUrls !== undefined) dbUpdates.reference_image_urls = updates.referenceImageUrls;
+    if (updates.descriptorStrings !== undefined) dbUpdates.descriptor_strings = updates.descriptorStrings;
+    if (updates.libraryId !== undefined) dbUpdates.library_id = updates.libraryId;
+    // Don't allow updating: type, is_preset, user_id
+
     // Update the capsule
     const { data: capsule, error } = await supabase
       .from('style_capsules')
-      .update(updates)
+      .update(dbUpdates)
       .eq('id', capsuleId)
       .select()
       .single();
@@ -195,7 +209,7 @@ router.put('/:id', async (req, res) => {
       return res.status(500).json({ error: 'Failed to update style capsule' });
     }
 
-    res.json({ data: capsule });
+    res.json({ data: capsuleToApi(capsule) });
   } catch (error) {
     console.error('Unexpected error in style capsule update:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -277,23 +291,19 @@ router.post('/:id/favorite', async (req, res) => {
       return res.status(500).json({ error: 'Failed to update favorite status' });
     }
 
-    res.json({ data: updatedCapsule });
+    res.json({ data: capsuleToApi(updatedCapsule) });
   } catch (error) {
     console.error('Unexpected error in favorite toggle:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// POST /api/style-capsules/:id/duplicate - Duplicate preset to user's library
+// POST /api/style-capsules/:id/duplicate - Duplicate preset capsule
 router.post('/:id/duplicate', async (req, res) => {
   try {
     const userId = req.user!.id;
     const capsuleId = req.params.id;
-    const { libraryId, newName } = req.body;
-
-    if (!libraryId) {
-      return res.status(400).json({ error: 'libraryId is required' });
-    }
+    const { newName } = req.body;
 
     // Get the preset capsule
     const { data: presetCapsule, error: fetchError } = await supabase
@@ -307,26 +317,14 @@ router.post('/:id/duplicate', async (req, res) => {
       return res.status(404).json({ error: 'Preset capsule not found' });
     }
 
-    // Verify library ownership
-    const { data: library, error: libraryError } = await supabase
-      .from('style_capsule_libraries')
-      .select('id')
-      .eq('id', libraryId)
-      .eq('user_id', userId)
-      .single();
-
-    if (libraryError || !library) {
-      return res.status(403).json({ error: 'Library not found or access denied' });
-    }
-
-    // Create duplicate
+    // Create duplicate (library_id is optional as of migration 005)
     const duplicateName = newName || `${presetCapsule.name} (Copy)`;
     const { data: duplicate, error } = await supabase
       .from('style_capsules')
       .insert({
         name: duplicateName,
         type: presetCapsule.type,
-        library_id: libraryId,
+        library_id: null, // No library required
         user_id: userId,
         example_text_excerpts: presetCapsule.example_text_excerpts,
         style_labels: presetCapsule.style_labels,
@@ -346,7 +344,7 @@ router.post('/:id/duplicate', async (req, res) => {
       return res.status(500).json({ error: 'Failed to duplicate capsule' });
     }
 
-    res.status(201).json({ data: duplicate });
+    res.status(201).json({ data: capsuleToApi(duplicate) });
   } catch (error) {
     console.error('Unexpected error in capsule duplication:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -420,7 +418,7 @@ router.post('/:id/upload-image', upload.single('image'), async (req, res) => {
       return res.status(500).json({ error: 'Failed to update capsule with image URL' });
     }
 
-    res.json({ data: updatedCapsule });
+    res.json({ data: capsuleToApi(updatedCapsule) });
   } catch (error) {
     console.error('Unexpected error in image upload:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -459,7 +457,7 @@ router.delete('/:id/images/:imageIndex', async (req, res) => {
     }
 
     // Remove image URL from array
-    const updatedUrls = currentUrls.filter((_, index) => index !== imageIndex);
+    const updatedUrls = currentUrls.filter((_: any, index: number) => index !== imageIndex);
 
     const { data: updatedCapsule, error: updateError } = await supabase
       .from('style_capsules')
@@ -476,7 +474,7 @@ router.delete('/:id/images/:imageIndex', async (req, res) => {
     // TODO: Optionally delete the actual file from storage
     // For now, we just remove the URL reference
 
-    res.json({ data: updatedCapsule });
+    res.json({ data: capsuleToApi(updatedCapsule) });
   } catch (error) {
     console.error('Unexpected error in image removal:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -545,7 +543,7 @@ router.get('/libraries/all', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch libraries' });
     }
 
-    res.json({ data: libraries });
+    res.json({ data: librariesToApi(libraries) });
   } catch (error) {
     console.error('Unexpected error in libraries fetch:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -578,7 +576,7 @@ router.post('/libraries', async (req, res) => {
       return res.status(500).json({ error: 'Failed to create library' });
     }
 
-    res.status(201).json({ data: library });
+    res.status(201).json({ data: libraryToApi(library) });
   } catch (error) {
     console.error('Unexpected error in library creation:', error);
     res.status(500).json({ error: 'Internal server error' });

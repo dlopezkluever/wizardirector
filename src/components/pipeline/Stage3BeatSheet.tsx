@@ -319,11 +319,15 @@ export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatShe
       const treatmentData = {
         treatmentProse: selectedTreatment.content,
         selectedVariantId: selectedTreatment.id,
-        projectParams: stage2State.content.processedInput?.projectParams || {
-          targetLengthMin: 180,
-          targetLengthMax: 300,
-          genres: ['Drama'],
-          tonalPrecision: 'Emotional and contemplative'
+        projectParams: {
+          ...(stage2State.content.processedInput?.projectParams || {
+            targetLengthMin: 180,
+            targetLengthMax: 300,
+            genres: ['Drama'],
+            tonalPrecision: 'Emotional and contemplative'
+          }),
+          // Ensure writingStyleCapsuleId is included (from Stage 1 content via Stage 2)
+          writingStyleCapsuleId: stage2State.content.processedInput?.projectParams?.writingStyleCapsuleId
         }
       };
 

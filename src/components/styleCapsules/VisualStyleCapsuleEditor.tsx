@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, Upload, Trash2, Image as ImageIcon } from 'lucide-react';
+import { X, Plus, Upload, Trash2, Copy, Image as ImageIcon } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,9 +22,13 @@ import { validateVisualStyleCapsule, DEFAULT_VISUAL_CAPSULE_FORM } from '@/types
 import { ImageUploader } from './ImageUploader';
 
 interface VisualStyleCapsuleEditorProps {
+  libraries?: any[]; // Available libraries for selection
   capsule?: any; // For editing existing capsules
   onSave: () => void;
   onCancel: () => void;
+  onDelete?: () => void; // For deleting capsules
+  onDuplicate?: () => void; // For duplicating preset capsules
+  readOnly?: boolean; // For preset capsules
 }
 
 const DESIGN_PILLAR_OPTIONS = {
@@ -94,7 +98,10 @@ export function VisualStyleCapsuleEditor({
   libraries,
   capsule,
   onSave,
-  onCancel
+  onCancel,
+  onDelete,
+  onDuplicate,
+  readOnly = false
 }: VisualStyleCapsuleEditorProps) {
   const { toast } = useToast();
 
@@ -110,6 +117,14 @@ export function VisualStyleCapsuleEditor({
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [existingImages, setExistingImages] = useState<string[]>(capsule?.referenceImageUrls || []);
+  const [pendingImageFiles, setPendingImageFiles] = useState<File[]>([]); // For new capsules
+
+  // Sync existing images when capsule prop changes (e.g., when full details are loaded)
+  useEffect(() => {
+    if (capsule?.referenceImageUrls) {
+      setExistingImages(capsule.referenceImageUrls);
+    }
+  }, [capsule?.referenceImageUrls]);
 
   const updateFormData = (updates: Partial<VisualStyleCapsuleFormData>) => {
     setFormData(prev => ({ ...prev, ...updates }));
@@ -126,6 +141,11 @@ export function VisualStyleCapsuleEditor({
 
   const handleImagesUploaded = (imageUrls: string[]) => {
     setExistingImages(prev => [...prev, ...imageUrls]);
+  };
+
+  // Handle pending files for new capsules (before capsule is created)
+  const handlePendingFiles = (files: File[]) => {
+    setPendingImageFiles(prev => [...prev, ...files]);
   };
 
   const handleRemoveImage = async (imageUrl: string, index: number) => {
@@ -172,21 +192,62 @@ export function VisualStyleCapsuleEditor({
 
     setLoading(true);
     try {
-      const createData: VisualStyleCapsuleCreate = {
+      // Detect if editing existing capsule
+      const isEditMode = !!capsule?.id;
+
+      const capsuleData = {
         name: formData.name,
-        type: 'visual',
         designPillars: formData.designPillars,
         descriptorStrings: formData.descriptorStrings.trim() || undefined,
         referenceImageUrls: existingImages
       };
 
-      await styleCapsuleService.createCapsule(createData);
+      let savedCapsule: any;
+
+      if (isEditMode) {
+        // UPDATE existing capsule
+        savedCapsule = await styleCapsuleService.updateCapsule(capsule.id, capsuleData);
+      } else {
+        // CREATE new capsule
+        const createData: VisualStyleCapsuleCreate = {
+          ...capsuleData,
+          type: 'visual'
+        };
+        savedCapsule = await styleCapsuleService.createCapsule(createData);
+
+        // If there are pending image files, upload them now
+        if (pendingImageFiles.length > 0) {
+          toast({
+            title: 'Uploading images...',
+            description: `Uploading ${pendingImageFiles.length} image(s) to the capsule.`,
+          });
+
+          try {
+            for (const file of pendingImageFiles) {
+              await styleCapsuleService.uploadImage(savedCapsule.id, file);
+            }
+            setPendingImageFiles([]); // Clear pending files
+            toast({
+              title: 'Success',
+              description: 'Images uploaded successfully.',
+            });
+          } catch (uploadError) {
+            console.error('Failed to upload images:', uploadError);
+            toast({
+              title: 'Warning',
+              description: 'Capsule created but some images failed to upload. You can add them later by editing the capsule.',
+              variant: 'destructive',
+            });
+          }
+        }
+      }
+
       onSave();
     } catch (error) {
-      console.error('Failed to create visual style capsule:', error);
+      console.error(`Failed to ${capsule?.id ? 'update' : 'create'} visual style capsule:`, error);
       toast({
         title: 'Error',
-        description: 'Failed to create style capsule. Please try again.',
+        description: `Failed to ${capsule?.id ? 'update' : 'create'} style capsule. Please try again.`,
         variant: 'destructive',
       });
     } finally {
@@ -204,6 +265,7 @@ export function VisualStyleCapsuleEditor({
       <Select
         value={formData.designPillars[key] || ''}
         onValueChange={(value) => updateDesignPillar(key, value)}
+        disabled={readOnly}
       >
         <SelectTrigger>
           <SelectValue placeholder={`Select ${label.toLowerCase()}...`} />
@@ -261,6 +323,7 @@ export function VisualStyleCapsuleEditor({
                 value={formData.name}
                 onChange={(e) => updateFormData({ name: e.target.value })}
                 placeholder="e.g., Neo-Noir Cinematic"
+                disabled={readOnly}
               />
             </div>
           </div>
@@ -321,11 +384,44 @@ export function VisualStyleCapsuleEditor({
                       alt={`Reference ${index + 1}`}
                       className="w-full h-32 object-cover rounded-md border"
                     />
+                    {!readOnly && (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0"
+                        onClick={() => handleRemoveImage(imageUrl, index)}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Pending Images (for new capsules before save) */}
+          {!capsule?.id && pendingImageFiles.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-orange-600">
+                Selected Images (will upload after save)
+              </Label>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {pendingImageFiles.map((file, index) => (
+                  <div key={index} className="relative group">
+                    <div className="w-full h-32 bg-muted rounded-md border flex items-center justify-center">
+                      <div className="text-center p-2">
+                        <ImageIcon className="w-8 h-8 mx-auto mb-1 text-muted-foreground" />
+                        <p className="text-xs text-muted-foreground truncate">
+                          {file.name}
+                        </p>
+                      </div>
+                    </div>
                     <Button
                       variant="destructive"
                       size="sm"
                       className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0"
-                      onClick={() => handleRemoveImage(imageUrl, index)}
+                      onClick={() => setPendingImageFiles(prev => prev.filter((_, i) => i !== index))}
                     >
                       <X className="w-3 h-3" />
                     </Button>
@@ -336,14 +432,20 @@ export function VisualStyleCapsuleEditor({
           )}
 
           {/* Image Uploader */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Add More Images</Label>
-            <ImageUploader
-              onImagesUploaded={handleImagesUploaded}
-              maxFiles={5}
-              acceptedTypes={['image/png', 'image/jpeg', 'image/webp']}
-            />
-          </div>
+          {!readOnly && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">
+                {capsule?.id ? 'Add More Images' : 'Select Images'}
+              </Label>
+              <ImageUploader
+                capsuleId={capsule?.id} // Only pass if editing existing capsule
+                onImagesUploaded={handleImagesUploaded}
+                onFilesSelected={handlePendingFiles} // For new capsules
+                maxFiles={5}
+                acceptedTypes={['image/png', 'image/jpeg', 'image/webp']}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -361,19 +463,51 @@ export function VisualStyleCapsuleEditor({
             onChange={(e) => updateFormData({ descriptorStrings: e.target.value })}
             placeholder="e.g., Rain-slicked streets, neon signs reflecting in puddles, deep shadows obscuring faces..."
             rows={4}
+            disabled={readOnly}
           />
         </CardContent>
       </Card>
 
       {/* Actions */}
       <Separator />
-      <div className="flex items-center justify-end gap-3">
-        <Button variant="outline" onClick={onCancel} disabled={loading}>
-          Cancel
-        </Button>
-        <Button onClick={handleSave} disabled={loading}>
-          {loading ? 'Creating...' : 'Create Visual Style Capsule'}
-        </Button>
+      <div className="flex items-center justify-between gap-3">
+        {/* Delete button (only for existing non-preset capsules) */}
+        <div>
+          {!readOnly && capsule?.id && onDelete && (
+            <Button 
+              variant="destructive" 
+              onClick={onDelete} 
+              disabled={loading}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete Capsule
+            </Button>
+          )}
+        </div>
+
+        {/* Right-aligned action buttons */}
+        <div className="flex items-center gap-3">
+          {readOnly && onDuplicate && (
+            <Button 
+              variant="outline" 
+              onClick={onDuplicate}
+            >
+              <Copy className="w-4 h-4 mr-2" />
+              Duplicate to Customize
+            </Button>
+          )}
+          <Button variant="outline" onClick={onCancel} disabled={loading}>
+            {readOnly ? 'Close' : 'Cancel'}
+          </Button>
+          {!readOnly && (
+            <Button onClick={handleSave} disabled={loading}>
+              {loading 
+                ? (capsule?.id ? 'Updating...' : 'Creating...') 
+                : (capsule?.id ? 'Update Visual Style Capsule' : 'Create Visual Style Capsule')
+              }
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

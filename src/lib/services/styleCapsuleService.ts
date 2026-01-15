@@ -11,7 +11,7 @@ import type {
 } from '@/types/styleCapsule';
 
 export interface DuplicateCapsuleRequest {
-  libraryId: string;
+  libraryId?: string; // Optional - no longer required
   newName?: string;
 }
 

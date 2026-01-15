@@ -95,9 +95,23 @@ const StyleCapsuleLibrary = () => {
     return true;
   });
 
+  // Sort capsules: Favorites → Custom → Presets
+  const sortedCapsules = [...filteredCapsules].sort((a, b) => {
+    // Favorites first
+    if (a.isFavorite && !b.isFavorite) return -1;
+    if (!a.isFavorite && b.isFavorite) return 1;
+    
+    // Then custom (non-preset) capsules
+    if (!a.isPreset && b.isPreset) return -1;
+    if (a.isPreset && !b.isPreset) return 1;
+    
+    // Within same category, sort by name
+    return a.name.localeCompare(b.name);
+  });
+
   // Separate by type for tabs
-  const writingCapsules = filteredCapsules.filter(isWritingStyleCapsule);
-  const visualCapsules = filteredCapsules.filter(isVisualStyleCapsule);
+  const writingCapsules = sortedCapsules.filter(isWritingStyleCapsule);
+  const visualCapsules = sortedCapsules.filter(isVisualStyleCapsule);
 
   const handleCreateCapsule = (type: 'writing' | 'visual') => {
     setCreateCapsuleType(type);
@@ -133,19 +147,8 @@ const StyleCapsuleLibrary = () => {
 
   const handleDuplicateCapsule = async (capsule: StyleCapsule) => {
     try {
-      // Find user's default library
-      const userLibrary = libraries.find(lib => lib.userId && !lib.isPreset);
-      if (!userLibrary) {
-        toast({
-          title: 'Error',
-          description: 'Please create a library first.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
+      // No library required - duplicate directly
       await styleCapsuleService.duplicateCapsule(capsule.id, {
-        libraryId: userLibrary.id,
         newName: `${capsule.name} (Copy)`
       });
 
@@ -187,6 +190,21 @@ const StyleCapsuleLibrary = () => {
     }
   };
 
+  const handleCapsuleClick = async (capsule: StyleCapsule) => {
+    try {
+      // Fetch full capsule details
+      const fullCapsule = await styleCapsuleService.getCapsule(capsule.id);
+      setSelectedCapsule(fullCapsule);
+    } catch (error) {
+      console.error('Failed to load capsule details:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load capsule details.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const renderCapsuleCard = (capsule: StyleCapsule) => {
     const isWriting = isWritingStyleCapsule(capsule);
     const isVisual = isVisualStyleCapsule(capsule);
@@ -200,7 +218,10 @@ const StyleCapsuleLibrary = () => {
         exit={{ opacity: 0, y: -20 }}
         transition={{ duration: 0.2 }}
       >
-        <Card className="h-full hover:shadow-md transition-shadow cursor-pointer group">
+        <Card 
+          className="h-full hover:shadow-md transition-shadow cursor-pointer group"
+          onClick={() => handleCapsuleClick(capsule)}
+        >
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-2">
@@ -227,11 +248,11 @@ const StyleCapsuleLibrary = () => {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setSelectedCapsule(capsule)}>
+                    <DropdownMenuItem onClick={() => handleCapsuleClick(capsule)}>
                       View Details
                     </DropdownMenuItem>
                     {!capsule.isPreset && (
-                      <DropdownMenuItem onClick={() => setSelectedCapsule(capsule)}>
+                      <DropdownMenuItem onClick={() => handleCapsuleClick(capsule)}>
                         Edit
                       </DropdownMenuItem>
                     )}
@@ -544,6 +565,64 @@ const StyleCapsuleLibrary = () => {
               onSave={handleCapsuleCreated}
               onCancel={() => setShowCreateDialog(false)}
             />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* View/Edit Selected Capsule Dialog */}
+      <Dialog open={!!selectedCapsule} onOpenChange={(open) => !open && setSelectedCapsule(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedCapsule?.isPreset ? 'View' : 'Edit'} Style Capsule
+            </DialogTitle>
+            <DialogDescription>
+              {selectedCapsule?.isPreset 
+                ? 'Preset capsules are read-only. Duplicate to customize.'
+                : 'Modify the style capsule properties below.'}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedCapsule && (
+            selectedCapsule.type === 'writing' ? (
+              <WritingStyleCapsuleEditor
+                capsule={selectedCapsule}
+                onSave={async () => {
+                  setSelectedCapsule(null);
+                  await loadData();
+                  toast({ title: 'Success', description: 'Style capsule updated.' });
+                }}
+                onCancel={() => setSelectedCapsule(null)}
+                onDelete={() => {
+                  if (selectedCapsule) {
+                    setCapsuleToDelete(selectedCapsule);
+                    setDeleteDialogOpen(true);
+                    setSelectedCapsule(null);
+                  }
+                }}
+                onDuplicate={() => handleDuplicateCapsule(selectedCapsule)}
+                readOnly={selectedCapsule.isPreset}
+              />
+            ) : (
+              <VisualStyleCapsuleEditor
+                libraries={libraries}
+                capsule={selectedCapsule}
+                onSave={async () => {
+                  setSelectedCapsule(null);
+                  await loadData();
+                  toast({ title: 'Success', description: 'Style capsule updated.' });
+                }}
+                onCancel={() => setSelectedCapsule(null)}
+                onDelete={() => {
+                  if (selectedCapsule) {
+                    setCapsuleToDelete(selectedCapsule);
+                    setDeleteDialogOpen(true);
+                    setSelectedCapsule(null);
+                  }
+                }}
+                onDuplicate={() => handleDuplicateCapsule(selectedCapsule)}
+                readOnly={selectedCapsule.isPreset}
+              />
+            )
           )}
         </DialogContent>
       </Dialog>
