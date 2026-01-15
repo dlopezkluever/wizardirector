@@ -155,6 +155,7 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
       selectedGenres: content.selectedGenres,
       targetLength: content.targetLength,
       tonalPrecision: content.tonalPrecision,
+      writingStyleCapsuleId: content.writingStyleCapsuleId,
       uploadedFiles: content.uploadedFiles,
       ideaText: content.ideaText
     });
@@ -216,6 +217,7 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
         selectedGenres: content.selectedGenres,
         targetLength: content.targetLength,
         tonalPrecision: content.tonalPrecision,
+        writingStyleCapsuleId: content.writingStyleCapsuleId,
         uploadedFiles: content.uploadedFiles,
         ideaText: content.ideaText
       });

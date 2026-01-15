@@ -183,10 +183,23 @@ router.put('/:id', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
+    // Transform camelCase updates to snake_case for database
+    const dbUpdates: any = {};
+    if (updates.name !== undefined) dbUpdates.name = updates.name;
+    if (updates.exampleTextExcerpts !== undefined) dbUpdates.example_text_excerpts = updates.exampleTextExcerpts;
+    if (updates.styleLabels !== undefined) dbUpdates.style_labels = updates.styleLabels;
+    if (updates.negativeConstraints !== undefined) dbUpdates.negative_constraints = updates.negativeConstraints;
+    if (updates.freeformNotes !== undefined) dbUpdates.freeform_notes = updates.freeformNotes;
+    if (updates.designPillars !== undefined) dbUpdates.design_pillars = updates.designPillars;
+    if (updates.referenceImageUrls !== undefined) dbUpdates.reference_image_urls = updates.referenceImageUrls;
+    if (updates.descriptorStrings !== undefined) dbUpdates.descriptor_strings = updates.descriptorStrings;
+    if (updates.libraryId !== undefined) dbUpdates.library_id = updates.libraryId;
+    // Don't allow updating: type, is_preset, user_id
+
     // Update the capsule
     const { data: capsule, error } = await supabase
       .from('style_capsules')
-      .update(updates)
+      .update(dbUpdates)
       .eq('id', capsuleId)
       .select()
       .single();

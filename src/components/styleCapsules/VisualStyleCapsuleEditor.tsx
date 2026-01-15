@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, Upload, Trash2, Image as ImageIcon } from 'lucide-react';
+import { X, Plus, Upload, Trash2, Copy, Image as ImageIcon } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,6 +26,8 @@ interface VisualStyleCapsuleEditorProps {
   capsule?: any; // For editing existing capsules
   onSave: () => void;
   onCancel: () => void;
+  onDelete?: () => void; // For deleting capsules
+  onDuplicate?: () => void; // For duplicating preset capsules
   readOnly?: boolean; // For preset capsules
 }
 
@@ -97,6 +99,8 @@ export function VisualStyleCapsuleEditor({
   capsule,
   onSave,
   onCancel,
+  onDelete,
+  onDuplicate,
   readOnly = false
 }: VisualStyleCapsuleEditorProps) {
   const { toast } = useToast();
@@ -390,18 +394,44 @@ export function VisualStyleCapsuleEditor({
 
       {/* Actions */}
       <Separator />
-      <div className="flex items-center justify-end gap-3">
-        <Button variant="outline" onClick={onCancel} disabled={loading}>
-          {readOnly ? 'Close' : 'Cancel'}
-        </Button>
-        {!readOnly && (
-          <Button onClick={handleSave} disabled={loading}>
-            {loading 
-              ? (capsule?.id ? 'Updating...' : 'Creating...') 
-              : (capsule?.id ? 'Update Visual Style Capsule' : 'Create Visual Style Capsule')
-            }
+      <div className="flex items-center justify-between gap-3">
+        {/* Delete button (only for existing non-preset capsules) */}
+        <div>
+          {!readOnly && capsule?.id && onDelete && (
+            <Button 
+              variant="destructive" 
+              onClick={onDelete} 
+              disabled={loading}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete Capsule
+            </Button>
+          )}
+        </div>
+
+        {/* Right-aligned action buttons */}
+        <div className="flex items-center gap-3">
+          {readOnly && onDuplicate && (
+            <Button 
+              variant="outline" 
+              onClick={onDuplicate}
+            >
+              <Copy className="w-4 h-4 mr-2" />
+              Duplicate to Customize
+            </Button>
+          )}
+          <Button variant="outline" onClick={onCancel} disabled={loading}>
+            {readOnly ? 'Close' : 'Cancel'}
           </Button>
-        )}
+          {!readOnly && (
+            <Button onClick={handleSave} disabled={loading}>
+              {loading 
+                ? (capsule?.id ? 'Updating...' : 'Creating...') 
+                : (capsule?.id ? 'Update Visual Style Capsule' : 'Create Visual Style Capsule')
+              }
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

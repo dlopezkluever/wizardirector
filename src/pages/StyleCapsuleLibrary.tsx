@@ -95,9 +95,23 @@ const StyleCapsuleLibrary = () => {
     return true;
   });
 
+  // Sort capsules: Favorites → Custom → Presets
+  const sortedCapsules = [...filteredCapsules].sort((a, b) => {
+    // Favorites first
+    if (a.isFavorite && !b.isFavorite) return -1;
+    if (!a.isFavorite && b.isFavorite) return 1;
+    
+    // Then custom (non-preset) capsules
+    if (!a.isPreset && b.isPreset) return -1;
+    if (a.isPreset && !b.isPreset) return 1;
+    
+    // Within same category, sort by name
+    return a.name.localeCompare(b.name);
+  });
+
   // Separate by type for tabs
-  const writingCapsules = filteredCapsules.filter(isWritingStyleCapsule);
-  const visualCapsules = filteredCapsules.filter(isVisualStyleCapsule);
+  const writingCapsules = sortedCapsules.filter(isWritingStyleCapsule);
+  const visualCapsules = sortedCapsules.filter(isVisualStyleCapsule);
 
   const handleCreateCapsule = (type: 'writing' | 'visual') => {
     setCreateCapsuleType(type);
@@ -187,6 +201,21 @@ const StyleCapsuleLibrary = () => {
     }
   };
 
+  const handleCapsuleClick = async (capsule: StyleCapsule) => {
+    try {
+      // Fetch full capsule details
+      const fullCapsule = await styleCapsuleService.getCapsule(capsule.id);
+      setSelectedCapsule(fullCapsule);
+    } catch (error) {
+      console.error('Failed to load capsule details:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load capsule details.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const renderCapsuleCard = (capsule: StyleCapsule) => {
     const isWriting = isWritingStyleCapsule(capsule);
     const isVisual = isVisualStyleCapsule(capsule);
@@ -202,7 +231,7 @@ const StyleCapsuleLibrary = () => {
       >
         <Card 
           className="h-full hover:shadow-md transition-shadow cursor-pointer group"
-          onClick={() => setSelectedCapsule(capsule)}
+          onClick={() => handleCapsuleClick(capsule)}
         >
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between">
@@ -230,11 +259,11 @@ const StyleCapsuleLibrary = () => {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setSelectedCapsule(capsule)}>
+                    <DropdownMenuItem onClick={() => handleCapsuleClick(capsule)}>
                       View Details
                     </DropdownMenuItem>
                     {!capsule.isPreset && (
-                      <DropdownMenuItem onClick={() => setSelectedCapsule(capsule)}>
+                      <DropdownMenuItem onClick={() => handleCapsuleClick(capsule)}>
                         Edit
                       </DropdownMenuItem>
                     )}
@@ -574,6 +603,14 @@ const StyleCapsuleLibrary = () => {
                   toast({ title: 'Success', description: 'Style capsule updated.' });
                 }}
                 onCancel={() => setSelectedCapsule(null)}
+                onDelete={() => {
+                  if (selectedCapsule) {
+                    setCapsuleToDelete(selectedCapsule);
+                    setDeleteDialogOpen(true);
+                    setSelectedCapsule(null);
+                  }
+                }}
+                onDuplicate={() => handleDuplicateCapsule(selectedCapsule)}
                 readOnly={selectedCapsule.isPreset}
               />
             ) : (
@@ -586,6 +623,14 @@ const StyleCapsuleLibrary = () => {
                   toast({ title: 'Success', description: 'Style capsule updated.' });
                 }}
                 onCancel={() => setSelectedCapsule(null)}
+                onDelete={() => {
+                  if (selectedCapsule) {
+                    setCapsuleToDelete(selectedCapsule);
+                    setDeleteDialogOpen(true);
+                    setSelectedCapsule(null);
+                  }
+                }}
+                onDuplicate={() => handleDuplicateCapsule(selectedCapsule)}
                 readOnly={selectedCapsule.isPreset}
               />
             )
