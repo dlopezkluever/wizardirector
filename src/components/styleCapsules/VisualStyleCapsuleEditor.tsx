@@ -117,6 +117,7 @@ export function VisualStyleCapsuleEditor({
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [existingImages, setExistingImages] = useState<string[]>(capsule?.referenceImageUrls || []);
+  const [pendingImageFiles, setPendingImageFiles] = useState<File[]>([]); // For new capsules
 
   // Sync existing images when capsule prop changes (e.g., when full details are loaded)
   useEffect(() => {
@@ -140,6 +141,11 @@ export function VisualStyleCapsuleEditor({
 
   const handleImagesUploaded = (imageUrls: string[]) => {
     setExistingImages(prev => [...prev, ...imageUrls]);
+  };
+
+  // Handle pending files for new capsules (before capsule is created)
+  const handlePendingFiles = (files: File[]) => {
+    setPendingImageFiles(prev => [...prev, ...files]);
   };
 
   const handleRemoveImage = async (imageUrl: string, index: number) => {
@@ -196,16 +202,44 @@ export function VisualStyleCapsuleEditor({
         referenceImageUrls: existingImages
       };
 
+      let savedCapsule: any;
+
       if (isEditMode) {
         // UPDATE existing capsule
-        await styleCapsuleService.updateCapsule(capsule.id, capsuleData);
+        savedCapsule = await styleCapsuleService.updateCapsule(capsule.id, capsuleData);
       } else {
         // CREATE new capsule
         const createData: VisualStyleCapsuleCreate = {
           ...capsuleData,
           type: 'visual'
         };
-        await styleCapsuleService.createCapsule(createData);
+        savedCapsule = await styleCapsuleService.createCapsule(createData);
+
+        // If there are pending image files, upload them now
+        if (pendingImageFiles.length > 0) {
+          toast({
+            title: 'Uploading images...',
+            description: `Uploading ${pendingImageFiles.length} image(s) to the capsule.`,
+          });
+
+          try {
+            for (const file of pendingImageFiles) {
+              await styleCapsuleService.uploadImage(savedCapsule.id, file);
+            }
+            setPendingImageFiles([]); // Clear pending files
+            toast({
+              title: 'Success',
+              description: 'Images uploaded successfully.',
+            });
+          } catch (uploadError) {
+            console.error('Failed to upload images:', uploadError);
+            toast({
+              title: 'Warning',
+              description: 'Capsule created but some images failed to upload. You can add them later by editing the capsule.',
+              variant: 'destructive',
+            });
+          }
+        }
       }
 
       onSave();
@@ -366,12 +400,47 @@ export function VisualStyleCapsuleEditor({
             </div>
           )}
 
+          {/* Pending Images (for new capsules before save) */}
+          {!capsule?.id && pendingImageFiles.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-orange-600">
+                Selected Images (will upload after save)
+              </Label>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {pendingImageFiles.map((file, index) => (
+                  <div key={index} className="relative group">
+                    <div className="w-full h-32 bg-muted rounded-md border flex items-center justify-center">
+                      <div className="text-center p-2">
+                        <ImageIcon className="w-8 h-8 mx-auto mb-1 text-muted-foreground" />
+                        <p className="text-xs text-muted-foreground truncate">
+                          {file.name}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0"
+                      onClick={() => setPendingImageFiles(prev => prev.filter((_, i) => i !== index))}
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Image Uploader */}
           {!readOnly && (
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Add More Images</Label>
+              <Label className="text-sm font-medium">
+                {capsule?.id ? 'Add More Images' : 'Select Images'}
+              </Label>
               <ImageUploader
+                capsuleId={capsule?.id} // Only pass if editing existing capsule
                 onImagesUploaded={handleImagesUploaded}
+                onFilesSelected={handlePendingFiles} // For new capsules
                 maxFiles={5}
                 acceptedTypes={['image/png', 'image/jpeg', 'image/webp']}
               />

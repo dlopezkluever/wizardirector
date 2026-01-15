@@ -12,6 +12,7 @@ import { styleCapsuleService } from '@/lib/services/styleCapsuleService';
 interface ImageUploaderProps {
   capsuleId?: string; // If provided, uploads directly to this capsule
   onImagesUploaded?: (imageUrls: string[]) => void;
+  onFilesSelected?: (files: File[]) => void; // For new capsules without ID yet
   maxFiles?: number;
   acceptedTypes?: string[];
   maxFileSizeMB?: number;
@@ -29,6 +30,7 @@ interface UploadState {
 export function ImageUploader({
   capsuleId,
   onImagesUploaded,
+  onFilesSelected,
   maxFiles = 5,
   acceptedTypes = ['image/png', 'image/jpeg', 'image/webp'],
   maxFileSizeMB = 5,
@@ -104,8 +106,11 @@ export function ImageUploader({
     // Start uploading if we have a capsule ID
     if (capsuleId) {
       await uploadFilesToCapsule(newUploads);
+    } else if (onFilesSelected) {
+      // For new capsules, pass the files to parent component
+      onFilesSelected(validFiles);
     }
-  }, [uploads.length, maxFiles, validateFile, capsuleId, toast]);
+  }, [uploads.length, maxFiles, validateFile, capsuleId, onFilesSelected, toast]);
 
   const uploadFilesToCapsule = async (uploadStates: UploadState[]) => {
     if (!capsuleId) return;
