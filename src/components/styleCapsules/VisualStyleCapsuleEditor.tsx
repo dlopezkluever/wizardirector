@@ -22,9 +22,11 @@ import { validateVisualStyleCapsule, DEFAULT_VISUAL_CAPSULE_FORM } from '@/types
 import { ImageUploader } from './ImageUploader';
 
 interface VisualStyleCapsuleEditorProps {
+  libraries?: any[]; // Available libraries for selection
   capsule?: any; // For editing existing capsules
   onSave: () => void;
   onCancel: () => void;
+  readOnly?: boolean; // For preset capsules
 }
 
 const DESIGN_PILLAR_OPTIONS = {
@@ -94,7 +96,8 @@ export function VisualStyleCapsuleEditor({
   libraries,
   capsule,
   onSave,
-  onCancel
+  onCancel,
+  readOnly = false
 }: VisualStyleCapsuleEditorProps) {
   const { toast } = useToast();
 
@@ -172,21 +175,34 @@ export function VisualStyleCapsuleEditor({
 
     setLoading(true);
     try {
-      const createData: VisualStyleCapsuleCreate = {
+      // Detect if editing existing capsule
+      const isEditMode = !!capsule?.id;
+
+      const capsuleData = {
         name: formData.name,
-        type: 'visual',
         designPillars: formData.designPillars,
         descriptorStrings: formData.descriptorStrings.trim() || undefined,
         referenceImageUrls: existingImages
       };
 
-      await styleCapsuleService.createCapsule(createData);
+      if (isEditMode) {
+        // UPDATE existing capsule
+        await styleCapsuleService.updateCapsule(capsule.id, capsuleData);
+      } else {
+        // CREATE new capsule
+        const createData: VisualStyleCapsuleCreate = {
+          ...capsuleData,
+          type: 'visual'
+        };
+        await styleCapsuleService.createCapsule(createData);
+      }
+
       onSave();
     } catch (error) {
-      console.error('Failed to create visual style capsule:', error);
+      console.error(`Failed to ${capsule?.id ? 'update' : 'create'} visual style capsule:`, error);
       toast({
         title: 'Error',
-        description: 'Failed to create style capsule. Please try again.',
+        description: `Failed to ${capsule?.id ? 'update' : 'create'} style capsule. Please try again.`,
         variant: 'destructive',
       });
     } finally {
@@ -204,6 +220,7 @@ export function VisualStyleCapsuleEditor({
       <Select
         value={formData.designPillars[key] || ''}
         onValueChange={(value) => updateDesignPillar(key, value)}
+        disabled={readOnly}
       >
         <SelectTrigger>
           <SelectValue placeholder={`Select ${label.toLowerCase()}...`} />
@@ -261,6 +278,7 @@ export function VisualStyleCapsuleEditor({
                 value={formData.name}
                 onChange={(e) => updateFormData({ name: e.target.value })}
                 placeholder="e.g., Neo-Noir Cinematic"
+                disabled={readOnly}
               />
             </div>
           </div>
@@ -321,14 +339,16 @@ export function VisualStyleCapsuleEditor({
                       alt={`Reference ${index + 1}`}
                       className="w-full h-32 object-cover rounded-md border"
                     />
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0"
-                      onClick={() => handleRemoveImage(imageUrl, index)}
-                    >
-                      <X className="w-3 h-3" />
-                    </Button>
+                    {!readOnly && (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0"
+                        onClick={() => handleRemoveImage(imageUrl, index)}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -336,14 +356,16 @@ export function VisualStyleCapsuleEditor({
           )}
 
           {/* Image Uploader */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Add More Images</Label>
-            <ImageUploader
-              onImagesUploaded={handleImagesUploaded}
-              maxFiles={5}
-              acceptedTypes={['image/png', 'image/jpeg', 'image/webp']}
-            />
-          </div>
+          {!readOnly && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Add More Images</Label>
+              <ImageUploader
+                onImagesUploaded={handleImagesUploaded}
+                maxFiles={5}
+                acceptedTypes={['image/png', 'image/jpeg', 'image/webp']}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -361,6 +383,7 @@ export function VisualStyleCapsuleEditor({
             onChange={(e) => updateFormData({ descriptorStrings: e.target.value })}
             placeholder="e.g., Rain-slicked streets, neon signs reflecting in puddles, deep shadows obscuring faces..."
             rows={4}
+            disabled={readOnly}
           />
         </CardContent>
       </Card>
@@ -369,11 +392,16 @@ export function VisualStyleCapsuleEditor({
       <Separator />
       <div className="flex items-center justify-end gap-3">
         <Button variant="outline" onClick={onCancel} disabled={loading}>
-          Cancel
+          {readOnly ? 'Close' : 'Cancel'}
         </Button>
-        <Button onClick={handleSave} disabled={loading}>
-          {loading ? 'Creating...' : 'Create Visual Style Capsule'}
-        </Button>
+        {!readOnly && (
+          <Button onClick={handleSave} disabled={loading}>
+            {loading 
+              ? (capsule?.id ? 'Updating...' : 'Creating...') 
+              : (capsule?.id ? 'Update Visual Style Capsule' : 'Create Visual Style Capsule')
+            }
+          </Button>
+        )}
       </div>
     </div>
   );

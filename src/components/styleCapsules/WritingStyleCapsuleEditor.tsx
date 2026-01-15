@@ -24,12 +24,14 @@ interface WritingStyleCapsuleEditorProps {
   capsule?: any; // For editing existing capsules
   onSave: () => void;
   onCancel: () => void;
+  readOnly?: boolean; // For preset capsules
 }
 
 export function WritingStyleCapsuleEditor({
   capsule,
   onSave,
-  onCancel
+  onCancel,
+  readOnly = false
 }: WritingStyleCapsuleEditorProps) {
   const { toast } = useToast();
 
@@ -126,22 +128,35 @@ export function WritingStyleCapsuleEditor({
 
     setLoading(true);
     try {
-      const createData: WritingStyleCapsuleCreate = {
+      // Detect if editing existing capsule
+      const isEditMode = !!capsule?.id;
+
+      const capsuleData = {
         name: formData.name,
-        type: 'writing',
         exampleTextExcerpts: formData.exampleTextExcerpts.filter(ex => ex.trim()),
         styleLabels: formData.styleLabels.filter(label => label.trim()),
         negativeConstraints: formData.negativeConstraints.filter(constraint => constraint.trim()),
         freeformNotes: formData.freeformNotes.trim() || undefined
       };
 
-      await styleCapsuleService.createCapsule(createData);
+      if (isEditMode) {
+        // UPDATE existing capsule
+        await styleCapsuleService.updateCapsule(capsule.id, capsuleData);
+      } else {
+        // CREATE new capsule
+        const createData: WritingStyleCapsuleCreate = {
+          ...capsuleData,
+          type: 'writing'
+        };
+        await styleCapsuleService.createCapsule(createData);
+      }
+
       onSave();
     } catch (error) {
-      console.error('Failed to create writing style capsule:', error);
+      console.error(`Failed to ${capsule?.id ? 'update' : 'create'} writing style capsule:`, error);
       toast({
         title: 'Error',
-        description: 'Failed to create style capsule. Please try again.',
+        description: `Failed to ${capsule?.id ? 'update' : 'create'} style capsule. Please try again.`,
         variant: 'destructive',
       });
     } finally {
@@ -245,6 +260,7 @@ ${formData.freeformNotes.trim() ? `Additional notes: ${formData.freeformNotes}` 
                     value={formData.name}
                     onChange={(e) => updateFormData({ name: e.target.value })}
                     placeholder="e.g., Hemingway Minimalist"
+                    disabled={readOnly}
                   />
                 </div>
               </div>
@@ -284,17 +300,20 @@ ${formData.freeformNotes.trim() ? `Additional notes: ${formData.freeformNotes}` 
                     onChange={(e) => updateExampleExcerpt(index, e.target.value)}
                     placeholder="Paste or write a sample paragraph that demonstrates your desired writing style..."
                     rows={4}
+                    disabled={readOnly}
                   />
                 </div>
               ))}
-              <Button
-                variant="outline"
-                onClick={addExampleExcerpt}
-                className="w-full"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Another Example
-              </Button>
+              {!readOnly && (
+                <Button
+                  variant="outline"
+                  onClick={addExampleExcerpt}
+                  className="w-full"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Another Example
+                </Button>
+              )}
             </CardContent>
           </Card>
 
@@ -312,6 +331,7 @@ ${formData.freeformNotes.trim() ? `Additional notes: ${formData.freeformNotes}` 
               id="advanced-mode"
               checked={formData.isAdvancedMode}
               onCheckedChange={(checked) => updateFormData({ isAdvancedMode: checked })}
+              disabled={readOnly}
             />
           </div>
 
@@ -333,6 +353,7 @@ ${formData.freeformNotes.trim() ? `Additional notes: ${formData.freeformNotes}` 
                         value={label}
                         onChange={(e) => updateStyleLabel(index, e.target.value)}
                         placeholder="e.g., minimalist, terse, cynical"
+                        disabled={readOnly}
                       />
                       <Button
                         variant="ghost"
@@ -344,14 +365,16 @@ ${formData.freeformNotes.trim() ? `Additional notes: ${formData.freeformNotes}` 
                       </Button>
                     </div>
                   ))}
-                  <Button
-                    variant="outline"
-                    onClick={addStyleLabel}
-                    className="w-full"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Style Label
-                  </Button>
+                  {!readOnly && (
+                    <Button
+                      variant="outline"
+                      onClick={addStyleLabel}
+                      className="w-full"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Style Label
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
 
@@ -370,6 +393,7 @@ ${formData.freeformNotes.trim() ? `Additional notes: ${formData.freeformNotes}` 
                         value={constraint}
                         onChange={(e) => updateNegativeConstraint(index, e.target.value)}
                         placeholder="e.g., avoid metaphors, no humor"
+                        disabled={readOnly}
                       />
                       <Button
                         variant="ghost"
@@ -381,14 +405,16 @@ ${formData.freeformNotes.trim() ? `Additional notes: ${formData.freeformNotes}` 
                       </Button>
                     </div>
                   ))}
-                  <Button
-                    variant="outline"
-                    onClick={addNegativeConstraint}
-                    className="w-full"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Negative Constraint
-                  </Button>
+                  {!readOnly && (
+                    <Button
+                      variant="outline"
+                      onClick={addNegativeConstraint}
+                      className="w-full"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Negative Constraint
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             </>
@@ -408,6 +434,7 @@ ${formData.freeformNotes.trim() ? `Additional notes: ${formData.freeformNotes}` 
                 onChange={(e) => updateFormData({ freeformNotes: e.target.value })}
                 placeholder="Optional notes about tone, rhythm, or other stylistic considerations..."
                 rows={3}
+                disabled={readOnly}
               />
             </CardContent>
           </Card>
@@ -418,11 +445,16 @@ ${formData.freeformNotes.trim() ? `Additional notes: ${formData.freeformNotes}` 
       <Separator />
       <div className="flex items-center justify-end gap-3">
         <Button variant="outline" onClick={onCancel} disabled={loading}>
-          Cancel
+          {readOnly ? 'Close' : 'Cancel'}
         </Button>
-        <Button onClick={handleSave} disabled={loading}>
-          {loading ? 'Creating...' : 'Create Style Capsule'}
-        </Button>
+        {!readOnly && (
+          <Button onClick={handleSave} disabled={loading}>
+            {loading 
+              ? (capsule?.id ? 'Updating...' : 'Creating...') 
+              : (capsule?.id ? 'Update Style Capsule' : 'Create Style Capsule')
+            }
+          </Button>
+        )}
       </div>
     </div>
   );

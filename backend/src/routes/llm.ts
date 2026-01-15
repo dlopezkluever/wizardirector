@@ -187,6 +187,41 @@ router.post('/generate-from-template', async (req, res) => {
     
     console.log(`[API] Template validation passed! Proceeding with interpolation...`);
     
+    // Handle writing style capsule injection BEFORE interpolation
+    if (validatedRequest.variables.writing_style_capsule_id && 
+        typeof validatedRequest.variables.writing_style_capsule_id === 'string' &&
+        validatedRequest.variables.writing_style_capsule_id.trim() !== '') {
+      
+      console.log(`[API] Processing writing style capsule: ${validatedRequest.variables.writing_style_capsule_id}`);
+      
+      try {
+        const { StyleCapsuleService } = await import('../services/styleCapsuleService.js');
+        const styleCapsuleService = new StyleCapsuleService();
+        
+        const capsule = await styleCapsuleService.getCapsuleById(
+          validatedRequest.variables.writing_style_capsule_id,
+          req.user!.id
+        );
+        
+        if (capsule) {
+          const formattedContext = styleCapsuleService.formatWritingStyleInjection(capsule);
+          validatedRequest.variables.writing_style_context = formattedContext;
+          console.log(`[API] Injected writing style context (${formattedContext.length} chars)`);
+        } else {
+          console.warn(`[API] Style capsule not found: ${validatedRequest.variables.writing_style_capsule_id}`);
+          validatedRequest.variables.writing_style_context = '';
+        }
+      } catch (error) {
+        console.error('[API] Failed to load writing style capsule:', error);
+        validatedRequest.variables.writing_style_context = '';
+      }
+    } else {
+      // Ensure variable exists even if not provided
+      if (!validatedRequest.variables.writing_style_context) {
+        validatedRequest.variables.writing_style_context = '';
+      }
+    }
+    
     // Interpolate the template
     console.log(`[API] Interpolating template with variables...`);
     const interpolated = promptTemplateService.interpolateTemplate(template, validatedRequest.variables);
