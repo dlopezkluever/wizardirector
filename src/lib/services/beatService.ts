@@ -14,6 +14,7 @@ export interface GenerateBeatsRequest {
   treatmentProse: string;
   selectedVariantId: string;
   projectParams: {
+    projectId?: string;
     targetLengthMin: number;
     targetLengthMax: number;
     genres: string[];
@@ -54,6 +55,8 @@ class BeatService {
         writing_style_capsule_id: request.projectParams.writingStyleCapsuleId || ''
       },
       metadata: {
+        projectId: request.projectParams.projectId || '',
+        branchId: 'main', // Backend will look up active branch from projectId
         stage: 3,
         operation: 'beat_extraction'
       }

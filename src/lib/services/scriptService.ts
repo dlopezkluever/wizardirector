@@ -13,6 +13,7 @@ export interface Scene {
 export interface GenerateScriptRequest {
   beatSheet: Beat[];
   projectParams: {
+    projectId?: string;
     targetLengthMin: number;
     targetLengthMax: number;
     contentRating: string;
@@ -70,6 +71,8 @@ class ScriptService {
         writing_style_capsule_id: request.projectParams.writingStyleCapsuleId || ''
       },
       metadata: {
+        projectId: request.projectParams.projectId || '',
+        branchId: 'main', // Backend will look up active branch from projectId
         stage: 4,
         operation: 'script_generation'
       }
@@ -131,6 +134,8 @@ class ScriptService {
         regeneration_guidance: request.guidance
       },
       metadata: {
+        projectId: request.projectParams.projectId || '',
+        branchId: 'main', // Backend will look up active branch from projectId
         stage: 4,
         operation: 'script_regeneration',
         regenerationGuidance: request.guidance

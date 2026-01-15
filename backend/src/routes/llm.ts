@@ -12,6 +12,7 @@ import {
   type PromptTemplateCreate,
   type PromptTemplateUpdate 
 } from '../services/prompt-template.js';
+import { ContextManager } from '../services/contextManager.js';
 
 const router = Router();
 
@@ -185,57 +186,78 @@ router.post('/generate-from-template', async (req, res) => {
       });
     }
     
-    console.log(`[API] Template validation passed! Proceeding with interpolation...`);
+    console.log(`[API] Template validation passed! Proceeding with context assembly...`);
     
-    // Handle writing style capsule injection BEFORE interpolation
-    console.log(`[API] Checking writing_style_capsule_id:`, {
-      exists: !!validatedRequest.variables.writing_style_capsule_id,
-      value: validatedRequest.variables.writing_style_capsule_id,
-      type: typeof validatedRequest.variables.writing_style_capsule_id,
-      trimmed: validatedRequest.variables.writing_style_capsule_id?.trim()
-    });
+    // Use Context Manager to assemble context if project/branch metadata provided
+    const contextManager = new ContextManager();
     
-    if (validatedRequest.variables.writing_style_capsule_id && 
-        typeof validatedRequest.variables.writing_style_capsule_id === 'string' &&
-        validatedRequest.variables.writing_style_capsule_id.trim() !== '') {
-      
-      console.log(`[API] Processing writing style capsule: ${validatedRequest.variables.writing_style_capsule_id}`);
+    if (validatedRequest.metadata?.projectId && validatedRequest.metadata?.branchId) {
+      console.log(`[API] Assembling global context for project ${validatedRequest.metadata.projectId}`);
       
       try {
-        const { StyleCapsuleService } = await import('../services/styleCapsuleService.js');
-        const styleCapsuleService = new StyleCapsuleService();
-        
-        console.log(`[API] Fetching capsule with ID: ${validatedRequest.variables.writing_style_capsule_id} for user: ${req.user!.id}`);
-        const capsule = await styleCapsuleService.getCapsuleById(
-          validatedRequest.variables.writing_style_capsule_id,
+        const globalContext = await contextManager.assembleGlobalContext(
+          validatedRequest.metadata.projectId,
+          validatedRequest.metadata.branchId,
           req.user!.id
         );
         
-        console.log(`[API] Capsule fetch result:`, {
-          found: !!capsule,
-          type: capsule?.type,
-          name: capsule?.name,
-          hasExcerpts: !!capsule?.example_text_excerpts,
-          excerptCount: capsule?.example_text_excerpts?.length || 0
-        });
-        
-        if (capsule) {
-          const formattedContext = styleCapsuleService.formatWritingStyleInjection(capsule);
+        // Inject writing style context if available
+        if (globalContext.writingStyleCapsule) {
+          const { StyleCapsuleService } = await import('../services/styleCapsuleService.js');
+          const styleCapsuleService = new StyleCapsuleService();
+          const formattedContext = styleCapsuleService.formatWritingStyleInjection(
+            globalContext.writingStyleCapsule
+          );
           validatedRequest.variables.writing_style_context = formattedContext;
-          console.log(`[API] Injected writing style context (${formattedContext.length} chars):`, formattedContext.substring(0, 200));
+          console.log(`[API] Injected writing style context from Context Manager (${formattedContext.length} chars)`);
         } else {
-          console.warn(`[API] Style capsule not found: ${validatedRequest.variables.writing_style_capsule_id}`);
           validatedRequest.variables.writing_style_context = '';
         }
+        
+        // Add beat sheet context if available and needed
+        if (globalContext.beatSheet && validatedRequest.metadata?.stage >= 4) {
+          const beatSheetContext = contextManager.formatBeatSheet(globalContext.beatSheet);
+          validatedRequest.variables.beat_sheet_reference = beatSheetContext;
+          console.log(`[API] Added beat sheet reference context (${beatSheetContext.length} chars)`);
+        }
+        
+        // Store global context in metadata for potential logging
+        validatedRequest.metadata.globalContext = globalContext;
+        
       } catch (error) {
-        console.error('[API] Failed to load writing style capsule:', error);
-        console.error('[API] Error details:', error instanceof Error ? error.message : String(error));
+        console.error('[API] Failed to assemble global context:', error);
+        // Fall back to manual style capsule injection
         validatedRequest.variables.writing_style_context = '';
       }
     } else {
-      console.log('[API] No writing_style_capsule_id provided or invalid, skipping capsule injection');
-      // Ensure variable exists even if not provided
-      if (!validatedRequest.variables.writing_style_context) {
+      // Fallback: Manual style capsule injection for backward compatibility
+      console.log(`[API] No project/branch metadata, using fallback style capsule injection`);
+      
+      if (validatedRequest.variables.writing_style_capsule_id && 
+          typeof validatedRequest.variables.writing_style_capsule_id === 'string' &&
+          validatedRequest.variables.writing_style_capsule_id.trim() !== '') {
+        
+        try {
+          const { StyleCapsuleService } = await import('../services/styleCapsuleService.js');
+          const styleCapsuleService = new StyleCapsuleService();
+          
+          const capsule = await styleCapsuleService.getCapsuleById(
+            validatedRequest.variables.writing_style_capsule_id,
+            req.user!.id
+          );
+          
+          if (capsule) {
+            const formattedContext = styleCapsuleService.formatWritingStyleInjection(capsule);
+            validatedRequest.variables.writing_style_context = formattedContext;
+            console.log(`[API] Injected writing style context (fallback) (${formattedContext.length} chars)`);
+          } else {
+            validatedRequest.variables.writing_style_context = '';
+          }
+        } catch (error) {
+          console.error('[API] Failed to load writing style capsule (fallback):', error);
+          validatedRequest.variables.writing_style_context = '';
+        }
+      } else {
         validatedRequest.variables.writing_style_context = '';
       }
     }
@@ -264,6 +286,34 @@ router.post('/generate-from-template', async (req, res) => {
     });
     
     console.log(`[API] LLM generation completed successfully!`);
+
+    // Log style capsule application if applicable
+    if (validatedRequest.metadata?.stageStateId && validatedRequest.metadata?.globalContext) {
+      const globalContext = validatedRequest.metadata.globalContext as any;
+      if (globalContext.writingStyleCapsule) {
+        try {
+          const { StyleCapsuleService } = await import('../services/styleCapsuleService.js');
+          const styleCapsuleService = new StyleCapsuleService();
+          
+          await styleCapsuleService.recordApplication({
+            stage_state_id: validatedRequest.metadata.stageStateId,
+            style_capsule_id: globalContext.writingStyleCapsule.id,
+            injection_context: {
+              stage: validatedRequest.metadata.stage,
+              templateName: validatedRequest.templateName,
+              formattedContextLength: validatedRequest.variables.writing_style_context?.length || 0,
+              timestamp: new Date().toISOString(),
+              traceId: response.traceId
+            }
+          });
+          
+          console.log(`[API] Logged style capsule application for stage ${validatedRequest.metadata.stage}`);
+        } catch (error) {
+          console.error('[API] Failed to log style capsule application:', error);
+          // Don't fail the request if logging fails
+        }
+      }
+    }
 
     res.json({
       success: true,

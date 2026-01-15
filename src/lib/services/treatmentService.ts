@@ -74,6 +74,7 @@ class TreatmentService {
       variables,
       metadata: {
         projectId: request.projectId,
+        branchId: 'main', // Backend will look up active branch from projectId
         stage: 2,
         inputMode: request.processedInput.mode
       }
@@ -139,6 +140,7 @@ class TreatmentService {
       },
       metadata: {
         projectId: request.projectId,
+        branchId: 'main', // Backend will look up active branch from projectId
         stage: 2,
         inputMode: request.processedInput.mode,
         regenerationGuidance: request.guidance

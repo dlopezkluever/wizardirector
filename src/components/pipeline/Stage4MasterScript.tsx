@@ -239,6 +239,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
         });
 
         const params = {
+          projectId,
           targetLengthMin: project.targetLength?.min || 180,
           targetLengthMax: project.targetLength?.max || 300,
           contentRating: project.contentRating || 'PG-13',

@@ -326,7 +326,8 @@ export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatShe
             genres: ['Drama'],
             tonalPrecision: 'Emotional and contemplative'
           }),
-          // Ensure writingStyleCapsuleId is included (from Stage 1 content via Stage 2)
+          // Ensure projectId and writingStyleCapsuleId are included
+          projectId,
           writingStyleCapsuleId: stage2State.content.processedInput?.projectParams?.writingStyleCapsuleId
         }
       };
