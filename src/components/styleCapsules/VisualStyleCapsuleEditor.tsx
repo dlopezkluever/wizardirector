@@ -118,6 +118,13 @@ export function VisualStyleCapsuleEditor({
   const [errors, setErrors] = useState<string[]>([]);
   const [existingImages, setExistingImages] = useState<string[]>(capsule?.referenceImageUrls || []);
 
+  // Sync existing images when capsule prop changes (e.g., when full details are loaded)
+  useEffect(() => {
+    if (capsule?.referenceImageUrls) {
+      setExistingImages(capsule.referenceImageUrls);
+    }
+  }, [capsule?.referenceImageUrls]);
+
   const updateFormData = (updates: Partial<VisualStyleCapsuleFormData>) => {
     setFormData(prev => ({ ...prev, ...updates }));
   };

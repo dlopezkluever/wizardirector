@@ -147,19 +147,8 @@ const StyleCapsuleLibrary = () => {
 
   const handleDuplicateCapsule = async (capsule: StyleCapsule) => {
     try {
-      // Find user's default library
-      const userLibrary = libraries.find(lib => lib.userId && !lib.isPreset);
-      if (!userLibrary) {
-        toast({
-          title: 'Error',
-          description: 'Please create a library first.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
+      // No library required - duplicate directly
       await styleCapsuleService.duplicateCapsule(capsule.id, {
-        libraryId: userLibrary.id,
         newName: `${capsule.name} (Copy)`
       });
 

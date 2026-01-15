@@ -298,16 +298,12 @@ router.post('/:id/favorite', async (req, res) => {
   }
 });
 
-// POST /api/style-capsules/:id/duplicate - Duplicate preset to user's library
+// POST /api/style-capsules/:id/duplicate - Duplicate preset capsule
 router.post('/:id/duplicate', async (req, res) => {
   try {
     const userId = req.user!.id;
     const capsuleId = req.params.id;
-    const { libraryId, newName } = req.body;
-
-    if (!libraryId) {
-      return res.status(400).json({ error: 'libraryId is required' });
-    }
+    const { newName } = req.body;
 
     // Get the preset capsule
     const { data: presetCapsule, error: fetchError } = await supabase
@@ -321,26 +317,14 @@ router.post('/:id/duplicate', async (req, res) => {
       return res.status(404).json({ error: 'Preset capsule not found' });
     }
 
-    // Verify library ownership
-    const { data: library, error: libraryError } = await supabase
-      .from('style_capsule_libraries')
-      .select('id')
-      .eq('id', libraryId)
-      .eq('user_id', userId)
-      .single();
-
-    if (libraryError || !library) {
-      return res.status(403).json({ error: 'Library not found or access denied' });
-    }
-
-    // Create duplicate
+    // Create duplicate (library_id is optional as of migration 005)
     const duplicateName = newName || `${presetCapsule.name} (Copy)`;
     const { data: duplicate, error } = await supabase
       .from('style_capsules')
       .insert({
         name: duplicateName,
         type: presetCapsule.type,
-        library_id: libraryId,
+        library_id: null, // No library required
         user_id: userId,
         example_text_excerpts: presetCapsule.example_text_excerpts,
         style_labels: presetCapsule.style_labels,
