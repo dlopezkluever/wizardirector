@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { supabase } from '../config/supabase.js';
 import multer from 'multer';
 import path from 'path';
+import { capsuleToApi, capsulesToApi, libraryToApi, librariesToApi } from '../transformers/styleCapsule.js';
 
 const router = Router();
 
@@ -50,7 +51,7 @@ router.get('/', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch style capsules' });
     }
 
-    res.json({ data: capsules });
+    res.json({ data: capsulesToApi(capsules) });
   } catch (error) {
     console.error('Unexpected error in style capsules list:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -78,7 +79,7 @@ router.get('/:id', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch style capsule' });
     }
 
-    res.json({ data: capsule });
+    res.json({ data: capsuleToApi(capsule) });
   } catch (error) {
     console.error('Unexpected error in style capsule fetch:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -149,7 +150,7 @@ router.post('/', async (req, res) => {
       return res.status(500).json({ error: 'Failed to create style capsule', details: error.message });
     }
 
-    res.status(201).json({ data: capsule });
+    res.status(201).json({ data: capsuleToApi(capsule) });
   } catch (error) {
     console.error('Unexpected error in style capsule creation:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -195,7 +196,7 @@ router.put('/:id', async (req, res) => {
       return res.status(500).json({ error: 'Failed to update style capsule' });
     }
 
-    res.json({ data: capsule });
+    res.json({ data: capsuleToApi(capsule) });
   } catch (error) {
     console.error('Unexpected error in style capsule update:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -277,7 +278,7 @@ router.post('/:id/favorite', async (req, res) => {
       return res.status(500).json({ error: 'Failed to update favorite status' });
     }
 
-    res.json({ data: updatedCapsule });
+    res.json({ data: capsuleToApi(updatedCapsule) });
   } catch (error) {
     console.error('Unexpected error in favorite toggle:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -346,7 +347,7 @@ router.post('/:id/duplicate', async (req, res) => {
       return res.status(500).json({ error: 'Failed to duplicate capsule' });
     }
 
-    res.status(201).json({ data: duplicate });
+    res.status(201).json({ data: capsuleToApi(duplicate) });
   } catch (error) {
     console.error('Unexpected error in capsule duplication:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -420,7 +421,7 @@ router.post('/:id/upload-image', upload.single('image'), async (req, res) => {
       return res.status(500).json({ error: 'Failed to update capsule with image URL' });
     }
 
-    res.json({ data: updatedCapsule });
+    res.json({ data: capsuleToApi(updatedCapsule) });
   } catch (error) {
     console.error('Unexpected error in image upload:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -459,7 +460,7 @@ router.delete('/:id/images/:imageIndex', async (req, res) => {
     }
 
     // Remove image URL from array
-    const updatedUrls = currentUrls.filter((_, index) => index !== imageIndex);
+    const updatedUrls = currentUrls.filter((_: any, index: number) => index !== imageIndex);
 
     const { data: updatedCapsule, error: updateError } = await supabase
       .from('style_capsules')
@@ -476,7 +477,7 @@ router.delete('/:id/images/:imageIndex', async (req, res) => {
     // TODO: Optionally delete the actual file from storage
     // For now, we just remove the URL reference
 
-    res.json({ data: updatedCapsule });
+    res.json({ data: capsuleToApi(updatedCapsule) });
   } catch (error) {
     console.error('Unexpected error in image removal:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -545,7 +546,7 @@ router.get('/libraries/all', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch libraries' });
     }
 
-    res.json({ data: libraries });
+    res.json({ data: librariesToApi(libraries) });
   } catch (error) {
     console.error('Unexpected error in libraries fetch:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -578,7 +579,7 @@ router.post('/libraries', async (req, res) => {
       return res.status(500).json({ error: 'Failed to create library' });
     }
 
-    res.status(201).json({ data: library });
+    res.status(201).json({ data: libraryToApi(library) });
   } catch (error) {
     console.error('Unexpected error in library creation:', error);
     res.status(500).json({ error: 'Internal server error' });
