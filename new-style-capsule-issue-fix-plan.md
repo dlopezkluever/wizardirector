@@ -58,35 +58,46 @@ const treatmentData = {
 src/components/pipeline/Stage4MasterScript.tsx (lines 238-244)
 
 Add writingStyleCapsuleId when building params for script generation
+
 Issue #2: Fix Search (Priority: HIGH)
 Root Cause
 Backend returns snake_case (example_text_excerpts), frontend expects camelCase (exampleTextExcerpts).
 
-Solution: Fix API to return camelCase directly (cleaner architecture)
+Solution: **Transform in frontend service**
+
 Files to modify:
 
-backend/src/routes/styleCapsules.ts
-- Update SQL queries to use AS aliases for camelCase column names:
-  ```sql
-  SELECT
-    id,
-    example_text_excerpts AS "exampleTextExcerpts",
-    style_labels AS "styleLabels",
-    negative_constraints AS "negativeConstraints",
-    freeform_notes AS "freeformNotes",
-    design_pillars,
-    reference_image_urls AS "referenceImageUrls",
-    descriptor_strings AS "descriptorStrings",
-    is_preset AS "isPreset",
-    is_favorite AS "isFavorite",
-    library_id AS "libraryId",
-    user_id AS "userId",
-    created_at AS "createdAt",
-    updated_at AS "updatedAt"
-  FROM style_capsules
-  ```
-- Remove transformation function from frontend service
-- Benefits: Cleaner architecture, follows frontend conventions, eliminates transformation layer
+src/lib/services/styleCapsuleService.ts - Add transformer function:
+
+// Add after imports
+function transformCapsule(capsule: any): StyleCapsule {
+  return {
+    ...capsule,
+    exampleTextExcerpts: capsule.example_text_excerpts,
+    styleLabels: capsule.style_labels,
+    negativeConstraints: capsule.negative_constraints,
+    freeformNotes: capsule.freeform_notes,
+    designPillars: capsule.design_pillars,
+    referenceImageUrls: capsule.reference_image_urls,
+    descriptorStrings: capsule.descriptor_strings,
+    isPreset: capsule.is_preset,
+    isFavorite: capsule.is_favorite,
+    libraryId: capsule.library_id,
+    userId: capsule.user_id,
+    createdAt: capsule.created_at,
+    updatedAt: capsule.updated_at
+  };
+}
+Apply transformer in:
+
+getCapsules() - line 48
+getCapsule() - line 75
+createCapsule() - line 103
+updateCapsule() - line 131
+toggleFavorite() - line 182
+duplicateCapsule() - line 210
+uploadImage() - line 240
+removeImage() - line 267
 
 Issue #3: Add Card Click View/Edit (Priority: MEDIUM)
 Solution: Add dialog that displays when selectedCapsule is set
@@ -237,10 +248,6 @@ Additional Notes & Lessons Learned
 - Button text should accurately reflect the action
 - Form validation should work for both create and update scenarios
 - Visual feedback should distinguish between operations
-
-**API Design Decision:**
-- API should return camelCase to match frontend conventions
-- Avoid transformation layers when possible - fix at source
 
 **Testing Strategy:**
 - Test both create AND update paths for each entity type
