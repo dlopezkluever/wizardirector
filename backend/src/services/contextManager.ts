@@ -294,36 +294,53 @@ Estimated screen time: ${beat.estimatedScreenTimeSeconds} seconds`;
     projectParams: ProjectParams;
     activeBranchId: string | null;
   }> {
-    const result = await this.db.query(
-      `SELECT 
-        p.*,
-        ss.content as stage1_content
-      FROM projects p
-      LEFT JOIN branches b ON b.project_id = p.id AND b.is_main = TRUE
-      LEFT JOIN stage_states ss ON ss.branch_id = b.id AND ss.stage_number = 1
-      WHERE p.id = $1 AND p.user_id = $2
-      ORDER BY ss.version DESC
-      LIMIT 1`,
-      [projectId, userId]
-    );
+    // Fetch project data
+    const { data: project, error: projectError } = await this.db.supabase
+      .from('projects')
+      .select('*')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
 
-    if (!result.rows || result.rows.length === 0) {
+    if (projectError || !project) {
       throw new ContextManagerError('Project not found', 'PROJECT_NOT_FOUND');
     }
 
-    const project = result.rows[0];
+    // Fetch the main branch
+    const { data: branch, error: branchError } = await this.db.supabase
+      .from('branches')
+      .select('id')
+      .eq('project_id', projectId)
+      .eq('is_main', true)
+      .single();
+
+    if (branchError || !branch) {
+      throw new ContextManagerError('Main branch not found', 'BRANCH_NOT_FOUND');
+    }
+
+    // Fetch Stage 1 content for project params
+    const { data: stageStates, error: stageError } = await this.db.supabase
+      .from('stage_states')
+      .select('content')
+      .eq('branch_id', branch.id)
+      .eq('stage_number', 1)
+      .order('version', { ascending: false })
+      .limit(1);
+
+    const stage1Content = (stageStates && stageStates.length > 0) ? stageStates[0].content : {};
     
-    // Extract project params from Stage 1 content or project table
-    const stage1Content = project.stage1_content || {};
+    // Extract project params from Stage 1 content (stored in processedInput) or project table
+    const stage1ProjectParams = stage1Content.processedInput?.projectParams || {};
+    
     const projectParams: ProjectParams = {
-      targetLengthMin: project.target_length_min || stage1Content.projectParams?.targetLengthMin || 180,
-      targetLengthMax: project.target_length_max || stage1Content.projectParams?.targetLengthMax || 300,
-      projectType: project.project_type || stage1Content.projectParams?.projectType || 'narrative',
-      contentRating: project.content_rating || stage1Content.projectParams?.contentRating || 'PG-13',
-      genres: project.genre || stage1Content.projectParams?.genres || [],
-      tonalPrecision: project.tonal_precision || stage1Content.projectParams?.tonalPrecision || '',
-      writingStyleCapsuleId: project.writing_style_capsule_id || stage1Content.projectParams?.writingStyleCapsuleId,
-      visualStyleCapsuleId: project.visual_style_capsule_id || stage1Content.projectParams?.visualStyleCapsuleId
+      targetLengthMin: project.target_length_min || stage1ProjectParams.targetLengthMin || 180,
+      targetLengthMax: project.target_length_max || stage1ProjectParams.targetLengthMax || 300,
+      projectType: project.project_type || stage1ProjectParams.projectType || 'narrative',
+      contentRating: project.content_rating || stage1ProjectParams.contentRating || 'PG-13',
+      genres: project.genre || stage1ProjectParams.genres || [],
+      tonalPrecision: project.tonal_precision || stage1ProjectParams.tonalPrecision || '',
+      writingStyleCapsuleId: project.writing_style_capsule_id || stage1ProjectParams.writingStyleCapsuleId,
+      visualStyleCapsuleId: project.visual_style_capsule_id || stage1ProjectParams.visualStyleCapsuleId
     };
 
     return { 
@@ -336,20 +353,20 @@ Estimated screen time: ${beat.estimatedScreenTimeSeconds} seconds`;
    * Private helper: Fetch beat sheet from Stage 3
    */
   private async fetchBeatSheet(branchId: string): Promise<Beat[] | null> {
-    const result = await this.db.query(
-      `SELECT content 
-      FROM stage_states 
-      WHERE branch_id = $1 AND stage_number = 3 AND status = 'locked'
-      ORDER BY version DESC 
-      LIMIT 1`,
-      [branchId]
-    );
+    const { data, error } = await this.db.supabase
+      .from('stage_states')
+      .select('content')
+      .eq('branch_id', branchId)
+      .eq('stage_number', 3)
+      .eq('status', 'locked')
+      .order('version', { ascending: false })
+      .limit(1);
 
-    if (!result.rows || result.rows.length === 0) {
+    if (error || !data || data.length === 0) {
       return null;
     }
 
-    const content = result.rows[0].content;
+    const content = data[0].content;
     return content.beats || null;
   }
 
@@ -357,20 +374,20 @@ Estimated screen time: ${beat.estimatedScreenTimeSeconds} seconds`;
    * Private helper: Fetch master script and generate summary
    */
   private async fetchMasterScriptSummary(branchId: string): Promise<string | null> {
-    const result = await this.db.query(
-      `SELECT content 
-      FROM stage_states 
-      WHERE branch_id = $1 AND stage_number = 4 AND status = 'locked'
-      ORDER BY version DESC 
-      LIMIT 1`,
-      [branchId]
-    );
+    const { data, error } = await this.db.supabase
+      .from('stage_states')
+      .select('content')
+      .eq('branch_id', branchId)
+      .eq('stage_number', 4)
+      .eq('status', 'locked')
+      .order('version', { ascending: false })
+      .limit(1);
 
-    if (!result.rows || result.rows.length === 0) {
+    if (error || !data || data.length === 0) {
       return null;
     }
 
-    const content = result.rows[0].content;
+    const content = data[0].content;
     const formattedScript = content.formattedScript || content.formatted_script || '';
     
     // Generate summary: Extract scene headings and first action line
