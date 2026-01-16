@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { stripHtmlTags } from '@/lib/utils/screenplay-converter';
 import type { Beat } from './beatService';
+import { stageStateService } from './stageStateService';
 
 export interface Scene {
   id: string;
@@ -13,6 +14,7 @@ export interface Scene {
 export interface GenerateScriptRequest {
   beatSheet: Beat[];
   projectParams: {
+    projectId?: string;
     targetLengthMin: number;
     targetLengthMax: number;
     contentRating: string;
@@ -28,6 +30,10 @@ export interface GenerateScriptResponse {
   estimatedPageCount?: number;
   langsmithTraceId: string;
   promptTemplateVersion: string;
+  styleCapsuleMetadata?: {
+    styleCapsuleId: string;
+    injectionContext: Record<string, any>;
+  };
 }
 
 export interface RegenerateScriptRequest extends GenerateScriptRequest {
@@ -57,6 +63,10 @@ class ScriptService {
     // Format beat sheet content for the LLM
     const beatSheetContent = this.formatBeatSheetForPrompt(request.beatSheet);
 
+    // Get current stage state ID for application logging
+    const projectId = request.projectParams.projectId || '';
+    const currentStageState = projectId ? await stageStateService.getStageState(projectId, 4) : null;
+
     const llmRequest = {
       templateName: 'master_script_generation',
       variables: {
@@ -70,7 +80,10 @@ class ScriptService {
         writing_style_capsule_id: request.projectParams.writingStyleCapsuleId || ''
       },
       metadata: {
+        projectId: projectId,
+        branchId: 'main', // Backend will look up active branch from projectId
         stage: 4,
+        stageStateId: currentStageState?.id,
         operation: 'script_generation'
       }
     };
@@ -101,7 +114,8 @@ class ScriptService {
       scenes: parsed.scenes,
       estimatedPageCount: parsed.estimatedPageCount,
       langsmithTraceId: result.data.traceId,
-      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0'
+      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0',
+      styleCapsuleMetadata: result.data.styleCapsuleMetadata // Pass through from backend
     };
   }
 
@@ -117,6 +131,10 @@ class ScriptService {
 
     const beatSheetContent = this.formatBeatSheetForPrompt(request.beatSheet);
 
+    // Get current stage state ID for application logging
+    const projectId = request.projectParams.projectId || '';
+    const currentStageState = projectId ? await stageStateService.getStageState(projectId, 4) : null;
+
     const llmRequest = {
       templateName: 'master_script_generation',
       variables: {
@@ -131,7 +149,10 @@ class ScriptService {
         regeneration_guidance: request.guidance
       },
       metadata: {
+        projectId: projectId,
+        branchId: 'main', // Backend will look up active branch from projectId
         stage: 4,
+        stageStateId: currentStageState?.id,
         operation: 'script_regeneration',
         regenerationGuidance: request.guidance
       }
@@ -161,7 +182,8 @@ class ScriptService {
       scenes: parsed.scenes,
       estimatedPageCount: parsed.estimatedPageCount,
       langsmithTraceId: result.data.traceId,
-      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0'
+      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0',
+      styleCapsuleMetadata: result.data.styleCapsuleMetadata // Pass through from backend
     };
   }
 

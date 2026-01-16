@@ -43,6 +43,7 @@ interface Stage4Content {
     stageId: string;
   };
   langsmithTraceId?: string;
+  _styleCapsuleMetadata?: any; // Temporary - extracted during save
   promptTemplateVersion?: string;
 }
 
@@ -239,6 +240,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
         });
 
         const params = {
+          projectId,
           targetLengthMin: project.targetLength?.min || 180,
           targetLengthMax: project.targetLength?.max || 300,
           contentRating: project.contentRating || 'PG-13',
@@ -292,7 +294,8 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
         syncStatus: 'synced',
         beatSheetSource: stageContent.beatSheetSource,
         langsmithTraceId: result.langsmithTraceId,
-        promptTemplateVersion: result.promptTemplateVersion
+        promptTemplateVersion: result.promptTemplateVersion,
+        _styleCapsuleMetadata: result.styleCapsuleMetadata // Temporary - extracted during save
       };
 
       isProgrammaticUpdate.current = true; // Flag programmatic update

@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { ProcessedInput } from './inputProcessingService';
+import { stageStateService } from './stageStateService';
 
 export interface TreatmentVariation {
   id: string;
@@ -18,6 +19,10 @@ export interface GenerateTreatmentResponse {
   variations: TreatmentVariation[];
   langsmithTraceId: string;
   promptTemplateVersion: string;
+  styleCapsuleMetadata?: {
+    styleCapsuleId: string;
+    injectionContext: Record<string, any>;
+  };
 }
 
 export interface RegenerateTreatmentRequest {
@@ -69,12 +74,17 @@ class TreatmentService {
       variables: variables
     });
 
+    // Get current stage state ID for application logging
+    const currentStageState = await stageStateService.getStageState(request.projectId, 2);
+
     const llmRequest = {
       templateName: 'treatment_expansion',
       variables,
       metadata: {
         projectId: request.projectId,
+        branchId: 'main', // Backend will look up active branch from projectId
         stage: 2,
+        stageStateId: currentStageState?.id,
         inputMode: request.processedInput.mode
       }
     };
@@ -104,7 +114,8 @@ class TreatmentService {
     return {
       variations,
       langsmithTraceId: result.data.traceId,
-      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0'
+      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0',
+      styleCapsuleMetadata: result.data.styleCapsuleMetadata // Pass through from backend
     };
   }
 
@@ -117,6 +128,9 @@ class TreatmentService {
     if (!session?.access_token) {
       throw new Error('User not authenticated');
     }
+
+    // Get current stage state ID for application logging
+    const currentStageState = await stageStateService.getStageState(request.projectId, 2);
 
     // Enhanced prompt with regeneration guidance
     const llmRequest = {
@@ -139,7 +153,9 @@ class TreatmentService {
       },
       metadata: {
         projectId: request.projectId,
+        branchId: 'main', // Backend will look up active branch from projectId
         stage: 2,
+        stageStateId: currentStageState?.id,
         inputMode: request.processedInput.mode,
         regenerationGuidance: request.guidance
       }
@@ -165,7 +181,8 @@ class TreatmentService {
     return {
       variations,
       langsmithTraceId: result.data.traceId,
-      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0'
+      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0',
+      styleCapsuleMetadata: result.data.styleCapsuleMetadata // Pass through from backend
     };
   }
 

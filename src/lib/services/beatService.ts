@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { stageStateService } from './stageStateService';
 
 export interface Beat {
   id: string;
@@ -14,6 +15,7 @@ export interface GenerateBeatsRequest {
   treatmentProse: string;
   selectedVariantId: string;
   projectParams: {
+    projectId?: string;
     targetLengthMin: number;
     targetLengthMax: number;
     genres: string[];
@@ -28,6 +30,10 @@ export interface GenerateBeatsResponse {
   narrativeStructure: string;
   langsmithTraceId: string;
   promptTemplateVersion: string;
+  styleCapsuleMetadata?: {
+    styleCapsuleId: string;
+    injectionContext: Record<string, any>;
+  };
 }
 
 class BeatService {
@@ -40,6 +46,10 @@ class BeatService {
     if (!session?.access_token) {
       throw new Error('User not authenticated');
     }
+
+    // Get current stage state ID for application logging
+    const projectId = request.projectParams.projectId || '';
+    const currentStageState = projectId ? await stageStateService.getStageState(projectId, 3) : null;
 
     const llmRequest = {
       templateName: 'beat_extraction',
@@ -54,7 +64,10 @@ class BeatService {
         writing_style_capsule_id: request.projectParams.writingStyleCapsuleId || ''
       },
       metadata: {
+        projectId: projectId,
+        branchId: 'main', // Backend will look up active branch from projectId
         stage: 3,
+        stageStateId: currentStageState?.id,
         operation: 'beat_extraction'
       }
     };
@@ -81,7 +94,8 @@ class BeatService {
       totalEstimatedRuntime: parsedBeats.totalEstimatedRuntime,
       narrativeStructure: parsedBeats.narrativeStructure,
       langsmithTraceId: result.data.traceId,
-      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0'
+      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0',
+      styleCapsuleMetadata: result.data.styleCapsuleMetadata // Pass through from backend
     };
   }
 
@@ -110,6 +124,9 @@ class BeatService {
       }
     }
 
+    // Get current stage state ID for application logging
+    const currentStageState = await stageStateService.getStageState(projectId, 3);
+
     const llmRequest = {
       templateName: 'beat_extraction',
       variables: {
@@ -124,7 +141,9 @@ class BeatService {
       },
       metadata: {
         projectId,
+        branchId: 'main',
         stage: 3,
+        stageStateId: currentStageState?.id,
         operation: 'beat_regeneration',
         regenerationGuidance: guidance
       }
@@ -152,7 +171,8 @@ class BeatService {
       totalEstimatedRuntime: parsedBeats.totalEstimatedRuntime,
       narrativeStructure: parsedBeats.narrativeStructure,
       langsmithTraceId: result.data.traceId,
-      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0'
+      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0',
+      styleCapsuleMetadata: result.data.styleCapsuleMetadata // Pass through from backend
     };
   }
 

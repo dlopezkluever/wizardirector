@@ -16,6 +16,10 @@ export interface SaveStageStateOptions {
   content: Record<string, any>;
   status?: 'draft' | 'locked' | 'invalidated' | 'outdated';
   regenerationGuidance?: string;
+  styleCapsuleMetadata?: {
+    styleCapsuleId: string;
+    injectionContext: Record<string, any>;
+  };
 }
 
 class StageStateService {
@@ -92,10 +96,18 @@ class StageStateService {
 
     console.log('✅ Auth session found, making API request...');
 
+    // Extract styleCapsuleMetadata from content if present (temporary storage)
+    const styleCapsuleMetadata = options.styleCapsuleMetadata || (options.content as any)?._styleCapsuleMetadata;
+    
+    // Remove temporary metadata from content before saving
+    const contentToSave = { ...options.content };
+    delete (contentToSave as any)._styleCapsuleMetadata;
+
     const requestBody = {
-      content: options.content,
+      content: contentToSave,
       status: options.status || 'draft',
-      regenerationGuidance: options.regenerationGuidance || ''
+      regenerationGuidance: options.regenerationGuidance || '',
+      styleCapsuleMetadata: styleCapsuleMetadata // Pass through if provided
     };
 
     console.log('📤 Request body:', requestBody);

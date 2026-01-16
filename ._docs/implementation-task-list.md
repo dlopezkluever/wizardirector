@@ -152,7 +152,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 \- \[ \] Implement global context assembly (Beat Sheet, Master Script summary)  
 \- \[ \] Add local context windowing for scenes  
 \- \[ \] Build context injection into LLM prompts  
-\- \[ \] Add context size monitoring and truncation
+*\- \[ \] Add context size monitoring and truncation*
 
 \#\#\# Feature 2.4: Style Capsule-Enhanced Generation  
 \*\*Purpose\*\*: Apply style guidance to AI outputs  
