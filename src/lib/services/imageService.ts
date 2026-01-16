@@ -30,43 +30,55 @@ class ImageService {
       throw new Error('User not authenticated');
     }
 
-    // Build the enhanced prompt with visual style injection
-    let enhancedPrompt = request.prompt;
-    let visualStyleContext = '';
+    console.log('🎨 [ImageService] Creating image generation job...');
 
-    if (request.visualStyleCapsuleId) {
-      try {
-        const capsule = await styleCapsuleService.getCapsule(request.visualStyleCapsuleId);
-        visualStyleContext = styleCapsuleService.formatVisualStyleInjection(capsule);
+    // Generate idempotency key for this request
+    const idempotencyKey = `${request.assetId || 'misc'}_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
-        // Combine the asset prompt with visual style context
-        enhancedPrompt = `${request.prompt}\n\nStyle: ${visualStyleContext}`;
-      } catch (error) {
-        console.warn('Failed to load visual style capsule:', error);
-      }
+    // Step 1: Get active branch ID
+    const branchId = await this.getActiveBranchId(request.projectId);
+
+    // Step 2: Create job (returns immediately)
+    const createResponse = await fetch('/api/images/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`
+      },
+      body: JSON.stringify({
+        projectId: request.projectId,
+        branchId,
+        jobType: this.mapStageToJobType(request.stageNumber),
+        prompt: request.prompt,
+        visualStyleCapsuleId: request.visualStyleCapsuleId,
+        width: request.width,
+        height: request.height,
+        assetId: request.assetId,
+        idempotencyKey
+      })
+    });
+
+    if (!createResponse.ok) {
+      const error = await createResponse.json();
+      throw new Error(error.error || 'Failed to create image generation job');
     }
 
-    // TODO: Replace with actual Nano Banana API call
-    // For now, simulate the API call
-    console.log('🎨 [ImageService] Generating image with prompt:', enhancedPrompt);
+    const { jobId } = await createResponse.json();
 
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    console.log(`🎨 [ImageService] Job ${jobId} created, polling for completion...`);
 
-    // Mock response - in real implementation, this would be the actual API response
-    const mockImageUrl = `https://picsum.photos/${request.width || 512}/${request.height || 512}?random=${Date.now()}`;
-    const generationId = `gen_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    // Step 3: Poll for completion
+    const result = await this.pollJobStatus(jobId, session.access_token);
 
-    // Log the style capsule application for audit trail
+    // Step 4: Log style capsule application
     if (request.visualStyleCapsuleId) {
       try {
         await styleCapsuleService.recordApplication({
           stage_state_id: `${request.projectId}_stage_${request.stageNumber}`,
           style_capsule_id: request.visualStyleCapsuleId,
           injection_context: {
-            prompt: enhancedPrompt,
-            generationId,
-            assetId: request.assetId
+            prompt: request.prompt,
+            jobId: jobId
           }
         });
       } catch (error) {
@@ -75,11 +87,74 @@ class ImageService {
     }
 
     return {
-      imageUrl: mockImageUrl,
-      generationId,
-      prompt: enhancedPrompt,
-      visualStyleContext
+      imageUrl: result.publicUrl!,
+      generationId: jobId,
+      prompt: request.prompt
     };
+  }
+
+  /**
+   * Poll job status until completion
+   */
+  private async pollJobStatus(
+    jobId: string,
+    accessToken: string,
+    maxAttempts: number = 60, // 60 attempts = 60 seconds max
+    intervalMs: number = 1000  // Poll every second
+  ): Promise<any> {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const response = await fetch(`/api/images/jobs/${jobId}`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch job status');
+      }
+
+      const job = await response.json();
+
+      // Check terminal states
+      if (job.status === 'completed') {
+        console.log(`✅ [ImageService] Job ${jobId} completed`);
+        return job;
+      }
+
+      if (job.status === 'failed') {
+        throw new Error(`Image generation failed: ${job.error?.message || 'Unknown error'}`);
+      }
+
+      // Still processing, wait and retry
+      console.log(`⏳ [ImageService] Job ${jobId} status: ${job.status}`);
+      await this.sleep(intervalMs);
+    }
+
+    throw new Error('Image generation timed out');
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  private mapStageToJobType(stageNumber: number): string {
+    if (stageNumber === 5) return 'master_asset';
+    if (stageNumber === 10) return 'start_frame';
+    return 'master_asset';
+  }
+
+  private async getActiveBranchId(projectId: string): Promise<string> {
+    const { data: project } = await supabase
+      .from('projects')
+      .select('active_branch_id')
+      .eq('id', projectId)
+      .single();
+
+    if (!project?.active_branch_id) {
+      throw new Error('Project has no active branch');
+    }
+
+    return project.active_branch_id;
   }
 
   /**
