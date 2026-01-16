@@ -21,9 +21,8 @@ OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 GOOGLE_AI_API_KEY=AIza...
 
-# Image Generation - Nano Banana
-NANO_BANANA_API_KEY=your_api_key_here
-NANO_BANANA_API_URL=https://api.nanobanana.ai/v1
+# Image Generation - Nano Banana (uses Google Gemini)
+# Uses the same GOOGLE_AI_API_KEY as other Gemini services
 
 # Video Generation - Google Veo3
 GOOGLE_VEO3_API_KEY=your_veo3_api_key_here

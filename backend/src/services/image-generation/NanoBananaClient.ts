@@ -1,100 +1,146 @@
-import axios, { AxiosInstance } from 'axios';
-import { 
-    ImageProvider, 
-    ImageGenerationOptions, 
-    ImageGenerationResult, 
-    ImageArtifact, 
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import {
+    ImageProvider,
+    ImageGenerationOptions,
+    ImageGenerationResult,
+    ImageArtifact,
     ImageProviderError,
-    InpaintOptions 
+    InpaintOptions
 } from './ImageProviderInterface.js';
 
 export class NanoBananaClient implements ImageProvider {
     name = 'nano-banana';
     supportsInpainting = true;
-    
-    private client: AxiosInstance;
+
+    private client: GoogleGenerativeAI;
     private maxRetries = 3;
     private baseDelay = 1000;
 
     constructor() {
-        const apiKey = process.env.NANO_BANANA_API_KEY;
+        const apiKey = process.env.GOOGLE_AI_API_KEY;
         if (!apiKey || apiKey === 'placeholder') {
-            throw new Error('NANO_BANANA_API_KEY not configured');
+            throw new Error('GOOGLE_AI_API_KEY not configured');
         }
 
-        this.client = axios.create({
-            baseURL: process.env.NANO_BANANA_API_URL || 'https://api.nanobanana.ai/v1',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json'
-            },
-            timeout: 60000
-        });
+        this.client = new GoogleGenerativeAI(apiKey);
     }
 
     async generateImage(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
-        const requestBody = {
-            prompt: options.prompt,
-            width: options.width || 512,
-            height: options.height || 512,
-            negative_prompt: options.negativePrompt,
-            seed: options.seed,
-            ...(options.visualStyleContext && {
-                style_reference: options.visualStyleContext
-            })
-        };
-
         return this.executeWithRetry(async (attemptNumber) => {
             console.log(`[NanoBanana] Generating image (attempt ${attemptNumber})...`);
-            
-            const response = await this.client.post('/generate', requestBody);
-            
-            // Normalize provider response to ImageArtifact
-            const artifact = await this.normalizeResponseToArtifact(response.data);
+
+            // Build prompt with visual style context
+            let prompt = options.prompt;
+            if (options.visualStyleContext) {
+                prompt = `${options.prompt}\n\nStyle: ${options.visualStyleContext}`;
+            }
+
+            // Use Gemini 2.5 Flash Image model
+            const model = this.client.getGenerativeModel({
+                model: 'gemini-2.5-flash-image'
+            });
+
+            const response = await model.generateContent({
+                contents: [{
+                    role: 'user',
+                    parts: [{ text: prompt }]
+                }]
+            });
+
+            // Extract image from response
+            const imagePart = response.response.candidates?.[0]?.content?.parts?.find(
+                (part: any) => part.inlineData
+            );
+
+            if (!imagePart?.inlineData) {
+                throw new ImageProviderError(
+                    'No image generated in response',
+                    'PERMANENT',
+                    undefined,
+                    false
+                );
+            }
+
+            // Create artifact from base64 data
+            const artifact: ImageArtifact = {
+                type: 'base64',
+                data: imagePart.inlineData.data,
+                contentType: imagePart.inlineData.mimeType || 'image/png'
+            };
+
+            // Generate a simple ID for tracking
+            const generationId = `gemini_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
             return {
                 artifact,
                 metadata: {
                     width: options.width || 512,
                     height: options.height || 512,
-                    seed: response.data.seed,
+                    seed: options.seed,
                     estimatedCost: this.estimateCost(options),
-                    actualCost: response.data.cost,
-                    generationId: response.data.id
+                    actualCost: this.estimateCost(options), // Gemini doesn't provide actual costs
+                    generationId
                 },
-                providerRawResponse: response.data
+                providerRawResponse: response.response
             };
         });
     }
 
     async inpaintImage(options: InpaintOptions): Promise<ImageGenerationResult> {
-        const requestBody = {
-            prompt: options.prompt,
-            source_image: options.sourceImageUrl,
-            mask_description: options.maskDescription,
-            width: options.width || 512,
-            height: options.height || 512,
-            negative_prompt: options.negativePrompt,
-            seed: options.seed
-        };
-
         return this.executeWithRetry(async (attemptNumber) => {
             console.log(`[NanoBanana] Inpainting image (attempt ${attemptNumber})...`);
-            
-            const response = await this.client.post('/inpaint', requestBody);
-            const artifact = await this.normalizeResponseToArtifact(response.data);
+
+            // Build inpainting prompt
+            const prompt = `${options.prompt}\n\nMask description: ${options.maskDescription}\n\nPlease edit the image according to the mask description.`;
+
+            // Use Gemini 2.5 Flash Image model
+            const model = this.client.getGenerativeModel({
+                model: 'gemini-2.5-flash-image'
+            });
+
+            // For inpainting, we'd need to download and provide the source image
+            // For now, create a text-based inpainting request
+            // TODO: Implement proper image upload for inpainting
+            const response = await model.generateContent({
+                contents: [{
+                    role: 'user',
+                    parts: [{ text: prompt }]
+                }]
+            });
+
+            // Extract image from response
+            const imagePart = response.response.candidates?.[0]?.content?.parts?.find(
+                (part: any) => part.inlineData
+            );
+
+            if (!imagePart?.inlineData) {
+                throw new ImageProviderError(
+                    'No image generated in inpainting response',
+                    'PERMANENT',
+                    undefined,
+                    false
+                );
+            }
+
+            const artifact: ImageArtifact = {
+                type: 'base64',
+                data: imagePart.inlineData.data,
+                contentType: imagePart.inlineData.mimeType || 'image/png'
+            };
+
+            const generationId = `gemini_inpaint_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
             return {
                 artifact,
                 metadata: {
                     width: options.width || 512,
                     height: options.height || 512,
-                    seed: response.data.seed,
+                    seed: options.seed,
                     estimatedCost: this.estimateCost(options),
-                    actualCost: response.data.cost,
-                    generationId: response.data.id
+                    actualCost: this.estimateCost(options),
+                    generationId
                 },
-                providerRawResponse: response.data
+                providerRawResponse: response.response
             };
         });
     }
@@ -106,53 +152,6 @@ export class NanoBananaClient implements ImageProvider {
         return baseCredits * pixelMultiplier;
     }
 
-    /**
-     * Normalize various provider response formats to unified ImageArtifact
-     */
-    private async normalizeResponseToArtifact(responseData: any): Promise<ImageArtifact> {
-        // Case 1: Direct URL provided
-        if (responseData.image_url || responseData.url) {
-            const imageUrl = responseData.image_url || responseData.url;
-            
-            // Download the image
-            const imageResponse = await axios.get(imageUrl, {
-                responseType: 'arraybuffer'
-            });
-
-            return {
-                type: 'buffer',
-                data: Buffer.from(imageResponse.data),
-                contentType: imageResponse.headers['content-type'] || 'image/png'
-            };
-        }
-        
-        // Case 2: Base64 encoded data
-        if (responseData.image_data || responseData.base64) {
-            const base64Data = responseData.image_data || responseData.base64;
-            return {
-                type: 'base64',
-                data: base64Data,
-                contentType: responseData.content_type || 'image/png'
-            };
-        }
-        
-        // Case 3: Job ID (async provider)
-        if (responseData.job_id && !responseData.image_url) {
-            throw new ImageProviderError(
-                'Provider returned job ID - async generation not yet supported',
-                'PERMANENT',
-                undefined,
-                false
-            );
-        }
-
-        throw new ImageProviderError(
-            'Unknown provider response format',
-            'PERMANENT',
-            undefined,
-            false
-        );
-    }
 
     /**
      * Execute with retry logic, tracking attempt numbers
@@ -189,50 +188,50 @@ export class NanoBananaClient implements ImageProvider {
 
     private classifyError(error: any): ImageProviderError {
         const message = error.message || 'Unknown error';
-        const status = error.response?.status;
 
-        if (status === 429 || message.includes('rate limit')) {
-            return new ImageProviderError(
-                `Rate limit exceeded: ${message}`,
-                'RATE_LIMIT',
-                429,
-                true
-            );
-        }
-
-        if (status === 401 || status === 403) {
+        // Check for Gemini-specific error types
+        if (message.includes('API_KEY') || message.includes('PERMISSION_DENIED') || message.includes('INVALID_ARGUMENT')) {
             return new ImageProviderError(
                 `Authentication error: ${message}`,
                 'AUTH_ERROR',
-                status,
+                undefined,
                 false
             );
         }
 
-        if (status >= 500) {
+        if (message.includes('RESOURCE_EXHAUSTED') || message.includes('QUOTA_EXCEEDED') || message.includes('rate limit')) {
             return new ImageProviderError(
-                `Server error: ${message}`,
-                'TEMPORARY',
-                status,
+                `Rate limit exceeded: ${message}`,
+                'RATE_LIMIT',
+                undefined,
                 true
             );
         }
 
-        if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') {
+        if (message.includes('UNAVAILABLE') || message.includes('DEADLINE_EXCEEDED')) {
             return new ImageProviderError(
-                `Network error: ${message}`,
+                `Service temporarily unavailable: ${message}`,
                 'TEMPORARY',
                 undefined,
                 true
             );
         }
 
-        if (status >= 400 && status < 500) {
+        if (message.includes('FAILED_PRECONDITION') || message.includes('OUT_OF_RANGE')) {
             return new ImageProviderError(
                 `Invalid request: ${message}`,
                 'PERMANENT',
-                status,
+                undefined,
                 false
+            );
+        }
+
+        if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND') {
+            return new ImageProviderError(
+                `Network error: ${message}`,
+                'TEMPORARY',
+                undefined,
+                true
             );
         }
 

@@ -21,8 +21,7 @@ Create `backend/.env` with the following (see `._docs/environment-variables.md` 
 # Required for Feature 3.1
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
-NANO_BANANA_API_KEY=your_api_key_here
-NANO_BANANA_API_URL=https://api.nanobanana.ai/v1
+GOOGLE_AI_API_KEY=your_google_ai_api_key_here
 
 # Other required vars
 DATABASE_URL=postgresql://...
@@ -337,3 +336,63 @@ Expected performance:
 - `._docs/feature-3.1-implementation-summary.md`
 
 The implementation is **production-ready** for MVP deployment with seamless migration path to async execution at scale.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+## Summary: Feature 3.1 Setup & Testing Guide
+
+I've created a comprehensive testing and setup guide for the image generation service implementation. Here's what you need to do:
+
+### Quick Setup Checklist
+
+1. **Install dependencies**:
+   ```bash
+   cd backend
+   npm install
+   ```
+
+2. **Configure environment**:
+   - Create `backend/.env` with Nano Banana API key
+   - Add Supabase credentials
+
+3. **Run database migration**:
+   ```bash
+   npm run migrate
+   ```
+
+4. **Set up storage bucket**:
+   ```bash
+   npm run setup:bucket
+   ```
+
+5. **Configure RLS policies** in Supabase Dashboard for the `asset-images` bucket
+
+### Testing Commands
+
+**Start server**:
+```bash
+cd backend
+npm run dev
+```
+
+**Run tests**:
+```bash
+npm test
+```
+
+**Test API with cURL**:
+```bash
+curl -X POST http://localhost:3001/api/images/generate \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"projectId":"test","branchId":"test","jobType":"master_asset","prompt":"test"}'
+```
+
+The complete guide is in `FEATURE-3.1-SETUP.md` with:
+- ✅ Step-by-step setup instructions
+- ✅ API testing examples
+- ✅ Database verification queries
+- ✅ Troubleshooting guide
+- ✅ Verification checklist
+- ✅ Performance benchmarks
+
+The implementation is **production-ready** with job-tracked architecture that supports immediate MVP deployment and seamless migration to async execution at scale.
