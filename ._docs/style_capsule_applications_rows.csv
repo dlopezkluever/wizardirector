@@ -1,3 +1,0 @@
-id,stage_state_id,style_capsule_id,applied_at,injection_context
-81d7281b-554f-4eb1-8c5b-331631a6e944,96111b0c-b55b-4151-974e-6e3813769e43,464eccc6-7204-43b1-991f-4278df8ca55e,2026-01-16 14:16:18.696+00,"{""stage"":3,""traceId"":""2ebbbecb-a3ac-4017-9afe-c6ee85fecb48"",""timestamp"":""2026-01-16T14:16:18.696Z"",""templateName"":""beat_extraction"",""formattedContextLength"":764}"
-e11f0f32-8eaf-4f55-aa8d-4fa4306e614d,f905d1a7-c91e-4094-af08-d311209a4c6d,464eccc6-7204-43b1-991f-4278df8ca55e,2026-01-16 14:11:03.413+00,"{""stage"":2,""traceId"":""49172420-0117-4be5-89dd-d17d72a217ca"",""timestamp"":""2026-01-16T14:11:03.413Z"",""templateName"":""treatment_expansion"",""formattedContextLength"":764}"
