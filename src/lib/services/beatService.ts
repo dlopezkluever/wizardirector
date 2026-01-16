@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { stageStateService } from './stageStateService';
 
 export interface Beat {
   id: string;
@@ -42,6 +43,10 @@ class BeatService {
       throw new Error('User not authenticated');
     }
 
+    // Get current stage state ID for application logging
+    const projectId = request.projectParams.projectId || '';
+    const currentStageState = projectId ? await stageStateService.getStageState(projectId, 3) : null;
+
     const llmRequest = {
       templateName: 'beat_extraction',
       variables: {
@@ -55,9 +60,10 @@ class BeatService {
         writing_style_capsule_id: request.projectParams.writingStyleCapsuleId || ''
       },
       metadata: {
-        projectId: request.projectParams.projectId || '',
+        projectId: projectId,
         branchId: 'main', // Backend will look up active branch from projectId
         stage: 3,
+        stageStateId: currentStageState?.id,
         operation: 'beat_extraction'
       }
     };
@@ -113,6 +119,9 @@ class BeatService {
       }
     }
 
+    // Get current stage state ID for application logging
+    const currentStageState = await stageStateService.getStageState(projectId, 3);
+
     const llmRequest = {
       templateName: 'beat_extraction',
       variables: {
@@ -127,7 +136,9 @@ class BeatService {
       },
       metadata: {
         projectId,
+        branchId: 'main',
         stage: 3,
+        stageStateId: currentStageState?.id,
         operation: 'beat_regeneration',
         regenerationGuidance: guidance
       }

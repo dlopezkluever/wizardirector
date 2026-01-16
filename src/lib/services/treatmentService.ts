@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { ProcessedInput } from './inputProcessingService';
+import { stageStateService } from './stageStateService';
 
 export interface TreatmentVariation {
   id: string;
@@ -69,6 +70,9 @@ class TreatmentService {
       variables: variables
     });
 
+    // Get current stage state ID for application logging
+    const currentStageState = await stageStateService.getStageState(request.projectId, 2);
+
     const llmRequest = {
       templateName: 'treatment_expansion',
       variables,
@@ -76,6 +80,7 @@ class TreatmentService {
         projectId: request.projectId,
         branchId: 'main', // Backend will look up active branch from projectId
         stage: 2,
+        stageStateId: currentStageState?.id,
         inputMode: request.processedInput.mode
       }
     };
@@ -119,6 +124,9 @@ class TreatmentService {
       throw new Error('User not authenticated');
     }
 
+    // Get current stage state ID for application logging
+    const currentStageState = await stageStateService.getStageState(request.projectId, 2);
+
     // Enhanced prompt with regeneration guidance
     const llmRequest = {
       templateName: 'treatment_expansion',
@@ -142,6 +150,7 @@ class TreatmentService {
         projectId: request.projectId,
         branchId: 'main', // Backend will look up active branch from projectId
         stage: 2,
+        stageStateId: currentStageState?.id,
         inputMode: request.processedInput.mode,
         regenerationGuidance: request.guidance
       }

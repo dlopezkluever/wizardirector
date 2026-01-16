@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { stripHtmlTags } from '@/lib/utils/screenplay-converter';
 import type { Beat } from './beatService';
+import { stageStateService } from './stageStateService';
 
 export interface Scene {
   id: string;
@@ -58,6 +59,10 @@ class ScriptService {
     // Format beat sheet content for the LLM
     const beatSheetContent = this.formatBeatSheetForPrompt(request.beatSheet);
 
+    // Get current stage state ID for application logging
+    const projectId = request.projectParams.projectId || '';
+    const currentStageState = projectId ? await stageStateService.getStageState(projectId, 4) : null;
+
     const llmRequest = {
       templateName: 'master_script_generation',
       variables: {
@@ -71,9 +76,10 @@ class ScriptService {
         writing_style_capsule_id: request.projectParams.writingStyleCapsuleId || ''
       },
       metadata: {
-        projectId: request.projectParams.projectId || '',
+        projectId: projectId,
         branchId: 'main', // Backend will look up active branch from projectId
         stage: 4,
+        stageStateId: currentStageState?.id,
         operation: 'script_generation'
       }
     };
@@ -120,6 +126,10 @@ class ScriptService {
 
     const beatSheetContent = this.formatBeatSheetForPrompt(request.beatSheet);
 
+    // Get current stage state ID for application logging
+    const projectId = request.projectParams.projectId || '';
+    const currentStageState = projectId ? await stageStateService.getStageState(projectId, 4) : null;
+
     const llmRequest = {
       templateName: 'master_script_generation',
       variables: {
@@ -134,9 +144,10 @@ class ScriptService {
         regeneration_guidance: request.guidance
       },
       metadata: {
-        projectId: request.projectParams.projectId || '',
+        projectId: projectId,
         branchId: 'main', // Backend will look up active branch from projectId
         stage: 4,
+        stageStateId: currentStageState?.id,
         operation: 'script_regeneration',
         regenerationGuidance: request.guidance
       }
