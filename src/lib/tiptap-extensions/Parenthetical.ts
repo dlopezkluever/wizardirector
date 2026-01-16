@@ -18,7 +18,8 @@ export const Parenthetical = Node.create({
       {
         ...HTMLAttributes,
         'data-type': 'parenthetical',
-        class: 'text-muted-foreground italic ml-24 my-1' // Indented and italic
+        // class: 'text-muted-foreground italic ml-24 my-1', // Indented and italic
+        class: 'text-muted-foreground italic ml-20' // Left-aligned, no vertical spacing (grouped with dialogue)
       },
       0
     ];

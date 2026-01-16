@@ -287,32 +287,21 @@ router.post('/generate-from-template', async (req, res) => {
     
     console.log(`[API] LLM generation completed successfully!`);
 
-    // Log style capsule application if applicable
-    if (validatedRequest.metadata?.stageStateId && validatedRequest.metadata?.globalContext) {
-      const globalContext = validatedRequest.metadata.globalContext as any;
-      if (globalContext.writingStyleCapsule) {
-        try {
-          const { StyleCapsuleService } = await import('../services/styleCapsuleService.js');
-          const styleCapsuleService = new StyleCapsuleService();
-          
-          await styleCapsuleService.recordApplication({
-            stage_state_id: validatedRequest.metadata.stageStateId,
-            style_capsule_id: globalContext.writingStyleCapsule.id,
-            injection_context: {
-              stage: validatedRequest.metadata.stage,
-              templateName: validatedRequest.templateName,
-              formattedContextLength: validatedRequest.variables.writing_style_context?.length || 0,
-              timestamp: new Date().toISOString(),
-              traceId: response.traceId
-            }
-          });
-          
-          console.log(`[API] Logged style capsule application for stage ${validatedRequest.metadata.stage}`);
-        } catch (error) {
-          console.error('[API] Failed to log style capsule application:', error);
-          // Don't fail the request if logging fails
+    // Prepare style capsule metadata for frontend to pass when creating stage state
+    let styleCapsuleMetadata = null;
+    const globalContext = validatedRequest.metadata?.globalContext as any;
+    if (globalContext?.writingStyleCapsule) {
+      styleCapsuleMetadata = {
+        styleCapsuleId: globalContext.writingStyleCapsule.id,
+        injectionContext: {
+          stage: validatedRequest.metadata.stage,
+          templateName: validatedRequest.templateName,
+          formattedContextLength: validatedRequest.variables.writing_style_context?.length || 0,
+          timestamp: new Date().toISOString(),
+          traceId: response.traceId
         }
-      }
+      };
+      console.log(`[API] Prepared style capsule metadata for stage ${validatedRequest.metadata.stage}`);
     }
 
     res.json({
@@ -321,6 +310,7 @@ router.post('/generate-from-template', async (req, res) => {
         ...response,
         promptTemplateVersion: template.version,
         templateId: template.id,
+        styleCapsuleMetadata, // Include for frontend to pass when saving stage state
       },
     });
   } catch (error) {

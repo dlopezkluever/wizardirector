@@ -121,7 +121,7 @@ router.put('/:projectId/stages/:stageNumber', async (req, res) => {
   try {
     const { projectId, stageNumber } = req.params;
     const userId = req.user!.id;
-    const { content, status, regenerationGuidance } = req.body;
+    const { content, status, regenerationGuidance, styleCapsuleMetadata } = req.body;
 
     console.log('🔄 PUT /api/projects/:projectId/stages/:stageNumber called:', {
       projectId,
@@ -247,6 +247,30 @@ router.put('/:projectId/stages/:stageNumber', async (req, res) => {
 
     console.log('✅ Stage state inserted successfully:', newState.id);
     stageState = newState;
+
+    // Log style capsule application if metadata was provided
+    if (styleCapsuleMetadata && styleCapsuleMetadata.styleCapsuleId) {
+      try {
+        const { data: applicationLog, error: logError } = await supabase
+          .from('style_capsule_applications')
+          .insert({
+            stage_state_id: newState.id,
+            style_capsule_id: styleCapsuleMetadata.styleCapsuleId,
+            injection_context: styleCapsuleMetadata.injectionContext
+          })
+          .select('id')
+          .single();
+
+        if (logError) {
+          console.error('❌ Failed to log style capsule application:', logError);
+        } else {
+          console.log(`✅ Logged style capsule application for stage ${stage}:`, applicationLog.id);
+        }
+      } catch (error) {
+        console.error('❌ Error logging style capsule application:', error);
+        // Don't fail the request if logging fails
+      }
+    }
 
     // Update project's updated_at timestamp
     await supabase

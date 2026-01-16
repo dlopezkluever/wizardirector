@@ -50,6 +50,7 @@ interface Stage3Content {
   };
   langsmithTraceId?: string;
   promptTemplateVersion?: string;
+  _styleCapsuleMetadata?: any; // Temporary - extracted during save
 }
 
 // Sortable Beat Item Component
@@ -357,7 +358,8 @@ export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatShe
           variantId: treatmentData.selectedVariantId
         },
         langsmithTraceId: result.langsmithTraceId,
-        promptTemplateVersion: result.promptTemplateVersion
+        promptTemplateVersion: result.promptTemplateVersion,
+        _styleCapsuleMetadata: result.styleCapsuleMetadata // Temporary - extracted during save
       }));
 
       toast.success(`Generated ${result.beats.length} beats`);

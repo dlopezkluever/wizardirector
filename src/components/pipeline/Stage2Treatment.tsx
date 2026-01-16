@@ -26,6 +26,7 @@ interface Stage2Content {
   processedInput?: ProcessedInput;
   langsmithTraceId?: string;
   promptTemplateVersion?: string;
+  _styleCapsuleMetadata?: any; // Temporary - extracted during save
 }
 
 // Mock treatment data for demonstration
@@ -187,7 +188,8 @@ export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2Treatme
         variations: result.variations,
         processedInput: stage1State.content.processedInput,
         langsmithTraceId: result.langsmithTraceId,
-        promptTemplateVersion: result.promptTemplateVersion
+        promptTemplateVersion: result.promptTemplateVersion,
+        _styleCapsuleMetadata: result.styleCapsuleMetadata // Temporary - extracted during save
       }));
 
       if (result.variations.length > 0) {
@@ -320,7 +322,8 @@ export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2Treatme
         variations: result.variations,
         activeVariation: 0,
         langsmithTraceId: result.langsmithTraceId,
-        promptTemplateVersion: result.promptTemplateVersion
+        promptTemplateVersion: result.promptTemplateVersion,
+        _styleCapsuleMetadata: result.styleCapsuleMetadata // Temporary - extracted during save
       }));
 
       if (result.variations.length > 0) {

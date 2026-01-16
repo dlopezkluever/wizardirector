@@ -19,6 +19,10 @@ export interface GenerateTreatmentResponse {
   variations: TreatmentVariation[];
   langsmithTraceId: string;
   promptTemplateVersion: string;
+  styleCapsuleMetadata?: {
+    styleCapsuleId: string;
+    injectionContext: Record<string, any>;
+  };
 }
 
 export interface RegenerateTreatmentRequest {
@@ -110,7 +114,8 @@ class TreatmentService {
     return {
       variations,
       langsmithTraceId: result.data.traceId,
-      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0'
+      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0',
+      styleCapsuleMetadata: result.data.styleCapsuleMetadata // Pass through from backend
     };
   }
 
@@ -176,7 +181,8 @@ class TreatmentService {
     return {
       variations,
       langsmithTraceId: result.data.traceId,
-      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0'
+      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0',
+      styleCapsuleMetadata: result.data.styleCapsuleMetadata // Pass through from backend
     };
   }
 

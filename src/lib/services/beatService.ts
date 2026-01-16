@@ -30,6 +30,10 @@ export interface GenerateBeatsResponse {
   narrativeStructure: string;
   langsmithTraceId: string;
   promptTemplateVersion: string;
+  styleCapsuleMetadata?: {
+    styleCapsuleId: string;
+    injectionContext: Record<string, any>;
+  };
 }
 
 class BeatService {
@@ -90,7 +94,8 @@ class BeatService {
       totalEstimatedRuntime: parsedBeats.totalEstimatedRuntime,
       narrativeStructure: parsedBeats.narrativeStructure,
       langsmithTraceId: result.data.traceId,
-      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0'
+      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0',
+      styleCapsuleMetadata: result.data.styleCapsuleMetadata // Pass through from backend
     };
   }
 
@@ -166,7 +171,8 @@ class BeatService {
       totalEstimatedRuntime: parsedBeats.totalEstimatedRuntime,
       narrativeStructure: parsedBeats.narrativeStructure,
       langsmithTraceId: result.data.traceId,
-      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0'
+      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0',
+      styleCapsuleMetadata: result.data.styleCapsuleMetadata // Pass through from backend
     };
   }
 

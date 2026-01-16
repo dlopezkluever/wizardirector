@@ -18,7 +18,8 @@ export const Dialogue = Node.create({
       {
         ...HTMLAttributes,
         'data-type': 'dialogue',
-        class: 'text-foreground ml-20 mr-20 my-1' // Centered via margins
+        // class: 'text-foreground ml-20 mr-20 my-1', // Centered via margins
+        class: 'text-foreground' // Left-aligned, no vertical spacing (grouped with character)
       },
       0
     ];

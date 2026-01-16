@@ -30,6 +30,10 @@ export interface GenerateScriptResponse {
   estimatedPageCount?: number;
   langsmithTraceId: string;
   promptTemplateVersion: string;
+  styleCapsuleMetadata?: {
+    styleCapsuleId: string;
+    injectionContext: Record<string, any>;
+  };
 }
 
 export interface RegenerateScriptRequest extends GenerateScriptRequest {
@@ -110,7 +114,8 @@ class ScriptService {
       scenes: parsed.scenes,
       estimatedPageCount: parsed.estimatedPageCount,
       langsmithTraceId: result.data.traceId,
-      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0'
+      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0',
+      styleCapsuleMetadata: result.data.styleCapsuleMetadata // Pass through from backend
     };
   }
 
@@ -177,7 +182,8 @@ class ScriptService {
       scenes: parsed.scenes,
       estimatedPageCount: parsed.estimatedPageCount,
       langsmithTraceId: result.data.traceId,
-      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0'
+      promptTemplateVersion: result.data.promptTemplateVersion || '1.0.0',
+      styleCapsuleMetadata: result.data.styleCapsuleMetadata // Pass through from backend
     };
   }
 

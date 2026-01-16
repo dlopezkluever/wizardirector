@@ -43,6 +43,7 @@ interface Stage4Content {
     stageId: string;
   };
   langsmithTraceId?: string;
+  _styleCapsuleMetadata?: any; // Temporary - extracted during save
   promptTemplateVersion?: string;
 }
 
@@ -293,7 +294,8 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
         syncStatus: 'synced',
         beatSheetSource: stageContent.beatSheetSource,
         langsmithTraceId: result.langsmithTraceId,
-        promptTemplateVersion: result.promptTemplateVersion
+        promptTemplateVersion: result.promptTemplateVersion,
+        _styleCapsuleMetadata: result.styleCapsuleMetadata // Temporary - extracted during save
       };
 
       isProgrammaticUpdate.current = true; // Flag programmatic update
