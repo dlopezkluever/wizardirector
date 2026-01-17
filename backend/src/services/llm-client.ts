@@ -148,9 +148,11 @@ export class LLMClient {
     let traceId: string | undefined;
 
     try {
-      // Get LangSmith callbacks
-      const callbacks = await getLangchainCallbacks({
-        projectName: process.env.LANGSMITH_PROJECT || 'Aiutuer',
+      // Get LangSmith callbacks (configured via environment variables)
+      const callbacks = await getLangchainCallbacks();
+
+      const response = await client.invoke(messages, {
+        callbacks,
         metadata: {
           requestId,
           model,
@@ -158,10 +160,6 @@ export class LLMClient {
           ...request.metadata,
         },
         tags: ['llm-generation', 'gemini', model],
-      });
-
-      const response = await client.invoke(messages, {
-        callbacks,
       });
 
       const endTime = Date.now();
