@@ -1,7 +1,7 @@
-### Add debouncing to Auto-Save for stages 1-3
+## Add debouncing to Auto-Save for stages 1-3 (make it save less often; cause it's kinda spamming)
 
 ## Locking is bugging, unprecise (and idk, kinda stupid) *Handled*
-### Minor UX Enhancement (Do Later)
+#### Minor UX Enhancement (Do Later)
     The only "issue" is when you go back to Stage 1 after it's locked and click "Continue" again, it creates a new version (but preserves locked status). We could add:
     UI indicator that Stage 1 is already locked
     Disable "Continue" button if already locked
@@ -35,7 +35,8 @@
 
 ### have ability export individual writing assets (Treatment; Beat Sheet: Script)
 
-### Have ability to customize system prompts?
+### Have ability to customize system prompts? OR differnet style system prompts maybe; for like different type of projects? uch to consider
+
 
 ### Consider having, apon opening old project, it opening to it's latest stage reached (so where you left off) not the one exactly after that
 
