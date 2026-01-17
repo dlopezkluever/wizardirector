@@ -9,6 +9,7 @@ import { stageStatesRouter } from './routes/stageStates.js';
 import { llmRouter } from './routes/llm.js';
 import { seedRouter } from './routes/seed.js';
 import styleCapsulesRouter from './routes/styleCapsules.js';
+import { imagesRouter } from './routes/images.js';
 import { authenticateUser } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -50,6 +51,9 @@ app.use('/api/seed', authenticateUser, seedRouter);
 
 // Style Capsules routes (protected)
 app.use('/api/style-capsules', authenticateUser, styleCapsulesRouter);
+
+// Image generation routes (protected)
+app.use('/api/images', authenticateUser, imagesRouter);
 
 // Error handling middleware (must be last)
 app.use(errorHandler);

@@ -423,8 +423,118 @@ CREATE TABLE videos (
     version INTEGER DEFAULT 1  
 );
 
-CREATE INDEX idx\_videos\_shot ON videos(shot\_id);  
+CREATE INDEX idx\_videos\_shot ON videos(shot\_id);
 CREATE INDEX idx\_videos\_status ON videos(status);
+
+---
+
+### **`image_generation_jobs`**
+
+**Purpose**: Async job tracking for image generation requests - Essential for Phase 3
+
+**Feature 3.1: Image Generation Service** - *Purpose: Integrate Nano Banana for asset image keys*
+- [ ] Create image generation queue system
+
+The image_generation_jobs table implements this "queue system" - it's the database layer that tracks async image generation requests, handles retries, stores results, and provides polling/status endpoints.
+
+**Why it's separate from design docs**: This is a **new architectural component** not originally planned in the core schema. It's a Phase 3 addition that enables the async job-tracked image generation service.
+
+CREATE TABLE image\_generation\_jobs (
+    id UUID PRIMARY KEY DEFAULT gen\_random\_uuid(),
+
+    \-- Idempotency
+    idempotency\_key TEXT,
+
+    \-- Job Context
+    project\_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    branch\_id UUID REFERENCES branches(id) ON DELETE CASCADE,
+    scene\_id UUID REFERENCES scenes(id) ON DELETE CASCADE,
+    shot\_id UUID REFERENCES shots(id) ON DELETE CASCADE,
+    asset\_id UUID, \-- No FK constraint (see documentation below)
+
+    \-- Job Type and Purpose
+    job\_type TEXT NOT NULL CHECK (job\_type IN (
+        'master\_asset',      \-- Stage 5 asset image keys
+        'start\_frame',       \-- Stage 10 start frames
+        'end\_frame',         \-- Stage 10 end frames
+        'inpaint'           \-- Continuity fixes
+    )),
+
+    \-- Execution State (refined state machine)
+    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN (
+        'queued',           \-- Waiting to be processed
+        'processing',       \-- Job picked up by executor
+        'generating',       \-- Provider API call in progress
+        'uploading',        \-- Uploading to storage
+        'completed',        \-- Successfully generated
+        'failed'            \-- Generation failed (see failure\_stage)
+    )),
+
+    \-- Failure tracking
+    failure\_stage TEXT CHECK (failure\_stage IN (
+        'generating',       \-- Failed during provider call
+        'uploading',        \-- Failed during storage upload
+        'persisting'        \-- Failed during final DB update
+    )),
+
+    \-- Retry and Attempt Tracking (separated concerns)
+    attempt\_count INTEGER DEFAULT 0,      \-- Total execution attempts
+    retry\_count INTEGER DEFAULT 0,        \-- User-initiated retries
+    max\_retries INTEGER DEFAULT 3,
+    last\_attempt\_at TIMESTAMPTZ,
+
+    \-- Error Details
+    error\_code TEXT, \-- TEMPORARY | PERMANENT | RATE\_LIMIT | AUTH\_ERROR
+    error\_message TEXT,
+
+    \-- Generation Parameters
+    prompt TEXT NOT NULL,
+    visual\_style\_capsule\_id UUID REFERENCES style\_capsules(id),
+    width INTEGER DEFAULT 512,
+    height INTEGER DEFAULT 512,
+
+    \-- Results
+    storage\_path TEXT, \-- Path in Supabase Storage
+    public\_url TEXT,   \-- Public URL of generated image
+
+    \-- Cost Tracking
+    cost\_credits NUMERIC(10,4),
+    estimated\_cost NUMERIC(10,4), \-- Provider estimate vs actual
+
+    \-- Provider Metadata (raw response for debugging)
+    provider\_metadata JSONB,
+
+    \-- Timestamps
+    created\_at TIMESTAMPTZ DEFAULT NOW(),
+    processing\_started\_at TIMESTAMPTZ,
+    generating\_started\_at TIMESTAMPTZ,
+    uploading\_started\_at TIMESTAMPTZ,
+    completed\_at TIMESTAMPTZ,
+    updated\_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx\_image\_jobs\_project ON image\_generation\_jobs(project\_id);
+CREATE INDEX idx\_image\_jobs\_status ON image\_generation\_jobs(status);
+CREATE INDEX idx\_image\_jobs\_branch ON image\_generation\_jobs(branch\_id);
+CREATE INDEX idx\_image\_jobs\_created ON image\_generation\_jobs(created\_at);
+CREATE UNIQUE INDEX idx\_image\_jobs\_idempotency ON image\_generation\_jobs(project\_id, idempotency\_key)
+    WHERE idempotency\_key IS NOT NULL;
+
+\-- RLS Policies
+ALTER TABLE image\_generation\_jobs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own image generation jobs" ON image\_generation\_jobs
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM projects
+            WHERE projects.id = image\_generation\_jobs.project\_id
+            AND projects.user\_id = auth.uid()
+        )
+    );
+
+\-- Documentation comment on asset\_id column
+COMMENT ON COLUMN image\_generation\_jobs.asset\_id IS
+    'Reference to asset, but no FK constraint to allow flexibility with project\_assets and global\_assets tables';
 
 ---
 
