@@ -2,6 +2,10 @@
 
 ## Build, Lint, and Test Commands
 
+### IMPORTANT: Always run commands using the full file location path:
+-For fronted/project root: cd "C:\Users\Daniel Lopez\Desktop\Aiuteur\wizardirector\"
+-For backend: cd "C:\Users\Daniel Lopez\Desktop\Aiuteur\wizardirector\backend"
+
 ### Frontend
 - `npm run dev` - Start Vite dev server (localhost:8080, proxies `/api` to backend:3001)
 - `npm run build` - Production build

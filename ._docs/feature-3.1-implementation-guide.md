@@ -217,19 +217,80 @@ asset-images/
 
 ## Testing
 
-Run tests:
+### Prerequisites
+
+Install test dependencies:
+
+```bash
+cd backend
+npm install --save-dev ts-jest @jest/globals
+```
+
+### Run Tests
 
 ```bash
 cd backend
 npm test
 ```
 
-Test coverage includes:
-- Job creation and immediate return (< 500ms)
-- State transition tracking
-- Idempotency handling
-- Error classification
-- Storage path generation
+### Test Configuration
+
+Tests use a comprehensive Jest setup:
+
+- **ES Module Support**: Configured for TypeScript and ES modules
+- **Environment Loading**: Auto-loads `.env` file for Supabase credentials
+- **Integration Tests**: Creates real Supabase Auth users and database records
+- **Automatic Cleanup**: Removes test data after each test
+
+### Jest Configuration Files
+
+**jest.config.js**:
+```javascript
+export default {
+  preset: 'ts-jest/presets/default-esm',
+  testEnvironment: 'node',
+  extensionsToTreatAsEsm: ['.ts'],
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  transform: {
+    '^.+\\.tsx?$': ['ts-jest', { useESM: true }],
+    '^.+\\.m?js$': ['ts-jest', { useESM: true }],
+  },
+  transformIgnorePatterns: ['node_modules/(?!(uuid))'],
+  // ... additional config
+};
+```
+
+**jest.setup.ts**:
+```typescript
+import { config } from 'dotenv';
+
+config({ path: path.resolve(__dirname, '.env') });
+jest.setTimeout(30000); // 30 seconds for integration tests
+```
+
+### Test Coverage
+
+**30 tests passing** with comprehensive coverage:
+- Job creation and immediate return (< 2 seconds for integration tests)
+- State transition tracking (queued → processing → generating → uploading → completed)
+- Idempotency handling with unique keys
+- Error classification (AUTH_ERROR, TEMPORARY, RATE_LIMIT, etc.)
+- Storage path generation for all job types
+- Multiple job type support (master_asset, start_frame, end_frame, inpaint)
+- Artifact conversion (base64, URL, buffer)
+- Token utility functions
+- Prompt template service integration
+- Cost calculation and tracking
+
+### Integration Test Setup
+
+Tests create real Supabase resources:
+1. **Auth Users**: Created via `supabase.auth.admin.createUser()`
+2. **Projects**: Inserted with correct schema (`title`, `project_type`, etc.)
+3. **Branches**: Created with `is_main` flag
+4. **Image Jobs**: Full end-to-end job lifecycle
+
+**Automatic Cleanup**: All test data removed after each test run.
 
 ## Migration to Async Execution
 

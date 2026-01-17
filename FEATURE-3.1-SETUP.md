@@ -32,7 +32,7 @@ SESSION_SECRET=your_session_secret
 
 ### 3. Database Setup
 
-Run the migration to create the `image_generation_jobs` table:
+Run the migration to create the `image_generation_jobs` & `shots` table:
 
 ```bash
 cd backend
