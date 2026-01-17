@@ -10,6 +10,7 @@ import { Auth } from "@/pages/Auth";
 import { Dashboard } from "@/pages/Dashboard";
 import { ProjectView } from "@/pages/ProjectView";
 import StyleCapsuleLibrary from "@/pages/StyleCapsuleLibrary";
+import AssetLibrary from "@/pages/AssetLibrary";
 import { MainLayout } from "@/components/layout/MainLayout";
 import NotFound from "./pages/NotFound";
 
@@ -85,6 +86,16 @@ const App = () => (
               <ProtectedRoute>
                 <MainLayout>
                   <StyleCapsuleLibrary />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assets"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <AssetLibrary />
                 </MainLayout>
               </ProtectedRoute>
             }

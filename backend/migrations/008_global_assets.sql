@@ -183,3 +183,4 @@ COMMENT ON COLUMN project_assets.global_asset_id IS 'If cloned from library, ref
 COMMENT ON COLUMN project_assets.source_version IS 'Version of global asset when cloned, for detecting available updates';
 COMMENT ON COLUMN project_assets.locked IS 'Stage 5 gatekeeper - must be true before advancing to Stage 6';
 
+
