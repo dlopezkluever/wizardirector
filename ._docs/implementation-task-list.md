@@ -117,7 +117,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 \---
 
-\#\# **IN PROGRESS** Phase 2: Style Capsule System **IN PROGRESS**
+\#\# **DONE** Phase 2: Style Capsule System **DONE**
 
 \*\*Goal\*\*: Add creative control through style customization. Users can upload reference materials to guide tone, pacing, and aesthetic.
 
@@ -166,7 +166,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 \---
 
-\#\# Phase 3: Asset Management & Stage 5
+\#\# **IN PROGRESS** Phase 3: Asset Management & Stage 5 **IN PROGRESS**
 
 \*\*Goal\*\*: Enable visual asset definition and management. Users can define characters, props, and locations with generated image references.
 

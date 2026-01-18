@@ -101,7 +101,7 @@ This guide identifies the vital context files from your codebase and documentati
 - Navigation structure for asset library
 
 **Needs Implementation:**
-- Nano Banana API client and real image generation
+- Gemini Image (Nano Banana) API client and real image generation
 - Global asset library UI and backend CRUD
 - LLM-based asset extraction from Stage 4 scripts
 - Project asset inheritance and promotion logic
