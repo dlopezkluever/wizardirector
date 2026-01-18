@@ -1245,19 +1245,19 @@ All endpoints use existing auth middleware pattern.
 
 ## Implementation Priority Order
 
-### Phase 1 (Critical - Week 1)
+### Phase 1 (Critical)
 1. Visual Style Lock enforcement (UI + backend validation)
 2. Two-pass LLM extraction service
 3. Basic asset display and image generation
 4. Aspect ratio logic
 
-### Phase 2 (High Priority - Week 2)
+### Phase 2 (High Priority)
 5. Asset review operations (merge/remove/add)
 6. Promotion to Global Library
 7. Gatekeeper logic
 8. Auto-save on description edits
 
-### Phase 3 (Polish - Week 3)
+### Phase 3 (Polish)
 9. Conflict detection UI
 10. Batch operations
 11. Cost awareness displays
