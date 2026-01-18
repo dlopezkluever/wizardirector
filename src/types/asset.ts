@@ -29,6 +29,13 @@ export interface ProjectAsset {
   image_key_url?: string;
   visual_style_capsule_id?: string;
   locked: boolean;
+  metadata?: {
+    confidence_score?: number;
+    is_priority?: boolean;
+    has_conflicts?: boolean;
+    conflict_details?: string;
+    source_mentions?: string[];
+  };
   created_at: string;
   updated_at: string;
 }
