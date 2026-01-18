@@ -27,9 +27,9 @@ This guide identifies the vital context files from your codebase and documentati
 - **`backend/src/routes/projects.ts`** - Existing routes where global asset CRUD endpoints should be added
 
 ### Documentation Files
+- **`._docs/project-overview.md`** - My projects PRD; Explains global-to-local inheritance patterns for assets
 - **`._docs/database-schema-state-transition-matrix.md`** - Complete `global_assets` table schema with all fields, constraints, and relationships
 - **`._docs/architecture-and-rules.md`** - Defines global asset management patterns, RLS policies, and database relationships
-- **`._docs/project-overview.md`** - Explains global-to-local inheritance patterns for assets
 - **`._docs/implementation-task-list.md`** - Feature 3.2 checklist and detailed requirements
 
 ## Feature 3.3: Stage 5 - Asset Extraction & Definition

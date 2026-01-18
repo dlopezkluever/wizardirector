@@ -3,6 +3,7 @@ import { GlobalSidebar } from '@/components/layout/GlobalSidebar';
 import { Dashboard } from '@/pages/Dashboard';
 import { ProjectView } from '@/pages/ProjectView';
 import StyleCapsuleLibrary from '@/pages/StyleCapsuleLibrary';
+import AssetLibrary from '@/pages/AssetLibrary';
 
 const Index = () => {
   const [currentPath, setCurrentPath] = useState('/');
@@ -44,15 +45,13 @@ const Index = () => {
         />
       ) : currentPath === '/style-capsules' ? (
         <StyleCapsuleLibrary />
+      ) : currentPath === '/assets' ? (
+        <AssetLibrary />
       ) : (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-muted-foreground">
-            <p className="text-xl font-display">
-              {currentPath === '/assets' && 'Asset Library'}
-            </p>
-            <p className="mt-2">
-              {currentPath === '/assets' ? 'This section is under development' : 'Page not found'}
-            </p>
+            <p className="text-xl font-display">Page not found</p>
+            <p className="mt-2">The page you're looking for doesn't exist.</p>
           </div>
         </div>
       )}
