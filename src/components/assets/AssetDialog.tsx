@@ -87,12 +87,14 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved }: AssetDialogP
 
       if (asset) {
         // Update existing asset
-        await assetService.updateAsset(asset.id, {
+        console.log('[AssetDialog] Updating asset:', asset.id);
+        const updated = await assetService.updateAsset(asset.id, {
           name: name.trim(),
           assetType,
           description: description.trim(),
           imagePrompt: imagePrompt.trim() || undefined,
         });
+        console.log('[AssetDialog] Asset updated:', updated);
       } else {
         // Create new asset
         const request: CreateAssetRequest = {
@@ -101,7 +103,9 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved }: AssetDialogP
           description: description.trim(),
           imagePrompt: imagePrompt.trim() || undefined,
         };
-        await assetService.createAsset(request);
+        console.log('[AssetDialog] Creating asset:', request);
+        const created = await assetService.createAsset(request);
+        console.log('[AssetDialog] Asset created:', created);
       }
 
       onSaved();

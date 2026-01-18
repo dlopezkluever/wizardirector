@@ -36,7 +36,9 @@ const AssetLibrary = () => {
   const loadAssets = async () => {
     try {
       setLoading(true);
+      console.log('[AssetLibrary] Loading assets...');
       const data = await assetService.listAssets();
+      console.log('[AssetLibrary] Loaded assets:', data);
       setAssets(data);
     } catch (error) {
       console.error('Failed to load assets:', error);
@@ -91,6 +93,7 @@ const AssetLibrary = () => {
   };
 
   const handleAssetSaved = () => {
+    console.log('[AssetLibrary] Asset saved, reloading...');
     setShowCreateDialog(false);
     setEditingAsset(null);
     loadAssets();
