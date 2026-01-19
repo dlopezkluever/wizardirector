@@ -82,8 +82,9 @@ CRITICAL RULES:
 3. EXCLUDE ABSTRACTS: No "atmosphere", "tension", "mood" - only tangible assets
 4. KEY ASSETS ONLY: Main characters, important props, primary locations
 5. SCENE REFERENCES: Include which scenes each asset appears in
+6. ESCAPE QUOTES: Use \\" for quotes inside text fields to ensure valid JSON
 
-OUTPUT FORMAT: Return ONLY valid JSON array, no markdown formatting, no text outside the JSON.`;
+OUTPUT FORMAT: Return ONLY valid JSON array, no markdown formatting, no text outside the JSON. Ensure all strings are properly escaped.`;
 
     const userPrompt = `Analyze this screenplay and extract all key visual assets:
 
@@ -102,19 +103,116 @@ Return a JSON array with this structure:
         systemPrompt,
         userPrompt,
         temperature: 0.3, // Low temperature for consistency
-        maxTokens: 8192,
+        maxTokens: 16384, // Increased to handle longer scripts
         metadata: { stage: 5, pass: 1, action: 'extract_entities' }
       });
 
       // Parse JSON response (strip markdown code blocks if present)
       let jsonContent = response.content.trim();
-      if (jsonContent.startsWith('```json')) {
-        jsonContent = jsonContent.replace(/```json\n?/g, '').replace(/```\n?$/g, '');
-      } else if (jsonContent.startsWith('```')) {
-        jsonContent = jsonContent.replace(/```\n?/g, '').replace(/```\n?$/g, '');
+      
+      // Remove markdown code blocks
+      if (jsonContent.includes('```json')) {
+        const jsonMatch = jsonContent.match(/```json\s*([\s\S]*?)\s*```/);
+        if (jsonMatch) {
+          jsonContent = jsonMatch[1].trim();
+        } else {
+          jsonContent = jsonContent.replace(/```json\n?/g, '').replace(/```\n?$/g, '');
+        }
+      } else if (jsonContent.includes('```')) {
+        const codeMatch = jsonContent.match(/```\s*([\s\S]*?)\s*```/);
+        if (codeMatch) {
+          jsonContent = codeMatch[1].trim();
+        } else {
+          jsonContent = jsonContent.replace(/```\n?/g, '').replace(/```\n?$/g, '');
+        }
       }
 
-      const entities = JSON.parse(jsonContent);
+      // Try to extract JSON array if response contains other text
+      const arrayMatch = jsonContent.match(/\[[\s\S]*\]/);
+      if (arrayMatch) {
+        jsonContent = arrayMatch[0];
+      }
+
+      // Attempt to parse JSON with better error handling
+      let entities;
+      try {
+        entities = JSON.parse(jsonContent);
+      } catch (parseError) {
+        console.error('[AssetExtraction] JSON parse error:', parseError);
+        console.error('[AssetExtraction] Problematic JSON length:', jsonContent.length);
+        console.error('[AssetExtraction] Problematic JSON (first 500 chars):', jsonContent.substring(0, 500));
+        console.error('[AssetExtraction] Problematic JSON (last 500 chars):', jsonContent.substring(Math.max(0, jsonContent.length - 500)));
+        
+        // Try to extract and repair the JSON array
+        const firstBracket = jsonContent.indexOf('[');
+        const lastBracket = jsonContent.lastIndexOf(']');
+        
+        if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+          let arrayOnly = jsonContent.substring(firstBracket, lastBracket + 1);
+          console.log('[AssetExtraction] Attempting to parse extracted array (length:', arrayOnly.length, ')');
+          
+          // Try repair strategies in order
+          try {
+            // Strategy 1: Remove trailing commas
+            const cleaned = arrayOnly.replace(/,(\s*[}\]])/g, '$1');
+            entities = JSON.parse(cleaned);
+            console.log('[AssetExtraction] Successfully parsed after removing trailing commas');
+          } catch (retryError1) {
+            try {
+              // Strategy 2: Find last complete object and truncate there
+              let braceCount = 0;
+              let lastCompleteIndex = -1;
+              for (let i = arrayOnly.length - 2; i >= 0; i--) { // -2 to skip the final ']'
+                if (arrayOnly[i] === '}') braceCount++;
+                if (arrayOnly[i] === '{') {
+                  braceCount--;
+                  if (braceCount === 0) {
+                    lastCompleteIndex = i;
+                    break;
+                  }
+                }
+              }
+              
+              if (lastCompleteIndex > 0) {
+                // Find the end of this complete object
+                let objectEnd = lastCompleteIndex;
+                braceCount = 1;
+                for (let i = lastCompleteIndex + 1; i < arrayOnly.length; i++) {
+                  if (arrayOnly[i] === '{') braceCount++;
+                  if (arrayOnly[i] === '}') {
+                    braceCount--;
+                    if (braceCount === 0) {
+                      objectEnd = i;
+                      break;
+                    }
+                  }
+                }
+                const truncated = arrayOnly.substring(0, objectEnd + 1) + ']';
+                entities = JSON.parse(truncated);
+                console.log('[AssetExtraction] Successfully parsed by truncating at last complete object');
+              } else {
+                throw retryError1;
+              }
+            } catch (retryError2) {
+              // Last resort: Extract all complete JSON objects using regex
+              const objectPattern = /\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g;
+              const matches = arrayOnly.match(objectPattern);
+              if (matches && matches.length > 0) {
+                try {
+                  entities = JSON.parse('[' + matches.join(',') + ']');
+                  console.log('[AssetExtraction] Successfully parsed by extracting', matches.length, 'complete objects');
+                } catch (finalError) {
+                  throw new Error(`Failed to parse JSON response after all repair attempts: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+                }
+              } else {
+                throw new Error(`Failed to parse JSON response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}. The LLM response may be truncated or contain invalid JSON.`);
+              }
+            }
+          }
+        } else {
+          throw new Error(`Failed to parse JSON response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}. No valid JSON array found in response.`);
+        }
+      }
       
       if (!Array.isArray(entities)) {
         throw new Error('LLM did not return an array');
@@ -146,7 +244,7 @@ CRITICAL RULES:
 4. STYLE-ALIGNED: Consider the ${styleContext.name} visual style
 5. PRIORITY: Assess if this is a main character/key prop vs background element
 
-OUTPUT FORMAT: Return ONLY valid JSON, no markdown formatting, no text outside the JSON.`;
+OUTPUT FORMAT: Return ONLY valid JSON, no markdown formatting, no text outside the JSON. Ensure all strings are properly escaped with \\" for quotes.`;
 
     const mentionsText = entity.mentions
       .map(m => `Scene ${m.sceneNumber}: ${m.text}`)
@@ -184,13 +282,54 @@ Return JSON:
 
       // Parse JSON response (strip markdown code blocks if present)
       let jsonContent = response.content.trim();
-      if (jsonContent.startsWith('```json')) {
-        jsonContent = jsonContent.replace(/```json\n?/g, '').replace(/```\n?$/g, '');
-      } else if (jsonContent.startsWith('```')) {
-        jsonContent = jsonContent.replace(/```\n?/g, '').replace(/```\n?$/g, '');
+      
+      // Remove markdown code blocks
+      if (jsonContent.includes('```json')) {
+        const jsonMatch = jsonContent.match(/```json\s*([\s\S]*?)\s*```/);
+        if (jsonMatch) {
+          jsonContent = jsonMatch[1].trim();
+        } else {
+          jsonContent = jsonContent.replace(/```json\n?/g, '').replace(/```\n?$/g, '');
+        }
+      } else if (jsonContent.includes('```')) {
+        const codeMatch = jsonContent.match(/```\s*([\s\S]*?)\s*```/);
+        if (codeMatch) {
+          jsonContent = codeMatch[1].trim();
+        } else {
+          jsonContent = jsonContent.replace(/```\n?/g, '').replace(/```\n?$/g, '');
+        }
       }
 
-      const distilled = JSON.parse(jsonContent);
+      // Try to extract JSON object if response contains other text
+      const objectMatch = jsonContent.match(/\{[\s\S]*\}/);
+      if (objectMatch) {
+        jsonContent = objectMatch[0];
+      }
+
+      // Attempt to parse JSON with better error handling
+      let distilled;
+      try {
+        distilled = JSON.parse(jsonContent);
+      } catch (parseError) {
+        console.error(`[AssetExtraction] Pass 2 JSON parse error for ${entity.name}:`, parseError);
+        
+        // Try to extract just the object portion
+        const firstBrace = jsonContent.indexOf('{');
+        const lastBrace = jsonContent.lastIndexOf('}');
+        
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          const objectOnly = jsonContent.substring(firstBrace, lastBrace + 1);
+          try {
+            const cleaned = objectOnly.replace(/,(\s*[}\]])/g, '$1');
+            distilled = JSON.parse(cleaned);
+          } catch (retryError) {
+            console.error(`[AssetExtraction] Failed to parse extracted object for ${entity.name}:`, retryError);
+            throw new Error(`Failed to parse JSON response for ${entity.name}: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+          }
+        } else {
+          throw new Error(`Failed to parse JSON response for ${entity.name}: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+        }
+      }
 
       return {
         name: entity.name,
