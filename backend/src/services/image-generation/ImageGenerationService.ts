@@ -181,7 +181,23 @@ export class ImageGenerationService {
                 .from('asset-images')
                 .getPublicUrl(storagePath);
 
-            // Update job with success
+            // If this is a master_asset job, update the project_assets table FIRST
+            // This ensures the asset is updated before the job is marked as completed
+            if (request.jobType === 'master_asset' && request.assetId) {
+                const { error: updateError } = await supabase
+                    .from('project_assets')
+                    .update({ image_key_url: urlData.publicUrl })
+                    .eq('id', request.assetId);
+
+                if (updateError) {
+                    console.error(`[ImageService] Failed to update project_assets.image_key_url for asset ${request.assetId}:`, updateError);
+                    // Don't throw - job completed successfully, just log the error
+                } else {
+                    console.log(`[ImageService] Updated project_assets.image_key_url for asset ${request.assetId}`);
+                }
+            }
+
+            // Update job with success (after asset update to avoid race conditions)
             await this.updateJobState(jobId, 'completed', {
                 storage_path: storagePath,
                 public_url: urlData.publicUrl,
