@@ -6,6 +6,8 @@
 -For fronted/project root: cd "C:\Users\Daniel Lopez\Desktop\Aiuteur\wizardirector\"
 -For backend: cd "C:\Users\Daniel Lopez\Desktop\Aiuteur\wizardirector\backend"
 
+### Additionally: Never use the token '&&' in commands when attempting to do multi-step commands, as The token '&&' is not a valid statement separator in these versions of powershell & bash.
+
 ### Frontend
 - `npm run dev` - Start Vite dev server (localhost:8080, proxies `/api` to backend:3001)
 - `npm run build` - Production build

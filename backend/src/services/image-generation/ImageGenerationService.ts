@@ -31,6 +31,13 @@ export interface ImageJobResult {
 
 export class ImageGenerationService {
     private provider: ImageProvider;
+    
+    // Type-specific aspect ratios for master assets
+    private readonly ASPECT_RATIOS = {
+        character: { width: 512, height: 768 },   // 2:3 portrait for full-body
+        prop: { width: 512, height: 512 },        // 1:1 square for product-style
+        location: { width: 1024, height: 576 }    // 16:9 cinematic landscape
+    };
 
     constructor() {
         this.provider = new NanoBananaClient();
@@ -52,6 +59,23 @@ export class ImageGenerationService {
                 console.log(`[ImageService] Returning existing job ${existingJob.id} for idempotency key`);
                 return this.formatJobResult(existingJob);
             }
+        }
+
+        // Auto-determine aspect ratio for master_asset job type
+        if (request.jobType === 'master_asset' && request.assetId) {
+            const asset = await this.getAssetDetails(request.assetId);
+            if (asset) {
+                const dimensions = this.ASPECT_RATIOS[asset.asset_type];
+                request.width = dimensions.width;
+                request.height = dimensions.height;
+                
+                console.log(`[ImageService] Auto-sizing ${asset.asset_type}: ${dimensions.width}x${dimensions.height}`);
+            }
+        }
+
+        // Enforce visual style for Stage 5 master assets
+        if (request.jobType === 'master_asset' && !request.visualStyleCapsuleId) {
+            throw new Error('Visual Style Capsule is required for master asset generation');
         }
 
         const jobId = uuidv4();
@@ -157,7 +181,23 @@ export class ImageGenerationService {
                 .from('asset-images')
                 .getPublicUrl(storagePath);
 
-            // Update job with success
+            // If this is a master_asset job, update the project_assets table FIRST
+            // This ensures the asset is updated before the job is marked as completed
+            if (request.jobType === 'master_asset' && request.assetId) {
+                const { error: updateError } = await supabase
+                    .from('project_assets')
+                    .update({ image_key_url: urlData.publicUrl })
+                    .eq('id', request.assetId);
+
+                if (updateError) {
+                    console.error(`[ImageService] Failed to update project_assets.image_key_url for asset ${request.assetId}:`, updateError);
+                    // Don't throw - job completed successfully, just log the error
+                } else {
+                    console.log(`[ImageService] Updated project_assets.image_key_url for asset ${request.assetId}`);
+                }
+            }
+
+            // Update job with success (after asset update to avoid race conditions)
             await this.updateJobState(jobId, 'completed', {
                 storage_path: storagePath,
                 public_url: urlData.publicUrl,
@@ -297,6 +337,35 @@ export class ImageGenerationService {
         }
 
         return this.formatJobResult(job);
+    }
+
+    /**
+     * Get asset details from project_assets or global_assets
+     */
+    private async getAssetDetails(assetId: string): Promise<{ asset_type: 'character' | 'prop' | 'location'; name: string; description: string } | null> {
+        // Try project_assets first
+        const { data: projectAsset } = await supabase
+            .from('project_assets')
+            .select('asset_type, name, description')
+            .eq('id', assetId)
+            .single();
+
+        if (projectAsset) {
+            return projectAsset as { asset_type: 'character' | 'prop' | 'location'; name: string; description: string };
+        }
+
+        // Fallback to global_assets
+        const { data: globalAsset } = await supabase
+            .from('global_assets')
+            .select('asset_type, name, description')
+            .eq('id', assetId)
+            .single();
+
+        if (globalAsset) {
+            return globalAsset as { asset_type: 'character' | 'prop' | 'location'; name: string; description: string };
+        }
+
+        return null;
     }
 }
 
