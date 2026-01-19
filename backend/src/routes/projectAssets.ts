@@ -90,7 +90,7 @@ router.post('/:projectId/assets/extract', async (req, res) => {
             visualStyleId
         );
 
-        // Save to database with metadata
+        // Save to database (metadata column not in schema yet, will be added in future migration)
         const assetsToInsert = extractedAssets.map(asset => ({
             project_id: projectId,
             branch_id: project.active_branch_id,
@@ -98,14 +98,15 @@ router.post('/:projectId/assets/extract', async (req, res) => {
             asset_type: asset.type,
             description: asset.description,
             visual_style_capsule_id: visualStyleId,
-            locked: false,
-            metadata: {
-                confidence_score: asset.confidenceScore,
-                is_priority: asset.isPriority,
-                has_conflicts: asset.hasVisualConflicts,
-                conflict_details: asset.conflictDetails,
-                source_mentions: asset.mentions
-            }
+            locked: false
+            // TODO: Add metadata column to project_assets table in future migration
+            // metadata: {
+            //     confidence_score: asset.confidenceScore,
+            //     is_priority: asset.isPriority,
+            //     has_conflicts: asset.hasVisualConflicts,
+            //     conflict_details: asset.conflictDetails,
+            //     source_mentions: asset.mentions
+            // }
         }));
 
         const { data: savedAssets, error: insertError } = await supabase
