@@ -155,11 +155,12 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
 
       const result = await projectAssetService.generateImage(projectId, assetId);
 
-      // Update asset with generated image
+      // Refresh asset from database to ensure image_key_url is saved
+      const refreshedAsset = await projectAssetService.getAsset(projectId, assetId);
+
+      // Update asset with refreshed data
       setAssets(prev => prev.map(a =>
-        a.id === assetId
-          ? { ...a, image_key_url: result.publicUrl }
-          : a
+        a.id === assetId ? refreshedAsset : a
       ));
 
       toast.success(`Image generated for ${asset.name}!`);
