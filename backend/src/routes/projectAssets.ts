@@ -17,6 +17,10 @@ const imageService = new ImageGenerationService();
  * Two-pass LLM extraction from Stage 4 script
  */
 router.post('/:projectId/assets/extract', async (req, res) => {
+    console.log('[ProjectAssets] ========== EXTRACT ENDPOINT HIT ==========');
+    console.log('[ProjectAssets] Project ID:', req.params.projectId);
+    console.log('[ProjectAssets] User ID:', req.user?.id);
+    
     try {
         const userId = req.user!.id;
         const { projectId } = req.params;
@@ -33,15 +37,21 @@ router.post('/:projectId/assets/extract', async (req, res) => {
             return res.status(404).json({ error: 'Project not found' });
         }
 
-        // Get Stage 5 state to retrieve locked visual style
-        const { data: stage5State, error: stage5Error } = await supabase
+        // Get the latest Stage 5 state to retrieve locked visual style
+        console.log('[ProjectAssets] Looking for latest Stage 5 state for branch:', project.active_branch_id);
+        const { data: stage5States, error: stage5Error } = await supabase
             .from('stage_states')
             .select('content')
             .eq('branch_id', project.active_branch_id)
             .eq('stage_number', 5)
-            .single();
+            .order('version', { ascending: false })
+            .limit(1);
 
+        console.log('[ProjectAssets] Stage 5 states query result:', { stage5States, stage5Error });
+
+        const stage5State = stage5States?.[0];
         const visualStyleId = stage5State?.content?.locked_visual_style_capsule_id;
+        console.log('[ProjectAssets] Visual style ID found:', visualStyleId);
 
         if (!visualStyleId) {
             return res.status(400).json({
@@ -49,15 +59,21 @@ router.post('/:projectId/assets/extract', async (req, res) => {
             });
         }
 
-        // Get Stage 4 script
-        const { data: stage4State, error: stage4Error } = await supabase
+        // Get the latest Stage 4 script
+        console.log('[ProjectAssets] Looking for latest Stage 4 state for branch:', project.active_branch_id);
+        const { data: stage4States, error: stage4Error } = await supabase
             .from('stage_states')
             .select('content')
             .eq('branch_id', project.active_branch_id)
             .eq('stage_number', 4)
-            .single();
+            .order('version', { ascending: false })
+            .limit(1);
 
-        const masterScript = stage4State?.content?.formatted_script;
+        console.log('[ProjectAssets] Stage 4 states query result:', { stage4States, stage4Error });
+
+        const stage4State = stage4States?.[0];
+        const masterScript = stage4State?.content?.formattedScript;
+        console.log('[ProjectAssets] Master script found:', !!masterScript, masterScript?.substring(0, 100) + '...');
 
         if (!masterScript) {
             return res.status(400).json({
@@ -444,13 +460,15 @@ router.post('/:projectId/assets', async (req, res) => {
         // Get locked visual style from Stage 5 if not provided
         let styleId = visual_style_capsule_id;
         if (!styleId) {
-            const { data: stage5State } = await supabase
+            const { data: stage5States } = await supabase
                 .from('stage_states')
                 .select('content')
                 .eq('branch_id', project.active_branch_id)
                 .eq('stage_number', 5)
-                .single();
+                .order('version', { ascending: false })
+                .limit(1);
 
+            const stage5State = stage5States?.[0];
             styleId = stage5State?.content?.locked_visual_style_capsule_id;
         }
 

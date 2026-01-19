@@ -149,10 +149,20 @@ export class LLMClient {
 
     try {
       // Get LangSmith callbacks (configured via environment variables)
-      const callbacks = await getLangchainCallbacks();
+      // const callbacks = await getLangchainCallbacks(); // simple implementation, makes tracing mandatory
+      // Make tracing optional - only use if LANGSMITH_API_KEY is configured
+      let callbacks;
+      try {
+        if (process.env.LANGSMITH_API_KEY && process.env.LANGSMITH_TRACING === 'true') {
+          callbacks = await getLangchainCallbacks();
+        }
+      } catch (tracingError) {
+        console.warn('[LLM] LangSmith tracing not available, continuing without tracing:', tracingError);
+      }
 
       const response = await client.invoke(messages, {
-        callbacks,
+        // callbacks, // simple implementation, makes tracing mandatory
+        ...(callbacks && { callbacks }),
         metadata: {
           requestId,
           model,
