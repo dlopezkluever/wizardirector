@@ -20,12 +20,24 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { useStageState } from '@/lib/hooks/useStageState';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { stageStateService } from '@/lib/services/stageStateService';
 import { projectAssetService } from '@/lib/services/projectAssetService';
 import { StyleCapsuleSelector } from '@/components/styleCapsules/StyleCapsuleSelector';
+import { AssetDrawer } from './AssetDrawer';
+import { AssetVersionSync } from './AssetVersionSync';
 import type { ProjectAsset } from '@/types/asset';
 
 interface Stage5AssetsProps {
@@ -62,6 +74,9 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
   const [editingDescriptions, setEditingDescriptions] = useState<Record<string, string>>({});
   const [savingAssets, setSavingAssets] = useState<Set<string>>(new Set());
   const [saveTimeouts, setSaveTimeouts] = useState<Record<string, NodeJS.Timeout>>({});
+  const [promotingAssetId, setPromotingAssetId] = useState<string | null>(null);
+  const [promotionConfirmOpen, setPromotionConfirmOpen] = useState(false);
+  const [assetDrawerOpen, setAssetDrawerOpen] = useState(false);
 
   // Initialize from saved state
   useEffect(() => {
@@ -261,13 +276,40 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
   };
 
   const handlePromoteToGlobal = async (assetId: string) => {
+    setPromotingAssetId(assetId);
+    setPromotionConfirmOpen(true);
+  };
+
+  const confirmPromotion = async () => {
+    if (!promotingAssetId) return;
+
     try {
-      await projectAssetService.promoteToGlobal(projectId, assetId);
-      toast.success('Asset promoted to Global Library!');
+      const globalAsset = await projectAssetService.promoteToGlobal(projectId, promotingAssetId);
+      toast.success(`"${assets.find(a => a.id === promotingAssetId)?.name}" promoted to Global Library!`, {
+        description: 'You can now use this asset in other projects.',
+      });
+      
+      // Refresh assets to show updated state if needed
+      await loadAssets();
     } catch (error) {
       console.error('Failed to promote asset:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to promote asset');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to promote asset';
+      
+      if (errorMessage.includes('must have a generated image')) {
+        toast.error('Asset must have a generated image before promotion');
+      } else {
+        toast.error(errorMessage);
+      }
+    } finally {
+      setPromotingAssetId(null);
+      setPromotionConfirmOpen(false);
     }
+  };
+
+  const handleAssetCloned = async (clonedAsset: ProjectAsset) => {
+    // Refresh assets list to include the newly cloned asset
+    await loadAssets();
+    toast.success(`"${clonedAsset.name}" cloned to project`);
   };
 
   const handleLockAllAssets = async () => {
@@ -442,7 +484,19 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
               </div>
 
               {/* Batch Actions */}
-              <div className="flex gap-2 justify-end">
+              <div className="flex gap-2 justify-end items-center">
+                <AssetVersionSync 
+                  projectId={projectId} 
+                  onSyncComplete={loadAssets}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAssetDrawerOpen(true)}
+                >
+                  <Package className="w-4 h-4 mr-2" />
+                  Browse Global Library
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -675,6 +729,36 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
 
         </div>
       </div>
+
+      {/* Asset Drawer */}
+      <AssetDrawer
+        projectId={projectId}
+        isOpen={assetDrawerOpen}
+        onClose={() => setAssetDrawerOpen(false)}
+        onAssetCloned={handleAssetCloned}
+      />
+
+      {/* Promotion Confirmation Dialog */}
+      <AlertDialog open={promotionConfirmOpen} onOpenChange={setPromotionConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Promote Asset to Global Library?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {promotingAssetId && (
+                <>
+                  This will add <strong>{assets.find(a => a.id === promotingAssetId)?.name}</strong> to your Global Library,
+                  making it available for use in all your projects. The asset will be copied to the library
+                  and can be cloned into other projects.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPromotingAssetId(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmPromotion}>Promote</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Floating Gatekeeper Bar */}
       {hasExtracted && (

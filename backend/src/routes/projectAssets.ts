@@ -7,6 +7,7 @@ import { Router } from 'express';
 import { supabase } from '../config/supabase.js';
 import { AssetExtractionService } from '../services/assetExtractionService.js';
 import { ImageGenerationService } from '../services/image-generation/ImageGenerationService.js';
+import { localizeAssetImage } from '../services/assetImageLocalizer.js';
 
 const router = Router();
 const extractionService = new AssetExtractionService();
@@ -683,6 +684,356 @@ router.post('/:projectId/assets/lock-all', async (req, res) => {
     } catch (error) {
         console.error('[ProjectAssets] Lock all error:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/assets/clone-from-global
+ * Clone/inherit a global asset into the project
+ */
+router.post('/:projectId/assets/clone-from-global', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId } = req.params;
+        const { globalAssetId, overrideDescription, target_branch_id } = req.body;
+
+        if (!globalAssetId) {
+            return res.status(400).json({
+                error: 'Missing required field: globalAssetId'
+            });
+        }
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Determine target branch (use provided or project's active branch)
+        const branchId = target_branch_id || project.active_branch_id;
+
+        // Branch Validation: Verify branch belongs to project and user has write access
+        const { data: branch, error: branchError } = await supabase
+            .from('branches')
+            .select('id, project_id')
+            .eq('id', branchId)
+            .eq('project_id', projectId)
+            .single();
+
+        if (branchError || !branch) {
+            return res.status(404).json({ 
+                error: 'Branch not found or does not belong to this project' 
+            });
+        }
+
+        // Fetch global asset and verify ownership
+        const { data: globalAsset, error: globalAssetError } = await supabase
+            .from('global_assets')
+            .select('*')
+            .eq('id', globalAssetId)
+            .eq('user_id', userId)
+            .single();
+
+        if (globalAssetError || !globalAsset) {
+            return res.status(404).json({ 
+                error: 'Global asset not found or access denied' 
+            });
+        }
+
+        // Get the latest Stage 5 state for visual style inheritance
+        const { data: stage5States, error: stage5Error } = await supabase
+            .from('stage_states')
+            .select('content')
+            .eq('branch_id', branchId)
+            .eq('stage_number', 5)
+            .order('version', { ascending: false })
+            .limit(1);
+
+        if (stage5Error) {
+            console.error('[ProjectAssets] Error fetching Stage 5 state:', stage5Error);
+            // Continue without visual style if Stage 5 not completed yet
+        }
+
+        const stage5State = stage5States?.[0];
+        const visualStyleCapsuleId = stage5State?.content?.locked_visual_style_capsule_id || globalAsset.visual_style_capsule_id;
+
+        // Check for duplicate asset names (warn but allow)
+        const { data: existingAssets } = await supabase
+            .from('project_assets')
+            .select('id, name')
+            .eq('branch_id', branchId)
+            .eq('name', globalAsset.name)
+            .limit(1);
+
+        if (existingAssets && existingAssets.length > 0) {
+            console.warn(`[ProjectAssets] Warning: Asset with name "${globalAsset.name}" already exists in branch`);
+        }
+
+        // Create new project asset first (without image, we'll update it after localization)
+        const { data: projectAsset, error: insertError } = await supabase
+            .from('project_assets')
+            .insert({
+                project_id: projectId,
+                branch_id: branchId, // CRITICAL: ensures branch isolation
+                global_asset_id: globalAssetId,
+                source_version: globalAsset.version,
+                name: globalAsset.name,
+                asset_type: globalAsset.asset_type,
+                description: overrideDescription || globalAsset.description,
+                image_prompt: globalAsset.image_prompt,
+                image_key_url: null, // Will be updated after localization
+                visual_style_capsule_id: visualStyleCapsuleId, // From branch's Stage 5 state
+                locked: false
+            })
+            .select()
+            .single();
+
+        if (insertError) {
+            console.error('[ProjectAssets] Clone insert error:', insertError);
+            return res.status(500).json({ error: 'Failed to clone asset into project' });
+        }
+
+        // Localize image if it exists (copy from global to project storage)
+        if (globalAsset.image_key_url) {
+            try {
+                const localizationResult = await localizeAssetImage({
+                    sourceUrl: globalAsset.image_key_url,
+                    targetProjectId: projectId,
+                    targetBranchId: branchId,
+                    assetId: projectAsset.id
+                });
+
+                // Update the asset with the localized image URL
+                const { error: updateError } = await supabase
+                    .from('project_assets')
+                    .update({ image_key_url: localizationResult.newImageUrl })
+                    .eq('id', projectAsset.id);
+
+                if (updateError) {
+                    console.error('[ProjectAssets] Failed to update localized image URL:', updateError);
+                    // Continue without image update - asset is created but image URL not updated
+                } else {
+                    projectAsset.image_key_url = localizationResult.newImageUrl;
+                    console.log(`[ProjectAssets] Localized image from global asset: ${localizationResult.newImageUrl}`);
+                }
+            } catch (localizeError) {
+                console.error('[ProjectAssets] Failed to localize image:', localizeError);
+                // Continue without image if localization fails (allow cloning without image)
+            }
+        }
+
+        console.log(`[ProjectAssets] Successfully cloned global asset ${globalAssetId} to project ${projectId} as ${projectAsset.id}`);
+
+        res.status(201).json(projectAsset);
+    } catch (error) {
+        console.error('[ProjectAssets] Clone from global error:', error);
+        res.status(500).json({
+            error: 'Failed to clone asset from global library',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+
+/**
+ * GET /api/projects/:projectId/assets/version-sync-status
+ * Check version sync status for all project assets that have global_asset_id
+ */
+router.get('/:projectId/assets/version-sync-status', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId } = req.params;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Get all project assets with global_asset_id set
+        const { data: projectAssets, error: assetsError } = await supabase
+            .from('project_assets')
+            .select('id, global_asset_id, source_version, name')
+            .eq('branch_id', project.active_branch_id)
+            .not('global_asset_id', 'is', null);
+
+        if (assetsError) {
+            console.error('[ProjectAssets] Version sync fetch error:', assetsError);
+            return res.status(500).json({ error: 'Failed to fetch project assets' });
+        }
+
+        if (!projectAssets || projectAssets.length === 0) {
+            return res.json({ outdated: [] });
+        }
+
+        // Fetch corresponding global assets and compare versions
+        const globalAssetIds = projectAssets
+            .map(pa => pa.global_asset_id)
+            .filter((id): id is string => id !== null);
+
+        const { data: globalAssets, error: globalError } = await supabase
+            .from('global_assets')
+            .select('id, version, name')
+            .in('id', globalAssetIds)
+            .eq('user_id', userId);
+
+        if (globalError) {
+            console.error('[ProjectAssets] Version sync global fetch error:', globalError);
+            return res.status(500).json({ error: 'Failed to fetch global assets' });
+        }
+
+        // Create a map of global assets for quick lookup
+        const globalAssetMap = new Map(
+            (globalAssets || []).map(ga => [ga.id, ga])
+        );
+
+        // Find outdated assets
+        const outdated = projectAssets
+            .filter(pa => {
+                const globalAsset = globalAssetMap.get(pa.global_asset_id!);
+                if (!globalAsset) return false; // Global asset deleted or not found
+                return (pa.source_version || 0) < globalAsset.version;
+            })
+            .map(pa => {
+                const globalAsset = globalAssetMap.get(pa.global_asset_id!);
+                return {
+                    projectAssetId: pa.id,
+                    globalAssetId: pa.global_asset_id!,
+                    projectVersion: pa.source_version || 0,
+                    globalVersion: globalAsset?.version || 0,
+                    globalAssetName: globalAsset?.name || 'Unknown',
+                };
+            });
+
+        res.json({ outdated });
+    } catch (error) {
+        console.error('[ProjectAssets] Version sync status error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/assets/:assetId/sync-from-global
+ * Sync project asset with latest version from global library
+ */
+router.post('/:projectId/assets/:assetId/sync-from-global', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, assetId } = req.params;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Get project asset and verify it has global_asset_id
+        const { data: projectAsset, error: assetError } = await supabase
+            .from('project_assets')
+            .select('*')
+            .eq('id', assetId)
+            .eq('project_id', projectId)
+            .eq('branch_id', project.active_branch_id)
+            .single();
+
+        if (assetError || !projectAsset) {
+            return res.status(404).json({ error: 'Asset not found' });
+        }
+
+        if (!projectAsset.global_asset_id) {
+            return res.status(400).json({
+                error: 'Asset is not linked to a global asset'
+            });
+        }
+
+        // Check if asset is locked
+        if (projectAsset.locked) {
+            return res.status(400).json({
+                error: 'Cannot sync locked asset'
+            });
+        }
+
+        // Fetch latest global asset version
+        const { data: globalAsset, error: globalError } = await supabase
+            .from('global_assets')
+            .select('*')
+            .eq('id', projectAsset.global_asset_id)
+            .eq('user_id', userId)
+            .single();
+
+        if (globalError || !globalAsset) {
+            return res.status(404).json({
+                error: 'Global asset not found or access denied'
+            });
+        }
+
+        // Localize image if it exists and has changed
+        let updatedImageUrl = projectAsset.image_key_url;
+        if (globalAsset.image_key_url && globalAsset.image_key_url !== projectAsset.image_key_url) {
+            try {
+                const localizationResult = await localizeAssetImage({
+                    sourceUrl: globalAsset.image_key_url,
+                    targetProjectId: projectId,
+                    targetBranchId: project.active_branch_id,
+                    assetId: projectAsset.id
+                });
+                updatedImageUrl = localizationResult.newImageUrl;
+                console.log(`[ProjectAssets] Localized updated image: ${updatedImageUrl}`);
+            } catch (localizeError) {
+                console.error('[ProjectAssets] Failed to localize updated image:', localizeError);
+                // Continue with existing image if localization fails
+            }
+        }
+
+        // Update project asset with latest global asset data
+        // Preserve project-specific overrides (if any) - for now, we update everything
+        const { data: updatedAsset, error: updateError } = await supabase
+            .from('project_assets')
+            .update({
+                source_version: globalAsset.version,
+                description: globalAsset.description,
+                image_prompt: globalAsset.image_prompt,
+                image_key_url: updatedImageUrl,
+                visual_style_capsule_id: globalAsset.visual_style_capsule_id || projectAsset.visual_style_capsule_id,
+                last_synced_at: new Date().toISOString(), // Track sync timestamp
+                // Preserve locked status and other project-specific fields
+            })
+            .eq('id', assetId)
+            .eq('project_id', projectId)
+            .select()
+            .single();
+
+        if (updateError) {
+            console.error('[ProjectAssets] Sync update error:', updateError);
+            return res.status(500).json({ error: 'Failed to sync asset' });
+        }
+
+        console.log(`[ProjectAssets] Synced asset ${assetId} from global asset ${globalAsset.id}`);
+
+        res.json(updatedAsset);
+    } catch (error) {
+        console.error('[ProjectAssets] Sync from global error:', error);
+        res.status(500).json({
+            error: 'Failed to sync asset from global library',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
     }
 });
 
