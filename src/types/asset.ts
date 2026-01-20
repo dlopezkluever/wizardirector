@@ -29,6 +29,8 @@ export interface ProjectAsset {
   image_key_url?: string;
   visual_style_capsule_id?: string;
   locked: boolean;
+  overridden_fields?: string[]; // Fields that have been manually edited and should not be overwritten during sync
+  last_synced_at?: string; // Timestamp of last sync from global asset
   metadata?: {
     confidence_score?: number;
     is_priority?: boolean;

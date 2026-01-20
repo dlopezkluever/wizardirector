@@ -244,7 +244,7 @@ router.put('/:projectId/assets/:assetId', async (req, res) => {
         // Verify asset exists and is not locked
         const { data: existingAsset, error: fetchError } = await supabase
             .from('project_assets')
-            .select('id, locked')
+            .select('id, locked, global_asset_id, overridden_fields')
             .eq('id', assetId)
             .eq('project_id', projectId)
             .single();
@@ -261,9 +261,34 @@ router.put('/:projectId/assets/:assetId', async (req, res) => {
 
         // Build update object
         const updates: any = {};
-        if (name !== undefined) updates.name = name;
-        if (description !== undefined) updates.description = description;
-        if (image_prompt !== undefined) updates.image_prompt = image_prompt;
+        const fieldsToTrack: string[] = [];
+        
+        if (name !== undefined) {
+            updates.name = name;
+            // Only track override if asset is linked to global (has inheritance)
+            if (existingAsset.global_asset_id) {
+                fieldsToTrack.push('name');
+            }
+        }
+        if (description !== undefined) {
+            updates.description = description;
+            if (existingAsset.global_asset_id) {
+                fieldsToTrack.push('description');
+            }
+        }
+        if (image_prompt !== undefined) {
+            updates.image_prompt = image_prompt;
+            if (existingAsset.global_asset_id) {
+                fieldsToTrack.push('image_prompt');
+            }
+        }
+
+        // Update overridden_fields array: add new fields, keep existing ones
+        if (existingAsset.global_asset_id && fieldsToTrack.length > 0) {
+            const currentOverrides = (existingAsset.overridden_fields || []) as string[];
+            const updatedOverrides = Array.from(new Set([...currentOverrides, ...fieldsToTrack]));
+            updates.overridden_fields = updatedOverrides;
+        }
 
         const { data: asset, error } = await supabase
             .from('project_assets')
@@ -775,6 +800,12 @@ router.post('/:projectId/assets/clone-from-global', async (req, res) => {
             console.warn(`[ProjectAssets] Warning: Asset with name "${globalAsset.name}" already exists in branch`);
         }
 
+        // Track overridden fields if overrideDescription is provided
+        const overriddenFields: string[] = [];
+        if (overrideDescription) {
+            overriddenFields.push('description');
+        }
+
         // Create new project asset first (without image, we'll update it after localization)
         const { data: projectAsset, error: insertError } = await supabase
             .from('project_assets')
@@ -789,6 +820,7 @@ router.post('/:projectId/assets/clone-from-global', async (req, res) => {
                 image_prompt: globalAsset.image_prompt,
                 image_key_url: null, // Will be updated after localization
                 visual_style_capsule_id: visualStyleCapsuleId, // From branch's Stage 5 state
+                overridden_fields: overriddenFields.length > 0 ? overriddenFields : undefined, // Track overrides at clone time
                 locked: false
             })
             .select()
@@ -947,7 +979,7 @@ router.post('/:projectId/assets/:assetId/sync-from-global', async (req, res) => 
         // Get project asset and verify it has global_asset_id
         const { data: projectAsset, error: assetError } = await supabase
             .from('project_assets')
-            .select('*')
+            .select('*, overridden_fields')
             .eq('id', assetId)
             .eq('project_id', projectId)
             .eq('branch_id', project.active_branch_id)
@@ -1002,23 +1034,53 @@ router.post('/:projectId/assets/:assetId/sync-from-global', async (req, res) => 
             }
         }
 
+        // Get list of overridden fields to skip during sync
+        const overriddenFields = (projectAsset.overridden_fields || []) as string[];
+        
+        // Build update object, skipping overridden fields
+        const syncUpdates: any = {
+            source_version: globalAsset.version,
+            last_synced_at: new Date().toISOString(), // Track sync timestamp
+        };
+
+        // Only sync fields that haven't been overridden
+        if (!overriddenFields.includes('description')) {
+            syncUpdates.description = globalAsset.description;
+        }
+        if (!overriddenFields.includes('image_prompt')) {
+            syncUpdates.image_prompt = globalAsset.image_prompt;
+        }
+        if (!overriddenFields.includes('image_key_url')) {
+            syncUpdates.image_key_url = updatedImageUrl;
+        }
+        if (!overriddenFields.includes('visual_style_capsule_id')) {
+            syncUpdates.visual_style_capsule_id = globalAsset.visual_style_capsule_id || projectAsset.visual_style_capsule_id;
+        }
+
         // Update project asset with latest global asset data
-        // Preserve project-specific overrides (if any) - for now, we update everything
+        // Preserve project-specific overrides
         const { data: updatedAsset, error: updateError } = await supabase
             .from('project_assets')
-            .update({
-                source_version: globalAsset.version,
-                description: globalAsset.description,
-                image_prompt: globalAsset.image_prompt,
-                image_key_url: updatedImageUrl,
-                visual_style_capsule_id: globalAsset.visual_style_capsule_id || projectAsset.visual_style_capsule_id,
-                last_synced_at: new Date().toISOString(), // Track sync timestamp
-                // Preserve locked status and other project-specific fields
-            })
+            .update(syncUpdates)
             .eq('id', assetId)
             .eq('project_id', projectId)
             .select()
             .single();
+
+        if (updateError) {
+            console.error('[ProjectAssets] Sync update error:', updateError);
+            return res.status(500).json({ error: 'Failed to sync asset' });
+        }
+
+        // Log which fields were skipped due to overrides
+        if (overriddenFields.length > 0) {
+            const skippedFields = overriddenFields.filter(field => 
+                ['description', 'image_prompt', 'image_key_url', 'visual_style_capsule_id'].includes(field)
+            );
+            if (skippedFields.length > 0) {
+                console.log(`[ProjectAssets] Skipped syncing overridden fields: ${skippedFields.join(', ')}`);
+            }
+        }
 
         if (updateError) {
             console.error('[ProjectAssets] Sync update error:', updateError);
