@@ -4,7 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
-import type { ProjectAsset } from '@/types/asset';
+import type { ProjectAsset, CloneAssetRequest, AssetVersionStatus } from '@/types/asset';
 
 export interface ExtractAssetsResponse {
   assets: ProjectAsset[];
@@ -387,6 +387,98 @@ class ProjectAssetService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to promote asset');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Clone/inherit a global asset into the project
+   */
+  async cloneFromGlobal(
+    projectId: string,
+    globalAssetId: string,
+    overrideDescription?: string,
+    targetBranchId?: string
+  ): Promise<ProjectAsset> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const requestBody: CloneAssetRequest = {
+      globalAssetId,
+      overrideDescription,
+      target_branch_id: targetBranchId
+    };
+
+    const response = await fetch(`/api/projects/${projectId}/assets/clone-from-global`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || error.message || 'Failed to clone asset from global library');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Check version sync status for project assets
+   */
+  async checkVersionSync(projectId: string): Promise<{
+    outdated: AssetVersionStatus[];
+  }> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/version-sync-status`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to check version sync status');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Sync project asset with latest version from global library
+   */
+  async syncFromGlobal(projectId: string, assetId: string): Promise<ProjectAsset> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/sync-from-global`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || error.message || 'Failed to sync asset from global library');
     }
 
     return response.json();

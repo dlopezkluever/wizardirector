@@ -76,3 +76,18 @@ export interface DeleteAssetError {
   projects: AssetUsage[];
 }
 
+export interface AssetVersionStatus {
+  projectAssetId: string;
+  globalAssetId: string;
+  projectVersion: number;
+  globalVersion: number;
+  isOutdated: boolean;
+  globalAssetName: string;
+}
+
+export interface CloneAssetRequest {
+  globalAssetId: string;
+  overrideDescription?: string;
+  target_branch_id?: string;
+}
+
