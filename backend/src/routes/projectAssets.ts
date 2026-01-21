@@ -181,6 +181,89 @@ router.get('/:projectId/assets', async (req, res) => {
 });
 
 /**
+ * GET /api/projects/:projectId/assets/version-sync-status
+ * Check version sync status for all project assets that have global_asset_id
+ */
+router.get('/:projectId/assets/version-sync-status', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId } = req.params;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Get all project assets with global_asset_id set
+        const { data: projectAssets, error: assetsError } = await supabase
+            .from('project_assets')
+            .select('id, global_asset_id, source_version, name')
+            .eq('branch_id', project.active_branch_id)
+            .not('global_asset_id', 'is', null);
+
+        if (assetsError) {
+            console.error('[ProjectAssets] Version sync fetch error:', assetsError);
+            return res.status(500).json({ error: 'Failed to fetch project assets' });
+        }
+
+        if (!projectAssets || projectAssets.length === 0) {
+            return res.json({ outdated: [] });
+        }
+
+        // Fetch corresponding global assets and compare versions
+        const globalAssetIds = projectAssets
+            .map(pa => pa.global_asset_id)
+            .filter((id): id is string => id !== null);
+
+        const { data: globalAssets, error: globalError } = await supabase
+            .from('global_assets')
+            .select('id, version, name')
+            .in('id', globalAssetIds)
+            .eq('user_id', userId);
+
+        if (globalError) {
+            console.error('[ProjectAssets] Version sync global fetch error:', globalError);
+            return res.status(500).json({ error: 'Failed to fetch global assets' });
+        }
+
+        // Create a map of global assets for quick lookup
+        const globalAssetMap = new Map(
+            (globalAssets || []).map(ga => [ga.id, ga])
+        );
+
+        // Find outdated assets
+        const outdated = projectAssets
+            .filter(pa => {
+                const globalAsset = globalAssetMap.get(pa.global_asset_id!);
+                if (!globalAsset) return false; // Global asset deleted or not found
+                return (pa.source_version || 0) < globalAsset.version;
+            })
+            .map(pa => {
+                const globalAsset = globalAssetMap.get(pa.global_asset_id!);
+                return {
+                    projectAssetId: pa.id,
+                    globalAssetId: pa.global_asset_id!,
+                    projectVersion: pa.source_version || 0,
+                    globalVersion: globalAsset?.version || 0,
+                    globalAssetName: globalAsset?.name || 'Unknown',
+                };
+            });
+
+        res.json({ outdated });
+    } catch (error) {
+        console.error('[ProjectAssets] Version sync status error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
  * GET /api/projects/:projectId/assets/:assetId
  * Get specific asset
  */
@@ -869,89 +952,6 @@ router.post('/:projectId/assets/clone-from-global', async (req, res) => {
             error: 'Failed to clone asset from global library',
             message: error instanceof Error ? error.message : 'Unknown error'
         });
-    }
-});
-
-/**
- * GET /api/projects/:projectId/assets/version-sync-status
- * Check version sync status for all project assets that have global_asset_id
- */
-router.get('/:projectId/assets/version-sync-status', async (req, res) => {
-    try {
-        const userId = req.user!.id;
-        const { projectId } = req.params;
-
-        // Verify project ownership
-        const { data: project, error: projectError } = await supabase
-            .from('projects')
-            .select('id, active_branch_id')
-            .eq('id', projectId)
-            .eq('user_id', userId)
-            .single();
-
-        if (projectError || !project) {
-            return res.status(404).json({ error: 'Project not found' });
-        }
-
-        // Get all project assets with global_asset_id set
-        const { data: projectAssets, error: assetsError } = await supabase
-            .from('project_assets')
-            .select('id, global_asset_id, source_version, name')
-            .eq('branch_id', project.active_branch_id)
-            .not('global_asset_id', 'is', null);
-
-        if (assetsError) {
-            console.error('[ProjectAssets] Version sync fetch error:', assetsError);
-            return res.status(500).json({ error: 'Failed to fetch project assets' });
-        }
-
-        if (!projectAssets || projectAssets.length === 0) {
-            return res.json({ outdated: [] });
-        }
-
-        // Fetch corresponding global assets and compare versions
-        const globalAssetIds = projectAssets
-            .map(pa => pa.global_asset_id)
-            .filter((id): id is string => id !== null);
-
-        const { data: globalAssets, error: globalError } = await supabase
-            .from('global_assets')
-            .select('id, version, name')
-            .in('id', globalAssetIds)
-            .eq('user_id', userId);
-
-        if (globalError) {
-            console.error('[ProjectAssets] Version sync global fetch error:', globalError);
-            return res.status(500).json({ error: 'Failed to fetch global assets' });
-        }
-
-        // Create a map of global assets for quick lookup
-        const globalAssetMap = new Map(
-            (globalAssets || []).map(ga => [ga.id, ga])
-        );
-
-        // Find outdated assets
-        const outdated = projectAssets
-            .filter(pa => {
-                const globalAsset = globalAssetMap.get(pa.global_asset_id!);
-                if (!globalAsset) return false; // Global asset deleted or not found
-                return (pa.source_version || 0) < globalAsset.version;
-            })
-            .map(pa => {
-                const globalAsset = globalAssetMap.get(pa.global_asset_id!);
-                return {
-                    projectAssetId: pa.id,
-                    globalAssetId: pa.global_asset_id!,
-                    projectVersion: pa.source_version || 0,
-                    globalVersion: globalAsset?.version || 0,
-                    globalAssetName: globalAsset?.name || 'Unknown',
-                };
-            });
-
-        res.json({ outdated });
-    } catch (error) {
-        console.error('[ProjectAssets] Version sync status error:', error);
-        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
