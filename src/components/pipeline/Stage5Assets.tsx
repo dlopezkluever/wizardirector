@@ -96,8 +96,8 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
   const loadAssets = async () => {
     try {
       const existingAssets = await projectAssetService.listAssets(projectId);
+      setAssets(existingAssets);
       if (existingAssets.length > 0) {
-        setAssets(existingAssets);
         setHasExtracted(true);
       }
     } catch (error) {

@@ -1035,30 +1035,138 @@ router.post('/:projectId/assets/:assetId/sync-from-global', async (req, res) => 
         }
 
         // Get list of overridden fields to skip during sync
-        const overriddenFields = (projectAsset.overridden_fields || []) as string[];
+        // Ensure we're working with a proper array
+        let overriddenFields: string[] = [];
+        if (projectAsset.overridden_fields) {
+            if (Array.isArray(projectAsset.overridden_fields)) {
+                overriddenFields = projectAsset.overridden_fields as string[];
+            } else if (typeof projectAsset.overridden_fields === 'string') {
+                // Handle case where it might be stored as a string
+                try {
+                    overriddenFields = JSON.parse(projectAsset.overridden_fields);
+                } catch {
+                    overriddenFields = [];
+                }
+            }
+        }
+        
+        console.log(`[ProjectAssets] Overridden fields for asset ${assetId}:`, overriddenFields);
+        console.log(`[ProjectAssets] Current project description: "${projectAsset.description}"`);
+        console.log(`[ProjectAssets] Global asset description: "${globalAsset.description}"`);
         
         // Build update object, skipping overridden fields
+        // BUT: If user explicitly syncs, we'll clear overrides for synced fields (user is choosing to accept global version)
         const syncUpdates: any = {
             source_version: globalAsset.version,
             last_synced_at: new Date().toISOString(), // Track sync timestamp
         };
+        
+        // Track which fields we're syncing (to remove from overridden_fields)
+        const fieldsBeingSynced: string[] = [];
 
-        // Only sync fields that haven't been overridden
-        if (!overriddenFields.includes('description')) {
-            syncUpdates.description = globalAsset.description;
+        // Sync all fields - if user explicitly clicks sync, they're choosing to accept global version
+        // This means we should sync even overridden fields and clear them from overridden_fields
+        if (globalAsset.name !== undefined && globalAsset.name !== null) {
+            syncUpdates.name = globalAsset.name;
+            fieldsBeingSynced.push('name');
+            if (overriddenFields.includes('name')) {
+                console.log(`[ProjectAssets] Force syncing 'name' (was overridden, but user chose to sync)`);
+            }
         }
+        
+        // Always sync description if not overridden, even if values appear the same
+        if (!overriddenFields.includes('description')) {
+            if (globalAsset.description !== undefined && globalAsset.description !== null) {
+                syncUpdates.description = globalAsset.description;
+                fieldsBeingSynced.push('description');
+                console.log(`[ProjectAssets] Will sync description: "${globalAsset.description?.substring(0, 50)}..." (current: "${projectAsset.description?.substring(0, 50)}...")`);
+            } else {
+                console.warn(`[ProjectAssets] Global asset description is null/undefined, skipping sync`);
+            }
+        } else {
+            // Description is overridden, but user clicked sync - they want to accept global version
+            // So we'll sync it and remove from overridden_fields
+            if (globalAsset.description !== undefined && globalAsset.description !== null) {
+                syncUpdates.description = globalAsset.description;
+                fieldsBeingSynced.push('description');
+                console.log(`[ProjectAssets] Force syncing 'description' (was overridden, but user chose to sync). Global: "${globalAsset.description?.substring(0, 50)}..."`);
+            }
+        }
+        
         if (!overriddenFields.includes('image_prompt')) {
             syncUpdates.image_prompt = globalAsset.image_prompt;
+            fieldsBeingSynced.push('image_prompt');
+        } else {
+            // Force sync if user explicitly requested sync
+            if (globalAsset.image_prompt !== undefined) {
+                syncUpdates.image_prompt = globalAsset.image_prompt;
+                fieldsBeingSynced.push('image_prompt');
+                console.log(`[ProjectAssets] Force syncing 'image_prompt' (was overridden, but user chose to sync)`);
+            } else {
+                console.log(`[ProjectAssets] Skipping 'image_prompt' - marked as overridden`);
+            }
         }
+        
         if (!overriddenFields.includes('image_key_url')) {
             syncUpdates.image_key_url = updatedImageUrl;
+            fieldsBeingSynced.push('image_key_url');
+        } else {
+            // Force sync if user explicitly requested sync
+            if (updatedImageUrl) {
+                syncUpdates.image_key_url = updatedImageUrl;
+                fieldsBeingSynced.push('image_key_url');
+                console.log(`[ProjectAssets] Force syncing 'image_key_url' (was overridden, but user chose to sync)`);
+            } else {
+                console.log(`[ProjectAssets] Skipping 'image_key_url' - marked as overridden`);
+            }
         }
+        
         if (!overriddenFields.includes('visual_style_capsule_id')) {
             syncUpdates.visual_style_capsule_id = globalAsset.visual_style_capsule_id || projectAsset.visual_style_capsule_id;
+            fieldsBeingSynced.push('visual_style_capsule_id');
+        } else {
+            // Force sync if user explicitly requested sync
+            if (globalAsset.visual_style_capsule_id !== undefined) {
+                syncUpdates.visual_style_capsule_id = globalAsset.visual_style_capsule_id || projectAsset.visual_style_capsule_id;
+                fieldsBeingSynced.push('visual_style_capsule_id');
+                console.log(`[ProjectAssets] Force syncing 'visual_style_capsule_id' (was overridden, but user chose to sync)`);
+            } else {
+                console.log(`[ProjectAssets] Skipping 'visual_style_capsule_id' - marked as overridden`);
+            }
+        }
+        
+        // Remove synced fields from overridden_fields (user chose to accept global version)
+        if (fieldsBeingSynced.length > 0 && overriddenFields.length > 0) {
+            const remainingOverrides = overriddenFields.filter(field => !fieldsBeingSynced.includes(field));
+            if (remainingOverrides.length !== overriddenFields.length) {
+                syncUpdates.overridden_fields = remainingOverrides;
+                console.log(`[ProjectAssets] Clearing overrides for synced fields: ${fieldsBeingSynced.join(', ')}. Remaining overrides: ${remainingOverrides.join(', ') || 'none'}`);
+            }
+        }
+
+        // Log what we're syncing
+        console.log(`[ProjectAssets] Syncing asset ${assetId}:`, {
+            fieldsToSync: Object.keys(syncUpdates),
+            overriddenFields: overriddenFields,
+            globalVersion: globalAsset.version,
+            projectVersion: projectAsset.source_version,
+            syncUpdates: JSON.stringify(syncUpdates, null, 2)
+        });
+
+        // Log which fields were skipped due to overrides
+        if (overriddenFields.length > 0) {
+            const skippedFields = overriddenFields.filter(field => 
+                ['name', 'description', 'image_prompt', 'image_key_url', 'visual_style_capsule_id'].includes(field)
+            );
+            if (skippedFields.length > 0) {
+                console.log(`[ProjectAssets] Skipped syncing overridden fields: ${skippedFields.join(', ')}`);
+            }
         }
 
         // Update project asset with latest global asset data
         // Preserve project-specific overrides
+        console.log(`[ProjectAssets] Executing update with syncUpdates:`, JSON.stringify(syncUpdates, null, 2));
+        
         const { data: updatedAsset, error: updateError } = await supabase
             .from('project_assets')
             .update(syncUpdates)
@@ -1072,22 +1180,9 @@ router.post('/:projectId/assets/:assetId/sync-from-global', async (req, res) => 
             return res.status(500).json({ error: 'Failed to sync asset' });
         }
 
-        // Log which fields were skipped due to overrides
-        if (overriddenFields.length > 0) {
-            const skippedFields = overriddenFields.filter(field => 
-                ['description', 'image_prompt', 'image_key_url', 'visual_style_capsule_id'].includes(field)
-            );
-            if (skippedFields.length > 0) {
-                console.log(`[ProjectAssets] Skipped syncing overridden fields: ${skippedFields.join(', ')}`);
-            }
-        }
-
-        if (updateError) {
-            console.error('[ProjectAssets] Sync update error:', updateError);
-            return res.status(500).json({ error: 'Failed to sync asset' });
-        }
-
-        console.log(`[ProjectAssets] Synced asset ${assetId} from global asset ${globalAsset.id}`);
+        // Verify what was actually updated
+        console.log(`[ProjectAssets] Update completed. Updated asset description: "${updatedAsset?.description?.substring(0, 50)}..."`);
+        console.log(`[ProjectAssets] Successfully synced asset ${assetId} from global asset ${globalAsset.id} (v${globalAsset.version})`);
 
         res.json(updatedAsset);
     } catch (error) {
