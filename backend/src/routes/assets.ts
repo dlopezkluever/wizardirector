@@ -1,9 +1,27 @@
 import { Router } from 'express';
 import { supabase } from '../config/supabase.js';
 import { ImageGenerationService } from '../services/image-generation/ImageGenerationService.js';
+import multer from 'multer';
+import path from 'path';
 
 const router = Router();
 const imageService = new ImageGenerationService();
+
+// Configure multer for image uploads
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
+    if (!allowedTypes.includes(file.mimetype)) {
+      return cb(new Error('Invalid file type. Only PNG, JPEG, and WebP are allowed.'));
+    }
+    cb(null, true);
+  }
+});
 
 // GET /api/assets - List all global assets for authenticated user
 router.get('/', async (req, res) => {
@@ -99,10 +117,12 @@ router.post('/', async (req, res) => {
             });
         }
 
-        // Validate description length
+        // Validate: at least one of image_key_url OR description required
+        // Note: image_key_url will be set after upload/generation, so we check description here
+        // Description validation happens at creation time
         if (description.length < 10) {
             return res.status(400).json({
-                error: 'Description must be at least 10 characters'
+                error: 'Description must be at least 10 characters (or provide an image)'
             });
         }
 
@@ -183,10 +203,31 @@ router.put('/:id', async (req, res) => {
             }
         }
 
-        // Validate description length if provided
-        if (description && description.length < 10) {
+        // Validate: at least one of image_key_url OR description required
+        // Get current asset to check if it has an image
+        const { data: currentAsset } = await supabase
+            .from('global_assets')
+            .select('image_key_url, description')
+            .eq('id', id)
+            .eq('user_id', userId)
+            .single();
+
+        // If description is being updated, validate it
+        if (description !== undefined) {
+            if (description.length < 10) {
+                // Check if asset has an image - if yes, description can be shorter
+                if (!currentAsset?.image_key_url) {
+                    return res.status(400).json({
+                        error: 'Description must be at least 10 characters (or provide an image)'
+                    });
+                }
+            }
+        }
+
+        // If description is being removed/cleared, ensure image exists
+        if (description === '' && !currentAsset?.image_key_url) {
             return res.status(400).json({
-                error: 'Description must be at least 10 characters'
+                error: 'Asset must have either a description (min 10 chars) or an image'
             });
         }
 
@@ -290,28 +331,86 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
-// POST /api/assets/:id/generate-image - Generate/regenerate image key
-// NOTE: Image generation for global assets requires special handling
-// This endpoint is currently commented out pending integration with image service
-// that supports global asset context (assets not tied to projects)
-/*
+// POST /api/assets/:id/upload-image - Upload image for global asset
+router.post('/:id/upload-image', upload.single('image'), async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const assetId = req.params.id;
+
+        if (!req.file) {
+            return res.status(400).json({ error: 'No image file provided' });
+        }
+
+        // Verify asset ownership
+        const { data: asset, error: fetchError } = await supabase
+            .from('global_assets')
+            .select('id, name, version')
+            .eq('id', assetId)
+            .eq('user_id', userId)
+            .single();
+
+        if (fetchError || !asset) {
+            return res.status(404).json({ error: 'Asset not found' });
+        }
+
+        // Generate unique filename
+        const fileExt = path.extname(req.file.originalname);
+        const fileName = `global/${userId}/${assetId}/${Date.now()}-${Math.random().toString(36).substring(2)}${fileExt}`;
+
+        // Upload to Supabase Storage
+        const { error: uploadError } = await supabase.storage
+            .from('asset-images')
+            .upload(fileName, req.file.buffer, {
+                contentType: req.file.mimetype,
+                upsert: false
+            });
+
+        if (uploadError) {
+            console.error('[Assets API] Error uploading image:', uploadError);
+            return res.status(500).json({ error: 'Failed to upload image' });
+        }
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+            .from('asset-images')
+            .getPublicUrl(fileName);
+
+        // Update asset with image URL and increment version
+        const { data: updatedAsset, error: updateError } = await supabase
+            .from('global_assets')
+            .update({
+                image_key_url: urlData.publicUrl,
+                version: asset.version + 1
+            })
+            .eq('id', assetId)
+            .eq('user_id', userId)
+            .select()
+            .single();
+
+        if (updateError) {
+            console.error('[Assets API] Error updating asset with image URL:', updateError);
+            return res.status(500).json({ error: 'Failed to update asset with image URL' });
+        }
+
+        console.log(`[Assets API] Successfully uploaded image for asset ${assetId}`);
+        res.json(updatedAsset);
+    } catch (error) {
+        console.error('[Assets API] Unexpected error in image upload:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/assets/:id/generate-image - Generate/regenerate image key for global asset
 router.post('/:id/generate-image', async (req, res) => {
     try {
         const userId = req.user!.id;
         const { id } = req.params;
         const { prompt, visualStyleCapsuleId } = req.body;
 
-        // Validate required fields
-        if (!prompt) {
-            return res.status(400).json({
-                error: 'Missing required field: prompt'
-            });
-        }
-
         // Verify asset ownership
         const { data: asset, error: fetchError } = await supabase
             .from('global_assets')
-            .select('id, name, asset_type')
+            .select('id, name, asset_type, description, image_prompt, visual_style_capsule_id')
             .eq('id', id)
             .eq('user_id', userId)
             .single();
@@ -320,29 +419,37 @@ router.post('/:id/generate-image', async (req, res) => {
             return res.status(404).json({ error: 'Asset not found' });
         }
 
-        console.log(`[Assets API] Image generation requested for asset ${id}`);
+        // Use provided prompt, or image_prompt, or description
+        const finalPrompt = prompt || asset.image_prompt || asset.description;
+        if (!finalPrompt) {
+            return res.status(400).json({
+                error: 'No prompt available. Please provide a prompt, or ensure the asset has a description or image_prompt.'
+            });
+        }
 
-        // Create a temporary project context for image generation
-        // Global assets don't have projectId/branchId, so we'll use special handling
-        const result = await imageService.createImageJob({
-            projectId: null as any, // Global asset context
-            branchId: null as any, // Global asset context
-            jobType: 'asset_key',
-            prompt,
-            visualStyleCapsuleId: visualStyleCapsuleId || asset.visual_style_capsule_id,
+        // Use provided visual style or asset's visual style
+        const finalVisualStyleId = visualStyleCapsuleId || asset.visual_style_capsule_id;
+
+        console.log(`[Assets API] Image generation requested for global asset ${id}`);
+
+        // Create image generation job for global asset
+        const result = await imageService.createGlobalAssetImageJob({
             assetId: id,
-            width: 1024,
-            height: 1024,
-            idempotencyKey: `asset-${id}-${Date.now()}`
+            userId,
+            prompt: finalPrompt,
+            visualStyleCapsuleId: finalVisualStyleId,
+            idempotencyKey: `global-asset-${id}-${Date.now()}`
         });
 
         res.json(result);
     } catch (error) {
         console.error('[Assets API] Image generation error:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({
+            error: 'Image generation failed',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
     }
 });
-*/
 
 export const assetsRouter = router;
 
