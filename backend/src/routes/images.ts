@@ -73,35 +73,45 @@ router.get('/jobs/:jobId', async (req, res) => {
         const userId = req.user!.id;
         const { jobId } = req.params;
 
-        const { data: job, error } = await supabase
+        // First, get the job without joins to check if it's project-based or global asset
+        const { data: job, error: jobError } = await supabase
             .from('image_generation_jobs')
-            .select(`
-                id,
-                project_id,
-                job_type,
-                status,
-                public_url,
-                error_code,
-                error_message,
-                failure_stage,
-                cost_credits,
-                estimated_cost,
-                created_at,
-                completed_at,
-                projects!inner (
-                    user_id
-                )
-            `)
+            .select('id, project_id, asset_id, job_type, status, public_url, error_code, error_message, failure_stage, cost_credits, estimated_cost, created_at, completed_at')
             .eq('id', jobId)
             .single();
 
-        if (error || !job) {
+        if (jobError || !job) {
             return res.status(404).json({ error: 'Job not found' });
         }
 
-        // Verify ownership
-        if ((job as any).projects.user_id !== userId) {
-            return res.status(403).json({ error: 'Access denied' });
+        // Verify ownership based on job type
+        if (job.project_id) {
+            // Project-based job: verify through projects table
+            const { data: project, error: projectError } = await supabase
+                .from('projects')
+                .select('user_id')
+                .eq('id', job.project_id)
+                .eq('user_id', userId)
+                .single();
+
+            if (projectError || !project) {
+                return res.status(403).json({ error: 'Access denied' });
+            }
+        } else if (job.asset_id) {
+            // Global asset job: verify through global_assets table
+            const { data: asset, error: assetError } = await supabase
+                .from('global_assets')
+                .select('user_id')
+                .eq('id', job.asset_id)
+                .eq('user_id', userId)
+                .single();
+
+            if (assetError || !asset) {
+                return res.status(403).json({ error: 'Access denied' });
+            }
+        } else {
+            // Job has neither project_id nor asset_id - invalid state
+            return res.status(400).json({ error: 'Invalid job: missing project_id or asset_id' });
         }
 
         res.json({
