@@ -30,9 +30,10 @@ interface AssetDialogProps {
   onOpenChange: (open: boolean) => void;
   asset?: GlobalAsset | null;
   onSaved: () => void;
+  onAssetUpdated?: () => void; // Optional callback to refresh assets without closing dialog
 }
 
-export const AssetDialog = ({ open, onOpenChange, asset, onSaved }: AssetDialogProps) => {
+export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated }: AssetDialogProps) => {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -118,34 +119,71 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved }: AssetDialogP
   };
 
   const handleGenerateImage = async () => {
-    if (!asset) {
-      toast({
-        title: 'Error',
-        description: 'Please save the asset first before generating an image',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     try {
       setGeneratingImage(true);
 
       // Use image_prompt if available, otherwise use description
       const prompt = imagePrompt.trim() || description.trim();
 
-      if (!prompt || prompt.length < 10) {
+      // Validation: require at least 20 characters for generation
+      if (!prompt || prompt.length < 20) {
         toast({
           title: 'Error',
-          description: 'Please provide a description or image prompt (min 10 characters)',
+          description: 'Please provide a description or image prompt with at least 20 characters for better image generation',
           variant: 'destructive',
         });
+        setGeneratingImage(false);
         return;
       }
 
+      // If creating new asset, save it first
+      let assetId = asset?.id;
+      let visualStyleCapsuleId = asset?.visual_style_capsule_id;
+
+      if (!assetId) {
+        // Validate required fields before creating
+        if (!name.trim()) {
+          toast({
+            title: 'Error',
+            description: 'Please enter an asset name first',
+            variant: 'destructive',
+          });
+          setGeneratingImage(false);
+          return;
+        }
+
+        if (!description.trim() || description.trim().length < 10) {
+          toast({
+            title: 'Error',
+            description: 'Description must be at least 10 characters',
+            variant: 'destructive',
+          });
+          setGeneratingImage(false);
+          return;
+        }
+
+        // Create the asset first
+        const request: CreateAssetRequest = {
+          name: name.trim(),
+          assetType,
+          description: description.trim(),
+          imagePrompt: imagePrompt.trim() || undefined,
+        };
+
+        const newAsset = await assetService.createAsset(request);
+        assetId = newAsset.id;
+        visualStyleCapsuleId = newAsset.visual_style_capsule_id;
+        
+        // Update local state to reflect the new asset
+        // This will allow the generate button to work for subsequent generations
+        // Note: We'll need to update the parent component's asset reference
+        // For now, we'll just use the ID we got back
+      }
+
       const jobResponse = await assetService.generateImageKey(
-        asset.id,
+        assetId,
         prompt,
-        asset.visual_style_capsule_id
+        visualStyleCapsuleId
       );
 
       toast({
@@ -154,22 +192,46 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved }: AssetDialogP
       });
 
       // Poll for job completion
-      const pollInterval = setInterval(async () => {
+      let pollInterval: NodeJS.Timeout | null = null;
+      let timeoutId: NodeJS.Timeout | null = null;
+
+      pollInterval = setInterval(async () => {
         try {
           const jobStatus = await assetService.checkImageJobStatus(jobResponse.jobId);
 
-          if (jobStatus.status === 'completed' && jobStatus.publicUrl) {
-            clearInterval(pollInterval);
+          if (jobStatus.status === 'completed') {
+            if (pollInterval) clearInterval(pollInterval);
+            if (timeoutId) clearTimeout(timeoutId);
             setGeneratingImage(false);
-            setImageUrl(jobStatus.publicUrl);
+            
+            // Fetch the updated asset to get the image URL
+            try {
+              const updatedAsset = await assetService.getAsset(assetId);
+              const newImageUrl = updatedAsset.image_key_url || jobStatus.publicUrl || null;
+              setImageUrl(newImageUrl);
+              
+              // Refresh the asset list in the background (but don't close dialog)
+              if (onAssetUpdated) {
+                onAssetUpdated();
+              } else if (asset) {
+                // Fallback: refresh but this will close the dialog
+                onSaved();
+              }
+            } catch (fetchError) {
+              // Fallback to job status URL if asset fetch fails
+              console.error('Failed to fetch updated asset:', fetchError);
+              if (jobStatus.publicUrl) {
+                setImageUrl(jobStatus.publicUrl);
+              }
+            }
+            
             toast({
               title: 'Success',
               description: 'Image generated successfully',
             });
-            // Refresh asset data
-            onSaved();
           } else if (jobStatus.status === 'failed') {
-            clearInterval(pollInterval);
+            if (pollInterval) clearInterval(pollInterval);
+            if (timeoutId) clearTimeout(timeoutId);
             setGeneratingImage(false);
             toast({
               title: 'Generation failed',
@@ -179,12 +241,13 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved }: AssetDialogP
           }
         } catch (error) {
           console.error('Error checking job status:', error);
+          // Don't stop polling on individual errors, they might be transient
         }
       }, 2000); // Poll every 2 seconds
 
       // Timeout after 2 minutes
-      setTimeout(() => {
-        clearInterval(pollInterval);
+      timeoutId = setTimeout(() => {
+        if (pollInterval) clearInterval(pollInterval);
         setGeneratingImage(false);
         toast({
           title: 'Timeout',
@@ -366,7 +429,7 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved }: AssetDialogP
               required
             />
             <p className="text-xs text-muted-foreground">
-              {description.length} characters (minimum 10)
+              {description.length} characters (minimum 10, 20+ recommended for AI generation)
             </p>
           </div>
 
@@ -399,30 +462,28 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved }: AssetDialogP
                     New image will be uploaded when you save
                   </p>
                 )}
-                {asset && (
-                  <div className="mt-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleGenerateImage}
-                      disabled={saving || uploadingImage || generatingImage}
-                      className="w-full"
-                    >
-                      {generatingImage ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Generating...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="mr-2 h-4 w-4" />
-                          Regenerate Image
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                )}
+                <div className="mt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGenerateImage}
+                    disabled={saving || uploadingImage || generatingImage}
+                    className="w-full"
+                  >
+                    {generatingImage ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        Regenerate Image
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="space-y-2">
@@ -448,33 +509,41 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved }: AssetDialogP
                     disabled={saving || uploadingImage || generatingImage}
                   />
                 </div>
-                {asset && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleGenerateImage}
-                    disabled={saving || uploadingImage || generatingImage}
-                    className="w-full"
-                  >
-                    {generatingImage ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="mr-2 h-4 w-4" />
-                        Generate Image with AI
-                      </>
-                    )}
-                  </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGenerateImage}
+                  disabled={
+                    saving || 
+                    uploadingImage || 
+                    generatingImage ||
+                    (imagePrompt.trim().length < 20 && description.trim().length < 20)
+                  }
+                  className="w-full"
+                >
+                  {generatingImage ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      {asset ? 'Generate Image with AI' : 'Generate Image with AI (will create asset first)'}
+                    </>
+                  )}
+                </Button>
+                {(imagePrompt.trim().length < 20 && description.trim().length < 20) && (
+                  <p className="text-xs text-muted-foreground">
+                    Enter at least 20 characters in description or image prompt to enable generation
+                  </p>
                 )}
               </div>
             )}
             {!imageUrl && (
               <p className="text-xs text-muted-foreground">
-                Image is recommended but optional. You can upload one or generate it with AI after creating the asset.
+                Image is recommended but optional. You can upload one or generate it with AI.
               </p>
             )}
           </div>
