@@ -47,6 +47,8 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
   const [imagePrompt, setImagePrompt] = useState('');
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  // Track asset created during image generation (to prevent duplicate creation on save)
+  const [createdAssetId, setCreatedAssetId] = useState<string | null>(null);
 
   // Reset form when dialog opens/closes or asset changes
   useEffect(() => {
@@ -67,6 +69,7 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
         setImagePrompt('');
         setImageUrl(null);
         setImageFile(null);
+        setCreatedAssetId(null); // Reset created asset ID
       }
     }
   }, [open, asset]);
@@ -174,10 +177,8 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
         assetId = newAsset.id;
         visualStyleCapsuleId = newAsset.visual_style_capsule_id;
         
-        // Update local state to reflect the new asset
-        // This will allow the generate button to work for subsequent generations
-        // Note: We'll need to update the parent component's asset reference
-        // For now, we'll just use the ID we got back
+        // Store the created asset ID so handleSubmit knows to update instead of create
+        setCreatedAssetId(newAsset.id);
       }
 
       const jobResponse = await assetService.generateImageKey(
@@ -294,16 +295,23 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
 
       let savedAsset: GlobalAsset;
 
-      if (asset) {
+      // Check if we have an existing asset (from prop or created during image generation)
+      const assetIdToUse = asset?.id || createdAssetId;
+
+      if (assetIdToUse) {
         // Update existing asset
-        console.log('[AssetDialog] Updating asset:', asset.id);
-        savedAsset = await assetService.updateAsset(asset.id, {
+        console.log('[AssetDialog] Updating asset:', assetIdToUse);
+        savedAsset = await assetService.updateAsset(assetIdToUse, {
           name: name.trim(),
           assetType,
           description: description.trim(),
           imagePrompt: imagePrompt.trim() || undefined,
         });
         console.log('[AssetDialog] Asset updated:', savedAsset);
+        // Clear the created asset ID since we've now properly saved it
+        if (createdAssetId) {
+          setCreatedAssetId(null);
+        }
       } else {
         // Create new asset
         const request: CreateAssetRequest = {
