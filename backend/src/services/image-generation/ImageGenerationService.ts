@@ -17,6 +17,16 @@ export interface CreateImageJobRequest {
     idempotencyKey?: string;
 }
 
+export interface CreateGlobalAssetImageJobRequest {
+    assetId: string;
+    userId: string;
+    prompt: string;
+    visualStyleCapsuleId?: string;
+    width?: number;
+    height?: number;
+    idempotencyKey?: string;
+}
+
 export interface ImageJobResult {
     jobId: string;
     status: 'queued' | 'processing' | 'generating' | 'uploading' | 'completed' | 'failed';
@@ -337,6 +347,192 @@ export class ImageGenerationService {
         }
 
         return this.formatJobResult(job);
+    }
+
+    /**
+     * Create image generation job for global asset (not tied to a project)
+     */
+    async createGlobalAssetImageJob(request: CreateGlobalAssetImageJobRequest): Promise<ImageJobResult> {
+        // Get asset details to determine aspect ratio
+        const asset = await this.getAssetDetails(request.assetId);
+        if (!asset) {
+            throw new Error('Asset not found');
+        }
+
+        // Auto-determine aspect ratio based on asset type
+        const dimensions = this.ASPECT_RATIOS[asset.asset_type];
+        const width = request.width || dimensions.width;
+        const height = request.height || dimensions.height;
+
+        console.log(`[ImageService] Generating image for global asset ${request.assetId} (${asset.asset_type}): ${width}x${height}`);
+
+        const jobId = uuidv4();
+
+        // Create job record (project_id and branch_id will be null for global assets)
+        // Note: This requires image_generation_jobs table to allow NULL for these fields
+        const { data: job, error: insertError } = await supabase
+            .from('image_generation_jobs')
+            .insert({
+                id: jobId,
+                idempotency_key: request.idempotencyKey,
+                project_id: null,
+                branch_id: null,
+                asset_id: request.assetId,
+                job_type: 'master_asset',
+                status: 'queued',
+                prompt: request.prompt,
+                visual_style_capsule_id: request.visualStyleCapsuleId,
+                width,
+                height,
+                estimated_cost: this.provider.estimateCost({
+                    prompt: request.prompt,
+                    width,
+                    height
+                })
+            })
+            .select()
+            .single();
+
+        if (insertError || !job) {
+            throw new Error(`Failed to create job: ${insertError?.message}`);
+        }
+
+        console.log(`[ImageService] Created global asset job ${jobId}, queued for execution`);
+
+        // Execute in background
+        this.executeGlobalAssetJobInBackground(jobId, request, width, height).catch(error => {
+            console.error(`[ImageService] Background execution failed for global asset job ${jobId}:`, error);
+        });
+
+        return {
+            jobId,
+            status: 'queued'
+        };
+    }
+
+    /**
+     * Execute global asset image generation job
+     */
+    private async executeGlobalAssetJobInBackground(
+        jobId: string,
+        request: CreateGlobalAssetImageJobRequest,
+        width: number,
+        height: number
+    ): Promise<void> {
+        try {
+            await this.updateJobState(jobId, 'processing', {
+                processing_started_at: new Date().toISOString(),
+                attempt_count: 1,
+                last_attempt_at: new Date().toISOString()
+            });
+
+            // Get visual style context if provided
+            let visualStyleContext = '';
+            if (request.visualStyleCapsuleId) {
+                visualStyleContext = await this.getVisualStyleContext(request.visualStyleCapsuleId);
+            }
+
+            await this.updateJobState(jobId, 'generating', {
+                generating_started_at: new Date().toISOString()
+            });
+
+            // Execute generation
+            const result = await this.provider.generateImage({
+                prompt: request.prompt,
+                width,
+                height,
+                visualStyleContext
+            });
+
+            await this.updateJobState(jobId, 'uploading', {
+                uploading_started_at: new Date().toISOString()
+            });
+
+            // Convert artifact to buffer
+            const imageBuffer = await this.artifactToBuffer(result.artifact);
+
+            // Build storage path for global asset
+            const timestamp = Date.now();
+            const random = Math.random().toString(36).substring(2, 9);
+            const storagePath = `global/${request.userId}/${request.assetId}/${timestamp}_${random}.png`;
+
+            // Upload to Supabase Storage
+            const { error: uploadError } = await supabase.storage
+                .from('asset-images')
+                .upload(storagePath, imageBuffer, {
+                    contentType: result.artifact.contentType || 'image/png',
+                    upsert: false
+                });
+
+            if (uploadError) {
+                throw new Error(`Storage upload failed: ${uploadError.message}`);
+            }
+
+            // Get public URL
+            const { data: urlData } = supabase.storage
+                .from('asset-images')
+                .getPublicUrl(storagePath);
+
+            // Update global_assets table with image URL and increment version
+            const { data: globalAsset, error: assetFetchError } = await supabase
+                .from('global_assets')
+                .select('version')
+                .eq('id', request.assetId)
+                .single();
+
+            if (assetFetchError || !globalAsset) {
+                throw new Error('Failed to fetch global asset for update');
+            }
+
+            const { error: updateError } = await supabase
+                .from('global_assets')
+                .update({
+                    image_key_url: urlData.publicUrl,
+                    version: globalAsset.version + 1
+                })
+                .eq('id', request.assetId);
+
+            if (updateError) {
+                console.error(`[ImageService] Failed to update global_assets.image_key_url for asset ${request.assetId}:`, updateError);
+            } else {
+                console.log(`[ImageService] Updated global_assets.image_key_url for asset ${request.assetId}`);
+            }
+
+            // Update job with success
+            await this.updateJobState(jobId, 'completed', {
+                storage_path: storagePath,
+                public_url: urlData.publicUrl,
+                cost_credits: result.metadata.actualCost || result.metadata.estimatedCost,
+                provider_metadata: result.providerRawResponse,
+                completed_at: new Date().toISOString()
+            });
+
+            console.log(`[ImageService] Global asset job ${jobId} completed successfully`);
+
+        } catch (error: any) {
+            console.error(`[ImageService] Global asset job ${jobId} failed:`, error);
+
+            const { data: currentJob } = await supabase
+                .from('image_generation_jobs')
+                .select('status')
+                .eq('id', jobId)
+                .single();
+
+            const failureStage = currentJob?.status === 'uploading'
+                ? 'uploading'
+                : currentJob?.status === 'generating'
+                ? 'generating'
+                : 'persisting';
+
+            const errorCode = error.code || 'UNKNOWN';
+            const errorMessage = error.message || 'Unknown error';
+
+            await this.updateJobState(jobId, 'failed', {
+                error_code: errorCode,
+                error_message: errorMessage,
+                failure_stage: failureStage
+            });
+        }
     }
 
     /**
