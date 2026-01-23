@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 
 import { assetService } from '@/lib/services/assetService';
 import type { GlobalAsset, AssetType, CreateAssetRequest } from '@/types/asset';
+import { StyleCapsuleSelector } from '@/components/styleCapsules/StyleCapsuleSelector';
 
 interface AssetDialogProps {
   open: boolean;
@@ -45,6 +46,7 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
   const [assetType, setAssetType] = useState<AssetType>('character');
   const [description, setDescription] = useState('');
   const [imagePrompt, setImagePrompt] = useState('');
+  const [visualStyleCapsuleId, setVisualStyleCapsuleId] = useState<string>('');
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   // Track asset created during image generation (to prevent duplicate creation on save)
@@ -59,6 +61,7 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
         setAssetType(asset.asset_type);
         setDescription(asset.description);
         setImagePrompt(asset.image_prompt || '');
+        setVisualStyleCapsuleId(asset.visual_style_capsule_id || '');
         setImageUrl(asset.image_key_url || null);
         setImageFile(null);
       } else {
@@ -67,6 +70,7 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
         setAssetType('character');
         setDescription('');
         setImagePrompt('');
+        setVisualStyleCapsuleId('');
         setImageUrl(null);
         setImageFile(null);
         setCreatedAssetId(null); // Reset created asset ID
@@ -141,7 +145,7 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
 
       // If creating new asset, save it first
       let assetId = asset?.id;
-      let visualStyleCapsuleId = asset?.visual_style_capsule_id;
+      let currentVisualStyleCapsuleId = visualStyleCapsuleId || asset?.visual_style_capsule_id;
 
       if (!assetId) {
         // Validate required fields before creating
@@ -171,11 +175,12 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
           assetType,
           description: description.trim(),
           imagePrompt: imagePrompt.trim() || undefined,
+          visualStyleCapsuleId: visualStyleCapsuleId || undefined,
         };
 
         const newAsset = await assetService.createAsset(request);
         assetId = newAsset.id;
-        visualStyleCapsuleId = newAsset.visual_style_capsule_id;
+        currentVisualStyleCapsuleId = newAsset.visual_style_capsule_id || visualStyleCapsuleId;
         
         // Store the created asset ID so handleSubmit knows to update instead of create
         setCreatedAssetId(newAsset.id);
@@ -184,7 +189,7 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
       const jobResponse = await assetService.generateImageKey(
         assetId,
         prompt,
-        visualStyleCapsuleId
+        currentVisualStyleCapsuleId || undefined
       );
 
       toast({
@@ -306,6 +311,7 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
           assetType,
           description: description.trim(),
           imagePrompt: imagePrompt.trim() || undefined,
+          visualStyleCapsuleId: visualStyleCapsuleId || undefined,
         });
         console.log('[AssetDialog] Asset updated:', savedAsset);
         // Clear the created asset ID since we've now properly saved it
@@ -319,6 +325,7 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
           assetType,
           description: description.trim(),
           imagePrompt: imagePrompt.trim() || undefined,
+          visualStyleCapsuleId: visualStyleCapsuleId || undefined,
         };
         console.log('[AssetDialog] Creating asset:', request);
         savedAsset = await assetService.createAsset(request);
@@ -368,7 +375,7 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {asset ? 'Edit Asset' : 'Create New Asset'}
@@ -438,6 +445,24 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
             />
             <p className="text-xs text-muted-foreground">
               {description.length} characters (minimum 10, 20+ recommended for AI generation)
+            </p>
+          </div>
+
+          {/* Visual Style Capsule */}
+          <div className="space-y-2">
+            <Label>
+              Visual Style Capsule (Optional)
+            </Label>
+            <StyleCapsuleSelector
+              type="visual"
+              value={visualStyleCapsuleId}
+              onChange={setVisualStyleCapsuleId}
+              placeholder="Select a visual style capsule for image generation..."
+              required={false}
+              showPreview={true}
+            />
+            <p className="text-xs text-muted-foreground">
+              Select a visual style capsule to apply consistent styling to AI-generated images for this asset.
             </p>
           </div>
 
