@@ -1,7 +1,12 @@
 import { supabase } from '../../config/supabase.js';
 import { NanoBananaClient } from './NanoBananaClient.js';
-import { ImageProvider, ImageGenerationOptions, ImageArtifact } from './ImageProviderInterface.js';
+import { ImageProvider, ImageGenerationOptions, ImageArtifact, ReferenceImage } from './ImageProviderInterface.js';
 import { v4 as uuidv4 } from 'uuid';
+
+interface VisualStyleContext {
+    textContext: string;
+    referenceImages: ReferenceImage[];
+}
 
 export interface CreateImageJobRequest {
     projectId: string;
@@ -147,7 +152,7 @@ export class ImageGenerationService {
             });
 
             // Get visual style context if provided
-            let visualStyleContext = '';
+            let visualStyleContext: VisualStyleContext | null = null;
             if (request.visualStyleCapsuleId) {
                 visualStyleContext = await this.getVisualStyleContext(request.visualStyleCapsuleId);
             }
@@ -162,7 +167,8 @@ export class ImageGenerationService {
                 prompt: request.prompt,
                 width: request.width,
                 height: request.height,
-                visualStyleContext
+                visualStyleContext: visualStyleContext?.textContext,
+                referenceImages: visualStyleContext?.referenceImages
             });
 
             // Update to uploading
@@ -290,21 +296,56 @@ export class ImageGenerationService {
             .eq('id', jobId);
     }
 
-    private async getVisualStyleContext(capsuleId: string): Promise<string> {
+    private async getVisualStyleContext(capsuleId: string): Promise<VisualStyleContext> {
         const { data: capsule } = await supabase
             .from('style_capsules')
-            .select('descriptors, design_pillars')
+            .select('descriptor_strings, design_pillars, reference_image_urls')
             .eq('id', capsuleId)
             .single();
 
-        if (!capsule) return '';
+        if (!capsule) {
+            console.log(`[ImageService] Style capsule ${capsuleId} not found`);
+            return { textContext: '', referenceImages: [] };
+        }
 
-        const descriptors = capsule.descriptors?.join(', ') || '';
+        // Log what we're retrieving
+        const hasDescriptorStrings = !!capsule.descriptor_strings && capsule.descriptor_strings.trim().length > 0;
+        const hasPillars = !!capsule.design_pillars && Object.keys(capsule.design_pillars).length > 0;
+        const hasReferenceImages = !!capsule.reference_image_urls && capsule.reference_image_urls.length > 0;
+        
+        console.log(`[ImageService] Style capsule ${capsuleId} data:`, {
+            hasDescriptorStrings,
+            descriptorStringsLength: capsule.descriptor_strings?.length || 0,
+            hasPillars,
+            pillarCount: capsule.design_pillars ? Object.keys(capsule.design_pillars).length : 0,
+            hasReferenceImages,
+            referenceImageCount: capsule.reference_image_urls?.length || 0,
+            referenceImageUrls: capsule.reference_image_urls || []
+        });
+
+        const descriptorStrings = capsule.descriptor_strings || '';
         const pillars = capsule.design_pillars 
             ? Object.entries(capsule.design_pillars).map(([k, v]) => `${k}: ${v}`).join('; ')
             : '';
 
-        return [descriptors, pillars].filter(Boolean).join('. ');
+        const textContext = [descriptorStrings, pillars].filter(Boolean).join('. ');
+        
+        console.log(`[ImageService] Generated text context (${textContext.length} chars):`, textContext);
+        
+        // Convert reference image URLs to ReferenceImage objects
+        const referenceImages: ReferenceImage[] = (capsule.reference_image_urls || []).map(url => ({
+            url: url,
+            mimeType: undefined // Will be detected when downloading
+        }));
+
+        if (hasReferenceImages) {
+            console.log(`[ImageService] Found ${referenceImages.length} reference image(s) - will be sent to API`);
+        }
+
+        return {
+            textContext,
+            referenceImages
+        };
     }
 
     private async findJobByIdempotencyKey(projectId: string, idempotencyKey: string) {
@@ -427,7 +468,7 @@ export class ImageGenerationService {
             });
 
             // Get visual style context if provided
-            let visualStyleContext = '';
+            let visualStyleContext: VisualStyleContext | null = null;
             if (request.visualStyleCapsuleId) {
                 visualStyleContext = await this.getVisualStyleContext(request.visualStyleCapsuleId);
             }
@@ -441,7 +482,8 @@ export class ImageGenerationService {
                 prompt: request.prompt,
                 width,
                 height,
-                visualStyleContext
+                visualStyleContext: visualStyleContext?.textContext,
+                referenceImages: visualStyleContext?.referenceImages
             });
 
             await this.updateJobState(jobId, 'uploading', {

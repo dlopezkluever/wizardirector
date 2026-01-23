@@ -364,7 +364,7 @@ Return JSON:
   private async getStyleContext(styleId: string): Promise<StyleContext> {
     const { data: capsule, error } = await supabase
       .from('style_capsules')
-      .select('name, descriptors, design_pillars')
+      .select('name, descriptor_strings, design_pillars')
       .eq('id', styleId)
       .single();
 
@@ -376,14 +376,14 @@ Return JSON:
       };
     }
 
-    const descriptors = capsule.descriptors?.join(', ') || '';
+    const descriptorStrings = capsule.descriptor_strings || '';
     const pillars = capsule.design_pillars
       ? Object.entries(capsule.design_pillars).map(([k, v]) => `${k}: ${v}`).join('; ')
       : '';
 
     return {
       name: capsule.name,
-      description: [descriptors, pillars].filter(Boolean).join('. ')
+      description: [descriptorStrings, pillars].filter(Boolean).join('. ')
     };
   }
 }
