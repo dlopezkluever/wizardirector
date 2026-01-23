@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 
 import { assetService } from '@/lib/services/assetService';
 import { projectAssetService } from '@/lib/services/projectAssetService';
+import { AssetMatchModal } from './AssetMatchModal';
 import type { GlobalAsset, AssetType, ProjectAsset } from '@/types/asset';
 import { cn } from '@/lib/utils';
 
@@ -70,6 +71,9 @@ export const AssetDrawer = ({
   const [selectedType, setSelectedType] = useState<AssetType | 'all'>(filterType || 'all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [cloningAssetId, setCloningAssetId] = useState<string | null>(null);
+  const [matchModalOpen, setMatchModalOpen] = useState(false);
+  const [selectedGlobalAsset, setSelectedGlobalAsset] = useState<GlobalAsset | null>(null);
+  const [extractedAssets, setExtractedAssets] = useState<ProjectAsset[]>([]);
 
   // Fetch assets when drawer opens
   useEffect(() => {
@@ -129,28 +133,71 @@ export const AssetDrawer = ({
   const handleCloneAsset = async (asset: GlobalAsset) => {
     if (cloningAssetId) return; // Prevent multiple simultaneous clones
 
-    setCloningAssetId(asset.id);
     try {
-      const clonedAsset = await projectAssetService.cloneFromGlobal(
-        projectId,
-        asset.id
-      );
-
-      toast.success(`Successfully cloned "${asset.name}" to project`);
+      // Fetch extracted project assets (those without global_asset_id)
+      const allProjectAssets = await projectAssetService.listAssets(projectId);
+      const extracted = allProjectAssets.filter(a => !a.global_asset_id);
       
-      if (onAssetCloned) {
-        onAssetCloned(clonedAsset);
-      }
+      setExtractedAssets(extracted);
+      
+      // If there are extracted assets, open match modal
+      if (extracted.length > 0) {
+        setSelectedGlobalAsset(asset);
+        setMatchModalOpen(true);
+      } else {
+        // No extracted assets, clone directly (existing behavior)
+        setCloningAssetId(asset.id);
+        const clonedAsset = await projectAssetService.cloneFromGlobal(
+          projectId,
+          asset.id
+        );
 
-      // Optionally close drawer after cloning
-      // onClose();
+        toast.success(`Successfully cloned "${asset.name}" to project`);
+        
+        if (onAssetCloned) {
+          onAssetCloned(clonedAsset);
+        }
+        setCloningAssetId(null);
+      }
     } catch (error) {
-      console.error('Failed to clone asset:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to clone asset';
-      toast.error(errorMessage);
-    } finally {
-      setCloningAssetId(null);
+      console.error('Failed to fetch project assets:', error);
+      // Fallback to direct clone if fetching fails
+      setCloningAssetId(asset.id);
+      try {
+        const clonedAsset = await projectAssetService.cloneFromGlobal(
+          projectId,
+          asset.id
+        );
+
+        toast.success(`Successfully cloned "${asset.name}" to project`);
+        
+        if (onAssetCloned) {
+          onAssetCloned(clonedAsset);
+        }
+      } catch (cloneError) {
+        console.error('Failed to clone asset:', cloneError);
+        const errorMessage = cloneError instanceof Error ? cloneError.message : 'Failed to clone asset';
+        toast.error(errorMessage);
+      } finally {
+        setCloningAssetId(null);
+      }
     }
+  };
+
+  const handleMatched = (asset: ProjectAsset) => {
+    if (onAssetCloned) {
+      onAssetCloned(asset);
+    }
+    setMatchModalOpen(false);
+    setSelectedGlobalAsset(null);
+  };
+
+  const handleClonedWithoutMatch = (asset: ProjectAsset) => {
+    if (onAssetCloned) {
+      onAssetCloned(asset);
+    }
+    setMatchModalOpen(false);
+    setSelectedGlobalAsset(null);
   };
 
   return (
@@ -336,6 +383,22 @@ export const AssetDrawer = ({
           </div>
         </div>
       </DrawerContent>
+
+      {/* Asset Match Modal */}
+      {selectedGlobalAsset && (
+        <AssetMatchModal
+          globalAsset={selectedGlobalAsset}
+          projectAssets={extractedAssets}
+          projectId={projectId}
+          isOpen={matchModalOpen}
+          onClose={() => {
+            setMatchModalOpen(false);
+            setSelectedGlobalAsset(null);
+          }}
+          onMatched={handleMatched}
+          onClonedWithoutMatch={handleClonedWithoutMatch}
+        />
+      )}
     </Drawer>
   );
 };

@@ -20,6 +20,7 @@ export interface CreateImageJobRequest {
     sceneId?: string;
     shotId?: string;
     idempotencyKey?: string;
+    referenceImageUrl?: string; // Optional reference image URL for merged assets
 }
 
 export interface CreateGlobalAssetImageJobRequest {
@@ -155,6 +156,19 @@ export class ImageGenerationService {
             let visualStyleContext: VisualStyleContext | null = null;
             if (request.visualStyleCapsuleId) {
                 visualStyleContext = await this.getVisualStyleContext(request.visualStyleCapsuleId);
+            }
+
+            // Add reference image URL if provided (for merged assets)
+            if (request.referenceImageUrl) {
+                if (!visualStyleContext) {
+                    visualStyleContext = { textContext: '', referenceImages: [] };
+                }
+                // Add the reference image to the context
+                visualStyleContext.referenceImages.push({
+                    url: request.referenceImageUrl,
+                    mimeType: undefined // Will be detected when downloading
+                });
+                console.log(`[ImageService] Added reference image URL to context: ${request.referenceImageUrl.substring(0, 80)}...`);
             }
 
             // Update to generating
