@@ -92,5 +92,13 @@ export interface CloneAssetRequest {
   globalAssetId: string;
   overrideDescription?: string;
   target_branch_id?: string;
+  matchWithAssetId?: string;
+  descriptionStrategy?: 'global' | 'project' | 'merge';
+  regenerateImage?: boolean;
+}
+
+export interface AssetMatchResult {
+  projectAsset: ProjectAsset;
+  matched: boolean; // true if matched with existing, false if cloned new
 }
 
