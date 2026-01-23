@@ -1,0 +1,12 @@
+[
+  {
+    "testName": "With Reference Images (NEW)",
+    "capsuleId": "f69802b7-6627-491b-ba77-cf707e154ea2",
+    "prompt": "A futuristic robot character",
+    "usedReferenceImages": true,
+    "referenceImageCount": 4,
+    "jobId": "2c6841ad-58fa-4d5b-bc9d-c20e1c1b3103",
+    "timestamp": "2026-01-23T19:19:24.735Z",
+    "publicUrl": "https://gdnurgghtmauclfkkvif.supabase.co/storage/v1/object/public/asset-images/global/fa58ace1-ae7e-4dd8-ab54-1fbe453701f2/3c29af2b-e726-447e-9b0c-24ee5e5add0e/1769195982524_8p2bou5.png"
+  }
+]
