@@ -5,7 +5,8 @@ import {
     ImageGenerationResult,
     ImageArtifact,
     ImageProviderError,
-    InpaintOptions
+    InpaintOptions,
+    ReferenceImage
 } from './ImageProviderInterface.js';
 
 export class NanoBananaClient implements ImageProvider {
@@ -29,21 +30,79 @@ export class NanoBananaClient implements ImageProvider {
         return this.executeWithRetry(async (attemptNumber) => {
             console.log(`[NanoBanana] Generating image (attempt ${attemptNumber})...`);
 
-            // Build prompt with visual style context
-            let prompt = options.prompt;
-            if (options.visualStyleContext) {
-                prompt = `${options.prompt}\n\nStyle: ${options.visualStyleContext}`;
+            // Download and convert reference images to base64
+            const imageParts: any[] = [];
+            if (options.referenceImages && options.referenceImages.length > 0) {
+                console.log(`[NanoBanana] Processing ${options.referenceImages.length} reference image(s)...`);
+                let successCount = 0;
+                let failureCount = 0;
+                
+                for (const refImage of options.referenceImages) {
+                    try {
+                        const imageData = await this.downloadAndConvertImage(refImage);
+                        imageParts.push({
+                            inlineData: {
+                                mimeType: imageData.mimeType,
+                                data: imageData.base64
+                            }
+                        });
+                        successCount++;
+                        console.log(`[NanoBanana] Successfully processed reference image ${successCount}/${options.referenceImages.length}: ${refImage.url.substring(0, 80)}...`);
+                    } catch (error) {
+                        failureCount++;
+                        console.error(`[NanoBanana] Failed to process reference image ${refImage.url}:`, error instanceof Error ? error.message : error);
+                        // Continue with other images - don't fail the entire request
+                    }
+                }
+                
+                console.log(`[NanoBanana] Reference image processing complete: ${successCount} succeeded, ${failureCount} failed`);
+                
+                // If all images failed but we have text context, continue with text-only
+                if (imageParts.length === 0 && options.visualStyleContext) {
+                    console.warn(`[NanoBanana] All reference images failed to load, falling back to text-only style context`);
+                } else if (imageParts.length === 0 && !options.visualStyleContext) {
+                    console.warn(`[NanoBanana] No reference images or text context available - proceeding with base prompt only`);
+                }
             }
+
+            // Build enhanced prompt with visual style context
+            let prompt = options.prompt;
+            if (options.visualStyleContext || (options.referenceImages && options.referenceImages.length > 0)) {
+                if (options.referenceImages && options.referenceImages.length > 0) {
+                    // Enhanced prompt when reference images are available
+                    const styleGuidance = options.visualStyleContext 
+                        ? `Apply these style guidelines: ${options.visualStyleContext}. `
+                        : '';
+                    prompt = `Generate an image that matches the visual style, color palette, mood, and aesthetic shown in the provided reference images. ${styleGuidance}Subject: ${options.prompt}`;
+                } else if (options.visualStyleContext) {
+                    // Fallback to text-only style context
+                    prompt = `${options.prompt}\n\nStyle: ${options.visualStyleContext}`;
+                }
+            }
+
+            // Log what we're sending to the API
+            console.log(`[NanoBanana] API Request Details:`, {
+                promptLength: prompt.length,
+                hasVisualStyleContext: !!options.visualStyleContext,
+                visualStyleContextLength: options.visualStyleContext?.length || 0,
+                hasReferenceImages: !!(options.referenceImages && options.referenceImages.length > 0),
+                referenceImageCount: options.referenceImages?.length || 0,
+                successfullyProcessedImages: imageParts.length,
+                finalPrompt: prompt.substring(0, 200) + (prompt.length > 200 ? '...' : '')
+            });
 
             // Use Gemini 2.5 Flash Image model
             const model = this.client.getGenerativeModel({
                 model: 'gemini-2.5-flash-image'
             });
 
+            // Build parts array: reference images first, then text prompt
+            const parts: any[] = [...imageParts, { text: prompt }];
+
             const response = await model.generateContent({
                 contents: [{
                     role: 'user',
-                    parts: [{ text: prompt }]
+                    parts: parts
                 }]
             });
 
@@ -245,6 +304,50 @@ export class NanoBananaClient implements ImageProvider {
 
     private sleep(ms: number): Promise<void> {
         return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    /**
+     * Download image from URL and convert to base64 with MIME type detection
+     */
+    private async downloadAndConvertImage(refImage: ReferenceImage): Promise<{ base64: string; mimeType: string }> {
+        try {
+            const response = await fetch(refImage.url);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const arrayBuffer = await response.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const base64 = buffer.toString('base64');
+
+            // Detect MIME type from response headers or URL extension
+            let mimeType = refImage.mimeType;
+            if (!mimeType) {
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.startsWith('image/')) {
+                    mimeType = contentType;
+                } else {
+                    // Fallback to extension detection
+                    const urlLower = refImage.url.toLowerCase();
+                    if (urlLower.endsWith('.png')) {
+                        mimeType = 'image/png';
+                    } else if (urlLower.endsWith('.jpg') || urlLower.endsWith('.jpeg')) {
+                        mimeType = 'image/jpeg';
+                    } else if (urlLower.endsWith('.webp')) {
+                        mimeType = 'image/webp';
+                    } else if (urlLower.endsWith('.gif')) {
+                        mimeType = 'image/gif';
+                    } else {
+                        // Default to PNG if unknown
+                        mimeType = 'image/png';
+                    }
+                }
+            }
+
+            return { base64, mimeType };
+        } catch (error) {
+            throw new Error(`Failed to download/convert image from ${refImage.url}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
     }
 }
 
