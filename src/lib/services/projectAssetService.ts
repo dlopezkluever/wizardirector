@@ -398,8 +398,13 @@ class ProjectAssetService {
   async cloneFromGlobal(
     projectId: string,
     globalAssetId: string,
-    overrideDescription?: string,
-    targetBranchId?: string
+    options?: {
+      overrideDescription?: string;
+      targetBranchId?: string;
+      matchWithAssetId?: string;
+      descriptionStrategy?: 'global' | 'project' | 'merge';
+      regenerateImage?: boolean;
+    }
   ): Promise<ProjectAsset> {
     const { data: { session } } = await supabase.auth.getSession();
 
@@ -409,8 +414,11 @@ class ProjectAssetService {
 
     const requestBody: CloneAssetRequest = {
       globalAssetId,
-      overrideDescription,
-      target_branch_id: targetBranchId
+      overrideDescription: options?.overrideDescription,
+      target_branch_id: options?.targetBranchId,
+      matchWithAssetId: options?.matchWithAssetId,
+      descriptionStrategy: options?.descriptionStrategy,
+      regenerateImage: options?.regenerateImage,
     };
 
     const response = await fetch(`/api/projects/${projectId}/assets/clone-from-global`, {
