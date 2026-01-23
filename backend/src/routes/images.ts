@@ -136,5 +136,52 @@ router.get('/jobs/:jobId', async (req, res) => {
     }
 });
 
+// GET /api/images/debug-style-capsule/:capsuleId - Debug endpoint to inspect style capsule data
+router.get('/debug-style-capsule/:capsuleId', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { capsuleId } = req.params;
+
+        // Fetch capsule with all relevant fields
+        const { data: capsule, error } = await supabase
+            .from('style_capsules')
+            .select('id, name, type, design_pillars, descriptor_strings, reference_image_urls, user_id, is_preset')
+            .eq('id', capsuleId)
+            .single();
+
+        if (error || !capsule) {
+            return res.status(404).json({ error: 'Style capsule not found' });
+        }
+
+        // Verify access (user's own or preset)
+        if (!capsule.is_preset && capsule.user_id !== userId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        // Return diagnostic information
+        res.json({
+            capsuleId: capsule.id,
+            name: capsule.name,
+            type: capsule.type,
+            hasDescriptorStrings: !!capsule.descriptor_strings && capsule.descriptor_strings.trim().length > 0,
+            descriptorStringsLength: capsule.descriptor_strings?.length || 0,
+            descriptorStrings: capsule.descriptor_strings || null,
+            hasDesignPillars: !!capsule.design_pillars && Object.keys(capsule.design_pillars).length > 0,
+            designPillars: capsule.design_pillars || {},
+            hasReferenceImages: !!capsule.reference_image_urls && capsule.reference_image_urls.length > 0,
+            referenceImageCount: capsule.reference_image_urls?.length || 0,
+            referenceImageUrls: capsule.reference_image_urls || [],
+            diagnostic: {
+                textContextAvailable: !!(capsule.descriptor_strings?.trim() || capsule.design_pillars),
+                imageContextAvailable: !!(capsule.reference_image_urls && capsule.reference_image_urls.length > 0),
+                willUseImages: !!(capsule.reference_image_urls && capsule.reference_image_urls.length > 0)
+            }
+        });
+    } catch (error) {
+        console.error('[API] Debug style capsule error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 export { router as imagesRouter };
 
