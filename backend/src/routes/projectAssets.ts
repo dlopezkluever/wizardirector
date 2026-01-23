@@ -8,6 +8,7 @@ import { supabase } from '../config/supabase.js';
 import { AssetExtractionService } from '../services/assetExtractionService.js';
 import { ImageGenerationService } from '../services/image-generation/ImageGenerationService.js';
 import { localizeAssetImage } from '../services/assetImageLocalizer.js';
+import { mergeDescriptions } from '../services/assetDescriptionMerger.js';
 
 const router = Router();
 const extractionService = new AssetExtractionService();
@@ -803,7 +804,14 @@ router.post('/:projectId/assets/clone-from-global', async (req, res) => {
     try {
         const userId = req.user!.id;
         const { projectId } = req.params;
-        const { globalAssetId, overrideDescription, target_branch_id } = req.body;
+        const { 
+            globalAssetId, 
+            overrideDescription, 
+            target_branch_id,
+            matchWithAssetId,
+            descriptionStrategy,
+            regenerateImage
+        } = req.body;
 
         if (!globalAssetId) {
             return res.status(400).json({
@@ -871,51 +879,150 @@ router.post('/:projectId/assets/clone-from-global', async (req, res) => {
         const stage5State = stage5States?.[0];
         const visualStyleCapsuleId = stage5State?.content?.locked_visual_style_capsule_id || globalAsset.visual_style_capsule_id;
 
-        // Check for duplicate asset names (warn but allow)
-        const { data: existingAssets } = await supabase
-            .from('project_assets')
-            .select('id, name')
-            .eq('branch_id', branchId)
-            .eq('name', globalAsset.name)
-            .limit(1);
+        // If matching with existing asset, fetch it first
+        let extractedAsset = null;
+        if (matchWithAssetId) {
+            const { data: asset, error: assetError } = await supabase
+                .from('project_assets')
+                .select('*')
+                .eq('id', matchWithAssetId)
+                .eq('branch_id', branchId)
+                .eq('project_id', projectId)
+                .single();
 
-        if (existingAssets && existingAssets.length > 0) {
-            console.warn(`[ProjectAssets] Warning: Asset with name "${globalAsset.name}" already exists in branch`);
+            if (assetError || !asset) {
+                return res.status(404).json({
+                    error: 'Extracted asset not found or does not belong to this project'
+                });
+            }
+
+            // Verify it's an extracted asset (no global_asset_id)
+            if (asset.global_asset_id) {
+                return res.status(400).json({
+                    error: 'Cannot match with an asset that is already linked to a global asset'
+                });
+            }
+
+            extractedAsset = asset;
+            console.log(`[ProjectAssets] Matching global asset ${globalAssetId} with extracted asset ${matchWithAssetId}`);
         }
 
-        // Track overridden fields if overrideDescription is provided
+        // Merge descriptions if matching
+        let finalDescription = overrideDescription || globalAsset.description;
+        if (matchWithAssetId && extractedAsset && descriptionStrategy) {
+            const strategy = descriptionStrategy || 'merge';
+            finalDescription = await mergeDescriptions(
+                globalAsset.description,
+                extractedAsset.description,
+                strategy
+            );
+            console.log(`[ProjectAssets] Merged descriptions using strategy: ${strategy}`);
+        }
+
+        // Track overridden fields
         const overriddenFields: string[] = [];
         if (overrideDescription) {
             overriddenFields.push('description');
         }
 
-        // Create new project asset first (without image, we'll update it after localization)
-        const { data: projectAsset, error: insertError } = await supabase
-            .from('project_assets')
-            .insert({
-                project_id: projectId,
-                branch_id: branchId, // CRITICAL: ensures branch isolation
+        let projectAsset;
+
+        if (matchWithAssetId && extractedAsset) {
+            // UPDATE existing extracted asset instead of creating new
+            const updateData: any = {
                 global_asset_id: globalAssetId,
                 source_version: globalAsset.version,
-                name: globalAsset.name,
-                asset_type: globalAsset.asset_type,
-                description: overrideDescription || globalAsset.description,
-                image_prompt: globalAsset.image_prompt,
-                image_key_url: null, // Will be updated after localization
-                visual_style_capsule_id: visualStyleCapsuleId, // From branch's Stage 5 state
-                overridden_fields: overriddenFields.length > 0 ? overriddenFields : undefined, // Track overrides at clone time
-                locked: false
-            })
-            .select()
-            .single();
+                name: globalAsset.name, // Use global asset name
+                description: finalDescription,
+                image_prompt: globalAsset.image_prompt || extractedAsset.image_prompt,
+                visual_style_capsule_id: visualStyleCapsuleId,
+                overridden_fields: overriddenFields.length > 0 ? overriddenFields : undefined,
+                updated_at: new Date().toISOString()
+            };
 
-        if (insertError) {
-            console.error('[ProjectAssets] Clone insert error:', insertError);
-            return res.status(500).json({ error: 'Failed to clone asset into project' });
+            const { data: updatedAsset, error: updateError } = await supabase
+                .from('project_assets')
+                .update(updateData)
+                .eq('id', matchWithAssetId)
+                .select()
+                .single();
+
+            if (updateError) {
+                console.error('[ProjectAssets] Failed to update matched asset:', updateError);
+                return res.status(500).json({ error: 'Failed to update matched asset' });
+            }
+
+            projectAsset = updatedAsset;
+            console.log(`[ProjectAssets] Updated extracted asset ${matchWithAssetId} with global asset data`);
+        } else {
+            // CREATE new asset (existing behavior)
+            // Check for duplicate asset names (warn but allow)
+            const { data: existingAssets } = await supabase
+                .from('project_assets')
+                .select('id, name')
+                .eq('branch_id', branchId)
+                .eq('name', globalAsset.name)
+                .limit(1);
+
+            if (existingAssets && existingAssets.length > 0) {
+                console.warn(`[ProjectAssets] Warning: Asset with name "${globalAsset.name}" already exists in branch`);
+            }
+
+            const { data: newAsset, error: insertError } = await supabase
+                .from('project_assets')
+                .insert({
+                    project_id: projectId,
+                    branch_id: branchId, // CRITICAL: ensures branch isolation
+                    global_asset_id: globalAssetId,
+                    source_version: globalAsset.version,
+                    name: globalAsset.name,
+                    asset_type: globalAsset.asset_type,
+                    description: finalDescription,
+                    image_prompt: globalAsset.image_prompt,
+                    image_key_url: null, // Will be updated after localization/generation
+                    visual_style_capsule_id: visualStyleCapsuleId, // From branch's Stage 5 state
+                    overridden_fields: overriddenFields.length > 0 ? overriddenFields : undefined, // Track overrides at clone time
+                    locked: false
+                })
+                .select()
+                .single();
+
+            if (insertError) {
+                console.error('[ProjectAssets] Clone insert error:', insertError);
+                return res.status(500).json({ error: 'Failed to clone asset into project' });
+            }
+
+            projectAsset = newAsset;
+            console.log(`[ProjectAssets] Created new project asset from global asset ${globalAssetId}`);
         }
 
-        // Localize image if it exists (copy from global to project storage)
-        if (globalAsset.image_key_url) {
+        // Handle image: regenerate or localize
+        const imageService = new ImageGenerationService();
+        
+        if (regenerateImage && globalAsset.image_key_url && visualStyleCapsuleId) {
+            // Regenerate image with merged description and global image as reference
+            try {
+                console.log(`[ProjectAssets] Regenerating image for asset ${projectAsset.id} with reference image`);
+                
+                const jobResult = await imageService.createImageJob({
+                    projectId,
+                    branchId,
+                    jobType: 'master_asset',
+                    assetId: projectAsset.id,
+                    prompt: finalDescription,
+                    visualStyleCapsuleId,
+                    referenceImageUrl: globalAsset.image_key_url, // Use global asset image as reference
+                });
+
+                // Image will be updated asynchronously when job completes
+                // The job handler will update project_assets.image_key_url
+                console.log(`[ProjectAssets] Image regeneration job ${jobResult.jobId} queued`);
+            } catch (regenerateError) {
+                console.error('[ProjectAssets] Failed to queue image regeneration:', regenerateError);
+                // Continue without image regeneration - asset is still created/updated
+            }
+        } else if (globalAsset.image_key_url) {
+            // Localize image (copy from global to project storage)
             try {
                 const localizationResult = await localizeAssetImage({
                     sourceUrl: globalAsset.image_key_url,
@@ -943,9 +1050,10 @@ router.post('/:projectId/assets/clone-from-global', async (req, res) => {
             }
         }
 
-        console.log(`[ProjectAssets] Successfully cloned global asset ${globalAssetId} to project ${projectId} as ${projectAsset.id}`);
+        const action = matchWithAssetId ? 'matched' : 'cloned';
+        console.log(`[ProjectAssets] Successfully ${action} global asset ${globalAssetId} to project ${projectId} as ${projectAsset.id}`);
 
-        res.status(201).json(projectAsset);
+        res.status(matchWithAssetId ? 200 : 201).json(projectAsset);
     } catch (error) {
         console.error('[ProjectAssets] Clone from global error:', error);
         res.status(500).json({
