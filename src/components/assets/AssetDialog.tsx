@@ -49,6 +49,8 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
   const [visualStyleCapsuleId, setVisualStyleCapsuleId] = useState<string>('');
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  // Track if image should be removed on save
+  const [shouldRemoveImage, setShouldRemoveImage] = useState(false);
   // Track asset created during image generation (to prevent duplicate creation on save)
   const [createdAssetId, setCreatedAssetId] = useState<string | null>(null);
 
@@ -64,6 +66,7 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
         setVisualStyleCapsuleId(asset.visual_style_capsule_id || '');
         setImageUrl(asset.image_key_url || null);
         setImageFile(null);
+        setShouldRemoveImage(false);
       } else {
         // Creating new asset
         setName('');
@@ -73,6 +76,7 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
         setVisualStyleCapsuleId('');
         setImageUrl(null);
         setImageFile(null);
+        setShouldRemoveImage(false);
         setCreatedAssetId(null); // Reset created asset ID
       }
     }
@@ -105,6 +109,7 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
     }
 
     setImageFile(file);
+    setShouldRemoveImage(false); // New file selected, don't remove image
     const reader = new FileReader();
     reader.onloadend = () => {
       setImageUrl(reader.result as string);
@@ -114,12 +119,8 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
 
   const handleRemoveImage = () => {
     setImageFile(null);
-    if (asset?.image_key_url) {
-      // Keep existing image URL if editing existing asset
-      setImageUrl(asset.image_key_url);
-    } else {
-      setImageUrl(null);
-    }
+    setImageUrl(null);
+    setShouldRemoveImage(true);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -215,6 +216,7 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
               const updatedAsset = await assetService.getAsset(assetId);
               const newImageUrl = updatedAsset.image_key_url || jobStatus.publicUrl || null;
               setImageUrl(newImageUrl);
+              setShouldRemoveImage(false); // Image was generated, don't remove it
               
               // Refresh the asset list in the background (but don't close dialog)
               if (onAssetUpdated) {
@@ -228,6 +230,7 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
               console.error('Failed to fetch updated asset:', fetchError);
               if (jobStatus.publicUrl) {
                 setImageUrl(jobStatus.publicUrl);
+                setShouldRemoveImage(false);
               }
             }
             
@@ -312,11 +315,20 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
           description: description.trim(),
           imagePrompt: imagePrompt.trim() || undefined,
           visualStyleCapsuleId: visualStyleCapsuleId || undefined,
+          removeImage: shouldRemoveImage,
         });
         console.log('[AssetDialog] Asset updated:', savedAsset);
         // Clear the created asset ID since we've now properly saved it
         if (createdAssetId) {
           setCreatedAssetId(null);
+        }
+        // Reset remove image flag and update image URL after successful update
+        if (shouldRemoveImage) {
+          setShouldRemoveImage(false);
+          setImageUrl(null); // Clear the image URL in UI
+        } else if (savedAsset.image_key_url) {
+          // Update image URL if it was changed
+          setImageUrl(savedAsset.image_key_url);
         }
       } else {
         // Create new asset
@@ -332,8 +344,8 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
         console.log('[AssetDialog] Asset created:', savedAsset);
       }
 
-      // Upload image if a new file was selected
-      if (imageFile && savedAsset) {
+      // Upload image if a new file was selected (and we're not removing the image)
+      if (imageFile && savedAsset && !shouldRemoveImage) {
         try {
           setUploadingImage(true);
           const updatedAsset = await assetService.uploadImage(savedAsset.id, imageFile);

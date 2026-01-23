@@ -178,7 +178,8 @@ router.put('/:id', async (req, res) => {
             description,
             imagePrompt,
             visualStyleCapsuleId,
-            voiceProfileId
+            voiceProfileId,
+            removeImage
         } = req.body;
 
         // Verify asset ownership
@@ -242,6 +243,11 @@ router.put('/:id', async (req, res) => {
         if (imagePrompt !== undefined) updates.image_prompt = imagePrompt;
         if (visualStyleCapsuleId !== undefined) updates.visual_style_capsule_id = visualStyleCapsuleId;
         if (voiceProfileId !== undefined) updates.voice_profile_id = voiceProfileId;
+        
+        // Handle image removal
+        if (removeImage === true) {
+            updates.image_key_url = null;
+        }
 
         const { data: asset, error } = await supabase
             .from('global_assets')

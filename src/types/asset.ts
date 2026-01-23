@@ -59,6 +59,7 @@ export interface UpdateAssetRequest {
   imagePrompt?: string;
   visualStyleCapsuleId?: string;
   voiceProfileId?: string;
+  removeImage?: boolean;
 }
 
 export interface AssetFilter {
