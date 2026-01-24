@@ -95,6 +95,8 @@ export interface CloneAssetRequest {
   matchWithAssetId?: string;
   descriptionStrategy?: 'global' | 'project' | 'merge';
   regenerateImage?: boolean;
+  nameStrategy?: 'project' | 'global' | 'custom';
+  customName?: string;
 }
 
 export interface AssetMatchResult {
