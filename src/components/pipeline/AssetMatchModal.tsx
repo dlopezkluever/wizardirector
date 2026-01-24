@@ -24,6 +24,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { projectAssetService } from '@/lib/services/projectAssetService';
 import type { GlobalAsset, ProjectAsset, AssetType } from '@/types/asset';
@@ -67,6 +68,8 @@ export function AssetMatchModal({
   onClonedWithoutMatch,
 }: AssetMatchModalProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string>('');
+  const [nameStrategy, setNameStrategy] = useState<'project' | 'global' | 'custom'>('project');
+  const [customName, setCustomName] = useState<string>('');
   const [descriptionStrategy, setDescriptionStrategy] = useState<'global' | 'project' | 'merge'>('merge');
   const [regenerateImage, setRegenerateImage] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -88,10 +91,17 @@ export function AssetMatchModal({
     return groups;
   }, [projectAssets]);
 
+  // Get selected project asset for name display
+  const selectedProjectAsset = useMemo(() => {
+    return projectAssets.find(asset => asset.id === selectedAssetId);
+  }, [projectAssets, selectedAssetId]);
+
   // Reset state when modal closes
   const handleClose = () => {
     if (!isProcessing) {
       setSelectedAssetId('');
+      setNameStrategy('project');
+      setCustomName('');
       setDescriptionStrategy('merge');
       setRegenerateImage(false);
       onClose();
@@ -104,10 +114,18 @@ export function AssetMatchModal({
       return;
     }
 
+    // Validate custom name if custom strategy is selected
+    if (nameStrategy === 'custom' && !customName.trim()) {
+      toast.error('Please enter a custom name');
+      return;
+    }
+
     setIsProcessing(true);
     try {
       const matchedAsset = await projectAssetService.cloneFromGlobal(projectId, globalAsset.id, {
         matchWithAssetId: selectedAssetId,
+        nameStrategy,
+        customName: nameStrategy === 'custom' ? customName.trim() : undefined,
         descriptionStrategy,
         regenerateImage,
       });
@@ -242,6 +260,61 @@ export function AssetMatchModal({
                 <p className="text-sm text-muted-foreground">
                   No extracted assets available to match with.
                 </p>
+              </div>
+            )}
+
+            {/* Name Selection */}
+            {selectedAssetId && selectedProjectAsset && (
+              <div className="space-y-3">
+                <Label>Asset Name</Label>
+                <RadioGroup
+                  value={nameStrategy}
+                  onValueChange={(value) => setNameStrategy(value as 'project' | 'global' | 'custom')}
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="project" id="name-project" />
+                    <Label htmlFor="name-project" className="font-normal cursor-pointer">
+                      {selectedProjectAsset.name}
+                      <span className="block text-xs text-muted-foreground mt-0.5">
+                        Use project asset name (default)
+                      </span>
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="global" id="name-global" />
+                    <Label htmlFor="name-global" className="font-normal cursor-pointer">
+                      {globalAsset.name} ({selectedProjectAsset.name})
+                      <span className="block text-xs text-muted-foreground mt-0.5">
+                        Use global name with project name in parentheses
+                      </span>
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="custom" id="name-custom" />
+                    <div className="flex-1 space-y-1">
+                      <Label htmlFor="name-custom" className="font-normal cursor-pointer">
+                        Custom Name
+                        <span className="block text-xs text-muted-foreground mt-0.5">
+                          Enter custom name with project name in parentheses
+                        </span>
+                      </Label>
+                      {nameStrategy === 'custom' && (
+                        <>
+                          <Input
+                            id="custom-name-input"
+                            value={customName}
+                            onChange={(e) => setCustomName(e.target.value)}
+                            placeholder="Enter custom name"
+                            className="mt-1"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Will be saved as: {customName.trim() || '...'} ({selectedProjectAsset.name})
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </RadioGroup>
               </div>
             )}
 

@@ -810,7 +810,9 @@ router.post('/:projectId/assets/clone-from-global', async (req, res) => {
             target_branch_id,
             matchWithAssetId,
             descriptionStrategy,
-            regenerateImage
+            regenerateImage,
+            nameStrategy,
+            customName
         } = req.body;
 
         if (!globalAssetId) {
@@ -907,6 +909,28 @@ router.post('/:projectId/assets/clone-from-global', async (req, res) => {
             console.log(`[ProjectAssets] Matching global asset ${globalAssetId} with extracted asset ${matchWithAssetId}`);
         }
 
+        // Determine final name based on name strategy
+        let finalName = globalAsset.name; // Default to global name
+        if (matchWithAssetId && extractedAsset && nameStrategy) {
+            if (nameStrategy === 'project') {
+                // Use project asset name as-is
+                finalName = extractedAsset.name;
+            } else if (nameStrategy === 'global') {
+                // Use global name with project name in parentheses
+                finalName = `${globalAsset.name} (${extractedAsset.name})`;
+            } else if (nameStrategy === 'custom' && customName) {
+                // Use custom name with project name in parentheses
+                finalName = `${customName.trim()} (${extractedAsset.name})`;
+            } else {
+                // Fallback to project name if custom name is missing
+                finalName = extractedAsset.name;
+            }
+            console.log(`[ProjectAssets] Name strategy "${nameStrategy}" resulted in: "${finalName}"`);
+        } else if (matchWithAssetId && extractedAsset) {
+            // Default to project name if no strategy specified
+            finalName = extractedAsset.name;
+        }
+
         // Merge descriptions if matching
         let finalDescription = overrideDescription || globalAsset.description;
         if (matchWithAssetId && extractedAsset && descriptionStrategy) {
@@ -932,7 +956,7 @@ router.post('/:projectId/assets/clone-from-global', async (req, res) => {
             const updateData: any = {
                 global_asset_id: globalAssetId,
                 source_version: globalAsset.version,
-                name: globalAsset.name, // Use global asset name
+                name: finalName, // Use name based on name strategy
                 description: finalDescription,
                 image_prompt: globalAsset.image_prompt || extractedAsset.image_prompt,
                 visual_style_capsule_id: visualStyleCapsuleId,
