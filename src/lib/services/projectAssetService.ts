@@ -404,6 +404,8 @@ class ProjectAssetService {
       matchWithAssetId?: string;
       descriptionStrategy?: 'global' | 'project' | 'merge';
       regenerateImage?: boolean;
+      nameStrategy?: 'project' | 'global' | 'custom';
+      customName?: string;
     }
   ): Promise<ProjectAsset> {
     const { data: { session } } = await supabase.auth.getSession();
@@ -419,6 +421,8 @@ class ProjectAssetService {
       matchWithAssetId: options?.matchWithAssetId,
       descriptionStrategy: options?.descriptionStrategy,
       regenerateImage: options?.regenerateImage,
+      nameStrategy: options?.nameStrategy,
+      customName: options?.customName,
     };
 
     const response = await fetch(`/api/projects/${projectId}/assets/clone-from-global`, {
