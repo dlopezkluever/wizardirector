@@ -236,6 +236,35 @@ class ProjectAssetService {
   }
 
   /**
+   * Upload image for a project asset
+   */
+  async uploadImage(projectId: string, assetId: string, imageFile: File): Promise<ProjectAsset> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const formData = new FormData();
+    formData.append('image', imageFile);
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/upload-image`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to upload image');
+    }
+
+    return response.json();
+  }
+
+  /**
    * Generate image key for an asset
    */
   async generateImage(projectId: string, assetId: string): Promise<ImageGenerationJobResponse> {
