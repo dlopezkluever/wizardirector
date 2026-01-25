@@ -166,7 +166,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 \---
 
-\#\# **IN PROGRESS** Phase 3: Asset Management & Stage 5 **IN PROGRESS**
+\#\# **DONE** Phase 3: Asset Management & Stage 5 **DONE**
 
 \*\*Goal\*\*: Enable visual asset definition and management. Users can define characters, props, and locations with generated image references.
 
