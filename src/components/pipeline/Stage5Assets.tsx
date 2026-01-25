@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { 
   User, MapPin, Package, Sparkles, Check, Lock, Loader2, 
@@ -77,6 +77,8 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
   const [promotingAssetId, setPromotingAssetId] = useState<string | null>(null);
   const [promotionConfirmOpen, setPromotionConfirmOpen] = useState(false);
   const [assetDrawerOpen, setAssetDrawerOpen] = useState(false);
+  const [uploadingAssetId, setUploadingAssetId] = useState<string | null>(null);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   // Initialize from saved state
   useEffect(() => {
@@ -194,6 +196,53 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
         toast.error(`Failed to generate image for ${asset.name}: ${errorMessage}`);
       }
     }
+  };
+
+  const handleUploadImage = async (assetId: string, file: File) => {
+    const asset = assets.find(a => a.id === assetId);
+    if (!asset) return;
+
+    try {
+      setUploadingAssetId(assetId);
+      toast.info(`Uploading image for ${asset.name}...`);
+
+      const updatedAsset = await projectAssetService.uploadImage(projectId, assetId, file);
+
+      // Update asset with refreshed data
+      setAssets(prev => prev.map(a =>
+        a.id === assetId ? updatedAsset : a
+      ));
+
+      toast.success(`Image uploaded for ${asset.name}!`);
+    } catch (error) {
+      console.error('Failed to upload image:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to upload image';
+      
+      if (errorMessage.includes('Invalid file type')) {
+        toast.error('Invalid file type. Only PNG, JPEG, and WebP are allowed.');
+      } else if (errorMessage.includes('file size')) {
+        toast.error('File size exceeds 10MB limit.');
+      } else {
+        toast.error(`Failed to upload image for ${asset.name}: ${errorMessage}`);
+      }
+    } finally {
+      setUploadingAssetId(null);
+    }
+  };
+
+  const handleFileInputChange = (assetId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleUploadImage(assetId, file);
+    }
+    // Reset input
+    if (fileInputRefs.current[assetId]) {
+      fileInputRefs.current[assetId]!.value = '';
+    }
+  };
+
+  const triggerFileInput = (assetId: string) => {
+    fileInputRefs.current[assetId]?.click();
   };
 
   const handleUpdateDescription = useCallback(async (assetId: string, description: string) => {
@@ -685,24 +734,79 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
                               {/* Actions */}
                               <div className="flex gap-2">
                                 {!asset.image_key_url ? (
-                                  <Button
-                                    onClick={() => handleGenerateImage(asset.id)}
-                                    disabled={asset.locked}
-                                    className="flex-1"
-                                  >
-                                    <Sparkles className="w-4 h-4 mr-2" />
-                                    Generate Image Key
-                                  </Button>
+                                  <>
+                                    <input
+                                      type="file"
+                                      accept="image/png,image/jpeg,image/webp"
+                                      className="hidden"
+                                      ref={(el) => {
+                                        if (el) fileInputRefs.current[asset.id] = el;
+                                      }}
+                                      onChange={(e) => handleFileInputChange(asset.id, e)}
+                                    />
+                                    <Button
+                                      onClick={() => triggerFileInput(asset.id)}
+                                      disabled={asset.locked || uploadingAssetId === asset.id}
+                                      variant="outline"
+                                      className="flex-1"
+                                    >
+                                      {uploadingAssetId === asset.id ? (
+                                        <>
+                                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                          Uploading...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Upload className="w-4 h-4 mr-2" />
+                                          Upload Image
+                                        </>
+                                      )}
+                                    </Button>
+                                    <Button
+                                      onClick={() => handleGenerateImage(asset.id)}
+                                      disabled={asset.locked}
+                                      className="flex-1"
+                                    >
+                                      <Sparkles className="w-4 h-4 mr-2" />
+                                      Generate Image Key
+                                    </Button>
+                                  </>
                                 ) : (
-                                  <Button
-                                    variant="outline"
-                                    onClick={() => handleGenerateImage(asset.id)}
-                                    disabled={asset.locked}
-                                    className="flex-1"
-                                  >
-                                    <RefreshCw className="w-4 h-4 mr-2" />
-                                    Regenerate
-                                  </Button>
+                                  <>
+                                    <Button
+                                      variant="outline"
+                                      onClick={() => handleGenerateImage(asset.id)}
+                                      disabled={asset.locked}
+                                      className="flex-1"
+                                    >
+                                      <RefreshCw className="w-4 h-4 mr-2" />
+                                      Regenerate
+                                    </Button>
+                                    {!asset.locked && (
+                                      <>
+                                        <input
+                                          type="file"
+                                          accept="image/png,image/jpeg,image/webp"
+                                          className="hidden"
+                                          ref={(el) => {
+                                            if (el) fileInputRefs.current[asset.id] = el;
+                                          }}
+                                          onChange={(e) => handleFileInputChange(asset.id, e)}
+                                        />
+                                        <Button
+                                          onClick={() => triggerFileInput(asset.id)}
+                                          disabled={uploadingAssetId === asset.id}
+                                          variant="outline"
+                                        >
+                                          {uploadingAssetId === asset.id ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                          ) : (
+                                            <Upload className="w-4 h-4" />
+                                          )}
+                                        </Button>
+                                      </>
+                                    )}
+                                  </>
                                 )}
 
                                 {asset.image_key_url && !asset.locked && (
