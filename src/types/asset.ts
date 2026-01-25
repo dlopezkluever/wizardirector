@@ -29,6 +29,8 @@ export interface ProjectAsset {
   image_key_url?: string;
   visual_style_capsule_id?: string;
   locked: boolean;
+  overridden_fields?: string[]; // Fields that have been manually edited and should not be overwritten during sync
+  last_synced_at?: string; // Timestamp of last sync from global asset
   metadata?: {
     confidence_score?: number;
     is_priority?: boolean;
@@ -57,6 +59,7 @@ export interface UpdateAssetRequest {
   imagePrompt?: string;
   visualStyleCapsuleId?: string;
   voiceProfileId?: string;
+  removeImage?: boolean;
 }
 
 export interface AssetFilter {
@@ -74,5 +77,30 @@ export interface DeleteAssetError {
   error: string;
   message: string;
   projects: AssetUsage[];
+}
+
+export interface AssetVersionStatus {
+  projectAssetId: string;
+  globalAssetId: string;
+  projectVersion: number;
+  globalVersion: number;
+  isOutdated: boolean;
+  globalAssetName: string;
+}
+
+export interface CloneAssetRequest {
+  globalAssetId: string;
+  overrideDescription?: string;
+  target_branch_id?: string;
+  matchWithAssetId?: string;
+  descriptionStrategy?: 'global' | 'project' | 'merge';
+  regenerateImage?: boolean;
+  nameStrategy?: 'project' | 'global' | 'custom';
+  customName?: string;
+}
+
+export interface AssetMatchResult {
+  projectAsset: ProjectAsset;
+  matched: boolean; // true if matched with existing, false if cloned new
 }
 

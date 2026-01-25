@@ -538,6 +538,12 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 \- \[ \] Add artifact search and filter  
 \- \[ \] Create artifact promotion to global library
 
+**Complex Conflict Resolution*
+*2. **Later (Phase 10):** Build the fancy UI that shows a side-by-side comparison of Global vs. Local changes and lets the user "Pick and Choose" which ones to keep.
+(**Recommendation for Phase 10 (Later):**
+Implement "Conflict Resolution UIs," "Visual Diffs," and "Version History/Rollbacks." These are the "Advanced" features listed in your task list.
+)
+
 \#\#\# Feature 10.5: Invalidation Logic  
 \*\*Purpose\*\*: Cascade changes through dependent artifacts  
 \- \[ \] Implement \`invalidation\_logs\` table  

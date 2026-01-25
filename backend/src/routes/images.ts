@@ -73,35 +73,45 @@ router.get('/jobs/:jobId', async (req, res) => {
         const userId = req.user!.id;
         const { jobId } = req.params;
 
-        const { data: job, error } = await supabase
+        // First, get the job without joins to check if it's project-based or global asset
+        const { data: job, error: jobError } = await supabase
             .from('image_generation_jobs')
-            .select(`
-                id,
-                project_id,
-                job_type,
-                status,
-                public_url,
-                error_code,
-                error_message,
-                failure_stage,
-                cost_credits,
-                estimated_cost,
-                created_at,
-                completed_at,
-                projects!inner (
-                    user_id
-                )
-            `)
+            .select('id, project_id, asset_id, job_type, status, public_url, error_code, error_message, failure_stage, cost_credits, estimated_cost, created_at, completed_at')
             .eq('id', jobId)
             .single();
 
-        if (error || !job) {
+        if (jobError || !job) {
             return res.status(404).json({ error: 'Job not found' });
         }
 
-        // Verify ownership
-        if ((job as any).projects.user_id !== userId) {
-            return res.status(403).json({ error: 'Access denied' });
+        // Verify ownership based on job type
+        if (job.project_id) {
+            // Project-based job: verify through projects table
+            const { data: project, error: projectError } = await supabase
+                .from('projects')
+                .select('user_id')
+                .eq('id', job.project_id)
+                .eq('user_id', userId)
+                .single();
+
+            if (projectError || !project) {
+                return res.status(403).json({ error: 'Access denied' });
+            }
+        } else if (job.asset_id) {
+            // Global asset job: verify through global_assets table
+            const { data: asset, error: assetError } = await supabase
+                .from('global_assets')
+                .select('user_id')
+                .eq('id', job.asset_id)
+                .eq('user_id', userId)
+                .single();
+
+            if (assetError || !asset) {
+                return res.status(403).json({ error: 'Access denied' });
+            }
+        } else {
+            // Job has neither project_id nor asset_id - invalid state
+            return res.status(400).json({ error: 'Invalid job: missing project_id or asset_id' });
         }
 
         res.json({
@@ -122,6 +132,53 @@ router.get('/jobs/:jobId', async (req, res) => {
         });
     } catch (error) {
         console.error('[API] Job status error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/images/debug-style-capsule/:capsuleId - Debug endpoint to inspect style capsule data
+router.get('/debug-style-capsule/:capsuleId', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { capsuleId } = req.params;
+
+        // Fetch capsule with all relevant fields
+        const { data: capsule, error } = await supabase
+            .from('style_capsules')
+            .select('id, name, type, design_pillars, descriptor_strings, reference_image_urls, user_id, is_preset')
+            .eq('id', capsuleId)
+            .single();
+
+        if (error || !capsule) {
+            return res.status(404).json({ error: 'Style capsule not found' });
+        }
+
+        // Verify access (user's own or preset)
+        if (!capsule.is_preset && capsule.user_id !== userId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        // Return diagnostic information
+        res.json({
+            capsuleId: capsule.id,
+            name: capsule.name,
+            type: capsule.type,
+            hasDescriptorStrings: !!capsule.descriptor_strings && capsule.descriptor_strings.trim().length > 0,
+            descriptorStringsLength: capsule.descriptor_strings?.length || 0,
+            descriptorStrings: capsule.descriptor_strings || null,
+            hasDesignPillars: !!capsule.design_pillars && Object.keys(capsule.design_pillars).length > 0,
+            designPillars: capsule.design_pillars || {},
+            hasReferenceImages: !!capsule.reference_image_urls && capsule.reference_image_urls.length > 0,
+            referenceImageCount: capsule.reference_image_urls?.length || 0,
+            referenceImageUrls: capsule.reference_image_urls || [],
+            diagnostic: {
+                textContextAvailable: !!(capsule.descriptor_strings?.trim() || capsule.design_pillars),
+                imageContextAvailable: !!(capsule.reference_image_urls && capsule.reference_image_urls.length > 0),
+                willUseImages: !!(capsule.reference_image_urls && capsule.reference_image_urls.length > 0)
+            }
+        });
+    } catch (error) {
+        console.error('[API] Debug style capsule error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

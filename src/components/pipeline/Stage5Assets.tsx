@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { 
   User, MapPin, Package, Sparkles, Check, Lock, Loader2, 
@@ -20,12 +20,24 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { useStageState } from '@/lib/hooks/useStageState';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { stageStateService } from '@/lib/services/stageStateService';
 import { projectAssetService } from '@/lib/services/projectAssetService';
 import { StyleCapsuleSelector } from '@/components/styleCapsules/StyleCapsuleSelector';
+import { AssetDrawer } from './AssetDrawer';
+import { AssetVersionSync } from './AssetVersionSync';
 import type { ProjectAsset } from '@/types/asset';
 
 interface Stage5AssetsProps {
@@ -62,6 +74,11 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
   const [editingDescriptions, setEditingDescriptions] = useState<Record<string, string>>({});
   const [savingAssets, setSavingAssets] = useState<Set<string>>(new Set());
   const [saveTimeouts, setSaveTimeouts] = useState<Record<string, NodeJS.Timeout>>({});
+  const [promotingAssetId, setPromotingAssetId] = useState<string | null>(null);
+  const [promotionConfirmOpen, setPromotionConfirmOpen] = useState(false);
+  const [assetDrawerOpen, setAssetDrawerOpen] = useState(false);
+  const [uploadingAssetId, setUploadingAssetId] = useState<string | null>(null);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   // Initialize from saved state
   useEffect(() => {
@@ -81,8 +98,8 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
   const loadAssets = async () => {
     try {
       const existingAssets = await projectAssetService.listAssets(projectId);
+      setAssets(existingAssets);
       if (existingAssets.length > 0) {
-        setAssets(existingAssets);
         setHasExtracted(true);
       }
     } catch (error) {
@@ -181,6 +198,53 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
     }
   };
 
+  const handleUploadImage = async (assetId: string, file: File) => {
+    const asset = assets.find(a => a.id === assetId);
+    if (!asset) return;
+
+    try {
+      setUploadingAssetId(assetId);
+      toast.info(`Uploading image for ${asset.name}...`);
+
+      const updatedAsset = await projectAssetService.uploadImage(projectId, assetId, file);
+
+      // Update asset with refreshed data
+      setAssets(prev => prev.map(a =>
+        a.id === assetId ? updatedAsset : a
+      ));
+
+      toast.success(`Image uploaded for ${asset.name}!`);
+    } catch (error) {
+      console.error('Failed to upload image:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to upload image';
+      
+      if (errorMessage.includes('Invalid file type')) {
+        toast.error('Invalid file type. Only PNG, JPEG, and WebP are allowed.');
+      } else if (errorMessage.includes('file size')) {
+        toast.error('File size exceeds 10MB limit.');
+      } else {
+        toast.error(`Failed to upload image for ${asset.name}: ${errorMessage}`);
+      }
+    } finally {
+      setUploadingAssetId(null);
+    }
+  };
+
+  const handleFileInputChange = (assetId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleUploadImage(assetId, file);
+    }
+    // Reset input
+    if (fileInputRefs.current[assetId]) {
+      fileInputRefs.current[assetId]!.value = '';
+    }
+  };
+
+  const triggerFileInput = (assetId: string) => {
+    fileInputRefs.current[assetId]?.click();
+  };
+
   const handleUpdateDescription = useCallback(async (assetId: string, description: string) => {
     try {
       setSavingAssets(prev => new Set(prev).add(assetId));
@@ -261,13 +325,40 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
   };
 
   const handlePromoteToGlobal = async (assetId: string) => {
+    setPromotingAssetId(assetId);
+    setPromotionConfirmOpen(true);
+  };
+
+  const confirmPromotion = async () => {
+    if (!promotingAssetId) return;
+
     try {
-      await projectAssetService.promoteToGlobal(projectId, assetId);
-      toast.success('Asset promoted to Global Library!');
+      const globalAsset = await projectAssetService.promoteToGlobal(projectId, promotingAssetId);
+      toast.success(`"${assets.find(a => a.id === promotingAssetId)?.name}" promoted to Global Library!`, {
+        description: 'You can now use this asset in other projects.',
+      });
+      
+      // Refresh assets to show updated state if needed
+      await loadAssets();
     } catch (error) {
       console.error('Failed to promote asset:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to promote asset');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to promote asset';
+      
+      if (errorMessage.includes('must have a generated image')) {
+        toast.error('Asset must have a generated image before promotion');
+      } else {
+        toast.error(errorMessage);
+      }
+    } finally {
+      setPromotingAssetId(null);
+      setPromotionConfirmOpen(false);
     }
+  };
+
+  const handleAssetCloned = async (clonedAsset: ProjectAsset) => {
+    // Refresh assets list to include the newly cloned asset
+    await loadAssets();
+    toast.success(`"${clonedAsset.name}" cloned to project`);
   };
 
   const handleLockAllAssets = async () => {
@@ -442,7 +533,19 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
               </div>
 
               {/* Batch Actions */}
-              <div className="flex gap-2 justify-end">
+              <div className="flex gap-2 justify-end items-center">
+                <AssetVersionSync 
+                  projectId={projectId} 
+                  onSyncComplete={loadAssets}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAssetDrawerOpen(true)}
+                >
+                  <Package className="w-4 h-4 mr-2" />
+                  Browse Global Library
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -631,24 +734,79 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
                               {/* Actions */}
                               <div className="flex gap-2">
                                 {!asset.image_key_url ? (
-                                  <Button
-                                    onClick={() => handleGenerateImage(asset.id)}
-                                    disabled={asset.locked}
-                                    className="flex-1"
-                                  >
-                                    <Sparkles className="w-4 h-4 mr-2" />
-                                    Generate Image Key
-                                  </Button>
+                                  <>
+                                    <input
+                                      type="file"
+                                      accept="image/png,image/jpeg,image/webp"
+                                      className="hidden"
+                                      ref={(el) => {
+                                        if (el) fileInputRefs.current[asset.id] = el;
+                                      }}
+                                      onChange={(e) => handleFileInputChange(asset.id, e)}
+                                    />
+                                    <Button
+                                      onClick={() => triggerFileInput(asset.id)}
+                                      disabled={asset.locked || uploadingAssetId === asset.id}
+                                      variant="outline"
+                                      className="flex-1"
+                                    >
+                                      {uploadingAssetId === asset.id ? (
+                                        <>
+                                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                          Uploading...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Upload className="w-4 h-4 mr-2" />
+                                          Upload Image
+                                        </>
+                                      )}
+                                    </Button>
+                                    <Button
+                                      onClick={() => handleGenerateImage(asset.id)}
+                                      disabled={asset.locked}
+                                      className="flex-1"
+                                    >
+                                      <Sparkles className="w-4 h-4 mr-2" />
+                                      Generate Image Key
+                                    </Button>
+                                  </>
                                 ) : (
-                                  <Button
-                                    variant="outline"
-                                    onClick={() => handleGenerateImage(asset.id)}
-                                    disabled={asset.locked}
-                                    className="flex-1"
-                                  >
-                                    <RefreshCw className="w-4 h-4 mr-2" />
-                                    Regenerate
-                                  </Button>
+                                  <>
+                                    <Button
+                                      variant="outline"
+                                      onClick={() => handleGenerateImage(asset.id)}
+                                      disabled={asset.locked}
+                                      className="flex-1"
+                                    >
+                                      <RefreshCw className="w-4 h-4 mr-2" />
+                                      Regenerate
+                                    </Button>
+                                    {!asset.locked && (
+                                      <>
+                                        <input
+                                          type="file"
+                                          accept="image/png,image/jpeg,image/webp"
+                                          className="hidden"
+                                          ref={(el) => {
+                                            if (el) fileInputRefs.current[asset.id] = el;
+                                          }}
+                                          onChange={(e) => handleFileInputChange(asset.id, e)}
+                                        />
+                                        <Button
+                                          onClick={() => triggerFileInput(asset.id)}
+                                          disabled={uploadingAssetId === asset.id}
+                                          variant="outline"
+                                        >
+                                          {uploadingAssetId === asset.id ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                          ) : (
+                                            <Upload className="w-4 h-4" />
+                                          )}
+                                        </Button>
+                                      </>
+                                    )}
+                                  </>
                                 )}
 
                                 {asset.image_key_url && !asset.locked && (
@@ -675,6 +833,36 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
 
         </div>
       </div>
+
+      {/* Asset Drawer */}
+      <AssetDrawer
+        projectId={projectId}
+        isOpen={assetDrawerOpen}
+        onClose={() => setAssetDrawerOpen(false)}
+        onAssetCloned={handleAssetCloned}
+      />
+
+      {/* Promotion Confirmation Dialog */}
+      <AlertDialog open={promotionConfirmOpen} onOpenChange={setPromotionConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Promote Asset to Global Library?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {promotingAssetId && (
+                <>
+                  This will add <strong>{assets.find(a => a.id === promotingAssetId)?.name}</strong> to your Global Library,
+                  making it available for use in all your projects. The asset will be copied to the library
+                  and can be cloned into other projects.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPromotingAssetId(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmPromotion}>Promote</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Floating Gatekeeper Bar */}
       {hasExtracted && (

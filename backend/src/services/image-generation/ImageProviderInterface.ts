@@ -3,11 +3,17 @@
  * Supports multiple output formats to avoid provider lock-in
  */
 
+export interface ReferenceImage {
+    url: string;
+    mimeType?: string;
+}
+
 export interface ImageGenerationOptions {
     prompt: string;
     width?: number;
     height?: number;
     visualStyleContext?: string;
+    referenceImages?: ReferenceImage[]; // Reference images from visual style capsules
     negativePrompt?: string;
     seed?: number;
 }

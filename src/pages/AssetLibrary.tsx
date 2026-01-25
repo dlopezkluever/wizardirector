@@ -242,6 +242,7 @@ const AssetLibrary = () => {
         onOpenChange={setShowCreateDialog}
         asset={editingAsset}
         onSaved={handleAssetSaved}
+        onAssetUpdated={loadAssets}
       />
 
       <DeleteAssetDialog

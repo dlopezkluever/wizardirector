@@ -180,11 +180,11 @@ class AssetService {
   }
 
   /**
-   * Generate or regenerate image key for an asset
+   * Generate or regenerate image key for a global asset
    */
   async generateImageKey(
     assetId: string,
-    prompt: string,
+    prompt?: string,
     visualStyleCapsuleId?: string
   ): Promise<ImageJobResponse> {
     const { data: { session } } = await supabase.auth.getSession();
@@ -207,7 +207,7 @@ class AssetService {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Failed to generate image');
+      throw new Error(error.error || error.message || 'Failed to generate image');
     }
 
     return response.json();
@@ -234,6 +234,35 @@ class AssetService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to check job status');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Upload an image for a global asset
+   */
+  async uploadImage(assetId: string, imageFile: File): Promise<GlobalAsset> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const formData = new FormData();
+    formData.append('image', imageFile);
+
+    const response = await fetch(`/api/assets/${assetId}/upload-image`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to upload image');
     }
 
     return response.json();
