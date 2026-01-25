@@ -9,10 +9,28 @@ import { AssetExtractionService } from '../services/assetExtractionService.js';
 import { ImageGenerationService } from '../services/image-generation/ImageGenerationService.js';
 import { localizeAssetImage } from '../services/assetImageLocalizer.js';
 import { mergeDescriptions } from '../services/assetDescriptionMerger.js';
+import multer from 'multer';
+import path from 'path';
 
 const router = Router();
 const extractionService = new AssetExtractionService();
 const imageService = new ImageGenerationService();
+
+// Configure multer for image uploads
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
+    if (!allowedTypes.includes(file.mimetype)) {
+      return cb(new Error('Invalid file type. Only PNG, JPEG, and WebP are allowed.'));
+    }
+    cb(null, true);
+  }
+});
 
 /**
  * POST /api/projects/:projectId/assets/extract
@@ -665,6 +683,89 @@ router.post('/:projectId/assets/:assetId/generate-image', async (req, res) => {
             error: 'Image generation failed',
             message: error instanceof Error ? error.message : 'Unknown error'
         });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/assets/:assetId/upload-image
+ * Upload image for project asset
+ */
+router.post('/:projectId/assets/:assetId/upload-image', upload.single('image'), async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, assetId } = req.params;
+
+        if (!req.file) {
+            return res.status(400).json({ error: 'No image file provided' });
+        }
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Verify asset ownership
+        const { data: asset, error: assetError } = await supabase
+            .from('project_assets')
+            .select('id, name')
+            .eq('id', assetId)
+            .eq('project_id', projectId)
+            .single();
+
+        if (assetError || !asset) {
+            return res.status(404).json({ error: 'Asset not found' });
+        }
+
+        // Generate unique filename
+        const fileExt = path.extname(req.file.originalname);
+        const fileName = `project/${projectId}/${assetId}/${Date.now()}-${Math.random().toString(36).substring(2)}${fileExt}`;
+
+        // Upload to Supabase Storage
+        const { error: uploadError } = await supabase.storage
+            .from('asset-images')
+            .upload(fileName, req.file.buffer, {
+                contentType: req.file.mimetype,
+                upsert: false
+            });
+
+        if (uploadError) {
+            console.error('[ProjectAssets] Error uploading image:', uploadError);
+            return res.status(500).json({ error: 'Failed to upload image' });
+        }
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+            .from('asset-images')
+            .getPublicUrl(fileName);
+
+        // Update asset with image URL
+        const { data: updatedAsset, error: updateError } = await supabase
+            .from('project_assets')
+            .update({
+                image_key_url: urlData.publicUrl
+            })
+            .eq('id', assetId)
+            .eq('project_id', projectId)
+            .select()
+            .single();
+
+        if (updateError) {
+            console.error('[ProjectAssets] Error updating asset with image URL:', updateError);
+            return res.status(500).json({ error: 'Failed to update asset with image URL' });
+        }
+
+        console.log(`[ProjectAssets] Successfully uploaded image for asset ${assetId}`);
+        res.json(updatedAsset);
+    } catch (error) {
+        console.error('[ProjectAssets] Unexpected error in image upload:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
