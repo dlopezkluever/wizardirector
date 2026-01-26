@@ -538,6 +538,37 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
     }
   }, [projectId]);
 
+  // Proceed with approval after warnings
+  const proceedWithApproval = useCallback(async (scenes: Scene[]) => {
+    try {
+      // Persist scenes to database (backend applies Scene ID Stability logic)
+      await scriptService.persistScenes(projectId, scenes);
+
+      // Lock the stage
+      await stageStateService.lockStage(projectId, 4);
+
+      toast.success(`Master Script approved! ${scenes.length} scenes extracted and ready for production.`);
+
+      // Navigate to Stage 5
+      onComplete();
+    } catch (error: any) {
+      console.error('❌ [STAGE 4] Failed to proceed with approval:', error);
+      toast.error(error.message || 'Failed to approve script');
+    }
+  }, [projectId, onComplete]);
+
+  // Handler for proceeding after downstream warning
+  const handleProceedAfterWarning = useCallback(async () => {
+    if (!editor) {
+      toast.error('Editor not available');
+      return;
+    }
+    setShowDownstreamWarning(false);
+    const plainText = tiptapToPlainText(editor.getHTML());
+    const scenes = scriptService.extractScenes(plainText);
+    await proceedWithApproval(scenes);
+  }, [editor, proceedWithApproval]);
+
   // Approve and lock script (Phase B: Commit Phase)
   const handleApproveScript = useCallback(async () => {
     if (!editor) return;
@@ -586,37 +617,6 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       toast.error(error.message || 'Failed to approve script');
     }
   }, [editor, projectId, checkStage4Locked, checkDownstreamData, proceedWithApproval]);
-
-  // Proceed with approval after warnings
-  const proceedWithApproval = useCallback(async (scenes: Scene[]) => {
-    try {
-      // Persist scenes to database (backend applies Scene ID Stability logic)
-      await scriptService.persistScenes(projectId, scenes);
-
-      // Lock the stage
-      await stageStateService.lockStage(projectId, 4);
-
-      toast.success(`Master Script approved! ${scenes.length} scenes extracted and ready for production.`);
-
-      // Navigate to Stage 5
-      onComplete();
-    } catch (error: any) {
-      console.error('❌ [STAGE 4] Failed to proceed with approval:', error);
-      toast.error(error.message || 'Failed to approve script');
-    }
-  }, [projectId, onComplete]);
-
-  // Handler for proceeding after downstream warning
-  const handleProceedAfterWarning = useCallback(async () => {
-    if (!editor) {
-      toast.error('Editor not available');
-      return;
-    }
-    setShowDownstreamWarning(false);
-    const plainText = tiptapToPlainText(editor.getHTML());
-    const scenes = scriptService.extractScenes(plainText);
-    await proceedWithApproval(scenes);
-  }, [editor, proceedWithApproval]);
 
   // Scroll to beat
   const handleBeatClick = useCallback((beatIndex: number) => {
