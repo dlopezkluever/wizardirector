@@ -3,12 +3,21 @@ import { stripHtmlTags } from '@/lib/utils/screenplay-converter';
 import type { Beat } from './beatService';
 import { stageStateService } from './stageStateService';
 
+// Internal interface for scene extraction (before database persistence)
 export interface Scene {
   id: string;
   sceneNumber: number;
   slug: string;
   heading: string;
   content: string;
+}
+
+// Enhanced parsed heading structure
+interface ParsedHeading {
+  type: 'INT' | 'EXT';
+  location: string;
+  timeOfDay?: string;
+  fullHeading: string;
 }
 
 export interface GenerateScriptRequest {
@@ -261,7 +270,33 @@ Rewrite only the highlighted section based on the user's request. Maintain scree
   }
 
   /**
-   * Extract scenes from a formatted script
+   * Parse a scene heading into its components
+   */
+  private parseSceneHeading(heading: string): ParsedHeading | null {
+    // Enhanced regex to capture INT/EXT, location, and time of day
+    // Pattern: INT./EXT. LOCATION - DAY/NIGHT/CONTINUOUS/etc.
+    const sceneHeadingRegex = /^(INT\.|EXT\.)\s+(.+?)(?:\s*-\s*(DAY|NIGHT|CONTINUOUS|LATER|MOMENTS LATER|DAWN|DUSK|MORNING|AFTERNOON|EVENING))?$/i;
+    
+    const match = heading.trim().match(sceneHeadingRegex);
+    
+    if (!match) {
+      return null;
+    }
+
+    const type = match[1].replace('.', '').toUpperCase() as 'INT' | 'EXT';
+    const location = match[2].trim();
+    const timeOfDay = match[3]?.toUpperCase();
+
+    return {
+      type,
+      location,
+      timeOfDay,
+      fullHeading: heading.trim()
+    };
+  }
+
+  /**
+   * Extract scenes from a formatted script with enhanced parsing
    */
   extractScenes(formattedScript: string): Scene[] {
     const scenes: Scene[] = [];
@@ -271,47 +306,64 @@ Rewrite only the highlighted section based on the user's request. Maintain scree
     let sceneNumber = 1;
     let currentContent: string[] = [];
 
-    // Regex to match scene headings: INT. or EXT. at start of line
-    const sceneHeadingRegex = /^(INT\.|EXT\.)\s+(.+)$/i;
-
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
-      const match = line.match(sceneHeadingRegex);
+      
+      // Try to parse as scene heading
+      const parsedHeading = this.parseSceneHeading(line);
 
-      if (match) {
+      if (parsedHeading) {
         // Save previous scene if exists
-        if (currentScene) {
+        if (currentScene && currentContent.length > 0) {
           currentScene.content = currentContent.join('\n').trim();
-          scenes.push(currentScene);
+          
+          // Validate scene has non-empty content
+          if (currentScene.content.length > 0) {
+            scenes.push(currentScene);
+          } else {
+            console.warn(`⚠️ [SCRIPT SERVICE] Scene ${currentScene.sceneNumber} has empty content, skipping`);
+          }
         }
 
+        // Generate descriptive slug with scene number for uniqueness
+        // Format: {type}-{location}-{timeOfDay}-{sceneNumber} or {type}-{location}-{sceneNumber}
+        // Scene number ensures uniqueness even when same location appears multiple times
+        const slug = this.generateSlugFromParsedHeading(parsedHeading, sceneNumber);
+
         // Start new scene
-        const heading = line;
-        const slug = this.generateSlug(heading);
-        
         currentScene = {
           id: `scene-${sceneNumber}-${Date.now()}`,
           sceneNumber: sceneNumber,
           slug: slug,
-          heading: heading,
+          heading: parsedHeading.fullHeading,
           content: ''
         };
 
-        currentContent = [heading]; // Include heading in content
+        currentContent = [parsedHeading.fullHeading]; // Include heading in content
         sceneNumber++;
       } else if (currentScene) {
-        // Add line to current scene
+        // Add line to current scene (preserve original formatting, including empty lines)
         currentContent.push(lines[i]);
       }
     }
 
     // Save final scene
-    if (currentScene) {
+    if (currentScene && currentContent.length > 0) {
       currentScene.content = currentContent.join('\n').trim();
-      scenes.push(currentScene);
+      
+      if (currentScene.content.length > 0) {
+        scenes.push(currentScene);
+      } else {
+        console.warn(`⚠️ [SCRIPT SERVICE] Final scene ${currentScene.sceneNumber} has empty content, skipping`);
+      }
     }
 
     console.log(`📋 [SCRIPT SERVICE] Extracted ${scenes.length} scenes from script`);
+
+    // Log warnings for edge cases
+    if (scenes.length === 0) {
+      console.warn('⚠️ [SCRIPT SERVICE] No scenes extracted - script may not have valid scene headings');
+    }
 
     return scenes;
   }
@@ -410,7 +462,50 @@ Estimated screen time: ${beat.estimatedScreenTimeSeconds} seconds
   }
 
   /**
-   * Generate a slug from a scene heading
+   * Generate a descriptive slug from parsed heading components
+   * Format: {type}-{location}-{timeOfDay}-{sceneNumber} or {type}-{location}-{sceneNumber}
+   * 
+   * Includes:
+   * - Scene type (int/ext)
+   * - Location (sanitized)
+   * - Time of day (if present, sanitized)
+   * - Scene number for uniqueness (handles duplicate locations)
+   * 
+   * Examples: int-kitchen-day-1, int-kitchen-day-5, ext-city-street-night-2
+   */
+  private generateSlugFromParsedHeading(parsed: ParsedHeading, sceneNumber: number): string {
+    // Sanitize location: lowercase, remove special chars, replace spaces with hyphens
+    const sanitizedLocation = parsed.location
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .trim();
+
+    // Build slug components
+    const type = parsed.type.toLowerCase();
+    const location = sanitizedLocation;
+    
+    // Sanitize time of day: lowercase, replace spaces with hyphens (handles "MOMENTS LATER" -> "moments-later")
+    const timeOfDay = parsed.timeOfDay
+      ? parsed.timeOfDay
+          .toLowerCase()
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .trim()
+      : undefined;
+
+    // Construct slug with scene number for uniqueness
+    // Scene number ensures uniqueness even when same location appears multiple times
+    if (timeOfDay) {
+      return `${type}-${location}-${timeOfDay}-${sceneNumber}`;
+    } else {
+      return `${type}-${location}-${sceneNumber}`;
+    }
+  }
+
+  /**
+   * Generate a slug from a scene heading (legacy fallback)
    */
   private generateSlug(heading: string): string {
     return heading
