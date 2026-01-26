@@ -24,7 +24,8 @@ const mockScenes: Scene[] = [
     id: 'scene-1',
     sceneNumber: 1,
     slug: 'The Arrival',
-    status: 'video-complete',
+    status: 'video_complete',
+    scriptExcerpt: 'INT. TRAIN STATION - DAWN\n\nMAYA (28), disheveled and weary, steps off the last train of the night. The platform is empty save for flickering fluorescent lights.',
     header: 'INT. TRAIN STATION - DAWN',
     openingAction: 'MAYA (28), disheveled and weary, steps off the last train of the night. The platform is empty save for flickering fluorescent lights.',
     expectedCharacters: ['Maya'],
@@ -37,7 +38,8 @@ const mockScenes: Scene[] = [
     id: 'scene-2',
     sceneNumber: 2,
     slug: 'The Discovery',
-    status: 'frames-locked',
+    status: 'frames_locked',
+    scriptExcerpt: 'EXT. CITY STREET - CONTINUOUS\n\nMaya exits the station into a rain-soaked street. She notices something unusual in the reflection of a puddle.',
     header: 'EXT. CITY STREET - CONTINUOUS',
     openingAction: 'Maya exits the station into a rain-soaked street. She notices something unusual in the reflection of a puddle.',
     expectedCharacters: ['Maya'],
@@ -50,7 +52,8 @@ const mockScenes: Scene[] = [
     id: 'scene-3',
     sceneNumber: 3,
     slug: 'The Confrontation',
-    status: 'shot-list-locked',
+    status: 'shot_list_ready',
+    scriptExcerpt: 'INT. ABANDONED WAREHOUSE - NIGHT\n\nThe warehouse doors creak open. Maya enters, her footsteps echoing in the vast empty space.',
     header: 'INT. ABANDONED WAREHOUSE - NIGHT',
     openingAction: 'The warehouse doors creak open. Maya enters, her footsteps echoing in the vast empty space.',
     expectedCharacters: ['Maya', 'The Stranger'],
@@ -64,6 +67,7 @@ const mockScenes: Scene[] = [
     sceneNumber: 4,
     slug: 'The Revelation',
     status: 'draft',
+    scriptExcerpt: 'INT. WAREHOUSE - UPPER LEVEL - CONTINUOUS\n\nMoonlight streams through broken windows. THE STRANGER steps from the shadows.',
     header: 'INT. WAREHOUSE - UPPER LEVEL - CONTINUOUS',
     openingAction: 'Moonlight streams through broken windows. THE STRANGER steps from the shadows.',
     expectedCharacters: ['Maya', 'The Stranger'],
@@ -76,6 +80,7 @@ const mockScenes: Scene[] = [
     sceneNumber: 5,
     slug: 'The Escape',
     status: 'outdated',
+    scriptExcerpt: 'EXT. ROOFTOP - NIGHT\n\nMaya bursts through the rooftop access door, gasping for breath.',
     header: 'EXT. ROOFTOP - NIGHT',
     openingAction: 'Maya bursts through the rooftop access door, gasping for breath.',
     expectedCharacters: ['Maya'],
@@ -87,10 +92,11 @@ const mockScenes: Scene[] = [
 
 const statusConfig: Record<SceneStatus, { label: string; color: string; icon: typeof CheckCircle2 }> = {
   'draft': { label: 'Draft', color: 'bg-muted text-muted-foreground', icon: Clock },
-  'shot-list-locked': { label: 'Shot List', color: 'bg-blue-500/20 text-blue-400', icon: Clock },
-  'frames-locked': { label: 'Frames Ready', color: 'bg-amber-500/20 text-amber-400', icon: ImageIcon },
-  'video-complete': { label: 'Complete', color: 'bg-emerald-500/20 text-emerald-400', icon: CheckCircle2 },
+  'shot_list_ready': { label: 'Shot List', color: 'bg-blue-500/20 text-blue-400', icon: Clock },
+  'frames_locked': { label: 'Frames Ready', color: 'bg-amber-500/20 text-amber-400', icon: ImageIcon },
+  'video_complete': { label: 'Complete', color: 'bg-emerald-500/20 text-emerald-400', icon: CheckCircle2 },
   'outdated': { label: 'Outdated', color: 'bg-destructive/20 text-destructive', icon: AlertTriangle },
+  'continuity_broken': { label: 'Broken', color: 'bg-destructive/20 text-destructive', icon: AlertTriangle },
 };
 
 const riskConfig: Record<ContinuityRisk, { label: string; color: string }> = {
@@ -136,7 +142,7 @@ export function Stage6ScriptHub({ onEnterScene, onBack }: Stage6ScriptHubProps) 
             Script Hub
           </h2>
           <p className="text-xs text-muted-foreground mt-1">
-            {mockScenes.length} scenes • {mockScenes.filter(s => s.status === 'video-complete').length} complete
+            {mockScenes.length} scenes • {mockScenes.filter(s => s.status === 'video_complete').length} complete
           </p>
         </div>
 
