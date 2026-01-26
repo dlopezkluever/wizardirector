@@ -410,7 +410,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 \*\*Goal\*\*: Implement transparent cost tracking and gating. Users see costs before expensive operations and can make informed decisions.
 
-\#\#\# Feature 8.1: Cost Calculation Engine  
+### Feature 8.1: Cost Calculation Engine  
 \*\*Purpose\*\*: Accurate credit estimation across operations  
 \- \[ \] Create cost model database (per operation type)  
 \- \[ \] Implement cost calculation utilities  
@@ -521,6 +521,8 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 \- \[ \] Add branch naming interface  
 \- \[ \] Store commit messages (regeneration guidance)  
 \- \[ \] Prevent progress without branching
+
+**^See Stage 4/5 Transition Logic (Gate Approach) {4.1-task-7.md in 10/}
 
 \#\#\# Feature 10.3: Version History UI  
 \*\*Purpose\*\*: Visualize and navigate project timeline  
