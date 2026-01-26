@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Film, 
@@ -10,87 +11,24 @@ import {
   Users,
   MapPin,
   GitBranch,
-  ArrowUp
+  ArrowUp,
+  Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import { sceneService } from '@/lib/services/sceneService';
 import type { Scene, SceneStatus, ContinuityRisk } from '@/types/scene';
-
-// Mock scenes data
-const mockScenes: Scene[] = [
-  {
-    id: 'scene-1',
-    sceneNumber: 1,
-    slug: 'The Arrival',
-    status: 'video-complete',
-    header: 'INT. TRAIN STATION - DAWN',
-    openingAction: 'MAYA (28), disheveled and weary, steps off the last train of the night. The platform is empty save for flickering fluorescent lights.',
-    expectedCharacters: ['Maya'],
-    expectedLocation: 'Train Station - Platform',
-    endFrameThumbnail: '/placeholder.svg',
-    shots: [],
-    continuityRisk: 'safe'
-  },
-  {
-    id: 'scene-2',
-    sceneNumber: 2,
-    slug: 'The Discovery',
-    status: 'frames-locked',
-    header: 'EXT. CITY STREET - CONTINUOUS',
-    openingAction: 'Maya exits the station into a rain-soaked street. She notices something unusual in the reflection of a puddle.',
-    expectedCharacters: ['Maya'],
-    expectedLocation: 'City Street - Night',
-    priorSceneEndState: 'Maya walks toward the station exit, her silhouette framed against the dawn light.',
-    shots: [],
-    continuityRisk: 'safe'
-  },
-  {
-    id: 'scene-3',
-    sceneNumber: 3,
-    slug: 'The Confrontation',
-    status: 'shot-list-locked',
-    header: 'INT. ABANDONED WAREHOUSE - NIGHT',
-    openingAction: 'The warehouse doors creak open. Maya enters, her footsteps echoing in the vast empty space.',
-    expectedCharacters: ['Maya', 'The Stranger'],
-    expectedLocation: 'Abandoned Warehouse',
-    priorSceneEndState: 'Maya follows the mysterious figure into the warehouse district.',
-    shots: [],
-    continuityRisk: 'risky'
-  },
-  {
-    id: 'scene-4',
-    sceneNumber: 4,
-    slug: 'The Revelation',
-    status: 'draft',
-    header: 'INT. WAREHOUSE - UPPER LEVEL - CONTINUOUS',
-    openingAction: 'Moonlight streams through broken windows. THE STRANGER steps from the shadows.',
-    expectedCharacters: ['Maya', 'The Stranger'],
-    expectedLocation: 'Warehouse Upper Level',
-    shots: [],
-    continuityRisk: 'broken'
-  },
-  {
-    id: 'scene-5',
-    sceneNumber: 5,
-    slug: 'The Escape',
-    status: 'outdated',
-    header: 'EXT. ROOFTOP - NIGHT',
-    openingAction: 'Maya bursts through the rooftop access door, gasping for breath.',
-    expectedCharacters: ['Maya'],
-    expectedLocation: 'Warehouse Rooftop',
-    shots: [],
-    continuityRisk: 'broken'
-  },
-];
 
 const statusConfig: Record<SceneStatus, { label: string; color: string; icon: typeof CheckCircle2 }> = {
   'draft': { label: 'Draft', color: 'bg-muted text-muted-foreground', icon: Clock },
-  'shot-list-locked': { label: 'Shot List', color: 'bg-blue-500/20 text-blue-400', icon: Clock },
-  'frames-locked': { label: 'Frames Ready', color: 'bg-amber-500/20 text-amber-400', icon: ImageIcon },
-  'video-complete': { label: 'Complete', color: 'bg-emerald-500/20 text-emerald-400', icon: CheckCircle2 },
+  'shot_list_ready': { label: 'Shot List', color: 'bg-blue-500/20 text-blue-400', icon: Clock },
+  'frames_locked': { label: 'Frames Ready', color: 'bg-amber-500/20 text-amber-400', icon: ImageIcon },
+  'video_complete': { label: 'Complete', color: 'bg-emerald-500/20 text-emerald-400', icon: CheckCircle2 },
   'outdated': { label: 'Outdated', color: 'bg-destructive/20 text-destructive', icon: AlertTriangle },
+  'continuity_broken': { label: 'Broken', color: 'bg-destructive/20 text-destructive', icon: AlertTriangle },
 };
 
 const riskConfig: Record<ContinuityRisk, { label: string; color: string }> = {
@@ -105,8 +43,56 @@ interface Stage6ScriptHubProps {
 }
 
 export function Stage6ScriptHub({ onEnterScene, onBack }: Stage6ScriptHubProps) {
-  const [selectedScene, setSelectedScene] = useState<Scene | null>(mockScenes[0]);
+  const { projectId } = useParams<{ projectId: string }>();
+  const [scenes, setScenes] = useState<Scene[]>([]);
+  const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
   const [showOutdatedWarning, setShowOutdatedWarning] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch scenes on mount
+  useEffect(() => {
+    const loadScenes = async () => {
+      if (!projectId) {
+        setError('Project ID is required');
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        setError(null);
+        const fetchedScenes = await sceneService.fetchScenes(projectId);
+        
+        // Transform scenes to ensure all fields are properly set
+        const transformedScenes = fetchedScenes.map((scene): Scene => ({
+          ...scene,
+          // Ensure expectedCharacters defaults to empty array if not provided
+          expectedCharacters: scene.expectedCharacters || [],
+          // Ensure expectedLocation defaults to empty string if not provided
+          expectedLocation: scene.expectedLocation || '',
+          // Ensure shots defaults to empty array if not provided
+          shots: scene.shots || [],
+        }));
+
+        setScenes(transformedScenes);
+        
+        // Auto-select first scene if available
+        if (transformedScenes.length > 0) {
+          setSelectedScene(transformedScenes[0]);
+        }
+      } catch (err) {
+        console.error('Failed to fetch scenes:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load scenes';
+        setError(errorMessage);
+        toast.error(errorMessage);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadScenes();
+  }, [projectId]);
 
   const handleSceneClick = (scene: Scene) => {
     setSelectedScene(scene);
@@ -136,13 +122,66 @@ export function Stage6ScriptHub({ onEnterScene, onBack }: Stage6ScriptHubProps) 
             Script Hub
           </h2>
           <p className="text-xs text-muted-foreground mt-1">
-            {mockScenes.length} scenes • {mockScenes.filter(s => s.status === 'video-complete').length} complete
+            {isLoading ? 'Loading...' : (
+              <>
+                {scenes.length} scenes • {scenes.filter(s => s.status === 'video_complete').length} complete
+              </>
+            )}
           </p>
         </div>
 
         <ScrollArea className="flex-1">
           <div className="p-2">
-            {mockScenes.map((scene) => {
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            ) : error ? (
+              <div className="flex flex-col items-center justify-center py-8 px-4">
+                <AlertTriangle className="w-8 h-8 text-destructive mb-2" />
+                <p className="text-sm text-muted-foreground text-center">{error}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={() => {
+                    if (projectId) {
+                      setIsLoading(true);
+                      setError(null);
+                      sceneService.fetchScenes(projectId)
+                        .then((fetchedScenes) => {
+                          const transformedScenes = fetchedScenes.map((scene): Scene => ({
+                            ...scene,
+                            expectedCharacters: scene.expectedCharacters || [],
+                            expectedLocation: scene.expectedLocation || '',
+                            shots: scene.shots || [],
+                          }));
+                          setScenes(transformedScenes);
+                          if (transformedScenes.length > 0) {
+                            setSelectedScene(transformedScenes[0]);
+                          }
+                        })
+                        .catch((err) => {
+                          const errorMessage = err instanceof Error ? err.message : 'Failed to load scenes';
+                          setError(errorMessage);
+                          toast.error(errorMessage);
+                        })
+                        .finally(() => setIsLoading(false));
+                    }
+                  }}
+                >
+                  Retry
+                </Button>
+              </div>
+            ) : scenes.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 px-4">
+                <Film className="w-8 h-8 text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground text-center">
+                  No scenes found. Extract scenes from Stage 4 to get started.
+                </p>
+              </div>
+            ) : (
+              scenes.map((scene) => {
               const StatusIcon = statusConfig[scene.status].icon;
               const isSelected = selectedScene?.id === scene.id;
 
@@ -207,7 +246,8 @@ export function Stage6ScriptHub({ onEnterScene, onBack }: Stage6ScriptHubProps) 
                   </div>
                 </motion.button>
               );
-            })}
+            })
+            )}
           </div>
         </ScrollArea>
       </motion.div>
@@ -288,11 +328,15 @@ export function Stage6ScriptHub({ onEnterScene, onBack }: Stage6ScriptHubProps) 
                         <span className="text-xs font-medium text-foreground">Expected Characters</span>
                       </div>
                       <div className="flex flex-wrap gap-1">
-                        {selectedScene.expectedCharacters.map(char => (
-                          <Badge key={char} variant="outline" className="text-xs">
-                            {char}
-                          </Badge>
-                        ))}
+                        {selectedScene.expectedCharacters && selectedScene.expectedCharacters.length > 0 ? (
+                          selectedScene.expectedCharacters.map(char => (
+                            <Badge key={char} variant="outline" className="text-xs">
+                              {char}
+                            </Badge>
+                          ))
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Not yet extracted</span>
+                        )}
                       </div>
                     </div>
 
@@ -302,7 +346,7 @@ export function Stage6ScriptHub({ onEnterScene, onBack }: Stage6ScriptHubProps) 
                         <span className="text-xs font-medium text-foreground">Expected Location</span>
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        {selectedScene.expectedLocation}
+                        {selectedScene.expectedLocation || 'Not yet extracted'}
                       </p>
                     </div>
                   </div>

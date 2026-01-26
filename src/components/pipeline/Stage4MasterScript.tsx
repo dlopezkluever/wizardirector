@@ -21,7 +21,8 @@ import {
   FileText,
   ChevronRight,
   ChevronLeft,
-  Sparkles
+  Sparkles,
+  Eye
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { plainTextToTiptap, tiptapToPlainText } from '@/lib/utils/screenplay-converter';
@@ -31,8 +32,18 @@ import { ScreenplayToolbar } from './ScreenplayToolbar';
 import { useStageState } from '@/lib/hooks/useStageState';
 import { stageStateService } from '@/lib/services/stageStateService';
 import { scriptService, type Scene } from '@/lib/services/scriptService';
+import { sceneService } from '@/lib/services/sceneService';
 import type { Beat } from '@/lib/services/beatService';
 import { supabase } from '@/lib/supabase';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import type { Scene as SceneType } from '@/types/scene';
 
 interface Stage4Content {
   formattedScript: string;
@@ -83,6 +94,11 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
   const [activeBeatIndex, setActiveBeatIndex] = useState(0);
   const [beatPanelCollapsed, setBeatPanelCollapsed] = useState(false);
   const [projectParams, setProjectParams] = useState<any>(null);
+  const [showPreviewDialog, setShowPreviewDialog] = useState(false);
+  const [previewScenes, setPreviewScenes] = useState<SceneType[]>([]);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [showDownstreamWarning, setShowDownstreamWarning] = useState(false);
+  const [downstreamDataExists, setDownstreamDataExists] = useState(false);
   
   // Track if we're programmatically setting content to prevent cursor jumps
   const isProgrammaticUpdate = useRef(false);
@@ -409,7 +425,151 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
 
 
 
-  // Approve and lock script
+  // Preview scenes (Phase A: Draft Phase)
+  const handlePreviewScenes = useCallback(async () => {
+    if (!editor) return;
+
+    const plainText = tiptapToPlainText(editor.getHTML());
+    if (!plainText || plainText.trim().length === 0) {
+      toast.error('Cannot preview scenes from an empty script');
+      return;
+    }
+
+    setIsPreviewing(true);
+    try {
+      console.log('👁️ [STAGE 4] Previewing scenes (in-memory only)...');
+
+      // Use sceneService.previewScenes for in-memory extraction
+      const previewedScenes = await sceneService.previewScenes(plainText);
+
+      if (previewedScenes.length === 0) {
+        toast.warning('No scenes found in script. Make sure your script includes scene headings (INT./EXT.).');
+        setIsPreviewing(false);
+        return;
+      }
+
+      setPreviewScenes(previewedScenes);
+      setShowPreviewDialog(true);
+
+      // Optionally save preview to stage_states.content.scenes for persistence
+      setStageContent(prev => ({
+        ...prev,
+        scenes: previewedScenes.map(s => ({
+          id: s.id,
+          sceneNumber: s.sceneNumber,
+          slug: s.slug,
+          heading: s.header,
+          content: s.scriptExcerpt
+        }))
+      }));
+
+      console.log(`✅ [STAGE 4] Previewed ${previewedScenes.length} scenes`);
+    } catch (error: any) {
+      console.error('❌ [STAGE 4] Failed to preview scenes:', error);
+      toast.error(error.message || 'Failed to preview scenes');
+    } finally {
+      setIsPreviewing(false);
+    }
+  }, [editor, setStageContent]);
+
+  // Check for downstream Phase B data
+  const checkDownstreamData = useCallback(async (): Promise<boolean> => {
+    try {
+      // Check if any scenes exist with status beyond 'draft' (indicating Phase B has begun)
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        return false;
+      }
+
+      // Get project to find active branch
+      const projectResponse = await fetch(`/api/projects/${projectId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!projectResponse.ok) {
+        return false;
+      }
+
+      const project = await projectResponse.json();
+      if (!project.active_branch_id) {
+        return false;
+      }
+
+      // Check if any scenes have Phase B status (shot_list_ready, frames_locked, video_complete)
+      const scenesResponse = await fetch(`/api/projects/${projectId}/scenes`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!scenesResponse.ok) {
+        return false;
+      }
+
+      const { scenes } = await scenesResponse.json();
+      const hasDownstreamData = scenes?.some((scene: any) => 
+        scene.status === 'shot_list_ready' || 
+        scene.status === 'frames_locked' || 
+        scene.status === 'video_complete'
+      );
+
+      return hasDownstreamData || false;
+    } catch (error) {
+      console.error('❌ [STAGE 4] Error checking downstream data:', error);
+      return false;
+    }
+  }, [projectId]);
+
+  // Check if Stage 4 is locked
+  const checkStage4Locked = useCallback(async (): Promise<boolean> => {
+    try {
+      const stageState = await stageStateService.getStageState(projectId, 4);
+      return stageState !== null && stageState.status === 'locked';
+    } catch (error) {
+      console.error('❌ [STAGE 4] Error checking stage 4 status:', error);
+      // If stage doesn't exist, it's not locked
+      return false;
+    }
+  }, [projectId]);
+
+  // Proceed with approval after warnings
+  const proceedWithApproval = useCallback(async (scenes: Scene[]) => {
+    try {
+      // Persist scenes to database (backend applies Scene ID Stability logic)
+      await scriptService.persistScenes(projectId, scenes);
+
+      // Lock the stage
+      await stageStateService.lockStage(projectId, 4);
+
+      toast.success(`Master Script approved! ${scenes.length} scenes extracted and ready for production.`);
+
+      // Navigate to Stage 5
+      onComplete();
+    } catch (error: any) {
+      console.error('❌ [STAGE 4] Failed to proceed with approval:', error);
+      toast.error(error.message || 'Failed to approve script');
+    }
+  }, [projectId, onComplete]);
+
+  // Handler for proceeding after downstream warning
+  const handleProceedAfterWarning = useCallback(async () => {
+    if (!editor) {
+      toast.error('Editor not available');
+      return;
+    }
+    setShowDownstreamWarning(false);
+    const plainText = tiptapToPlainText(editor.getHTML());
+    const scenes = scriptService.extractScenes(plainText);
+    await proceedWithApproval(scenes);
+  }, [editor, proceedWithApproval]);
+
+  // Approve and lock script (Phase B: Commit Phase)
   const handleApproveScript = useCallback(async () => {
     if (!editor) return;
 
@@ -422,28 +582,41 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
     try {
       console.log('🔒 [STAGE 4] Approving master script...');
 
-      // Extract scenes if not already done
-      let scenes = stageContent.scenes;
+      // Extract scenes
+      const scenes = scriptService.extractScenes(plainText);
+
+      // Validate extracted scenes
       if (scenes.length === 0) {
-        scenes = scriptService.extractScenes(plainText);
+        toast.error('No scenes found in script. Please add scene headings (INT./EXT.) before approving.');
+        return;
       }
 
-      // Persist scenes to database
-      await scriptService.persistScenes(projectId, scenes);
+      // Validate scene content
+      const emptyScenes = scenes.filter(s => !s.content || s.content.trim().length === 0);
+      if (emptyScenes.length > 0) {
+        toast.error(`${emptyScenes.length} scene(s) have no content. Please ensure all scenes have content.`);
+        return;
+      }
 
-      // Lock the stage
-      await stageStateService.lockStage(projectId, 4);
+      // Check for downstream Phase B data (if Stage 4 is already locked)
+      const isStage4Locked = await checkStage4Locked();
+      if (isStage4Locked) {
+        const hasDownstream = await checkDownstreamData();
+        if (hasDownstream) {
+          setDownstreamDataExists(true);
+          setShowDownstreamWarning(true);
+          return; // Wait for user confirmation
+        }
+      }
 
-      toast.success(`Master Script approved! ${scenes.length} scenes extracted and ready for production.`);
-
-      // Navigate to Stage 5
-      onComplete();
+      // Proceed with extraction and locking
+      await proceedWithApproval(scenes);
 
     } catch (error: any) {
       console.error('❌ [STAGE 4] Failed to approve script:', error);
       toast.error(error.message || 'Failed to approve script');
     }
-  }, [editor, stageContent.scenes, projectId, onComplete]);
+  }, [editor, projectId, checkStage4Locked, checkDownstreamData, proceedWithApproval]);
 
   // Scroll to beat
   const handleBeatClick = useCallback((beatIndex: number) => {
@@ -551,6 +724,25 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handlePreviewScenes}
+            disabled={isGenerating || isPreviewing}
+            className="gap-2"
+          >
+            {isPreviewing ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Previewing...
+              </>
+            ) : (
+              <>
+                <Eye className="w-4 h-4" />
+                Preview Scenes
+              </>
+            )}
+          </Button>
           <Button 
             variant="outline" 
             size="sm" 
@@ -794,6 +986,98 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Preview Scenes Dialog */}
+      <Dialog open={showPreviewDialog} onOpenChange={setShowPreviewDialog}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Scene Preview</DialogTitle>
+            <DialogDescription>
+              Preview of {previewScenes.length} scene{previewScenes.length !== 1 ? 's' : ''} extracted from your script. 
+              This is a preview only and will not be saved to the database until you approve the script.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+            {previewScenes.map((scene) => (
+              <div
+                key={scene.id}
+                className="p-4 rounded-lg border border-border bg-card"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-semibold text-sm shrink-0">
+                    {scene.sceneNumber}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="font-semibold text-sm">{scene.header || scene.slug}</h4>
+                      <span className="text-xs text-muted-foreground font-mono">{scene.slug}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground line-clamp-3">
+                      {scene.openingAction || scene.scriptExcerpt.substring(0, 150) + '...'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPreviewDialog(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Downstream Impact Warning Dialog */}
+      <Dialog open={showDownstreamWarning} onOpenChange={setShowDownstreamWarning}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              Downstream Impact Warning
+            </DialogTitle>
+            <DialogDescription>
+              Stage 4 is already locked and Phase B production has begun. Re-extracting scenes may affect existing work.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-3 py-4">
+            <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+              <p className="text-sm text-foreground">
+                <strong>What this means:</strong>
+              </p>
+              <ul className="list-disc list-inside text-sm text-muted-foreground mt-2 space-y-1">
+                <li>Some scenes may get new IDs if their slugs change</li>
+                <li>The Scene ID Stability system will preserve IDs where possible</li>
+                <li>Deleted scenes will be marked as <code className="text-xs">continuity_broken</code></li>
+                <li>Downstream work (shot lists, frames, videos) may be affected</li>
+              </ul>
+            </div>
+            
+            <p className="text-sm text-muted-foreground">
+              <strong>Note:</strong> Branching functionality (to preserve existing work) will be available in Phase 10. 
+              For now, the system will attempt to preserve scene IDs where possible.
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setShowDownstreamWarning(false);
+              setDownstreamDataExists(false);
+            }}>
+              Cancel
+            </Button>
+            <Button 
+              variant="default" 
+              onClick={handleProceedAfterWarning}
+            >
+              Proceed Anyway
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

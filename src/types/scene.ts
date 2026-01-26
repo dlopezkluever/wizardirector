@@ -1,9 +1,11 @@
+// Aligned with database schema (migration 003)
 export type SceneStatus = 
   | 'draft'
-  | 'shot-list-locked'
-  | 'frames-locked'
-  | 'video-complete'
-  | 'outdated';
+  | 'shot_list_ready'
+  | 'frames_locked'
+  | 'video_complete'
+  | 'outdated'
+  | 'continuity_broken';
 
 export type ContinuityRisk = 'safe' | 'risky' | 'broken';
 
@@ -29,10 +31,11 @@ export interface Scene {
   sceneNumber: number;
   slug: string;
   status: SceneStatus;
-  header: string;
-  openingAction: string;
-  expectedCharacters: string[];
-  expectedLocation: string;
+  scriptExcerpt: string; // Full scene text from database
+  header: string; // Derived from scriptExcerpt (first line)
+  openingAction: string; // Derived from scriptExcerpt (lines after header)
+  expectedCharacters: string[]; // Future enhancement - extracted from script
+  expectedLocation: string; // Future enhancement - extracted from scene heading
   priorSceneEndState?: string;
   endFrameThumbnail?: string;
   shots: Shot[];

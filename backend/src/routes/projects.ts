@@ -423,6 +423,87 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// GET /api/projects/:id/scenes - Fetch all scenes for a project's active branch
+router.get('/:id/scenes', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    console.log(`📋 [SCENES] Fetching scenes for project ${id}...`);
+
+    // Get the project to ensure user owns it
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      console.error('❌ Error fetching project:', projectError);
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    if (!project.active_branch_id) {
+      console.error('❌ Project has no active branch');
+      return res.status(400).json({ error: 'Project has no active branch' });
+    }
+
+    // Fetch scenes for the active branch, ordered by scene_number
+    const { data: scenes, error: scenesError } = await supabase
+      .from('scenes')
+      .select('id, scene_number, slug, status, script_excerpt')
+      .eq('branch_id', project.active_branch_id)
+      .order('scene_number', { ascending: true });
+
+    if (scenesError) {
+      console.error('❌ Error fetching scenes:', scenesError);
+      return res.status(500).json({ error: 'Failed to fetch scenes' });
+    }
+
+    // Transform scenes to match frontend Scene interface
+    // Extract header (first line) and openingAction (lines after header) from script_excerpt
+    const transformedScenes = (scenes || []).map((scene) => {
+      const scriptExcerpt = scene.script_excerpt || '';
+      const lines = scriptExcerpt.split('\n').filter(line => line.trim().length > 0);
+      
+      // First line is the header (scene heading)
+      const header = lines.length > 0 ? lines[0].trim() : '';
+      
+      // Remaining lines are the opening action (first few lines after header)
+      // Take first 3-5 lines of action for preview, or all if less
+      const openingActionLines = lines.slice(1, Math.min(6, lines.length));
+      const openingAction = openingActionLines.join('\n').trim();
+
+      return {
+        id: scene.id,
+        sceneNumber: scene.scene_number,
+        slug: scene.slug,
+        status: scene.status,
+        scriptExcerpt: scriptExcerpt,
+        header: header,
+        openingAction: openingAction,
+        expectedCharacters: [], // Future enhancement
+        expectedLocation: '', // Future enhancement
+        shots: [],
+        // Optional fields
+        priorSceneEndState: undefined,
+        endFrameThumbnail: undefined,
+        continuityRisk: undefined
+      };
+    });
+
+    console.log(`✅ [SCENES] Successfully fetched ${transformedScenes.length} scenes`);
+
+    res.json({
+      scenes: transformedScenes
+    });
+  } catch (error) {
+    console.error('Error in GET /api/projects/:id/scenes:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // PUT /api/projects/:id/scenes - Persist extracted scenes to database
 router.put('/:id/scenes', async (req, res) => {
   try {
@@ -454,42 +535,153 @@ router.put('/:id/scenes', async (req, res) => {
       return res.status(400).json({ error: 'Project has no active branch' });
     }
 
-    // Delete existing scenes for this branch
-    const { error: deleteError } = await supabase
+    // Scene ID Stability: Fetch existing scenes to preserve IDs where possible
+    const { data: existingScenes, error: fetchError } = await supabase
       .from('scenes')
-      .delete()
+      .select('id, scene_number, slug, status')
       .eq('branch_id', project.active_branch_id);
 
-    if (deleteError) {
-      console.error('❌ Error deleting existing scenes:', deleteError);
-      return res.status(500).json({ error: 'Failed to delete existing scenes' });
+    if (fetchError) {
+      console.error('❌ Error fetching existing scenes:', fetchError);
+      return res.status(500).json({ error: 'Failed to fetch existing scenes' });
+    }
+
+    // Create a map of existing scenes by slug + scene_number for matching
+    const existingSceneMap = new Map<string, { id: string; status: string }>();
+    (existingScenes || []).forEach((scene) => {
+      const key = `${scene.slug}:${scene.scene_number}`;
+      existingSceneMap.set(key, { id: scene.id, status: scene.status });
+    });
+
+    // Track which existing scenes are matched (to identify deleted scenes)
+    const matchedExistingIds = new Set<string>();
+
+    // Process each extracted scene: match or create
+    const scenesToUpdate: Array<{ id: string; script_excerpt: string }> = [];
+    const scenesToInsert: Array<{
+      branch_id: string;
+      scene_number: number;
+      slug: string;
+      script_excerpt: string;
+      status: string;
+    }> = [];
+    const idMapping: Array<{ oldId?: string; newId: string; slug: string; sceneNumber: number }> = [];
+
+    for (const scene of scenes) {
+      const key = `${scene.slug}:${scene.sceneNumber}`;
+      const existing = existingSceneMap.get(key);
+
+      if (existing) {
+        // Match found: preserve the existing scene ID and update script_excerpt
+        matchedExistingIds.add(existing.id);
+        scenesToUpdate.push({
+          id: existing.id,
+          script_excerpt: scene.scriptExcerpt
+        });
+        idMapping.push({
+          oldId: existing.id,
+          newId: existing.id,
+          slug: scene.slug,
+          sceneNumber: scene.sceneNumber
+        });
+        console.log(`🔄 [SCENES] Preserving ID for scene ${scene.sceneNumber} (${scene.slug}): ${existing.id}`);
+      } else {
+        // No match: create new scene
+        scenesToInsert.push({
+          branch_id: project.active_branch_id,
+          scene_number: scene.sceneNumber,
+          slug: scene.slug,
+          script_excerpt: scene.scriptExcerpt,
+          status: 'draft'
+        });
+      }
+    }
+
+    // Handle deleted scenes (scenes that existed but are not in new extraction)
+    const deletedScenes = (existingScenes || []).filter(
+      scene => !matchedExistingIds.has(scene.id)
+    );
+
+    if (deletedScenes.length > 0) {
+      console.warn(`⚠️ [SCENES] ${deletedScenes.length} scenes were removed from script:`, 
+        deletedScenes.map(s => `Scene ${s.scene_number} (${s.slug})`).join(', '));
+      
+      // Mark deleted scenes as continuity_broken to warn about downstream impact
+      const deletedIds = deletedScenes.map(s => s.id);
+      const { error: markError } = await supabase
+        .from('scenes')
+        .update({ status: 'continuity_broken' })
+        .in('id', deletedIds);
+
+      if (markError) {
+        console.error('❌ Error marking deleted scenes:', markError);
+        // Continue anyway - this is a warning, not a blocker
+      } else {
+        console.log(`⚠️ [SCENES] Marked ${deletedScenes.length} deleted scenes as continuity_broken`);
+      }
+    }
+
+    // Update matched scenes
+    for (const sceneUpdate of scenesToUpdate) {
+      const { error: updateError } = await supabase
+        .from('scenes')
+        .update({ script_excerpt: sceneUpdate.script_excerpt })
+        .eq('id', sceneUpdate.id);
+
+      if (updateError) {
+        console.error(`❌ Error updating scene ${sceneUpdate.id}:`, updateError);
+        return res.status(500).json({ error: `Failed to update scene ${sceneUpdate.id}` });
+      }
     }
 
     // Insert new scenes
-    const scenesToInsert = scenes.map((scene: any) => ({
-      branch_id: project.active_branch_id,
-      scene_number: scene.sceneNumber,
-      slug: scene.slug,
-      script_excerpt: scene.scriptExcerpt,
-      status: 'draft'
-    }));
+    let insertedScenes: Array<{ id: string; scene_number: number; slug: string }> = [];
+    if (scenesToInsert.length > 0) {
+      const { data: inserted, error: insertError } = await supabase
+        .from('scenes')
+        .insert(scenesToInsert)
+        .select('id, scene_number, slug');
 
-    const { data: insertedScenes, error: insertError } = await supabase
-      .from('scenes')
-      .insert(scenesToInsert)
-      .select('id, scene_number, slug');
+      if (insertError) {
+        console.error('❌ Error inserting new scenes:', insertError);
+        return res.status(500).json({ error: 'Failed to insert new scenes' });
+      }
 
-    if (insertError) {
-      console.error('❌ Error inserting scenes:', insertError);
-      return res.status(500).json({ error: 'Failed to insert scenes' });
+      insertedScenes = inserted || [];
+
+      // Add new scenes to ID mapping
+      insertedScenes.forEach((scene) => {
+        idMapping.push({
+          newId: scene.id,
+          slug: scene.slug,
+          sceneNumber: scene.scene_number
+        });
+      });
     }
 
-    console.log(`✅ [SCENES] Successfully persisted ${insertedScenes.length} scenes`);
+    const totalScenes = scenesToUpdate.length + insertedScenes.length;
+    console.log(`✅ [SCENES] Successfully persisted ${totalScenes} scenes (${scenesToUpdate.length} updated, ${insertedScenes.length} created)`);
+
+    // Build response with all scenes (updated and newly inserted)
+    const allScenes = [
+      ...scenesToUpdate.map(update => {
+        const mapping = idMapping.find(m => m.newId === update.id);
+        const scene = scenes.find(s => s.slug === mapping?.slug && s.sceneNumber === mapping?.sceneNumber);
+        return {
+          id: update.id,
+          scene_number: scene?.sceneNumber || 0,
+          slug: scene?.slug || ''
+        };
+      }),
+      ...insertedScenes
+    ];
 
     res.json({
       success: true,
-      sceneCount: insertedScenes.length,
-      scenes: insertedScenes
+      sceneCount: totalScenes,
+      scenes: allScenes,
+      idMapping: idMapping,
+      deletedScenesCount: deletedScenes.length
     });
   } catch (error) {
     console.error('Error in PUT /api/projects/:id/scenes:', error);
