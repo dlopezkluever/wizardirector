@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { supabase } from '../config/supabase.js';
+import { sceneDependencyExtractionService } from '../services/sceneDependencyExtraction.js';
 
 const router = Router();
 
@@ -452,7 +453,7 @@ router.get('/:id/scenes', async (req, res) => {
     // Fetch scenes for the active branch, ordered by scene_number
     const { data: scenes, error: scenesError } = await supabase
       .from('scenes')
-      .select('id, scene_number, slug, status, script_excerpt')
+      .select('id, scene_number, slug, status, script_excerpt, expected_characters, expected_location, expected_props, dependencies_extracted_at')
       .eq('branch_id', project.active_branch_id)
       .order('scene_number', { ascending: true });
 
@@ -483,8 +484,9 @@ router.get('/:id/scenes', async (req, res) => {
         scriptExcerpt: scriptExcerpt,
         header: header,
         openingAction: openingAction,
-        expectedCharacters: [], // Future enhancement
-        expectedLocation: '', // Future enhancement
+        expectedCharacters: scene.expected_characters || [],
+        expectedLocation: scene.expected_location || '',
+        expectedProps: scene.expected_props || [],
         shots: [],
         // Optional fields
         priorSceneEndState: undefined,
@@ -557,26 +559,82 @@ router.put('/:id/scenes', async (req, res) => {
     const matchedExistingIds = new Set<string>();
 
     // Process each extracted scene: match or create
-    const scenesToUpdate: Array<{ id: string; script_excerpt: string }> = [];
+    const scenesToUpdate: Array<{ 
+      id: string; 
+      script_excerpt: string;
+      expected_characters?: string[];
+      expected_location?: string;
+      expected_props?: string[];
+      dependencies_extracted_at?: string;
+    }> = [];
     const scenesToInsert: Array<{
       branch_id: string;
       scene_number: number;
       slug: string;
       script_excerpt: string;
       status: string;
+      expected_characters?: string[];
+      expected_location?: string;
+      expected_props?: string[];
+      dependencies_extracted_at?: string;
     }> = [];
     const idMapping: Array<{ oldId?: string; newId: string; slug: string; sceneNumber: number }> = [];
 
+    // Extract dependencies for all scenes
+    console.log(`🔍 [SCENES] Extracting dependencies for ${scenes.length} scenes...`);
+    const dependenciesMap = new Map<string, {
+      expectedCharacters: string[];
+      expectedLocation: string;
+      expectedProps: string[];
+    }>();
+
+    for (const scene of scenes) {
+      try {
+        // Parse scene heading from script excerpt (first line)
+        const lines = scene.scriptExcerpt.split('\n');
+        const sceneHeading = lines[0]?.trim() || '';
+        
+        // Extract dependencies
+        const dependencies = await sceneDependencyExtractionService.extractDependencies(
+          sceneHeading,
+          scene.scriptExcerpt
+        );
+        
+        const key = `${scene.slug}:${scene.sceneNumber}`;
+        dependenciesMap.set(key, dependencies);
+        console.log(`✅ [SCENES] Extracted dependencies for scene ${scene.sceneNumber}: ${dependencies.expectedCharacters.length} chars, ${dependencies.expectedProps.length} props`);
+      } catch (error) {
+        console.warn(`⚠️ [SCENES] Failed to extract dependencies for scene ${scene.sceneNumber}:`, error);
+        // Continue with empty dependencies rather than blocking
+        const key = `${scene.slug}:${scene.sceneNumber}`;
+        dependenciesMap.set(key, {
+          expectedCharacters: [],
+          expectedLocation: '',
+          expectedProps: []
+        });
+      }
+    }
+
+    // Now process each scene with dependencies
     for (const scene of scenes) {
       const key = `${scene.slug}:${scene.sceneNumber}`;
       const existing = existingSceneMap.get(key);
+      const dependencies = dependenciesMap.get(key);
+
+      const dependencyFields = dependencies ? {
+        expected_characters: dependencies.expectedCharacters,
+        expected_location: dependencies.expectedLocation,
+        expected_props: dependencies.expectedProps,
+        dependencies_extracted_at: new Date().toISOString()
+      } : {};
 
       if (existing) {
-        // Match found: preserve the existing scene ID and update script_excerpt
+        // Match found: preserve the existing scene ID and update script_excerpt + dependencies
         matchedExistingIds.add(existing.id);
         scenesToUpdate.push({
           id: existing.id,
-          script_excerpt: scene.scriptExcerpt
+          script_excerpt: scene.scriptExcerpt,
+          ...dependencyFields
         });
         idMapping.push({
           oldId: existing.id,
@@ -592,7 +650,8 @@ router.put('/:id/scenes', async (req, res) => {
           scene_number: scene.sceneNumber,
           slug: scene.slug,
           script_excerpt: scene.scriptExcerpt,
-          status: 'draft'
+          status: 'draft',
+          ...dependencyFields
         });
       }
     }
@@ -623,9 +682,27 @@ router.put('/:id/scenes', async (req, res) => {
 
     // Update matched scenes
     for (const sceneUpdate of scenesToUpdate) {
+      const updateData: any = { 
+        script_excerpt: sceneUpdate.script_excerpt 
+      };
+      
+      // Include dependency fields if available
+      if (sceneUpdate.expected_characters) {
+        updateData.expected_characters = sceneUpdate.expected_characters;
+      }
+      if (sceneUpdate.expected_location) {
+        updateData.expected_location = sceneUpdate.expected_location;
+      }
+      if (sceneUpdate.expected_props) {
+        updateData.expected_props = sceneUpdate.expected_props;
+      }
+      if (sceneUpdate.dependencies_extracted_at) {
+        updateData.dependencies_extracted_at = sceneUpdate.dependencies_extracted_at;
+      }
+      
       const { error: updateError } = await supabase
         .from('scenes')
-        .update({ script_excerpt: sceneUpdate.script_excerpt })
+        .update(updateData)
         .eq('id', sceneUpdate.id);
 
       if (updateError) {
