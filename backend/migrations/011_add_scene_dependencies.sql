@@ -5,6 +5,7 @@
 ALTER TABLE scenes 
 ADD COLUMN expected_characters TEXT[], -- Array of character names extracted from script
 ADD COLUMN expected_location TEXT,     -- Specific location extracted from scene heading/script
+ADD COLUMN expected_props TEXT[],      -- Array of prop names extracted from script
 ADD COLUMN dependencies_extracted_at TIMESTAMPTZ; -- Track when dependencies were last extracted
 
 -- Add index for efficient queries on cache invalidation checks
@@ -28,6 +29,9 @@ COMMENT ON COLUMN scenes.expected_characters IS
 
 COMMENT ON COLUMN scenes.expected_location IS 
     'Cached location string extracted from scene heading or script_excerpt. NULL if not yet extracted.';
+
+COMMENT ON COLUMN scenes.expected_props IS 
+    'Cached array of prop names extracted from script_excerpt via LLM. Matched against Stage 5 master assets where possible. NULL if not yet extracted.';
 
 COMMENT ON COLUMN scenes.dependencies_extracted_at IS 
     'Timestamp when dependencies were last extracted. Used to determine if cache is stale (compare with updated_at).';
