@@ -414,7 +414,7 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
   const canProceed = isStyleLocked && allAssetsLocked && assets.length > 0;
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 flex flex-col overflow-hidden relative">
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
         <div className="flex items-center gap-4">
@@ -864,15 +864,24 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Floating Gatekeeper Bar */}
+      {/* Floating Gatekeeper Bar - Constrained to component area */}
       {hasExtracted && (
-        <div className="fixed bottom-0 left-0 right-0 bg-card border-t p-4 shadow-lg">
-          <div className="max-w-4xl mx-auto flex items-center justify-between">
+        <div className="absolute bottom-0 left-0 right-0 bg-card border-t border-border p-4 shadow-lg z-50">
+          <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
             <div className="text-sm">
-              <div className="font-medium">Stage 5 Progress</div>
+              <div className="font-medium text-foreground flex items-center gap-2">
+                Stage 5 Progress
+                {canProceed && (
+                  <Badge variant="default" className="bg-success">
+                    <Check className="w-3 h-3 mr-1" />
+                    Ready
+                  </Badge>
+                )}
+              </div>
               <div className="text-muted-foreground">
                 {assets.filter(a => a.locked).length}/{assets.length} assets locked
                 {!isStyleLocked && ' • Style not locked'}
+                {assets.filter(a => !a.image_key_url).length > 0 && ` • ${assets.filter(a => !a.image_key_url).length} need images`}
               </div>
             </div>
 
@@ -881,12 +890,18 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
               disabled={!canProceed || isLocking}
               size="lg"
               variant="default"
-              className="bg-gold hover:bg-gold/90"
+              className={cn(
+                "font-semibold shadow-md transition-all",
+                canProceed 
+                  ? "bg-amber-500 hover:bg-amber-600 text-white"
+                  : "bg-muted text-muted-foreground cursor-not-allowed",
+                "disabled:opacity-50"
+              )}
             >
               {isLocking ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  Locking...
+                  Locking Assets...
                 </>
               ) : (
                 <>
