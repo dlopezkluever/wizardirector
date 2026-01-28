@@ -8,7 +8,7 @@
  * Fuzzy matching happens in Stage 5 when assets are created
  */
 
-import { llmClient, type LLMRequest } from './llm-client.js';
+import { llmClient, type LLMRequest, LLMClientError } from './llm-client.js';
 
 export interface SceneDependencies {
   expectedCharacters: string[]; // Raw extracted names (not yet matched to assets)
@@ -27,14 +27,19 @@ export class SceneDependencyExtractionService {
    * Extract raw dependencies from a single scene
    * Called during Stage 4 scene parsing (scriptService.extractScenes)
    * No fuzzy matching - that happens in Stage 5 asset aggregation
+   * 
+   * Includes error handling for:
+   * - LLM extraction failures → Fallback to empty arrays/strings, log warning
+   * - Timeout (10 seconds) → Return partial results with regex-based location
+   * - Rate limiting → Return empty values (cached values not yet implemented)
    */
   async extractDependencies(
     sceneHeading: string, 
     scriptExcerpt: string
   ): Promise<SceneDependencies> {
-    console.log(`🔍 [DEPENDENCY EXTRACTION] Extracting dependencies for scene: ${sceneHeading}`);
+    console.log(`🔍 [SceneDependency] Extracting dependencies for scene: ${sceneHeading}`);
 
-    // First, try regex-based location extraction from heading
+    // First, try regex-based location extraction from heading (always available as fallback)
     const locationFromHeading = this.parseLocationFromHeading(sceneHeading);
     
     // Token optimization: Only analyze opening portion (first 20 lines)
@@ -42,18 +47,46 @@ export class SceneDependencyExtractionService {
     const openingExcerpt = lines.slice(0, 20).join('\n');
     
     try {
-      // Use LLM to extract characters, location (refined), and props
-      const extracted = await this.extractWithLLM(sceneHeading, openingExcerpt, locationFromHeading);
+      // Use Promise.race to enforce 10-second timeout
+      const result = await Promise.race([
+        this.extractWithLLM(sceneHeading, openingExcerpt, locationFromHeading),
+        this.timeout(10000) // 10 second timeout
+      ]);
       
-      console.log(`✅ [DEPENDENCY EXTRACTION] Extracted ${extracted.characters.length} characters, ${extracted.props.length} props`);
+      console.log(`✅ [SceneDependency] Extracted ${result.characters.length} characters, ${result.props.length} props`);
       
       return {
-        expectedCharacters: extracted.characters,
-        expectedLocation: extracted.location || locationFromHeading || sceneHeading,
-        expectedProps: extracted.props
+        expectedCharacters: result.characters,
+        expectedLocation: result.location || locationFromHeading || sceneHeading,
+        expectedProps: result.props
       };
     } catch (error) {
-      console.error('❌ [DEPENDENCY EXTRACTION] LLM extraction failed, using fallback:', error);
+      // Handle specific error types
+      if (error instanceof Error && error.message === 'Extraction timeout') {
+        console.warn(`⏱️ [SceneDependency] Extraction timed out after 10 seconds for scene: ${sceneHeading}`);
+        // Return partial results with regex-based location extraction
+        return {
+          expectedCharacters: [],
+          expectedLocation: locationFromHeading || sceneHeading,
+          expectedProps: []
+        };
+      }
+      
+      // Handle rate limiting errors
+      if (error instanceof LLMClientError && error.code === 'RATE_LIMIT') {
+        console.warn(`🚫 [SceneDependency] Rate limit exceeded for scene: ${sceneHeading}. Returning empty dependencies.`);
+        // TODO: Return cached values if available (caching not yet implemented)
+        // For now, return empty values
+        return {
+          expectedCharacters: [],
+          expectedLocation: locationFromHeading || sceneHeading,
+          expectedProps: []
+        };
+      }
+      
+      // Handle all other errors
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`⚠️ [SceneDependency] Extraction failed for scene "${sceneHeading}": ${errorMessage}`);
       
       // Fallback: return minimal dependencies based on regex parsing
       return {
@@ -62,6 +95,18 @@ export class SceneDependencyExtractionService {
         expectedProps: []
       };
     }
+  }
+
+  /**
+   * Creates a promise that rejects after the specified timeout
+   * Used to enforce maximum extraction time
+   */
+  private timeout(ms: number): Promise<never> {
+    return new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('Extraction timeout'));
+      }, ms);
+    });
   }
 
   /**

@@ -18,7 +18,7 @@ Before testing, ensure:
 
 ---
 
-## Test Suite 1: Backend Scene Fetching (Task 4)
+## *PASSES* Test Suite 1: Backend Scene Fetching (Task 4)
 
 ### Test 1.1: Scene List with Continuity Risk
 
@@ -69,6 +69,8 @@ Before testing, ensure:
 - ✅ No LLM API calls visible in Network tab
 - ✅ Only database queries (Supabase API calls)
 - ✅ Scenes load instantly on subsequent visits
+
+{{{ I went to try and test wheather the Scenes load instantly on subsequent visits, but strangely, when you refresh a project that was previously on Stage 6, it loads and opens to Stage 5. }}}
 
 ### Test 1.3: Continuity Risk Analysis
 
