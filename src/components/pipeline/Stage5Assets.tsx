@@ -414,7 +414,7 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
   const canProceed = isStyleLocked && allAssetsLocked && assets.length > 0;
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden relative">
+    <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
         <div className="flex items-center gap-4">
@@ -864,9 +864,9 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Floating Gatekeeper Bar - Constrained to component area */}
+      {/* Floating Gatekeeper Bar - Fixed to bottom, respecting sidebar */}
       {hasExtracted && (
-        <div className="absolute bottom-0 left-0 right-0 bg-card border-t border-border p-4 shadow-lg z-50">
+        <div className="fixed bottom-0 left-[280px] right-0 bg-card border-t border-border p-4 shadow-lg z-50">
           <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
             <div className="text-sm">
               <div className="font-medium text-foreground flex items-center gap-2">
