@@ -451,9 +451,10 @@ router.get('/:id/scenes', async (req, res) => {
     }
 
     // Fetch scenes for the active branch, ordered by scene_number
+    // Include end_state_summary and updated_at for continuity analysis
     const { data: scenes, error: scenesError } = await supabase
       .from('scenes')
-      .select('id, scene_number, slug, status, script_excerpt, expected_characters, expected_location, expected_props, dependencies_extracted_at')
+      .select('id, scene_number, slug, status, script_excerpt, end_state_summary, updated_at, expected_characters, expected_location, expected_props, dependencies_extracted_at')
       .eq('branch_id', project.active_branch_id)
       .order('scene_number', { ascending: true });
 
@@ -461,6 +462,13 @@ router.get('/:id/scenes', async (req, res) => {
       console.error('❌ Error fetching scenes:', scenesError);
       return res.status(500).json({ error: 'Failed to fetch scenes' });
     }
+
+    // Fetch upstream stage states for continuity analysis
+    const { data: stageStates } = await supabase
+      .from('stage_states')
+      .select('id, branch_id, stage_number, version, status, created_at')
+      .eq('branch_id', project.active_branch_id)
+      .in('stage_number', [1, 2, 3, 4]);
 
     // Transform scenes to match frontend Scene interface
     // Extract header (first line) and openingAction (lines after header) from script_excerpt
@@ -491,14 +499,46 @@ router.get('/:id/scenes', async (req, res) => {
         // Optional fields
         priorSceneEndState: undefined,
         endFrameThumbnail: undefined,
-        continuityRisk: undefined
+        continuityRisk: undefined,
+        // Store raw scene data for continuity analysis
+        updated_at: scene.updated_at,
+        end_state_summary: scene.end_state_summary
       };
     });
 
-    console.log(`✅ [SCENES] Successfully fetched ${transformedScenes.length} scenes`);
+    // Import and use ContinuityRiskAnalyzer for rule-based analysis
+    const { ContinuityRiskAnalyzer } = await import('../services/continuityRiskAnalyzer');
+    const continuityAnalyzer = new ContinuityRiskAnalyzer();
+
+    // Enrich each scene with continuity risk analysis and prior scene end state
+    const enrichedScenes = transformedScenes.map((scene, index) => {
+      const dbScene = scenes![index];
+      
+      // Analyze continuity risk (rule-based, fast)
+      const priorScene = index > 0 ? scenes![index - 1] : null;
+      const continuityRisk = continuityAnalyzer.analyzeContinuityRisk({
+        scene: dbScene,
+        priorScene,
+        upstreamStageStates: stageStates as any || []
+      });
+      
+      // Remove temporary fields used for analysis
+      const { updated_at, end_state_summary, ...sceneWithoutTempFields } = scene;
+      
+      return {
+        ...sceneWithoutTempFields,
+        expectedCharacters: dbScene.expected_characters || [],
+        expectedLocation: dbScene.expected_location || '',
+        expectedProps: dbScene.expected_props || [],
+        priorSceneEndState: priorScene?.end_state_summary || undefined,
+        continuityRisk
+      };
+    });
+
+    console.log(`✅ [SCENES] Successfully fetched ${enrichedScenes.length} scenes with continuity analysis`);
 
     res.json({
-      scenes: transformedScenes
+      scenes: enrichedScenes
     });
   } catch (error) {
     console.error('Error in GET /api/projects/:id/scenes:', error);
