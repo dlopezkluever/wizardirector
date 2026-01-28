@@ -102,3 +102,56 @@ Reverting to match the plan's order. Both rules return 'broken', so the order on
 - Ready for integration in Task 4 (GET /scenes endpoint)
 
 The service is ready to be integrated into the backend route that fetches scenes for Stage 6 (Script Hub).
+
+---
+
+## Task 3B: Update Asset Extraction Service — completed.
+
+### Changes made
+
+1. Added `aggregateSceneDependencies` method (`backend/src/services/assetExtractionService.ts`):
+   - Fetches all scenes for a branch with their pre-extracted dependencies
+   - Aggregates characters, props, and locations from scene dependencies
+   - Deduplicates entities using case-insensitive keys
+   - Creates `RawEntity` objects with scene mentions and context
+   - Handles NULL values for backwards compatibility
+
+2. Modified `extractAssets` method:
+   - Replaced full script parsing with scene dependency aggregation
+   - Updated comments to reflect the new approach
+   - Kept `masterScript` parameter (deprecated) for backwards compatibility
+   - Pass 2 (distillation) remains unchanged
+
+3. Updated backend route (`backend/src/routes/projectAssets.ts`):
+   - Changed call to pass empty string for deprecated `masterScript` parameter
+   - Updated route comment to reflect aggregation-based approach
+   - Still validates Stage 4 completion before extraction
+
+4. Added helper method:
+   - `extractContextFromScript`: Extracts context snippets from script excerpts for mention context (limited to 200 chars)
+
+5. Updated file header:
+   - Updated service documentation to reflect the new aggregation-based approach
+
+### Benefits
+
+- Eliminates duplicate extraction: Stage 4 and Stage 5 now share the same dependency data
+- Consistency: Assets match what users see in Stage 6 scene dependencies
+- Efficiency: Uses pre-extracted dependencies instead of parsing the full script
+- Focus: Stage 5 focuses on visual refinement, not entity discovery
+
+### Backwards compatibility
+
+- Handles scenes without dependencies (NULL values) gracefully
+- Returns empty array if no dependencies exist (graceful degradation)
+- Existing projects with assets created from old extraction continue to work
+- No breaking changes to API or database schema
+
+### Testing recommendations
+
+1. Test with new projects: Extract assets after Stage 4 scene extraction with dependencies
+2. Test with old projects: Verify graceful handling of scenes without dependencies
+3. Test deduplication: Verify entities with different casing are properly merged
+4. Test empty cases: Verify empty array returned when no scenes or dependencies exist
+
+Implementation is complete and ready for testing. The code follows the plan in `4.2-plan-v2.md` and maintains backwards compatibility.
