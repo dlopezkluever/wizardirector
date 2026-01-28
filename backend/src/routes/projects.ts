@@ -526,7 +526,7 @@ router.get('/:id/scenes', async (req, res) => {
         expectedCharacters: dbScene.expected_characters || [],
         expectedLocation: dbScene.expected_location || '',
         expectedProps: dbScene.expected_props || [],
-        priorSceneEndState: priorScene?.end_state_summary || undefined,
+        priorSceneEndState: priorScene?.end_state_summary ?? null,
         continuityRisk
       };
     });
