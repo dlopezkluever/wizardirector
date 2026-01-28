@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { PhaseTimeline } from '@/components/pipeline/PhaseTimeline';
 import { ProjectHeader } from '@/components/pipeline/ProjectHeader';
@@ -40,6 +40,8 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
   // Get projectId from URL params if not provided as prop
   const { projectId: urlProjectId } = useParams<{ projectId: string }>();
   const projectId = propProjectId || urlProjectId;
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   
   const [currentStage, setCurrentStage] = useState(1);
   const [stages, setStages] = useState<StageProgress[]>(initialPhaseAStages);
@@ -137,6 +139,15 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
     }
   }, [stages, currentStage]);
 
+  // Restore scene context from URL on mount/refresh
+  useEffect(() => {
+    const sceneIdFromUrl = searchParams.get('sceneId');
+    if (sceneIdFromUrl && currentStage >= 7) {
+      setActiveSceneId(sceneIdFromUrl);
+      setSceneStage(currentStage as SceneStage);
+    }
+  }, [searchParams, currentStage]);
+
   const handleStageComplete = async (stageNumber: number) => {
     try {
       // Call backend to lock the stage
@@ -178,11 +189,19 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
     setActiveSceneId(sceneId);
     setSceneStage(7);
     setCompletedSceneStages([]);
+    setCurrentStage(7);
+    
+    // Persist scene context in URL
+    navigate(`/projects/${projectId}/stage/7?sceneId=${sceneId}`);
   };
 
   const handleExitScene = () => {
     setActiveSceneId(null);
     setSceneStage(7);
+    setCurrentStage(6);
+    
+    // Clear scene context from URL
+    navigate(`/projects/${projectId}/stage/6`);
   };
 
   const handleSceneStageComplete = () => {
