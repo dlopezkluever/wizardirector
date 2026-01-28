@@ -41,12 +41,13 @@ class SceneService {
       scriptExcerpt: scene.scriptExcerpt || '',
       header: scene.header || '',
       openingAction: scene.openingAction || '',
-      expectedCharacters: scene.expectedCharacters || [],
-      expectedLocation: scene.expectedLocation || '',
+      expectedCharacters: scene.expectedCharacters || [], // Keep fallback for safety
+      expectedLocation: scene.expectedLocation || '',     // Keep fallback for safety
+      expectedProps: scene.expectedProps || [],           // Keep fallback for safety
       shots: scene.shots || [],
       priorSceneEndState: scene.priorSceneEndState,
       endFrameThumbnail: scene.endFrameThumbnail,
-      continuityRisk: scene.continuityRisk
+      continuityRisk: scene.continuityRisk || 'safe'      // Add safe fallback
     }));
   }
 
@@ -124,6 +125,7 @@ class SceneService {
         openingAction: openingAction,
         expectedCharacters: [], // Future enhancement
         expectedLocation: '', // Future enhancement
+        expectedProps: [], // Future enhancement
         shots: []
       };
     });
