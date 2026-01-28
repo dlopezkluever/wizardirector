@@ -496,10 +496,6 @@ router.get('/:id/scenes', async (req, res) => {
         expectedLocation: scene.expected_location || '',
         expectedProps: scene.expected_props || [],
         shots: [],
-        // Optional fields
-        priorSceneEndState: undefined,
-        endFrameThumbnail: undefined,
-        continuityRisk: undefined,
         // Store raw scene data for continuity analysis
         updated_at: scene.updated_at,
         end_state_summary: scene.end_state_summary
