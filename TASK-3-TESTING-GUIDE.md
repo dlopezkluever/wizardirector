@@ -41,7 +41,7 @@ The test suite (`backend/src/tests/continuityRiskAnalyzer.test.ts`) covers:
 - ✅ Edge cases (exact timestamps, multiple versions)
 - ✅ Class vs function interface
 
-**Total: 25+ test cases**
+**Total: 22 test cases** (all passing ✅)
 
 ### 2. Manual Testing via API (Integration)
 
@@ -195,22 +195,53 @@ cd "C:\Users\Daniel Lopez\Desktop\Aiuteur\wizardirector\backend"
 tsx test-continuity-manual.ts
 ```
 
-## Expected Test Results
+## Test Results Summary
 
-### Unit Tests
-All 25+ tests should pass:
+### ✅ Continuity Risk Analyzer Tests: **ALL PASSING**
+
+**Actual Test Results:**
 ```
 PASS  src/tests/continuityRiskAnalyzer.test.ts
   ContinuityRiskAnalyzer
     Rule 1: No prior scene (Scene 1)
-      ✓ should return "safe" when there is no prior scene
+      ✓ should return "safe" when there is no prior scene (19 ms)
       ✓ should return "safe" for Scene 1 even with upstream changes
     Rule 2: Prior scene not complete
       ✓ should return "risky" when prior scene status is "draft"
-      ✓ should return "risky" when prior scene status is "shot_list_ready"
+      ✓ should return "risky" when prior scene status is "shot_list_ready" (1 ms)
       ✓ should return "risky" when prior scene status is "frames_locked"
-      ...
+      ✓ should NOT return "risky" when prior scene status is "video_complete"
+    Rule 3: Upstream artifacts changed
+      ✓ should return "broken" when stage 1 was updated after scene (1 ms)
+      ✓ should return "broken" when stage 4 was updated after scene
+      ✓ should return "broken" when multiple stages were updated after scene
+      ✓ should return "safe" when all stages were updated before scene (1 ms)
+      ✓ should ignore stages 5-12 when checking upstream artifacts
+      ✓ should return "safe" when no stages 1-4 exist
+    Rule 4: Scene status is broken/outdated
+      ✓ should return "broken" when scene status is "continuity_broken"
+      ✓ should return "broken" when scene status is "outdated"
+      ✓ should return "broken" even when prior scene is complete and no upstream changes
+    Rule priority and combinations
+      ✓ should prioritize Rule 2 (risky) over Rule 3 when prior scene is incomplete
+      ✓ should prioritize Rule 3 (broken) over default safe when upstream changed
+      ✓ should return "safe" when all conditions are met
+    ContinuityRiskAnalyzer class
+      ✓ should work with class instance
+      ✓ should produce same results as standalone function (1 ms)
+    Edge cases
+      ✓ should handle exact timestamp matches (stage created_at equals scene updated_at)
+      ✓ should handle multiple versions of same stage (use latest)
+
+Test Suites: 1 passed, 1 total
+Tests:       22 passed, 22 total
 ```
+
+**Status:** ✅ **All 22 tests passing** - Task 3 implementation is verified and ready for integration.
+
+### ⚠️ Note on Other Test Failures
+
+The test suite also includes other tests (`image-generation.test.ts`, `llm-integration.test.ts`). Any failures in those tests are **unrelated to Task 3** and do not affect the Continuity Risk Analyzer functionality.
 
 ### Integration Tests (After Task 4)
 When calling `GET /api/projects/:id/scenes`, each scene should have:
