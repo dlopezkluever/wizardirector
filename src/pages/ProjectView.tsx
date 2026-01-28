@@ -123,6 +123,11 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
 
   // Navigation guard: Ensure currentStage is always valid
   useEffect(() => {
+    // Allow Stage 6+ (Phase B) to proceed without validation against Phase A stages
+    if (currentStage > 5) {
+      return;
+    }
+
     if (stages.length > 0) {
       const currentStageData = stages.find(s => s.stage === currentStage);
       if (!currentStageData || currentStageData.status === 'pending') {
@@ -162,12 +167,18 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
             : s
       ));
 
-      // Advance to next stage only in Phase A
-      if (stageNumber < 5) {
+      // Advance to next stage
+      // For Stage 5, transition to Stage 6 (Script Hub)
+      if (stageNumber === 5) {
+        setCurrentStage(6);
+        toast.success('Stage 5 completed! Proceeding to Script Hub...');
+      } else if (stageNumber < 5) {
+        // Normal Phase A progression
         setCurrentStage(stageNumber + 1);
+        toast.success(`Stage ${stageNumber} completed and locked`);
+      } else {
+        toast.success(`Stage ${stageNumber} completed and locked`);
       }
-
-      toast.success(`Stage ${stageNumber} completed and locked`);
     } catch (error) {
       console.error('Failed to complete stage:', error);
       toast.error('Failed to complete stage. Please try again.');
