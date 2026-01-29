@@ -191,9 +191,10 @@ describe('ShotSplitService', () => {
     expect(mockGenerate).toHaveBeenCalled();
     expect(result).toHaveLength(2);
     expect(result[0].shot_id).toBe('3B-1');
-    expect(result[0].duration).toBe(4);
+    expect(result[0].duration).toBe(8);
     expect(result[0].action).toBe('John walks in.');
     expect(result[1].shot_id).toBe('3B-2');
+    expect(result[1].duration).toBe(8);
     expect(result[1].action).toBe('John sits down.');
   });
 });
