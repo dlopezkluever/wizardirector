@@ -4,7 +4,10 @@ import {
   Plus, 
   Trash2, 
   Split, 
+  Merge,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Clock,
   Users,
   Camera,
@@ -79,6 +82,10 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
   const [splitShotId, setSplitShotId] = useState<string | null>(null);
   const [splitGuidance, setSplitGuidance] = useState('');
   const [isSplitting, setIsSplitting] = useState(false);
+
+  // Merge: direction and loading
+  const [mergeDirection, setMergeDirection] = useState<'next' | 'previous'>('next');
+  const [isMerging, setIsMerging] = useState(false);
 
   // Initial data fetch
   useEffect(() => {
@@ -282,6 +289,47 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
     }
   };
 
+  const selectedIndex = selectedShot ? shots.findIndex(s => s.id === selectedShot.id) : -1;
+  const hasNext = selectedIndex >= 0 && selectedIndex < shots.length - 1;
+  const hasPrevious = selectedIndex > 0;
+  const canMergeWithNext = hasNext;
+  const canMergeWithPrevious = hasPrevious;
+  const canMerge =
+    (mergeDirection === 'next' && canMergeWithNext) || (mergeDirection === 'previous' && canMergeWithPrevious);
+
+  const handleMergeShot = async () => {
+    if (!selectedShot || !canMerge) return;
+    try {
+      setIsMerging(true);
+      toast({
+        title: 'Merging shots...',
+        description: 'Using AI to combine shots',
+      });
+      const mergedShot = await shotService.mergeShot(projectId, sceneId, selectedShot.id, mergeDirection);
+      const idx = shots.findIndex(s => s.id === selectedShot.id);
+      const neighbourIdx = mergeDirection === 'next' ? idx + 1 : idx - 1;
+      const neighbourId = shots[neighbourIdx]?.id;
+      const lowerIdx = Math.min(idx, neighbourIdx);
+      setShots(prev => {
+        const withoutTwo = prev.filter(s => s.id !== selectedShot.id && s.id !== neighbourId);
+        return [...withoutTwo.slice(0, lowerIdx), mergedShot, ...withoutTwo.slice(lowerIdx)];
+      });
+      setSelectedShot(mergedShot);
+      toast({
+        title: 'Shots merged',
+        description: `Merged into ${mergedShot.shotId}`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Failed to merge shots',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsMerging(false);
+    }
+  };
+
   // Calculate total duration
   const totalDuration = shots.reduce((sum, shot) => sum + shot.duration, 0);
 
@@ -469,7 +517,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                     </div>
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button 
                       variant="outline" 
                       size="sm"
@@ -479,6 +527,48 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                       <Split className="w-4 h-4 mr-1.5" />
                       Split Shot
                     </Button>
+                    <div className="flex items-center gap-1">
+                      <div className="flex rounded-md border border-border/50 overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => setMergeDirection('next')}
+                          className={cn(
+                            'px-2 py-1.5 text-xs flex items-center gap-1 transition-colors',
+                            mergeDirection === 'next'
+                              ? 'bg-primary/20 text-primary'
+                              : 'bg-muted/30 text-muted-foreground hover:text-foreground'
+                          )}
+                          title="Merge with next shot"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                          Next
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMergeDirection('previous')}
+                          className={cn(
+                            'px-2 py-1.5 text-xs flex items-center gap-1 transition-colors',
+                            mergeDirection === 'previous'
+                              ? 'bg-primary/20 text-primary'
+                              : 'bg-muted/30 text-muted-foreground hover:text-foreground'
+                          )}
+                          title="Merge with previous shot"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                          Prev
+                        </button>
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        disabled={!canMerge || isMerging}
+                        onClick={handleMergeShot}
+                        className="border-primary/20 hover:border-primary/40"
+                      >
+                        {isMerging ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Merge className="w-4 h-4 mr-1.5" />}
+                        Merge
+                      </Button>
+                    </div>
                     <Button 
                       variant="ghost" 
                       size="sm"
