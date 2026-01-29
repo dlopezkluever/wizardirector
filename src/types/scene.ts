@@ -34,8 +34,9 @@ export interface Scene {
   scriptExcerpt: string; // Full scene text from database
   header: string; // Derived from scriptExcerpt (first line)
   openingAction: string; // Derived from scriptExcerpt (lines after header)
-  expectedCharacters: string[]; // Future enhancement - extracted from script
-  expectedLocation: string; // Future enhancement - extracted from scene heading
+  expectedCharacters: string[]; // Raw extracted character names (from Stage 4 dependency extraction)
+  expectedLocation: string; // Extracted location (from Stage 4 dependency extraction)
+  expectedProps: string[]; // Raw extracted prop names (from Stage 4 dependency extraction)
   priorSceneEndState?: string;
   endFrameThumbnail?: string;
   shots: Shot[];

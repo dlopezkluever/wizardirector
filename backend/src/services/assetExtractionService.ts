@@ -1,11 +1,17 @@
 /**
- * Asset Extraction Service - Two-Pass LLM Extraction
+ * Asset Extraction Service - Aggregation-Based Extraction (Task 3B)
  * 
- * Pass 1: Extract all entity names and their mentions from the script
- * Pass 2: Distill each entity's mentions into a concise visual summary
+ * NEW APPROACH (Task 3B):
+ * - Pass 0: Aggregate dependencies from scenes (replaces full script parsing)
+ *   Uses pre-extracted scene dependencies from Stage 4 to avoid duplicate extraction
+ * - Pass 1: Deduplication happens during aggregation (case-insensitive matching)
+ * - Pass 2: Distill each entity's mentions into a concise visual summary
  * 
- * This approach prevents token limit issues and reduces hallucinations
- * by separating entity discovery from description synthesis.
+ * This approach:
+ * - Eliminates duplicate extraction (Stage 4 + Stage 5 now share same data)
+ * - Ensures consistency between Stage 6 scene display and Stage 5 asset definitions
+ * - Focuses Stage 5 on asset refinement (visual descriptions), not entity discovery
+ * - Prevents token limit issues by using pre-extracted dependencies
  */
 
 import { llmClient } from './llm-client.js';
@@ -42,20 +48,29 @@ interface StyleContext {
 
 export class AssetExtractionService {
   /**
-   * Main orchestrator: Two-pass extraction
+   * Main orchestrator: Aggregation-based extraction (Pass 0 + Pass 2)
+   * 
+   * NEW APPROACH (Task 3B):
+   * - Pass 0: Aggregate dependencies from scenes (replaces full script parsing)
+   * - Pass 1: Deduplication happens during aggregation
+   * - Pass 2: Distill each entity into visual summary (unchanged)
+   * 
+   * @param masterScript - DEPRECATED: No longer used, kept for backwards compatibility
+   * @param branchId - Branch ID to aggregate scenes from
+   * @param visualStyleId - Visual style capsule ID for distillation
    */
   async extractAssets(
-    masterScript: string,
+    masterScript: string, // DEPRECATED - not used in new approach
     branchId: string,
     visualStyleId: string
   ): Promise<ExtractedAsset[]> {
-    console.log('[AssetExtraction] Starting two-pass extraction...');
+    console.log('[AssetExtraction] Starting aggregation-based extraction...');
 
-    // Pass 1: Extract raw entities with all mentions
-    const rawEntities = await this.extractEntityMentions(masterScript);
-    console.log(`[AssetExtraction] Pass 1 complete: ${rawEntities.length} entities found`);
+    // Pass 0: Aggregate dependencies from scenes instead of parsing full script
+    const rawEntities = await this.aggregateSceneDependencies(branchId);
+    console.log(`[AssetExtraction] Aggregated ${rawEntities.length} entities from scenes`);
 
-    // Pass 2: Distill each entity into visual summary
+    // Pass 2: Distill each entity into visual summary (UNCHANGED)
     const distilledAssets: ExtractedAsset[] = [];
     for (const entity of rawEntities) {
       const asset = await this.distillVisualSummary(entity, visualStyleId);
@@ -71,7 +86,168 @@ export class AssetExtractionService {
   }
 
   /**
+   * Pass 0: Aggregate scene dependencies from database
+   * Replaces full script parsing - uses pre-extracted dependencies from Stage 4
+   * 
+   * @param branchId - Branch ID to fetch scenes from
+   * @returns Array of RawEntity objects aggregated from all scenes
+   */
+  private async aggregateSceneDependencies(branchId: string): Promise<RawEntity[]> {
+    console.log(`[AssetExtraction] Aggregating dependencies from scenes for branch ${branchId}`);
+    
+    // Fetch all scenes for this branch with their dependencies
+    const { data: scenes, error } = await supabase
+      .from('scenes')
+      .select('scene_number, script_excerpt, expected_characters, expected_location, expected_props')
+      .eq('branch_id', branchId)
+      .order('scene_number', { ascending: true });
+
+    if (error) {
+      console.error('[AssetExtraction] Failed to fetch scenes:', error);
+      throw new Error(`Failed to fetch scenes for aggregation: ${error.message}`);
+    }
+
+    if (!scenes || scenes.length === 0) {
+      console.warn('[AssetExtraction] No scenes found for branch, returning empty entities');
+      return [];
+    }
+
+    console.log(`[AssetExtraction] Found ${scenes.length} scenes to aggregate`);
+
+    // Use Map for deduplication (key = lowercase name)
+    const entityMap = new Map<string, RawEntity>();
+
+    // Aggregate characters from all scenes
+    scenes.forEach(scene => {
+      const characters = scene.expected_characters || [];
+      if (characters.length === 0) return;
+
+      characters.forEach(char => {
+        const charName = char.trim();
+        if (!charName) return;
+
+        const key = charName.toLowerCase();
+        
+        if (!entityMap.has(key)) {
+          entityMap.set(key, {
+            name: charName, // Use first occurrence as canonical name
+            aliases: [charName],
+            type: 'character',
+            mentions: []
+          });
+        } else {
+          // Add to aliases if different casing/variation
+          const existing = entityMap.get(key)!;
+          if (!existing.aliases.includes(charName)) {
+            existing.aliases.push(charName);
+          }
+        }
+
+        // Add scene mention with context
+        const context = this.extractContextFromScript(scene.script_excerpt);
+        entityMap.get(key)!.mentions.push({
+          sceneNumber: scene.scene_number,
+          text: `Character appears in scene ${scene.scene_number}`,
+          context: context
+        });
+      });
+    });
+
+    // Aggregate props from all scenes
+    scenes.forEach(scene => {
+      const props = scene.expected_props || [];
+      if (props.length === 0) return;
+
+      props.forEach(prop => {
+        const propName = prop.trim();
+        if (!propName) return;
+
+        const key = propName.toLowerCase();
+        
+        if (!entityMap.has(key)) {
+          entityMap.set(key, {
+            name: propName, // Use first occurrence as canonical name
+            aliases: [propName],
+            type: 'prop',
+            mentions: []
+          });
+        } else {
+          // Add to aliases if different casing/variation
+          const existing = entityMap.get(key)!;
+          if (!existing.aliases.includes(propName)) {
+            existing.aliases.push(propName);
+          }
+        }
+
+        // Add scene mention with context
+        const context = this.extractContextFromScript(scene.script_excerpt);
+        entityMap.get(key)!.mentions.push({
+          sceneNumber: scene.scene_number,
+          text: `Prop appears in scene ${scene.scene_number}`,
+          context: context
+        });
+      });
+    });
+
+    // Aggregate locations from all scenes
+    scenes.forEach(scene => {
+      if (!scene.expected_location) return;
+
+      const location = scene.expected_location.trim();
+      if (!location) return;
+
+      const key = location.toLowerCase();
+      
+      if (!entityMap.has(key)) {
+        entityMap.set(key, {
+          name: location, // Use first occurrence as canonical name
+          aliases: [location],
+          type: 'location',
+          mentions: []
+        });
+      } else {
+        // Add to aliases if different casing/variation
+        const existing = entityMap.get(key)!;
+        if (!existing.aliases.includes(location)) {
+          existing.aliases.push(location);
+        }
+      }
+
+      // Add scene mention with context
+      const context = this.extractContextFromScript(scene.script_excerpt);
+      entityMap.get(key)!.mentions.push({
+        sceneNumber: scene.scene_number,
+        text: `Location: ${location}`,
+        context: context
+      });
+    });
+
+    const entities = Array.from(entityMap.values());
+    console.log(`[AssetExtraction] Aggregated ${entities.length} unique entities (${entities.filter(e => e.type === 'character').length} characters, ${entities.filter(e => e.type === 'prop').length} props, ${entities.filter(e => e.type === 'location').length} locations)`);
+    
+    return entities;
+  }
+
+  /**
+   * Extract context snippet from script excerpt for mention context
+   * Returns first 3 lines or first 200 characters, whichever is shorter
+   */
+  private extractContextFromScript(scriptExcerpt: string | null): string {
+    if (!scriptExcerpt) return '';
+    
+    const lines = scriptExcerpt.split('\n').slice(0, 3);
+    const context = lines.join(' ').trim();
+    
+    // Limit to 200 characters to avoid token bloat
+    return context.length > 200 ? context.substring(0, 200) + '...' : context;
+  }
+
+  /**
    * Pass 1: Extract all entity names and their mentions from script
+   * 
+   * @deprecated This method is no longer used. Asset extraction now uses
+   * scene dependency aggregation (aggregateSceneDependencies) instead of
+   * parsing the full master script. Kept for backwards compatibility/debugging.
    */
   private async extractEntityMentions(masterScript: string): Promise<RawEntity[]> {
     const systemPrompt = `You are a screenplay analyst. Extract all unique characters, props, and locations from this script.

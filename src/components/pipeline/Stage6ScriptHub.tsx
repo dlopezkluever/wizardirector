@@ -349,6 +349,24 @@ export function Stage6ScriptHub({ onEnterScene, onBack }: Stage6ScriptHubProps) 
                         {selectedScene.expectedLocation || 'Not yet extracted'}
                       </p>
                     </div>
+
+                    <div className="bg-card/50 rounded-lg p-4 border border-border/30 col-span-2">
+                      <div className="flex items-center gap-2 mb-2">
+                        <ImageIcon className="w-4 h-4 text-primary" />
+                        <span className="text-xs font-medium text-foreground">Expected Props</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {selectedScene.expectedProps && selectedScene.expectedProps.length > 0 ? (
+                          selectedScene.expectedProps.map((prop, idx) => (
+                            <Badge key={idx} variant="outline" className="text-xs">
+                              {prop}
+                            </Badge>
+                          ))
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Not yet extracted</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
 

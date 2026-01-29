@@ -34,7 +34,8 @@ const upload = multer({
 
 /**
  * POST /api/projects/:projectId/assets/extract
- * Two-pass LLM extraction from Stage 4 script
+ * Aggregation-based extraction from Stage 4 scene dependencies
+ * (Task 3B: Uses pre-extracted scene dependencies instead of parsing full script)
  */
 router.post('/:projectId/assets/extract', async (req, res) => {
     console.log('[ProjectAssets] ========== EXTRACT ENDPOINT HIT ==========');
@@ -103,9 +104,10 @@ router.post('/:projectId/assets/extract', async (req, res) => {
 
         console.log(`[ProjectAssets] Starting extraction for project ${projectId}`);
 
-        // Run two-pass extraction
+        // Run aggregation-based extraction (Task 3B: uses scene dependencies instead of full script)
+        // masterScript parameter is deprecated but kept for backwards compatibility
         const extractedAssets = await extractionService.extractAssets(
-            masterScript,
+            '', // Empty string - no longer used (scene aggregation replaces full script parsing)
             project.active_branch_id,
             visualStyleId
         );

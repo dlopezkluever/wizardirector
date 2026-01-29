@@ -230,7 +230,8 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 \*\*Purpose\*\*: Scene navigation and status tracking  
 \- \[ \] Create scene list UI with status indicators  
 \- \[ \] Implement scene selection and navigation  
-\- \[ \] Build scene overview panel with dependencies  
+\- \[ \] Build scene overview panel with dependencies (characters, locations, props)  
+\- \[ \] Implement fuzzy matching (Levenshtein distance, threshold 0.85) for asset identification  
 \- \[ \] Add continuity risk analyzer (advisory)  
 \- \[ \] Create "Enter Scene Pipeline" action
 
@@ -696,7 +697,8 @@ Implement "Conflict Resolution UIs," "Visual Diffs," and "Version History/Rollba
 \- \[ \] Implement job prioritization  
 \- \[ \] Add job batching for bulk operations  
 \- \[ \] Create job monitoring dashboard  
-\- \[ \] Implement dead letter queue handling
+\- \[ \] Implement dead letter queue handling  
+- \[ \] Migrate Scene Dependency Extraction to background worker (BullMQ/Redis) with Progress WebSockets
 
 \*\*Deliverable\*\*: Application performs well under load, handles large projects efficiently, and provides fast response times across all operations.
 
