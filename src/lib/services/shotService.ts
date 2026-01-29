@@ -177,6 +177,45 @@ export class ShotService {
   }
 
   /**
+   * Merge the selected shot with the next or previous shot using LLM.
+   * shotId is the shot row id (UUID). direction: 'next' | 'previous'. Returns the merged shot.
+   */
+  async mergeShot(
+    projectId: string,
+    sceneId: string,
+    shotId: string,
+    direction: 'next' | 'previous'
+  ): Promise<Shot> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/shots/${shotId}/merge`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ direction }),
+      }
+    );
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `Failed to merge shot: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    const merged = result.mergedShot;
+    if (!merged) throw new Error('Merge response missing mergedShot');
+    return normalizeShot(merged as Record<string, unknown>);
+  }
+
+  /**
    * Delete a shot (removes from database). Use reorder after if needed.
    * shotId is the shot row id (UUID).
    */
