@@ -30,7 +30,7 @@ export class SceneDependencyExtractionService {
    * 
    * Includes error handling for:
    * - LLM extraction failures → Fallback to empty arrays/strings, log warning
-   * - Timeout (10 seconds) → Return partial results with regex-based location
+   * - Timeout (15 seconds) → Return partial results with regex-based location
    * - Rate limiting → Return empty values (cached values not yet implemented)
    */
   async extractDependencies(
@@ -50,7 +50,7 @@ export class SceneDependencyExtractionService {
       // Use Promise.race to enforce 10-second timeout
       const result = await Promise.race([
         this.extractWithLLM(sceneHeading, openingExcerpt, locationFromHeading),
-        this.timeout(10000) // 10 second timeout
+        this.timeout(15000) // 15 second timeout
       ]);
       
       console.log(`✅ [SceneDependency] Extracted ${result.characters.length} characters, ${result.props.length} props`);
@@ -63,7 +63,7 @@ export class SceneDependencyExtractionService {
     } catch (error) {
       // Handle specific error types
       if (error instanceof Error && error.message === 'Extraction timeout') {
-        console.warn(`⏱️ [SceneDependency] Extraction timed out after 10 seconds for scene: ${sceneHeading}`);
+        console.warn(`⏱️ [SceneDependency] Extraction timed out after 15 seconds for scene: ${sceneHeading}`);
         // Return partial results with regex-based location extraction
         return {
           expectedCharacters: [],
