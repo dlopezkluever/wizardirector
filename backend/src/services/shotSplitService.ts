@@ -114,23 +114,22 @@ export class ShotSplitService {
       continuity_flags: originalShot.continuity_flags || []
     }, null, 2);
 
-    const systemPrompt = `You are a shot segmentation specialist. Your role is to divide a single 8-second shot into two new shots while preserving narrative coherence.
+    const systemPrompt = `You are a shot segmentation specialist. Your role is to divide a single shot into two new shots while preserving narrative coherence. Each new shot will be given the same duration as the original (set server-side), so that each clip can use the full generator time limit (e.g. for Veo3/Sora).
 
 ORIGINAL SHOT CONTEXT:
 ${originalJson}
 
 SPLIT REQUIREMENTS:
 1. The two new shots must collectively cover the same narrative content as the original.
-2. Duration must sum to the original (e.g. 4+4 or 5+3).
-3. The split point must be a natural action or dialogue break.
-4. Camera specs must be adjusted appropriately for each new shot.
-5. Continuity flags must be preserved or refined.
+2. The split point must be a natural action or dialogue break.
+3. Camera specs must be adjusted appropriately for each new shot.
+4. Continuity flags must be preserved or refined.
+5. Do not invent new narrative content. Duration is set server-side to the original shot's duration for both new shots.
 
-OUTPUT: Return ONLY a valid JSON object (no markdown):
+OUTPUT: Return ONLY a valid JSON object (no markdown). Omit "duration" or use any placeholder; it will be overwritten server-side.
 {
   "new_shots": [
     {
-      "duration": 4,
       "dialogue": "",
       "action": "atomic description",
       "characters": [{"name": "CHARACTER", "prominence": "foreground"|"background"}],
@@ -140,7 +139,6 @@ OUTPUT: Return ONLY a valid JSON object (no markdown):
       "split_rationale": "optional"
     },
     {
-      "duration": 4,
       "dialogue": "",
       "action": "atomic description",
       "characters": [],
@@ -183,9 +181,14 @@ OUTPUT: Return ONLY a valid JSON object (no markdown):
     }
 
     const [first, second] = parsed.new_shots;
-    return [
+    const result = [
       toShotForInsert(first, baseId1),
       toShotForInsert(second, baseId2)
     ];
+    // Stretch semantics: each new shot gets the same duration as the original (for per-clip generator limits).
+    const originalDuration = originalShot.duration;
+    result[0].duration = originalDuration;
+    result[1].duration = originalDuration;
+    return result;
   }
 }
