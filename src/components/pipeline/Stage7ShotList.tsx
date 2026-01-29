@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Plus, 
@@ -33,6 +32,7 @@ import { cn } from '@/lib/utils';
 import type { Shot } from '@/types/scene';
 
 interface Stage7ShotListProps {
+  projectId: string;
   sceneId: string;
   onComplete: () => void;
   onBack: () => void;
@@ -53,8 +53,7 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-export function Stage7ShotList({ sceneId, onComplete, onBack }: Stage7ShotListProps) {
-  const { id: projectId } = useParams<{ id: string }>();
+export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage7ShotListProps) {
   
   // Main state
   const [shots, setShots] = useState<Shot[]>([]);
@@ -84,12 +83,6 @@ export function Stage7ShotList({ sceneId, onComplete, onBack }: Stage7ShotListPr
   // Initial data fetch
   useEffect(() => {
     const fetchOrExtractShots = async () => {
-      if (!projectId) {
-        setError('Project ID is missing');
-        setIsLoading(false);
-        return;
-      }
-
       try {
         setIsLoading(true);
         setError(null);
@@ -142,8 +135,6 @@ export function Stage7ShotList({ sceneId, onComplete, onBack }: Stage7ShotListPr
   // Fetch prior scene data for rearview mirror
   useEffect(() => {
     const fetchPriorScene = async () => {
-      if (!projectId) return;
-      
       try {
         const scenes = await sceneService.fetchScenes(projectId);
         const currentSceneIndex = scenes.findIndex(s => s.id === sceneId);
@@ -167,7 +158,7 @@ export function Stage7ShotList({ sceneId, onComplete, onBack }: Stage7ShotListPr
   // Auto-save effect
   useEffect(() => {
     const saveUpdates = async () => {
-      if (!projectId || debouncedUpdates.size === 0) return;
+      if (debouncedUpdates.size === 0) return;
       
       setIsSaving(true);
       const updatePromises: Promise<void>[] = [];
@@ -223,7 +214,7 @@ export function Stage7ShotList({ sceneId, onComplete, onBack }: Stage7ShotListPr
   };
 
   const performSplit = async () => {
-    if (!splitShotId || !projectId) return;
+    if (!splitShotId) return;
     
     try {
       setIsSplitting(true);
@@ -269,8 +260,6 @@ export function Stage7ShotList({ sceneId, onComplete, onBack }: Stage7ShotListPr
   };
 
   const handleDeleteShot = async (shotId: string) => {
-    if (!projectId) return;
-    
     try {
       await shotService.deleteShot(projectId, sceneId, shotId);
       
