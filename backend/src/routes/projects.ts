@@ -3,6 +3,7 @@ import { supabase } from '../config/supabase.js';
 import { sceneDependencyExtractionService } from '../services/sceneDependencyExtraction.js';
 import { ShotExtractionService } from '../services/shotExtractionService.js';
 import { ShotSplitService } from '../services/shotSplitService.js';
+import { ShotMergeService } from '../services/shotMergeService.js';
 
 const router = Router();
 
@@ -1157,6 +1158,100 @@ router.post('/:id/scenes/:sceneId/shots/:shotId/split', async (req, res) => {
       return res.status(422).json({ error: error.message || 'Shot split failed' });
     }
     console.error('Error in POST /api/projects/:id/scenes/:sceneId/shots/:shotId/split:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/projects/:id/scenes/:sceneId/shots/:shotId/merge
+router.post('/:id/scenes/:sceneId/shots/:shotId/merge', async (req, res) => {
+  try {
+    const { id: projectId, sceneId, shotId } = req.params;
+    const { direction = 'next', userGuidance } = req.body || {};
+    const userId = req.user!.id;
+
+    if (direction !== 'next' && direction !== 'previous') {
+      return res.status(400).json({ error: 'direction must be "next" or "previous"' });
+    }
+
+    const { data: project } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const { data: currentShot } = await supabase
+      .from('shots')
+      .select('*')
+      .eq('id', shotId)
+      .eq('scene_id', sceneId)
+      .single();
+    if (!currentShot) return res.status(404).json({ error: 'Shot not found' });
+
+    const neighbourOrder = direction === 'next' ? currentShot.shot_order + 1 : currentShot.shot_order - 1;
+    const { data: neighbourShot } = await supabase
+      .from('shots')
+      .select('*')
+      .eq('scene_id', sceneId)
+      .eq('shot_order', neighbourOrder)
+      .single();
+    if (!neighbourShot) {
+      return res.status(400).json({
+        error: direction === 'next' ? 'No next shot to merge with' : 'No previous shot to merge with'
+      });
+    }
+
+    const shotMergeService = new ShotMergeService();
+    const mergedPayload = await shotMergeService.mergeShots(currentShot, neighbourShot, userGuidance);
+
+    const [lowerOrder, higherOrder] =
+      currentShot.shot_order <= neighbourShot.shot_order
+        ? [currentShot.shot_order, neighbourShot.shot_order]
+        : [neighbourShot.shot_order, currentShot.shot_order];
+
+    const { error: deleteError1 } = await supabase.from('shots').delete().eq('id', currentShot.id);
+    if (deleteError1) return res.status(500).json({ error: 'Failed to delete first shot' });
+    const { error: deleteError2 } = await supabase.from('shots').delete().eq('id', neighbourShot.id);
+    if (deleteError2) return res.status(500).json({ error: 'Failed to delete second shot' });
+
+    const { data: insertedShot, error: insertError } = await supabase
+      .from('shots')
+      .insert({
+        scene_id: sceneId,
+        shot_id: mergedPayload.shot_id,
+        shot_order: lowerOrder,
+        duration: mergedPayload.duration,
+        dialogue: mergedPayload.dialogue,
+        action: mergedPayload.action,
+        characters_foreground: mergedPayload.characters_foreground,
+        characters_background: mergedPayload.characters_background,
+        setting: mergedPayload.setting,
+        camera: mergedPayload.camera,
+        continuity_flags: mergedPayload.continuity_flags,
+        beat_reference: mergedPayload.beat_reference
+      })
+      .select('*')
+      .single();
+    if (insertError) return res.status(500).json({ error: 'Failed to insert merged shot' });
+
+    const { data: shotsAfter } = await supabase
+      .from('shots')
+      .select('id, shot_order')
+      .eq('scene_id', sceneId)
+      .gt('shot_order', higherOrder);
+    if (shotsAfter?.length) {
+      for (const s of shotsAfter) {
+        await supabase.from('shots').update({ shot_order: s.shot_order - 1 }).eq('id', s.id);
+      }
+    }
+
+    res.json({ success: true, mergedShot: insertedShot });
+  } catch (error: any) {
+    if (error?.message?.includes('parse') || error?.message?.includes('merge')) {
+      return res.status(422).json({ error: error.message || 'Shot merge failed' });
+    }
+    console.error('Error in POST /api/projects/:id/scenes/:sceneId/shots/:shotId/merge:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
