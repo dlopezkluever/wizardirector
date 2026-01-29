@@ -525,6 +525,8 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 **^See Stage 4/5 Transition Logic (Gate Approach) {4.1-task-7.md in 10/}
 
+***Return to Stage 7: Phase 10 Alignment (Immutability): **Intentional scope for 4.3:** In-place updates to the `shots` table (PUT for auto-save, delete-and-insert for split) are acceptable for this phase. Full versioning, branching, and immutability ("completed stages are never mutated in place") will be addressed in **Phase 10: Version Control & Branching** (Story Timelines). No shot-level versioning or `stage_states`-style snapshots are required for 4.3; the "Lock & Proceed" behavior and any rollback/version history will be ironed out when implementing Phase 10.
+
 \#\#\# Feature 10.3: Version History UI  
 \*\*Purpose\*\*: Visualize and navigate project timeline  
 \- \[ \] Create tree visualization component  
@@ -546,6 +548,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 (**Recommendation for Phase 10 (Later):**
 Implement "Conflict Resolution UIs," "Visual Diffs," and "Version History/Rollbacks." These are the "Advanced" features listed in your task list.
 )
+
 
 \#\#\# Feature 10.5: Invalidation Logic  
 \*\*Purpose\*\*: Cascade changes through dependent artifacts  
