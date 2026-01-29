@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { supabase } from '../config/supabase.js';
 import { sceneDependencyExtractionService } from '../services/sceneDependencyExtraction.js';
+import { ShotExtractionService } from '../services/shotExtractionService.js';
+import { ShotSplitService } from '../services/shotSplitService.js';
 
 const router = Router();
 
@@ -798,6 +800,394 @@ router.put('/:id/scenes', async (req, res) => {
     });
   } catch (error) {
     console.error('Error in PUT /api/projects/:id/scenes:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ----- Shot CRUD (Stage 7) -----
+
+// GET /api/projects/:id/scenes/:sceneId/shots
+router.get('/:id/scenes/:sceneId/shots', async (req, res) => {
+  try {
+    const { id: projectId, sceneId } = req.params;
+    const userId = req.user!.id;
+
+    const { data: project } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const { data: scene } = await supabase
+      .from('scenes')
+      .select('id, scene_number')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+
+    if (!scene) return res.status(404).json({ error: 'Scene not found' });
+
+    const { data: shots, error } = await supabase
+      .from('shots')
+      .select('*')
+      .eq('scene_id', sceneId)
+      .order('shot_order', { ascending: true });
+
+    if (error) return res.status(500).json({ error: 'Failed to fetch shots' });
+
+    const transformedShots = (shots || []).map((shot: any) => ({
+      id: shot.id,
+      sceneId: shot.scene_id,
+      shotId: shot.shot_id,
+      duration: shot.duration,
+      dialogue: shot.dialogue || '',
+      action: shot.action,
+      charactersForeground: shot.characters_foreground || [],
+      charactersBackground: shot.characters_background || [],
+      setting: shot.setting,
+      camera: shot.camera,
+      continuityFlags: shot.continuity_flags || [],
+      beatReference: shot.beat_reference
+    }));
+
+    res.json({ shots: transformedShots });
+  } catch (error) {
+    console.error('Error in GET /api/projects/:id/scenes/:sceneId/shots:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/projects/:id/scenes/:sceneId/shots/extract
+router.post('/:id/scenes/:sceneId/shots/extract', async (req, res) => {
+  try {
+    const { id: projectId, sceneId } = req.params;
+    const userId = req.user!.id;
+
+    const { data: project } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const { data: scene } = await supabase
+      .from('scenes')
+      .select('id, scene_number, script_excerpt')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+
+    if (!scene) return res.status(404).json({ error: 'Scene not found' });
+
+    // Fetch prior scene end state for continuity
+    const { data: priorScene } = await supabase
+      .from('scenes')
+      .select('end_state_summary')
+      .eq('branch_id', project.active_branch_id)
+      .eq('scene_number', scene.scene_number - 1)
+      .single();
+
+    // Fetch global context (beat sheet + master script summary)
+    let beatSheetSummary: string | undefined;
+    let masterScriptSummary: string | undefined;
+    const { data: stage3 } = await supabase
+      .from('stage_states')
+      .select('content')
+      .eq('branch_id', project.active_branch_id)
+      .eq('stage_number', 3)
+      .eq('status', 'locked')
+      .order('version', { ascending: false })
+      .limit(1);
+    if (stage3?.[0]?.content?.beats) {
+      const beats = stage3[0].content.beats as Array<{ order?: number; text?: string }>;
+      beatSheetSummary = beats.map((b: any, i: number) => `${i + 1}. ${b.text || b}`).join('\n');
+    }
+    const { data: stage4 } = await supabase
+      .from('stage_states')
+      .select('content')
+      .eq('branch_id', project.active_branch_id)
+      .eq('stage_number', 4)
+      .eq('status', 'locked')
+      .order('version', { ascending: false })
+      .limit(1);
+    if (stage4?.[0]?.content) {
+      const c = stage4[0].content as any;
+      const script = c.formattedScript || c.formatted_script || '';
+      const lines = script.split('\n');
+      const summaryLines: string[] = [];
+      let inScene = false;
+      for (const line of lines) {
+        const t = line.trim();
+        if (t.match(/^(INT\.|EXT\.)/i)) {
+          summaryLines.push(t);
+          inScene = true;
+        } else if (inScene && t.length > 0) {
+          summaryLines.push(`  ${t.substring(0, 100)}${t.length > 100 ? '...' : ''}`);
+          inScene = false;
+        }
+      }
+      if (summaryLines.length > 0) masterScriptSummary = summaryLines.join('\n');
+    }
+
+    const shotExtractionService = new ShotExtractionService();
+    const extractedShots = await shotExtractionService.extractShots(
+      sceneId,
+      scene.script_excerpt || '',
+      scene.scene_number,
+      {
+        priorSceneEndState: priorScene?.end_state_summary ?? null,
+        beatSheetSummary,
+        masterScriptSummary
+      }
+    );
+
+    const shotsToInsert = extractedShots.map((shot, index) => ({
+      scene_id: sceneId,
+      shot_id: shot.shotId,
+      shot_order: index,
+      duration: shot.duration,
+      dialogue: shot.dialogue,
+      action: shot.action,
+      characters_foreground: shot.charactersForeground,
+      characters_background: shot.charactersBackground,
+      setting: shot.setting,
+      camera: shot.camera,
+      continuity_flags: shot.continuityFlags,
+      beat_reference: shot.beatReference ?? null
+    }));
+
+    if (shotsToInsert.length === 0) {
+      return res.json({ success: true, shotCount: 0, shots: [] });
+    }
+
+    const { data: insertedShots, error } = await supabase
+      .from('shots')
+      .insert(shotsToInsert)
+      .select('*');
+
+    if (error) return res.status(500).json({ error: 'Failed to persist shots' });
+
+    res.json({ success: true, shotCount: insertedShots!.length, shots: insertedShots });
+  } catch (error: any) {
+    if (error?.code === 'RATE_LIMIT') {
+      return res.status(429).json({ error: 'Rate limit exceeded. Please try again shortly.' });
+    }
+    console.error('Error in POST /api/projects/:id/scenes/:sceneId/shots/extract:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/projects/:id/scenes/:sceneId/shots/reorder (must be before /:shotId)
+router.put('/:id/scenes/:sceneId/shots/reorder', async (req, res) => {
+  try {
+    const { id: projectId, sceneId } = req.params;
+    const userId = req.user!.id;
+    const { orderedShotIds } = req.body;
+
+    if (!orderedShotIds || !Array.isArray(orderedShotIds)) {
+      return res.status(400).json({ error: 'orderedShotIds array is required' });
+    }
+
+    const { data: project } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const { data: scene } = await supabase
+      .from('scenes')
+      .select('id')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+    if (!scene) return res.status(404).json({ error: 'Scene not found' });
+
+    const { data: sceneShots } = await supabase
+      .from('shots')
+      .select('id')
+      .eq('scene_id', sceneId);
+    const sceneShotIds = new Set((sceneShots || []).map((s: any) => s.id));
+    const invalidIds = orderedShotIds.filter((id: string) => !sceneShotIds.has(id));
+    if (invalidIds.length > 0) {
+      return res.status(400).json({ error: `Shot IDs not in scene: ${invalidIds.join(', ')}` });
+    }
+
+    const updates = orderedShotIds.map((shotId: string, index: number) =>
+      supabase.from('shots').update({ shot_order: index }).eq('id', shotId).eq('scene_id', sceneId)
+    );
+    await Promise.all(updates);
+
+    const { data: shots, error } = await supabase
+      .from('shots')
+      .select('*')
+      .eq('scene_id', sceneId)
+      .order('shot_order', { ascending: true });
+    if (error) return res.status(500).json({ error: 'Failed to fetch shots after reorder' });
+
+    res.json({ success: true, shots: shots || [] });
+  } catch (error) {
+    console.error('Error in PUT /api/projects/:id/scenes/:sceneId/shots/reorder:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/projects/:id/scenes/:sceneId/shots/:shotId
+router.put('/:id/scenes/:sceneId/shots/:shotId', async (req, res) => {
+  try {
+    const { id: projectId, sceneId, shotId } = req.params;
+    const updates = req.body;
+    const userId = req.user!.id;
+
+    const { data: project } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const { data: scene } = await supabase
+      .from('scenes')
+      .select('id')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+    if (!scene) return res.status(404).json({ error: 'Scene not found' });
+
+    const allowedFields = [
+      'duration', 'dialogue', 'action',
+      'characters_foreground', 'characters_background',
+      'setting', 'camera', 'continuity_flags', 'beat_reference'
+    ];
+    const invalidFields = Object.keys(updates).filter((f: string) => !allowedFields.includes(f));
+    if (invalidFields.length > 0) {
+      return res.status(400).json({ error: `Invalid fields: ${invalidFields.join(', ')}` });
+    }
+
+    const { data: updatedShot, error } = await supabase
+      .from('shots')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('id', shotId)
+      .eq('scene_id', sceneId)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: 'Failed to update shot' });
+    res.json({ success: true, shot: updatedShot });
+  } catch (error) {
+    console.error('Error in PUT /api/projects/:id/scenes/:sceneId/shots/:shotId:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/projects/:id/scenes/:sceneId/shots/:shotId/split
+router.post('/:id/scenes/:sceneId/shots/:shotId/split', async (req, res) => {
+  try {
+    const { id: projectId, sceneId, shotId } = req.params;
+    const { userGuidance } = req.body || {};
+    const userId = req.user!.id;
+
+    const { data: project } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const { data: originalShot } = await supabase
+      .from('shots')
+      .select('*')
+      .eq('id', shotId)
+      .eq('scene_id', sceneId)
+      .single();
+    if (!originalShot) return res.status(404).json({ error: 'Shot not found' });
+
+    const shotSplitService = new ShotSplitService();
+    const newShotsPayload = await shotSplitService.splitShot(originalShot, userGuidance);
+
+    const { error: deleteError } = await supabase
+      .from('shots')
+      .delete()
+      .eq('id', shotId);
+    if (deleteError) return res.status(500).json({ error: 'Failed to delete original shot' });
+
+    const { data: shotsAfterDelete } = await supabase
+      .from('shots')
+      .select('id, shot_order')
+      .eq('scene_id', sceneId)
+      .gt('shot_order', originalShot.shot_order);
+    if (shotsAfterDelete?.length) {
+      for (const s of shotsAfterDelete) {
+        await supabase.from('shots').update({ shot_order: s.shot_order + 1 }).eq('id', s.id);
+      }
+    }
+
+    const insertRows = newShotsPayload.map((shot, i) => ({
+      scene_id: sceneId,
+      shot_id: shot.shot_id,
+      shot_order: originalShot.shot_order + i,
+      duration: shot.duration,
+      dialogue: shot.dialogue,
+      action: shot.action,
+      characters_foreground: shot.characters_foreground,
+      characters_background: shot.characters_background,
+      setting: shot.setting,
+      camera: shot.camera,
+      continuity_flags: shot.continuity_flags,
+      beat_reference: shot.beat_reference
+    }));
+
+    const { data: insertedShots, error: insertError } = await supabase
+      .from('shots')
+      .insert(insertRows)
+      .select('*');
+    if (insertError) return res.status(500).json({ error: 'Failed to insert split shots' });
+
+    res.json({ success: true, newShots: insertedShots });
+  } catch (error: any) {
+    if (error?.message?.includes('parse') || error?.message?.includes('split')) {
+      return res.status(422).json({ error: error.message || 'Shot split failed' });
+    }
+    console.error('Error in POST /api/projects/:id/scenes/:sceneId/shots/:shotId/split:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/projects/:id/scenes/:sceneId/shots/:shotId
+router.delete('/:id/scenes/:sceneId/shots/:shotId', async (req, res) => {
+  try {
+    const { id: projectId, sceneId, shotId } = req.params;
+    const userId = req.user!.id;
+
+    const { data: project } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const { data: scene } = await supabase
+      .from('scenes')
+      .select('id')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+    if (!scene) return res.status(404).json({ error: 'Scene not found' });
+
+    const { error } = await supabase.from('shots').delete().eq('id', shotId).eq('scene_id', sceneId);
+    if (error) return res.status(500).json({ error: 'Failed to delete shot' });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error in DELETE /api/projects/:id/scenes/:sceneId/shots/:shotId:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
