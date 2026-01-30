@@ -46,7 +46,7 @@ class SceneService {
       expectedProps: scene.expectedProps || [],           // Keep fallback for safety
       shots: scene.shots || [],
       priorSceneEndState: scene.priorSceneEndState,
-      endFrameThumbnail: scene.endFrameThumbnail,
+      endFrameThumbnail: scene.endFrameThumbnail ?? (scene as any).end_frame_thumbnail_url,
       continuityRisk: scene.continuityRisk || 'safe'      // Add safe fallback
     }));
   }
