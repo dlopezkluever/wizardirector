@@ -1312,15 +1312,27 @@ router.post('/:id/scenes/:sceneId/shots/lock', async (req, res) => {
     }
 
     // 2. Fetch scene (verify it belongs to active branch)
+    if (!project.active_branch_id) {
+      return res.status(400).json({
+        error: 'Project has no active branch',
+        code: 'NO_ACTIVE_BRANCH'
+      });
+    }
+
     const { data: scene, error: sceneError } = await supabase
       .from('scenes')
-      .select('id, scene_number, status, shot_list_locked_at, expected_characters, metadata')
+      .select('id, scene_number, status, shot_list_locked_at, expected_characters')
       .eq('id', sceneId)
       .eq('branch_id', project.active_branch_id)
       .single();
 
     if (sceneError || !scene) {
-      return res.status(404).json({ error: 'Scene not found' });
+      console.warn('[shots/lock] Scene not found:', { projectId, sceneId, active_branch_id: project.active_branch_id, sceneError: sceneError?.message });
+      return res.status(404).json({
+        error: 'Scene not found',
+        code: 'SCENE_NOT_FOUND',
+        hint: 'Ensure the scene belongs to this project\'s active branch and was saved from Script Hub (Stage 6).'
+      });
     }
 
     // 3. Check if already locked (idempotent)
@@ -1394,16 +1406,11 @@ router.post('/:id/scenes/:sceneId/shots/lock', async (req, res) => {
       updated_at: new Date().toISOString()
     };
 
-    // Store forced lock metadata for audit trail
-    if (force && validationResult.warnings.length > 0) {
-      updateData.metadata = {
-        ...(scene.metadata || {}),
-        forcedLock: true,
-        forcedLockWarnings: validationResult.warnings.map(w => w.message),
-        forcedLockAt: new Date().toISOString(),
-        forcedLockBy: userId
-      };
-    }
+    // Store forced lock metadata for audit trail (only if scenes.metadata column exists)
+    // When adding scenes.metadata via migration, uncomment and ensure SELECT includes metadata
+    // if (force && validationResult.warnings.length > 0) {
+    //   updateData.metadata = { ...(scene.metadata || {}), forcedLock: true, ... };
+    // }
 
     const { data: updatedScene, error: updateError } = await supabase
       .from('scenes')
