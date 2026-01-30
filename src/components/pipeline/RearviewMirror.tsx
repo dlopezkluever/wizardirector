@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { ChevronDown, ChevronUp, Eye } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 
 interface RearviewMirrorProps {
@@ -8,15 +8,22 @@ interface RearviewMirrorProps {
   priorSceneEndState?: string;
   priorEndFrame?: string;
   priorSceneName?: string;
+  onImageError?: () => void;
 }
 
 export function RearviewMirror({ 
   mode, 
   priorSceneEndState, 
   priorEndFrame,
-  priorSceneName 
+  priorSceneName,
+  onImageError 
 }: RearviewMirrorProps) {
   const [isExpanded, setIsExpanded] = useState(true);
+  const [imageLoading, setImageLoading] = useState(true);
+
+  useEffect(() => {
+    if (priorEndFrame) setImageLoading(true);
+  }, [priorEndFrame]);
 
   if (!priorSceneEndState && !priorEndFrame) {
     return null;
@@ -68,10 +75,20 @@ export function RearviewMirror({
           {mode === 'visual' && priorEndFrame && (
             <div className="flex gap-4 items-start">
               <div className="relative group">
+                {imageLoading && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-lg min-w-[12rem] min-h-[7rem]">
+                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
                 <img
                   src={priorEndFrame}
-                  alt="Prior scene end frame"
+                  alt={priorSceneName ? `Final frame from ${priorSceneName}` : 'Final frame from previous scene'}
                   className="w-48 h-28 object-cover rounded-lg border border-border/50"
+                  onLoad={() => setImageLoading(false)}
+                  onError={() => {
+                    setImageLoading(false);
+                    onImageError?.();
+                  }}
                 />
                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
                   <Button variant="ghost" size="sm" className="text-white">
