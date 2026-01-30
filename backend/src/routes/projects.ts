@@ -4,6 +4,7 @@ import { sceneDependencyExtractionService } from '../services/sceneDependencyExt
 import { ShotExtractionService } from '../services/shotExtractionService.js';
 import { ShotSplitService } from '../services/shotSplitService.js';
 import { ShotMergeService } from '../services/shotMergeService.js';
+import { shotValidationService } from '../services/shotValidationService.js';
 
 const router = Router();
 
@@ -1285,6 +1286,310 @@ router.delete('/:id/scenes/:sceneId/shots/:shotId', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Error in DELETE /api/projects/:id/scenes/:sceneId/shots/:shotId:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ----- Shot List Locking (Stage 7 Gatekeeper) -----
+
+// POST /api/projects/:id/scenes/:sceneId/shots/lock
+router.post('/:id/scenes/:sceneId/shots/lock', async (req, res) => {
+  try {
+    const { id: projectId, sceneId } = req.params;
+    const { force = false } = req.body;
+    const userId = req.user!.id;
+
+    // 1. Verify ownership
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // 2. Fetch scene (verify it belongs to active branch)
+    const { data: scene, error: sceneError } = await supabase
+      .from('scenes')
+      .select('id, scene_number, status, shot_list_locked_at, expected_characters, metadata')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+
+    if (sceneError || !scene) {
+      return res.status(404).json({ error: 'Scene not found' });
+    }
+
+    // 3. Check if already locked (idempotent)
+    if (scene.shot_list_locked_at) {
+      // Already locked - return success
+      return res.json({
+        success: true,
+        scene: {
+          id: scene.id,
+          status: scene.status,
+          shotListLockedAt: scene.shot_list_locked_at,
+          sceneNumber: scene.scene_number
+        }
+      });
+    }
+
+    // 4. Fetch all shots for validation
+    const { data: shots, error: shotsError } = await supabase
+      .from('shots')
+      .select('*')
+      .eq('scene_id', sceneId)
+      .order('shot_order', { ascending: true });
+
+    if (shotsError) {
+      return res.status(500).json({ error: 'Failed to fetch shots' });
+    }
+
+    // Transform shots to match validation service interface
+    const shotsForValidation = (shots || []).map((shot: any) => ({
+      shotId: shot.shot_id,
+      duration: shot.duration,
+      action: shot.action,
+      setting: shot.setting,
+      camera: shot.camera,
+      dialogue: shot.dialogue,
+      charactersForeground: shot.characters_foreground,
+      charactersBackground: shot.characters_background,
+      continuityFlags: shot.continuity_flags
+    }));
+
+    // 5. Validate shots
+    const validationResult = shotValidationService.validateShots(
+      shotsForValidation, 
+      { expected_characters: scene.expected_characters }
+    );
+
+    // 6. Handle validation results
+    if (validationResult.errors.length > 0) {
+      // ERRORS: Cannot proceed, even with force
+      return res.status(400).json({
+        error: 'Shot list validation failed',
+        errors: validationResult.errors,
+        canForce: false
+      });
+    }
+
+    if (validationResult.warnings.length > 0 && !force) {
+      // WARNINGS: Can bypass with force=true
+      return res.status(409).json({
+        error: 'Shot list has warnings',
+        warnings: validationResult.warnings,
+        canForce: true
+      });
+    }
+
+    // 7. Lock the shot list
+    const updateData: any = {
+      shot_list_locked_at: new Date().toISOString(),
+      status: 'shot_list_ready',  // CRITICAL: Explicit status transition
+      updated_at: new Date().toISOString()
+    };
+
+    // Store forced lock metadata for audit trail
+    if (force && validationResult.warnings.length > 0) {
+      updateData.metadata = {
+        ...(scene.metadata || {}),
+        forcedLock: true,
+        forcedLockWarnings: validationResult.warnings.map(w => w.message),
+        forcedLockAt: new Date().toISOString(),
+        forcedLockBy: userId
+      };
+    }
+
+    const { data: updatedScene, error: updateError } = await supabase
+      .from('scenes')
+      .update(updateData)
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .is('shot_list_locked_at', null)  // Prevent race condition
+      .select('*')
+      .single();
+
+    if (updateError || !updatedScene) {
+      console.error('Failed to lock scene:', updateError);
+      return res.status(500).json({ error: 'Failed to lock shot list' });
+    }
+
+    // 8. Return success
+    res.json({
+      success: true,
+      scene: {
+        id: updatedScene.id,
+        status: updatedScene.status,
+        shotListLockedAt: updatedScene.shot_list_locked_at,
+        sceneNumber: updatedScene.scene_number,
+        shotCount: shots?.length || 0,
+        forcedLock: force && validationResult.warnings.length > 0
+      }
+    });
+  } catch (error) {
+    console.error('Error in POST /api/projects/:id/scenes/:sceneId/shots/lock:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/projects/:id/scenes/:sceneId/shots/unlock
+router.post('/:id/scenes/:sceneId/shots/unlock', async (req, res) => {
+  try {
+    const { id: projectId, sceneId } = req.params;
+    const { reason, confirm = false } = req.body;
+    const userId = req.user!.id;
+
+    // 1. Verify ownership
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // 2. Fetch scene
+    const { data: scene, error: sceneError } = await supabase
+      .from('scenes')
+      .select('id, status, shot_list_locked_at, dependencies_extracted_at')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+
+    if (sceneError || !scene) {
+      return res.status(404).json({ error: 'Scene not found' });
+    }
+
+    // 3. Check if locked
+    if (!scene.shot_list_locked_at) {
+      return res.status(400).json({ error: 'Shot list is not locked' });
+    }
+
+    // 4. Check for downstream work (frames, videos)
+    const hasDownstreamWork = scene.status === 'frames_locked' || scene.status === 'video_complete';
+
+    let framesAffected = 0;
+    let videosAffected = 0;
+    let estimatedCost = 0;
+
+    if (hasDownstreamWork) {
+      // Count affected artifacts
+      const { data: shots } = await supabase
+        .from('shots')
+        .select('id')
+        .eq('scene_id', sceneId);
+
+      const shotIds = (shots || []).map(s => s.id);
+
+      if (shotIds.length > 0) {
+        const { data: frames } = await supabase
+          .from('frames')
+          .select('id')
+          .in('shot_id', shotIds);
+
+        const { data: videos } = await supabase
+          .from('videos')
+          .select('id')
+          .in('shot_id', shotIds);
+
+        framesAffected = frames?.length || 0;
+        videosAffected = videos?.length || 0;
+
+        // Estimate regeneration cost
+        estimatedCost = framesAffected * 0.05 + videosAffected * 2.50;
+      }
+
+      // If not confirmed, return warning
+      if (!confirm) {
+        return res.status(409).json({
+          error: 'Unlocking will invalidate downstream artifacts',
+          details: {
+            framesAffected,
+            videosAffected,
+            estimatedCost: estimatedCost.toFixed(2),
+            message: `This will invalidate ${framesAffected} frames and ${videosAffected} videos. Estimated regeneration cost: $${estimatedCost.toFixed(2)}`
+          },
+          requiresConfirmation: true
+        });
+      }
+
+      // User confirmed - proceed with invalidation
+      // Mark frames as invalidated (not deleted)
+      if (framesAffected > 0 && shotIds.length > 0) {
+        await supabase
+          .from('frames')
+          .update({ status: 'invalidated' })
+          .in('shot_id', shotIds);
+      }
+
+      // Mark videos as invalidated (not deleted)
+      if (videosAffected > 0 && shotIds.length > 0) {
+        await supabase
+          .from('videos')
+          .update({ status: 'invalidated' })
+          .in('shot_id', shotIds);
+      }
+
+      // Log invalidation event (if invalidation_logs table exists)
+      try {
+        await supabase
+          .from('invalidation_logs')
+          .insert({
+            branch_id: project.active_branch_id,
+            invalidation_type: 'upstream_edit',
+            invalidated_scenes: [sceneId],
+            estimated_regen_cost: estimatedCost,
+            reason: reason || 'Shot list unlocked for editing',
+            created_by: userId
+          });
+      } catch (logError) {
+        // Logging failure shouldn't block unlock
+        console.warn('Failed to log invalidation:', logError);
+      }
+    }
+
+    // 5. Unlock scene
+    // Determine previous status (revert to pre-lock state)
+    const previousStatus = scene.dependencies_extracted_at ? 'draft' : 'draft';
+
+    const { data: unlockedScene, error: updateError } = await supabase
+      .from('scenes')
+      .update({
+        shot_list_locked_at: null,
+        status: previousStatus,  // CRITICAL: Revert status
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', sceneId)
+      .select('*')
+      .single();
+
+    if (updateError || !unlockedScene) {
+      console.error('Failed to unlock scene:', updateError);
+      return res.status(500).json({ error: 'Failed to unlock shot list' });
+    }
+
+    // 6. Return success
+    res.json({
+      success: true,
+      scene: {
+        id: unlockedScene.id,
+        status: unlockedScene.status,
+        shotListLockedAt: null
+      },
+      invalidated: hasDownstreamWork ? {
+        frames: framesAffected,
+        videos: videosAffected
+      } : undefined
+    });
+  } catch (error) {
+    console.error('Error in POST /api/projects/:id/scenes/:sceneId/shots/unlock:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
