@@ -8,6 +8,8 @@
 
 ### Additionally: Never use the token '&&' in commands when attempting to do multi-step commands, as The token '&&' is not a valid statement separator in these versions of powershell & bash.
 
+### Never run supabase commands; Supabase CLI is not active. Never run SQL migrations automatically. Always prompt the user to do it themselves.
+
 ### Frontend
 - `npm run dev` - Start Vite dev server (localhost:8080, proxies `/api` to backend:3001)
 - `npm run build` - Production build
@@ -18,7 +20,7 @@
 - `npm run build` - Compile TypeScript
 - `npm run test` - Run Jest tests
 - `npm run test:connectivity` - Test Supabase connection
-- `npm run migrate` - Run database migrations
+- NEVER RUN: `npm run migrate` - NEVER Run database migrations
 
 ## Architecture Overview
 
