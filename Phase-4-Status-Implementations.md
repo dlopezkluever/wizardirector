@@ -72,16 +72,21 @@
 
 ---
 
-### ⏳ Feature 4.5: Shot List Validation & Locking (NEXT)
-**Purpose:** Enforce shot list completeness
+### ✅ Feature 4.5: Shot List Validation & Locking (COMPLETE)
+**Purpose:** Enforce shot list completeness and gate progression to Stage 8+
 
-- ⏳ Add field validation (required fields, duration limits)
-- ⏳ Implement shot coherence checking
-- ⏳ Create "Lock Shot List" gatekeeper
-- ⏳ Add warning modal for incomplete shots
-- ⏳ Store locked shot list in database
+- ✅ Add field validation (required: action, setting, camera; duration 1–30s; duplicate shot IDs)
+- ✅ Implement shot coherence checking (character name typos → warnings with "Did you mean?")
+- ✅ Create "Lock Shot List & Proceed" gatekeeper (server-side validation, force-lock for warnings only)
+- ✅ Add validation modal (errors block lock; warnings allow "Lock Anyway")
+- ✅ Store locked state in database (`shot_list_locked_at` on `scenes`; status → `shot_list_ready`)
+- ✅ Unlock flow with confirmation when downstream frames/videos exist (invalidate, not delete)
+- ✅ Visual indicators: lock banner above inspector when locked; all inputs and split/merge/delete disabled; "Shot List Locked" button state
+- ✅ Type updates: `Scene.shotListLockedAt`; backend scene fetch includes `shot_list_locked_at`
+- ✅ Unit tests: `shotValidationService` (empty list, duplicates, required fields, duration, character warnings)
+- ✅ Documentation: Phase-4-Status, architecture-and-rules (validation rules), user-flow (lock/unlock)
 
-**Status:** Not yet started; next section of implementation task list
+**Status:** Complete. Manual test scenarios and integration tests for lock/unlock endpoints are documented in `4.5-plan-v1.md` (Task 11).
 
 ---
 

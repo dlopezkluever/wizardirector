@@ -190,7 +190,8 @@ Rearview context from the prior scene is visible.
 
 **Gate:**
 
-* User locks the shot list.
+* User locks the shot list. Server validates: at least one shot; no duplicate shot IDs; required fields (action, setting, camera) per shot; duration 1–30s. Errors block lock; warnings (e.g. unusual duration, character name typo) allow "Lock Anyway".
+* When locked: shot list is read-only; lock banner and "Unlock" appear. Unlock without downstream work is immediate. Unlock with downstream frames/videos shows confirmation (frame count, cost estimate); user may "Unlock & Invalidate" to mark frames/videos invalid (not deleted).
 
 ---
 

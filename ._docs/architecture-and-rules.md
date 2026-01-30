@@ -501,6 +501,13 @@ CREATE TABLE shots (
 );
 ```
 
+**Stage 7 Shot List Validation Rules (lock gatekeeper):**
+
+- **Errors (block lock):** Empty shot list; duplicate shot IDs; missing required fields (action, setting, camera) per shot; duration &lt; 1s or &gt; 30s.
+- **Warnings (user may "Lock Anyway"):** Unusual duration (&lt; 4s or &gt; 12s); total scene duration unusually short/long; character names not in scene dependencies (with "Did you mean?" typo suggestions).
+- **Lock:** Sets `scenes.shot_list_locked_at` and status → `shot_list_ready`. Lock is idempotent.
+- **Unlock:** Clears `shot_list_locked_at`. If downstream frames/videos exist, API returns 409 with `requiresConfirmation` and details; user must confirm to invalidate (not delete) those artifacts.
+
 #### **`frames`**
 
 ```sql
