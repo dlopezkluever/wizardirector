@@ -1387,9 +1387,10 @@ router.post('/:id/scenes/:sceneId/shots/lock', async (req, res) => {
     }
 
     // 7. Lock the shot list
+    // Note: The database trigger will automatically set status to 'shot_list_ready'
+    // when shot_list_locked_at is set (defense-in-depth)
     const updateData: any = {
       shot_list_locked_at: new Date().toISOString(),
-      status: 'shot_list_ready',  // CRITICAL: Explicit status transition
       updated_at: new Date().toISOString()
     };
 
@@ -1556,14 +1557,13 @@ router.post('/:id/scenes/:sceneId/shots/unlock', async (req, res) => {
     }
 
     // 5. Unlock scene
-    // Determine previous status (revert to pre-lock state)
-    const previousStatus = scene.dependencies_extracted_at ? 'draft' : 'draft';
-
+    // Note: The database trigger will automatically revert status to 'draft' if currently
+    // at 'shot_list_ready'. If status is 'frames_locked' or 'video_complete', the trigger
+    // leaves it unchanged (those require explicit handling via invalidation).
     const { data: unlockedScene, error: updateError } = await supabase
       .from('scenes')
       .update({
         shot_list_locked_at: null,
-        status: previousStatus,  // CRITICAL: Revert status
         updated_at: new Date().toISOString()
       })
       .eq('id', sceneId)
