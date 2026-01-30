@@ -68,9 +68,11 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
   // Prior scene data for rearview mirror
   const [priorSceneData, setPriorSceneData] = useState<{
     endState?: string;
+    endFrame?: string;
     scriptExcerpt?: string;
     sceneNumber?: number;
   } | null>(null);
+  const [imageError, setImageError] = useState(false);
   
   // Auto-save state
   const [pendingUpdates, setPendingUpdates] = useState<Map<string, Partial<Shot>>>(new Map());
@@ -150,9 +152,11 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
           const priorScene = scenes[currentSceneIndex - 1];
           setPriorSceneData({
             endState: priorScene.priorSceneEndState,
+            endFrame: priorScene.endFrameThumbnail,
             scriptExcerpt: priorScene.scriptExcerpt,
             sceneNumber: priorScene.sceneNumber
           });
+          setImageError(false);
         }
       } catch (error) {
         console.error('Failed to fetch prior scene:', error);
@@ -385,15 +389,16 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Rearview Mirror */}
       <RearviewMirror
-        mode="text"
+        mode={priorSceneData?.endFrame && !imageError ? 'visual' : 'text'}
         priorSceneEndState={
-          priorSceneData?.endState || 
-          (priorSceneData?.scriptExcerpt ? 
-            priorSceneData.scriptExcerpt.split('\n').slice(-3).join('\n') : 
-            undefined
-          )
+          priorSceneData?.endState ||
+          (priorSceneData?.scriptExcerpt
+            ? priorSceneData.scriptExcerpt.split('\n').slice(-3).join('\n')
+            : undefined)
         }
+        priorEndFrame={priorSceneData?.endFrame}
         priorSceneName={priorSceneData?.sceneNumber ? `Scene ${priorSceneData.sceneNumber}` : undefined}
+        onImageError={() => setImageError(true)}
       />
 
       <div className="flex-1 flex overflow-hidden">

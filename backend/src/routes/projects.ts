@@ -457,7 +457,7 @@ router.get('/:id/scenes', async (req, res) => {
     // Include end_state_summary and updated_at for continuity analysis
     const { data: scenes, error: scenesError } = await supabase
       .from('scenes')
-      .select('id, scene_number, slug, status, script_excerpt, end_state_summary, updated_at, expected_characters, expected_location, expected_props, dependencies_extracted_at')
+      .select('id, scene_number, slug, status, script_excerpt, end_state_summary, end_frame_thumbnail_url, updated_at, expected_characters, expected_location, expected_props, dependencies_extracted_at')
       .eq('branch_id', project.active_branch_id)
       .order('scene_number', { ascending: true });
 
@@ -498,6 +498,7 @@ router.get('/:id/scenes', async (req, res) => {
         expectedCharacters: scene.expected_characters || [],
         expectedLocation: scene.expected_location || '',
         expectedProps: scene.expected_props || [],
+        endFrameThumbnail: scene.end_frame_thumbnail_url || undefined,
         shots: [],
         // Store raw scene data for continuity analysis
         updated_at: scene.updated_at,
@@ -530,6 +531,7 @@ router.get('/:id/scenes', async (req, res) => {
         expectedLocation: dbScene.expected_location || '',
         expectedProps: dbScene.expected_props || [],
         priorSceneEndState: priorScene?.end_state_summary ?? null,
+        endFrameThumbnail: scene.endFrameThumbnail ?? null,
         continuityRisk
       };
     });
