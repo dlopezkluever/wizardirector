@@ -281,6 +281,83 @@ export class ShotService {
     const shots = result.shots || [];
     return shots.map((s: Record<string, unknown>) => normalizeShot(s));
   }
+
+  /**
+   * Lock shot list for the scene (Stage 7 gatekeeper).
+   * Validates shots server-side; use force=true to bypass warnings only.
+   */
+  async lockShotList(
+    projectId: string,
+    sceneId: string,
+    force: boolean = false
+  ): Promise<{ success: boolean; scene: Record<string, unknown> }> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/shots/lock`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ force }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      const err: Error & { status?: number; data?: unknown } = new Error(data.error || 'Failed to lock shot list');
+      err.status = response.status;
+      err.data = data;
+      throw err;
+    }
+
+    return data;
+  }
+
+  /**
+   * Unlock shot list. If downstream work exists, pass confirm: true (and optional reason).
+   */
+  async unlockShotList(
+    projectId: string,
+    sceneId: string,
+    options?: { reason?: string; confirm?: boolean }
+  ): Promise<{ success: boolean; scene?: Record<string, unknown>; invalidated?: { frames: number; videos: number } }> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/shots/unlock`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          reason: options?.reason,
+          confirm: options?.confirm,
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to unlock shot list');
+    }
+
+    return data;
+  }
 }
 
 export const shotService = new ShotService();
