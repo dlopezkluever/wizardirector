@@ -20,7 +20,8 @@ import {
   AlertTriangle,
   AlertCircle,
   Save,
-  GripVertical
+  GripVertical,
+  Lock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -100,11 +101,16 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
   const [isMerging, setIsMerging] = useState(false);
 
   // Lock / validation state
+  const [isSceneLocked, setIsSceneLocked] = useState(false);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [validationWarnings, setValidationWarnings] = useState<ValidationWarning[]>([]);
   const [showValidationModal, setShowValidationModal] = useState(false);
   const [isLocking, setIsLocking] = useState(false);
   const [isEditable, setIsEditable] = useState(true);
+  // Unlock confirmation when downstream frames exist
+  const [showUnlockConfirmModal, setShowUnlockConfirmModal] = useState(false);
+  const [unlockConfirmDetails, setUnlockConfirmDetails] = useState<{ framesAffected: number; videosAffected: number; estimatedCost: string } | null>(null);
+  const [isUnlocking, setIsUnlocking] = useState(false);
 
   // Initial data fetch
   useEffect(() => {
@@ -158,13 +164,15 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
     fetchOrExtractShots();
   }, [projectId, sceneId]);
 
-  // Fetch prior scene data for rearview mirror
+  // Fetch prior scene data for rearview mirror and current scene lock status
   useEffect(() => {
-    const fetchPriorScene = async () => {
+    const fetchPriorSceneAndLockStatus = async () => {
       try {
         const scenes = await sceneService.fetchScenes(projectId);
         const currentSceneIndex = scenes.findIndex(s => s.id === sceneId);
-        
+        const currentScene = currentSceneIndex >= 0 ? scenes[currentSceneIndex] : null;
+        setIsSceneLocked(!!currentScene?.shotListLockedAt);
+
         if (currentSceneIndex > 0) {
           const priorScene = scenes[currentSceneIndex - 1];
           setPriorSceneData({
@@ -176,11 +184,11 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
           setImageError(false);
         }
       } catch (error) {
-        console.error('Failed to fetch prior scene:', error);
+        console.error('Failed to fetch prior scene / lock status:', error);
       }
     };
-    
-    fetchPriorScene();
+
+    fetchPriorSceneAndLockStatus();
   }, [projectId, sceneId]);
 
   // Auto-save effect
@@ -416,8 +424,10 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
     return { errors, warnings };
   };
 
+  const canEdit = !isSceneLocked && isEditable;
+
   const getFieldValidationState = (shot: Shot, field: string): 'valid' | 'warning' | 'error' => {
-    if (!isEditable) return 'valid';
+    if (!canEdit) return 'valid';
     if (field === 'action' && !shot.action?.trim()) return 'error';
     if (field === 'camera' && !shot.camera?.trim()) return 'error';
     if (field === 'setting' && !shot.setting?.trim()) return 'error';
@@ -431,6 +441,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
   const lockShotList = async (force: boolean) => {
     try {
       await shotService.lockShotList(projectId, sceneId, force);
+      setIsSceneLocked(true);
       toast({
         title: 'Shot list locked',
         description: 'Scene is ready for asset assignment',
@@ -518,6 +529,59 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
       });
     } finally {
       setIsLocking(false);
+    }
+  };
+
+  const handleUnlock = async () => {
+    try {
+      setIsUnlocking(true);
+      await shotService.unlockShotList(projectId, sceneId, { confirm: false });
+      setIsSceneLocked(false);
+      toast({
+        title: 'Shot list unlocked',
+        description: 'You can edit the shot list again',
+      });
+    } catch (error: unknown) {
+      const err = error as { status?: number; data?: { requiresConfirmation?: boolean; details?: { framesAffected?: number; videosAffected?: number; estimatedCost?: string } } };
+      if (err.status === 409 && err.data?.requiresConfirmation && err.data?.details) {
+        const d = err.data.details;
+        setUnlockConfirmDetails({
+          framesAffected: d.framesAffected ?? 0,
+          videosAffected: d.videosAffected ?? 0,
+          estimatedCost: d.estimatedCost ?? '0',
+        });
+        setShowUnlockConfirmModal(true);
+      } else {
+        toast({
+          title: 'Failed to unlock',
+          description: error instanceof Error ? error.message : 'Could not unlock shot list',
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      setIsUnlocking(false);
+    }
+  };
+
+  const confirmUnlockWithInvalidation = async () => {
+    try {
+      setIsUnlocking(true);
+      await shotService.unlockShotList(projectId, sceneId, { confirm: true });
+      setIsSceneLocked(false);
+      setShowUnlockConfirmModal(false);
+      setUnlockConfirmDetails(null);
+      toast({
+        title: 'Shot list unlocked',
+        description: 'Downstream frames/videos have been marked invalid. You can edit the shot list again.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Failed to unlock',
+        description: error instanceof Error ? error.message : 'Could not unlock shot list',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUnlocking(false);
     }
   };
 
@@ -694,6 +758,29 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
         >
           {selectedShot ? (
             <>
+              {/* Lock banner */}
+              {isSceneLocked && (
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg mx-4 mt-4 mb-0 p-3">
+                  <div className="flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-blue-500 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-blue-500">Shot List Locked</p>
+                      <p className="text-xs text-muted-foreground">
+                        This shot list has been approved. Unlock to make changes.
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleUnlock}
+                      disabled={isUnlocking}
+                      className="ml-auto shrink-0"
+                    >
+                      {isUnlocking ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Unlock'}
+                    </Button>
+                  </div>
+                </div>
+              )}
               {/* Inspector Header */}
               <div className="p-4 border-b border-border/50 bg-card/20">
                 <div className="flex items-center justify-between">
@@ -713,6 +800,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                     <Button 
                       variant="outline" 
                       size="sm"
+                      disabled={!canEdit}
                       onClick={() => handleSplitShot(selectedShot.id)}
                       className="border-primary/20 hover:border-primary/40"
                     >
@@ -724,11 +812,13 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                         <button
                           type="button"
                           onClick={() => setMergeDirection('next')}
+                          disabled={!canEdit}
                           className={cn(
                             'px-2 py-1.5 text-xs flex items-center gap-1 transition-colors',
                             mergeDirection === 'next'
                               ? 'bg-primary/20 text-primary'
-                              : 'bg-muted/30 text-muted-foreground hover:text-foreground'
+                              : 'bg-muted/30 text-muted-foreground hover:text-foreground',
+                            !canEdit && 'opacity-50 cursor-not-allowed'
                           )}
                           title="Merge with next shot"
                         >
@@ -738,11 +828,13 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                         <button
                           type="button"
                           onClick={() => setMergeDirection('previous')}
+                          disabled={!canEdit}
                           className={cn(
                             'px-2 py-1.5 text-xs flex items-center gap-1 transition-colors',
                             mergeDirection === 'previous'
                               ? 'bg-primary/20 text-primary'
-                              : 'bg-muted/30 text-muted-foreground hover:text-foreground'
+                              : 'bg-muted/30 text-muted-foreground hover:text-foreground',
+                            !canEdit && 'opacity-50 cursor-not-allowed'
                           )}
                           title="Merge with previous shot"
                         >
@@ -753,7 +845,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                       <Button 
                         variant="outline" 
                         size="sm"
-                        disabled={!canMerge || isMerging}
+                        disabled={!canEdit || !canMerge || isMerging}
                         onClick={handleMergeShot}
                         className="border-primary/20 hover:border-primary/40"
                       >
@@ -764,6 +856,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                     <Button 
                       variant="ghost" 
                       size="sm"
+                      disabled={!canEdit}
                       className="text-destructive hover:text-destructive hover:bg-destructive/10"
                       onClick={() => handleDeleteShot(selectedShot.id)}
                     >
@@ -788,7 +881,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                       onChange={(e) => handleShotUpdate(selectedShot.id, 'duration', parseInt(e.target.value) || 8)}
                       min={1}
                       max={30}
-                      disabled={!isEditable}
+                      disabled={!canEdit || isSaving}
                       className={cn(
                         'w-32',
                         getFieldValidationState(selectedShot, 'duration') === 'error' && 'border-b-2 border-b-red-500',
@@ -810,7 +903,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                     <Textarea
                       value={selectedShot.action}
                       onChange={(e) => handleShotUpdate(selectedShot.id, 'action', e.target.value)}
-                      disabled={!isEditable}
+                      disabled={!canEdit || isSaving}
                       placeholder="Describe the atomic physical action for this shot..."
                       rows={4}
                       className={cn(
@@ -834,7 +927,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                     <Textarea
                       value={selectedShot.dialogue}
                       onChange={(e) => handleShotUpdate(selectedShot.id, 'dialogue', e.target.value)}
-                      disabled={!isEditable}
+                      disabled={!canEdit || isSaving}
                       placeholder="CHARACTER: Exact dialogue spoken in this shot..."
                       rows={3}
                       className="resize-none font-mono text-sm"
@@ -851,7 +944,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                       <Input
                         value={selectedShot.charactersForeground.join(', ')}
                         onChange={(e) => handleShotUpdate(selectedShot.id, 'charactersForeground', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-                        disabled={!isEditable}
+                        disabled={!canEdit || isSaving}
                         placeholder="Maya, John"
                       />
                       <p className="text-xs text-muted-foreground mt-1">
@@ -866,7 +959,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                       <Input
                         value={selectedShot.charactersBackground.join(', ')}
                         onChange={(e) => handleShotUpdate(selectedShot.id, 'charactersBackground', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-                        disabled={!isEditable}
+                        disabled={!canEdit || isSaving}
                         placeholder="Crowd, extras"
                       />
                     </div>
@@ -881,7 +974,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                     <Input
                       value={selectedShot.setting}
                       onChange={(e) => handleShotUpdate(selectedShot.id, 'setting', e.target.value)}
-                      disabled={!isEditable}
+                      disabled={!canEdit || isSaving}
                       placeholder="Train Platform - Dawn"
                       className={cn(
                         getFieldValidationState(selectedShot, 'setting') === 'error' && 'border-b-2 border-b-red-500',
@@ -902,7 +995,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                     <Input
                       value={selectedShot.camera}
                       onChange={(e) => handleShotUpdate(selectedShot.id, 'camera', e.target.value)}
-                      disabled={!isEditable}
+                      disabled={!canEdit || isSaving}
                       placeholder="Wide shot, tracking left to right"
                       className={cn(
                         getFieldValidationState(selectedShot, 'camera') === 'error' && 'border-b-2 border-b-red-500',
@@ -952,13 +1045,18 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
           <Button
             variant="default"
             onClick={handleLockShotList}
-            disabled={!isEditable || isSaving || shots.length === 0 || isLocking}
+            disabled={isSceneLocked || !canEdit || isSaving || shots.length === 0 || isLocking}
             className="bg-primary hover:bg-primary/90 text-primary-foreground"
           >
             {isLocking ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 Locking...
+              </>
+            ) : isSceneLocked ? (
+              <>
+                <Lock className="w-4 h-4 mr-2" />
+                Shot List Locked
               </>
             ) : (
               <>
@@ -1081,6 +1179,43 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                 )}
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Unlock confirmation (downstream frames/videos will be invalidated) */}
+      <Dialog open={showUnlockConfirmModal} onOpenChange={setShowUnlockConfirmModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-yellow-500" />
+              Unlock shot list?
+            </DialogTitle>
+            <DialogDescription>
+              {unlockConfirmDetails && (
+                <>
+                  This scene has downstream work. Unlocking will invalidate{' '}
+                  <strong>{unlockConfirmDetails.framesAffected} frame(s)</strong> and{' '}
+                  <strong>{unlockConfirmDetails.videosAffected} video(s)</strong>.
+                  {unlockConfirmDetails.estimatedCost !== '0' && (
+                    <> Estimated regeneration cost: ${unlockConfirmDetails.estimatedCost}</>
+                  )}
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { setShowUnlockConfirmModal(false); setUnlockConfirmDetails(null); }}>
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              onClick={confirmUnlockWithInvalidation}
+              disabled={isUnlocking}
+              className="bg-primary hover:bg-primary/90"
+            >
+              {isUnlocking ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Unlock & Invalidate'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
