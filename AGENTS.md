@@ -10,6 +10,8 @@
 
 ### Never run supabase commands; Supabase CLI is not active. Never run SQL migrations automatically. Always prompt the user to do it themselves.
 
+## DO NOT MAKE IMPLEMENTATION SUMMARY DOCUMENTS ONCE YOUR FINISHED WITH A TASK, UNLESS IT'S EXPLICTLY ASKED FOR BY THE USER. 
+
 ### Frontend
 - `npm run dev` - Start Vite dev server (localhost:8080, proxies `/api` to backend:3001)
 - `npm run build` - Production build
