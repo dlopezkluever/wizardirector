@@ -353,7 +353,10 @@ export class ShotService {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to unlock shot list');
+      const err: Error & { status?: number; data?: unknown } = new Error(data.error || 'Failed to unlock shot list');
+      err.status = response.status;
+      err.data = data;
+      throw err;
     }
 
     return data;
