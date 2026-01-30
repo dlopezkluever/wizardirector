@@ -41,6 +41,8 @@ export interface Scene {
   endFrameThumbnail?: string;
   shots: Shot[];
   continuityRisk?: ContinuityRisk;
+  /** ISO timestamp when shot list was locked; present when scene is locked for Stage 8+ */
+  shotListLockedAt?: string;
 }
 
 export interface SceneAsset {
