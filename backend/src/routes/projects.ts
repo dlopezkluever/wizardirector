@@ -458,7 +458,7 @@ router.get('/:id/scenes', async (req, res) => {
     // Include end_state_summary and updated_at for continuity analysis
     const { data: scenes, error: scenesError } = await supabase
       .from('scenes')
-      .select('id, scene_number, slug, status, script_excerpt, end_state_summary, end_frame_thumbnail_url, updated_at, expected_characters, expected_location, expected_props, dependencies_extracted_at')
+      .select('id, scene_number, slug, status, script_excerpt, end_state_summary, end_frame_thumbnail_url, updated_at, expected_characters, expected_location, expected_props, dependencies_extracted_at, shot_list_locked_at')
       .eq('branch_id', project.active_branch_id)
       .order('scene_number', { ascending: true });
 
@@ -501,6 +501,7 @@ router.get('/:id/scenes', async (req, res) => {
         expectedProps: scene.expected_props || [],
         endFrameThumbnail: scene.end_frame_thumbnail_url || undefined,
         shots: [],
+        shotListLockedAt: scene.shot_list_locked_at ?? undefined,
         // Store raw scene data for continuity analysis
         updated_at: scene.updated_at,
         end_state_summary: scene.end_state_summary
