@@ -417,8 +417,9 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
         
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 flex flex-col overflow-hidden">
-            {sceneStage === 7 && (
+            {sceneStage === 7 && projectId && (
               <Stage7ShotList 
+                projectId={projectId}
                 sceneId={activeSceneId} 
                 onComplete={handleSceneStageComplete}
                 onBack={handleSceneStageBack}

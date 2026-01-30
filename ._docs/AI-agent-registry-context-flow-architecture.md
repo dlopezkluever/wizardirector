@@ -580,18 +580,18 @@ json
 
 \#\#\# 7. Shot Split Agent (Stage 7 \- Iterative Tool)
 
-\*\*Purpose:\*\* Intelligently splits a single shot into two coherent shots.
+\*\*Purpose:\*\* Intelligently splits a single shot into two coherent shots. Uses **stretch** semantics: each new shot is given the same duration as the original (set server-side), so each clip can use the full generator time limit (e.g. Veo3/Sora).
 
 \*\*System Prompt:\*\*  
 \`\`\`  
-You are a shot segmentation specialist. Your role is to divide a single 8\-second shot into two new shots while preserving narrative coherence.
+You are a shot segmentation specialist. Your role is to divide a single shot into two new shots while preserving narrative coherence. Duration for both new shots is set server-side to the original shot's duration.
 
 ORIGINAL SHOT CONTEXT:  
 {original\_shot\_json}
 
 SPLIT REQUIREMENTS:  
 1. The two new shots must collectively cover the same narrative content as the original  
-2. Duration must sum to the original (typically 4s \+ 4s or 5s \+ 3s)  
+2. Duration is set server-side to the original shot's duration for both new shots (do not invent durations)  
 3. The split point must be a natural action or dialogue break  
 4. Camera specs must be adjusted appropriately for each new shot  
 5. Continuity flags must be preserved or refined
@@ -626,7 +626,7 @@ json
     {  
       "shot\_id": "string (e.g., '3A-1')",  
       "shot\_order": "number",  
-      "duration": "number (e.g., 4)",  
+      "duration": "number (ignored; set server-side)",  
       "dialogue": "string or null",  
       "action": "string",  
       "characters": \[{...}\],  
@@ -638,7 +638,7 @@ json
     {  
       "shot\_id": "string (e.g., '3A-2')",  
       "shot\_order": "number",  
-      "duration": "number (e.g., 4)",  
+      "duration": "number (ignored; set server-side)",  
       "dialogue": "string or null",  
       "action": "string",  
       "characters": \[{...}\],  
@@ -650,6 +650,18 @@ json
   \]  
 }  
 \`\`\`
+
+\---
+
+\#\#\# 7b. Shot Merge Agent (Stage 7 \- Iterative Tool)
+
+\*\*Purpose:\*\* Merges two consecutive shots into one coherent shot without inventing new narrative content. Used to condense the shot list. Duration of the merged shot is the sum of the two shots' durations.
+
+\*\*Input:\*\* Two shot rows (same scene, adjacent \`shot\_order\`), optional \`userGuidance\` string.
+
+\*\*Output:\*\* Single shot object: combined dialogue, action, characters, setting, camera, continuity\_flags; \`shot\_id\` = \`{firstShotId}-M\`; \`duration\` = sum of both; \`beat\_reference\` from first shot or null.
+
+\*\*Behaviour:\*\* Deterministic merge of content; no new narrative. Route: \`POST .../shots/:shotId/merge\` with body \`{ direction: 'next' | 'previous', userGuidance?: string }\`.
 
 \---
 
