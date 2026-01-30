@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Image as ImageIcon, 
@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { RearviewMirror } from './RearviewMirror';
+import { sceneService } from '@/lib/services/sceneService';
 import { cn } from '@/lib/utils';
 import type { FramePair } from '@/types/scene';
 
@@ -44,17 +45,46 @@ const mockFramePairs: FramePair[] = [
 ];
 
 interface Stage10FrameGenerationProps {
+  projectId: string;
   sceneId: string;
   onComplete: () => void;
   onBack: () => void;
 }
 
-export function Stage10FrameGeneration({ sceneId, onComplete, onBack }: Stage10FrameGenerationProps) {
+export function Stage10FrameGeneration({ projectId, sceneId, onComplete, onBack }: Stage10FrameGenerationProps) {
   const [mode, setMode] = useState<GenerationMode>('control');
   const [framePairs, setFramePairs] = useState<FramePair[]>(mockFramePairs);
   const [selectedShot, setSelectedShot] = useState<string>(mockFramePairs[0].shotId);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showInpainting, setShowInpainting] = useState(false);
+
+  const [priorSceneData, setPriorSceneData] = useState<{
+    endState?: string;
+    endFrame?: string;
+    sceneNumber?: number;
+  } | null>(null);
+  const [imageError, setImageError] = useState(false);
+
+  useEffect(() => {
+    const fetchPriorScene = async () => {
+      try {
+        const scenes = await sceneService.fetchScenes(projectId);
+        const currentSceneIndex = scenes.findIndex(s => s.id === sceneId);
+        if (currentSceneIndex > 0) {
+          const priorScene = scenes[currentSceneIndex - 1];
+          setPriorSceneData({
+            endState: priorScene.priorSceneEndState,
+            endFrame: priorScene.endFrameThumbnail,
+            sceneNumber: priorScene.sceneNumber
+          });
+          setImageError(false);
+        }
+      } catch (error) {
+        console.error('Failed to fetch prior scene:', error);
+      }
+    };
+    fetchPriorScene();
+  }, [projectId, sceneId]);
 
   const selectedPair = framePairs.find(fp => fp.shotId === selectedShot);
 
@@ -102,9 +132,11 @@ export function Stage10FrameGeneration({ sceneId, onComplete, onBack }: Stage10F
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Rearview Mirror */}
       <RearviewMirror
-        mode="visual"
-        priorEndFrame="/placeholder.svg"
-        priorSceneName="Scene 0: Prologue"
+        mode={priorSceneData?.endFrame && !imageError ? 'visual' : 'text'}
+        priorSceneEndState={priorSceneData?.endState}
+        priorEndFrame={priorSceneData?.endFrame}
+        priorSceneName={priorSceneData?.sceneNumber ? `Scene ${priorSceneData.sceneNumber}` : undefined}
+        onImageError={() => setImageError(true)}
       />
 
       {/* Mode Selection */}
