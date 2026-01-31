@@ -12,6 +12,7 @@ import styleCapsulesRouter from './routes/styleCapsules.js';
 import { imagesRouter } from './routes/images.js';
 import { assetsRouter } from './routes/assets.js';
 import { projectAssetsRouter } from './routes/projectAssets.js';
+import { sceneAssetsRouter } from './routes/sceneAssets.js';
 import { authenticateUser } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -44,6 +45,8 @@ app.use('/api/projects', authenticateUser, projectsRouter);
 
 // Project assets routes (protected, nested under projects)
 app.use('/api/projects', authenticateUser, projectAssetsRouter);
+// Scene asset instances / inheritance (protected, nested under projects)
+app.use('/api/projects', authenticateUser, sceneAssetsRouter);
 
 // Stage states routes (protected, nested under projects)
 app.use('/api/projects', authenticateUser, stageStatesRouter);
