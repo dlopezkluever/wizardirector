@@ -214,7 +214,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 \---
 
-\#\# Phase 4: Phase B Foundation \- Scenes & Shots
+\#\# Phase 4: *DONE* Phase B Foundation \- Scenes & Shots *DONE*
 
 \*\*Goal\*\*: Implement scene-based workflow (Stage 6-7). Users can break down their script into technical shot lists.
 

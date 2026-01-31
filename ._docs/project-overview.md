@@ -634,7 +634,7 @@ Stage 8 defines the **starting visual state** of all relevant characters, locati
 
 ### **Constraints**
 
-Stage 8 defines only starting conditions. Mid-scene visual changes are handled in Stage 10\.
+Stage 8 defines only the visual conditions at the start of a scene. Mid-scene visual changes are handled in Stage 10\.
 
 ---
 

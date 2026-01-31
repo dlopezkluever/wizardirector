@@ -114,7 +114,7 @@ Aiuteur is a narrative-to-AI-film pipeline web application implementing a determ
 | **LLM Integration** | Google Generative AI | 0.24.1 | Gemini models |
 | **LLM Integration** | LangChain | 2.1.3 | LLM abstraction |
 | **Observability** | LangSmith | 0.4.4 | Trace logging |
-| **Image Generation** | Nano Banana | Custom | Asset image keys |
+| **Image Generation** | Gemini (Nano Banana) | Custom | Asset image keys |
 | **Testing** | Jest | 29.7.0 | Unit/integration tests |
 | **Security** | Helmet | 7.1.0 | Security headers |
 | **Validation** | Zod | 3.22.4 | Input validation |
