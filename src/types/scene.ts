@@ -1,4 +1,6 @@
 // Aligned with database schema (migration 003)
+import type { ProjectAsset } from './asset';
+
 export type SceneStatus = 
   | 'draft'
   | 'shot_list_ready'
@@ -43,8 +45,11 @@ export interface Scene {
   continuityRisk?: ContinuityRisk;
   /** ISO timestamp when shot list was locked; present when scene is locked for Stage 8+ */
   shotListLockedAt?: string;
+  /** Phase 5: Scene asset instances (lazy-loaded via API) */
+  assetInstances?: SceneAssetInstance[];
 }
 
+/** Legacy shape; prefer SceneAssetInstance for new code (aligned with scene_asset_instances table). */
 export interface SceneAsset {
   id: string;
   sceneId: string;
@@ -55,6 +60,58 @@ export interface SceneAsset {
   description: string;
   imageKey?: string;
   masterAssetId?: string;
+}
+
+/** Aligned with database schema (migration 015 scene_asset_instances). */
+export interface SceneAssetInstance {
+  id: string;
+  scene_id: string;
+  project_asset_id: string;
+  description_override?: string | null;
+  image_key_url?: string | null;
+  status_tags: string[];
+  carry_forward: boolean;
+  inherited_from_instance_id?: string | null;
+  project_asset?: ProjectAsset;
+  effective_description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateSceneAssetInstanceRequest {
+  sceneId: string;
+  projectAssetId: string;
+  descriptionOverride?: string;
+  statusTags?: string[];
+  carryForward?: boolean;
+  inheritedFromInstanceId?: string;
+}
+
+export interface UpdateSceneAssetInstanceRequest {
+  descriptionOverride?: string;
+  imageKeyUrl?: string;
+  statusTags?: string[];
+  carryForward?: boolean;
+}
+
+export interface SceneAssetRelevanceResult {
+  scene_id: string;
+  relevant_assets: Array<{
+    project_asset_id: string;
+    name: string;
+    asset_type: 'character' | 'prop' | 'location';
+    inherited_from: 'master' | 'previous_scene_instance';
+    starting_description: string;
+    requires_visual_update: boolean;
+    status_tags_inherited: string[];
+    relevance_rationale: string;
+  }>;
+  new_assets_required: Array<{
+    name: string;
+    asset_type: string;
+    description: string;
+    justification: string;
+  }>;
 }
 
 export interface PromptSet {
