@@ -409,7 +409,7 @@ export class ImageGenerationService {
         console.log(`[ImageService] Generated text context (${textContext.length} chars):`, textContext);
         
         // Convert reference image URLs to ReferenceImage objects
-        const referenceImages: ReferenceImage[] = (capsule.reference_image_urls || []).map(url => ({
+        const referenceImages: ReferenceImage[] = (capsule.reference_image_urls || []).map((url: string) => ({
             url: url,
             mimeType: undefined // Will be detected when downloading
         }));
