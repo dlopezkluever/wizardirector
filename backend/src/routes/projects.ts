@@ -64,27 +64,28 @@ router.get('/', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch stage states' });
     }
 
-    // Group stage states by project
-    const projectStages = new Map();
-    allStageStates.forEach(state => {
-      const projectId = state.branches.project_id;
-      if (!projectStages.has(projectId)) {
-        projectStages.set(projectId, []);
-      }
-      projectStages.get(projectId).push(state);
+    // Group stage states by project (branches can be object or array from Supabase join)
+    const projectStages = new Map<string, typeof allStageStates>();
+    allStageStates.forEach((state: (typeof allStageStates)[0]) => {
+      const branch = Array.isArray(state.branches) ? state.branches[0] : state.branches;
+      const projectId = (branch as { project_id?: string } | null)?.project_id;
+      if (!projectId) return;
+      if (!projectStages.has(projectId)) projectStages.set(projectId, []);
+      projectStages.get(projectId)!.push(state);
     });
 
+    type StageStateRow = { status: string; stage_number: number };
     // Transform the data to match the frontend Project interface
     const transformedProjects = projects.map(project => {
-      const stages = projectStages.get(project.id) || [];
-      const lockedStages = stages.filter(s => s.status === 'locked');
-      const highestLockedStage = lockedStages.length > 0 ? Math.max(...lockedStages.map(s => s.stage_number)) : 0;
+      const stages = (projectStages.get(project.id) || []) as StageStateRow[];
+      const lockedStages = stages.filter((s: StageStateRow) => s.status === 'locked');
+      const highestLockedStage = lockedStages.length > 0 ? Math.max(...lockedStages.map((s: StageStateRow) => s.stage_number)) : 0;
       const currentStage = Math.min(highestLockedStage + 1, 5); // Cap at 5 for Phase A
 
       // Build stages array with status
       const stagesArray = [];
       for (let i = 1; i <= 5; i++) {
-        const stageState = stages.find(s => s.stage_number === i);
+        const stageState = stages.find((s: StageStateRow) => s.stage_number === i);
         let status: 'locked' | 'active' | 'pending' | 'outdated' = 'pending';
 
         if (stageState) {
@@ -478,7 +479,7 @@ router.get('/:id/scenes', async (req, res) => {
     // Extract header (first line) and openingAction (lines after header) from script_excerpt
     const transformedScenes = (scenes || []).map((scene) => {
       const scriptExcerpt = scene.script_excerpt || '';
-      const lines = scriptExcerpt.split('\n').filter(line => line.trim().length > 0);
+      const lines = scriptExcerpt.split('\n').filter((line: string) => line.trim().length > 0);
       
       // First line is the header (scene heading)
       const header = lines.length > 0 ? lines[0].trim() : '';
