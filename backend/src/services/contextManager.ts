@@ -38,11 +38,25 @@ export interface GlobalContext {
   visualStyleCapsule?: StyleCapsule;
 }
 
+/** Scene asset instance shape for local context (aligned with scene_asset_instances + joined project_asset). */
+export interface SceneAssetInstanceContext {
+  id: string;
+  scene_id: string;
+  project_asset_id: string;
+  description_override?: string | null;
+  image_key_url?: string | null;
+  status_tags: string[];
+  carry_forward: boolean;
+  inherited_from_instance_id?: string | null;
+  effective_description: string;
+  project_asset?: { name: string; asset_type: string; description: string; image_key_url?: string | null };
+}
+
 export interface LocalContext {
   sceneId?: string;
   sceneScript?: string;
   previousSceneEndState?: string;
-  sceneAssets?: any[]; // SceneAssetInstance[] - to be defined in Phase B
+  sceneAssets?: SceneAssetInstanceContext[];
 }
 
 export interface FullContext {
