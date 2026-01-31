@@ -1,0 +1,1489 @@
+# Phase 5 Feature 5.1: Scene Asset Instances - Detailed Implementation Plan
+
+## Overview
+
+This plan implements **stateful asset management** for scene-specific asset variations in Stage 8. Assets evolve across scenes with condition tracking, inheritance from prior scenes, and modification tracking.
+
+**Core Principle**: Assets inherit their **final state** from Scene N when entering Scene N+1, with overrides stored as scene-specific instances.
+
+---
+
+## Architecture Summary
+
+```
+project_assets (1) → (N) scene_asset_instances (N) → (1) scenes
+                                 ↓
+                          inherited_from_scene_id (self-referential)
+```
+
+**Data Flow**:
+1. User completes Stage 5 → `project_assets` locked
+2. User enters Stage 8 for Scene 1 → Scene asset instances created from `project_assets`
+3. User edits Scene 1 assets → `description_override`, `status_tags` stored
+4. User advances to Scene 2 → Inherit Scene 1 instance state (with `carry_forward` check)
+5. User edits Scene 2 asset → New instance with `inherited_from_scene_id = scene_1_instance.id`
+
+---
+
+## Task 1: Database Schema - `scene_asset_instances` Table
+
+### Migration File: `015_scene_asset_instances.sql`
+
+**Location**: `backend/migrations/015_scene_asset_instances.sql`
+
+**Schema** (authoritative from `database-schema-state-transition-matrix.md` lines 604-631):
+
+```sql
+-- Migration 015: Scene Asset Instances
+-- Feature 5.1: Scene-specific asset states with inheritance tracking
+-- Purpose: Enable stateful asset management across scenes (Stage 8)
+
+-- ============================================================================
+-- SCENE ASSET INSTANCES TABLE
+-- ============================================================================
+-- Purpose: Track scene-specific asset states with inheritance from prior scenes
+
+CREATE TABLE scene_asset_instances (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    scene_id UUID NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
+    project_asset_id UUID NOT NULL REFERENCES project_assets(id) ON DELETE CASCADE,
+    
+    -- Stateful Modification (Scene-specific overrides)
+    description_override TEXT, -- NULL if unchanged from inherited/master state
+    image_key_url TEXT, -- Regenerated if description changed
+    
+    -- Status Metadata Tags (Feature 5.3)
+    status_tags TEXT[], -- e.g., ['muddy', 'torn_shirt', 'bloody']
+    carry_forward BOOLEAN DEFAULT TRUE, -- Should tags persist to next scene?
+    
+    -- Inheritance Tracking
+    inherited_from_scene_id UUID REFERENCES scenes(id) ON DELETE SET NULL,
+    -- Stores the scene ID from which this instance inherited its state
+    -- NULL if this is the first scene where the asset appears
+    
+    -- Computed Fields (for context assembly)
+    -- These are derived but stored for performance
+    effective_description TEXT, -- Computed: description_override OR inherited description OR project_asset.description
+    
+    -- Metadata
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    -- Constraints
+    UNIQUE(scene_id, project_asset_id) -- One instance per asset per scene
+);
+
+-- Indexes for performance
+CREATE INDEX idx_scene_instances_scene ON scene_asset_instances(scene_id);
+CREATE INDEX idx_scene_instances_asset ON scene_asset_instances(project_asset_id);
+CREATE INDEX idx_scene_instances_inherited ON scene_asset_instances(inherited_from_scene_id);
+CREATE INDEX idx_scene_instances_scene_asset ON scene_asset_instances(scene_id, project_asset_id); -- Composite for lookups
+
+-- ============================================================================
+-- ROW LEVEL SECURITY (RLS) POLICIES
+-- ============================================================================
+
+ALTER TABLE scene_asset_instances ENABLE ROW LEVEL SECURITY;
+
+-- Users can only access scene asset instances of their own projects
+CREATE POLICY "Users can view own scene asset instances" ON scene_asset_instances
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM scenes s
+            JOIN branches b ON b.id = s.branch_id
+            JOIN projects p ON p.id = b.project_id
+            WHERE s.id = scene_asset_instances.scene_id
+            AND p.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can insert own scene asset instances" ON scene_asset_instances
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM scenes s
+            JOIN branches b ON b.id = s.branch_id
+            JOIN projects p ON p.id = b.project_id
+            WHERE s.id = scene_asset_instances.scene_id
+            AND p.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can update own scene asset instances" ON scene_asset_instances
+    FOR UPDATE USING (
+        EXISTS (
+            SELECT 1 FROM scenes s
+            JOIN branches b ON b.id = s.branch_id
+            JOIN projects p ON p.id = b.project_id
+            WHERE s.id = scene_asset_instances.scene_id
+            AND p.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can delete own scene asset instances" ON scene_asset_instances
+    FOR DELETE USING (
+        EXISTS (
+            SELECT 1 FROM scenes s
+            JOIN branches b ON b.id = s.branch_id
+            JOIN projects p ON p.id = b.project_id
+            WHERE s.id = scene_asset_instances.scene_id
+            AND p.user_id = auth.uid()
+        )
+    );
+
+-- ============================================================================
+-- HELPER FUNCTIONS
+-- ============================================================================
+
+-- Trigger to update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_scene_asset_instances_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_scene_asset_instances_timestamp
+    BEFORE UPDATE ON scene_asset_instances
+    FOR EACH ROW
+    EXECUTE FUNCTION update_scene_asset_instances_updated_at();
+
+-- ============================================================================
+-- COMMENTS FOR DOCUMENTATION
+-- ============================================================================
+
+COMMENT ON TABLE scene_asset_instances IS 'Scene-specific asset states with inheritance from prior scenes (Stage 8)';
+COMMENT ON COLUMN scene_asset_instances.description_override IS 'Scene-specific description override; NULL if using inherited/master description';
+COMMENT ON COLUMN scene_asset_instances.status_tags IS 'Visual condition metadata (e.g., muddy, torn, bloody) for prompt injection';
+COMMENT ON COLUMN scene_asset_instances.carry_forward IS 'If true, status_tags persist to next scene unless overridden';
+COMMENT ON COLUMN scene_asset_instances.inherited_from_scene_id IS 'Scene ID from which this instance inherited its state (NULL if first appearance)';
+COMMENT ON COLUMN scene_asset_instances.effective_description IS 'Computed final description for LLM context (description_override OR inherited OR project_asset.description)';
+```
+
+**Validation**:
+- Follow migration patterns from `008_global_assets.sql` (lines 1-187)
+- RLS policies mirror `project_assets` patterns (lines 101-136)
+- Indexes follow Supabase performance best practices
+
+---
+
+## Task 2: TypeScript Types - Frontend & Backend Alignment
+
+### File: `src/types/scene.ts`
+
+**Update `SceneAsset` interface** (currently lines 48-58):
+
+```typescript
+// BEFORE (current structure):
+export interface SceneAsset {
+  id: string;
+  sceneId: string;
+  name: string;
+  type: 'character' | 'location' | 'prop';
+  source: 'master' | 'prior-scene' | 'new';
+  reviewStatus: 'unreviewed' | 'edited' | 'locked';
+  description: string;
+  imageKey?: string;
+  masterAssetId?: string;
+}
+
+// AFTER (aligned with database schema):
+export interface SceneAssetInstance {
+  id: string; // scene_asset_instances.id
+  scene_id: string;
+  project_asset_id: string; // FK to project_assets
+  
+  // Override fields (scene-specific)
+  description_override?: string | null;
+  image_key_url?: string | null;
+  
+  // Status metadata
+  status_tags: string[]; // ['muddy', 'torn_shirt', 'bloody']
+  carry_forward: boolean; // Default: true
+  
+  // Inheritance tracking
+  inherited_from_scene_id?: string | null; // Prior scene's scene.id
+  
+  // Computed/Joined fields (from project_assets)
+  project_asset?: ProjectAsset; // Joined for display
+  effective_description: string; // Computed field
+  
+  // Metadata
+  created_at: string;
+  updated_at: string;
+}
+
+// Request types for API
+export interface CreateSceneAssetInstanceRequest {
+  sceneId: string;
+  projectAssetId: string;
+  descriptionOverride?: string;
+  statusTags?: string[];
+  carryForward?: boolean;
+  inheritedFromSceneId?: string;
+}
+
+export interface UpdateSceneAssetInstanceRequest {
+  descriptionOverride?: string;
+  imageKeyUrl?: string;
+  statusTags?: string[];
+  carryForward?: boolean;
+}
+
+// Scene Asset Relevance Output (from AI-agent-registry lines 729-749)
+export interface SceneAssetRelevanceResult {
+  scene_id: string;
+  relevant_assets: Array<{
+    project_asset_id: string;
+    name: string;
+    asset_type: 'character' | 'prop' | 'location';
+    inherited_from: 'master' | 'previous_scene_instance';
+    starting_description: string;
+    requires_visual_update: boolean;
+    status_tags_inherited: string[];
+    relevance_rationale: string;
+  }>;
+  new_assets_required: Array<{
+    name: string;
+    asset_type: string;
+    description: string;
+    justification: string;
+  }>;
+}
+```
+
+**Update `Scene` interface** (lines 34-46) to include scene asset instances:
+
+```typescript
+export interface Scene {
+  id: string;
+  branchId: string;
+  sceneNumber: number;
+  slug: string;
+  scriptExcerpt: string;
+  status: SceneStatus;
+  endStateSummary?: string;
+  priorSceneEndState?: string;
+  endFrameThumbnail?: string;
+  shots: Shot[];
+  continuityRisk?: ContinuityRisk;
+  shotListLockedAt?: string;
+  
+  // Phase 5: Scene asset instances
+  assetInstances?: SceneAssetInstance[]; // Lazy-loaded via API
+}
+```
+
+---
+
+## Task 3: Backend API Routes - Scene Asset Instance CRUD
+
+### File: `backend/src/routes/sceneAssets.ts` (NEW FILE)
+
+**Purpose**: CRUD operations for scene asset instances with inheritance logic
+
+```typescript
+/**
+ * Scene Asset Instance Routes
+ * Handles Stage 8 scene-specific asset management with inheritance
+ */
+
+import { Router } from 'express';
+import { supabase } from '../config/supabase.js';
+import { z } from 'zod';
+
+const router = Router();
+
+// ============================================================================
+// VALIDATION SCHEMAS
+// ============================================================================
+
+const CreateSceneAssetInstanceSchema = z.object({
+  projectAssetId: z.string().uuid(),
+  descriptionOverride: z.string().optional(),
+  statusTags: z.array(z.string()).optional(),
+  carryForward: z.boolean().optional(),
+  inheritedFromSceneId: z.string().uuid().optional(),
+});
+
+const UpdateSceneAssetInstanceSchema = z.object({
+  descriptionOverride: z.string().optional().nullable(),
+  imageKeyUrl: z.string().url().optional().nullable(),
+  statusTags: z.array(z.string()).optional(),
+  carryForward: z.boolean().optional(),
+});
+
+// ============================================================================
+// CRUD ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /api/projects/:projectId/scenes/:sceneId/assets
+ * List all asset instances for a specific scene (with project_asset details joined)
+ */
+router.get('/:projectId/scenes/:sceneId/assets', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, sceneId } = req.params;
+
+        // Verify project ownership and get branch
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Verify scene belongs to project's branch
+        const { data: scene, error: sceneError } = await supabase
+            .from('scenes')
+            .select('id, branch_id, scene_number')
+            .eq('id', sceneId)
+            .eq('branch_id', project.active_branch_id)
+            .single();
+
+        if (sceneError || !scene) {
+            return res.status(404).json({ error: 'Scene not found' });
+        }
+
+        // Fetch scene asset instances with joined project_asset data
+        const { data: instances, error } = await supabase
+            .from('scene_asset_instances')
+            .select(`
+                *,
+                project_asset:project_assets(
+                    id, name, asset_type, description, 
+                    image_key_url, visual_style_capsule_id
+                )
+            `)
+            .eq('scene_id', sceneId)
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            console.error('[SceneAssets] List error:', error);
+            return res.status(500).json({ error: 'Failed to fetch scene assets' });
+        }
+
+        res.json(instances || []);
+    } catch (error) {
+        console.error('[SceneAssets] List error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/assets
+ * Create a new scene asset instance (manual or via inheritance)
+ */
+router.post('/:projectId/scenes/:sceneId/assets', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, sceneId } = req.params;
+        
+        // Validate request body
+        const validation = CreateSceneAssetInstanceSchema.safeParse(req.body);
+        if (!validation.success) {
+            return res.status(400).json({ 
+                error: 'Invalid request', 
+                details: validation.error.errors 
+            });
+        }
+        
+        const { projectAssetId, descriptionOverride, statusTags, carryForward, inheritedFromSceneId } = validation.data;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Verify scene exists
+        const { data: scene, error: sceneError } = await supabase
+            .from('scenes')
+            .select('id, branch_id')
+            .eq('id', sceneId)
+            .eq('branch_id', project.active_branch_id)
+            .single();
+
+        if (sceneError || !scene) {
+            return res.status(404).json({ error: 'Scene not found' });
+        }
+
+        // Verify project_asset exists and belongs to project
+        const { data: projectAsset, error: assetError } = await supabase
+            .from('project_assets')
+            .select('id, branch_id, description')
+            .eq('id', projectAssetId)
+            .eq('branch_id', project.active_branch_id)
+            .single();
+
+        if (assetError || !projectAsset) {
+            return res.status(404).json({ error: 'Project asset not found' });
+        }
+
+        // Compute effective_description
+        const effectiveDescription = descriptionOverride || projectAsset.description;
+
+        // Insert scene asset instance
+        const { data: instance, error: insertError } = await supabase
+            .from('scene_asset_instances')
+            .insert({
+                scene_id: sceneId,
+                project_asset_id: projectAssetId,
+                description_override: descriptionOverride || null,
+                status_tags: statusTags || [],
+                carry_forward: carryForward ?? true,
+                inherited_from_scene_id: inheritedFromSceneId || null,
+                effective_description: effectiveDescription,
+            })
+            .select(`
+                *,
+                project_asset:project_assets(
+                    id, name, asset_type, description, image_key_url
+                )
+            `)
+            .single();
+
+        if (insertError) {
+            // Check for unique constraint violation
+            if (insertError.code === '23505') {
+                return res.status(409).json({ 
+                    error: 'Asset instance already exists for this scene' 
+                });
+            }
+            console.error('[SceneAssets] Insert error:', insertError);
+            return res.status(500).json({ error: 'Failed to create scene asset instance' });
+        }
+
+        console.log(`[SceneAssets] Created instance ${instance.id} for asset ${projectAssetId} in scene ${sceneId}`);
+        res.status(201).json(instance);
+    } catch (error) {
+        console.error('[SceneAssets] Create error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * PUT /api/projects/:projectId/scenes/:sceneId/assets/:instanceId
+ * Update scene asset instance (description override, status tags, etc.)
+ */
+router.put('/:projectId/scenes/:sceneId/assets/:instanceId', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, sceneId, instanceId } = req.params;
+        
+        // Validate request body
+        const validation = UpdateSceneAssetInstanceSchema.safeParse(req.body);
+        if (!validation.success) {
+            return res.status(400).json({ 
+                error: 'Invalid request', 
+                details: validation.error.errors 
+            });
+        }
+        
+        const updates = validation.data;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Verify instance exists and belongs to scene
+        const { data: existingInstance, error: fetchError } = await supabase
+            .from('scene_asset_instances')
+            .select('*, project_asset:project_assets(description)')
+            .eq('id', instanceId)
+            .eq('scene_id', sceneId)
+            .single();
+
+        if (fetchError || !existingInstance) {
+            return res.status(404).json({ error: 'Scene asset instance not found' });
+        }
+
+        // Recompute effective_description if description_override changed
+        let effectiveDescription = existingInstance.effective_description;
+        if (updates.descriptionOverride !== undefined) {
+            effectiveDescription = updates.descriptionOverride || existingInstance.project_asset.description;
+        }
+
+        // Update instance
+        const { data: updatedInstance, error: updateError } = await supabase
+            .from('scene_asset_instances')
+            .update({
+                ...updates,
+                effective_description: effectiveDescription,
+            })
+            .eq('id', instanceId)
+            .select(`
+                *,
+                project_asset:project_assets(
+                    id, name, asset_type, description, image_key_url
+                )
+            `)
+            .single();
+
+        if (updateError) {
+            console.error('[SceneAssets] Update error:', updateError);
+            return res.status(500).json({ error: 'Failed to update scene asset instance' });
+        }
+
+        res.json(updatedInstance);
+    } catch (error) {
+        console.error('[SceneAssets] Update error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * DELETE /api/projects/:projectId/scenes/:sceneId/assets/:instanceId
+ * Remove asset instance from scene
+ */
+router.delete('/:projectId/scenes/:sceneId/assets/:instanceId', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, sceneId, instanceId } = req.params;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Delete instance (cascade handled by DB)
+        const { error: deleteError } = await supabase
+            .from('scene_asset_instances')
+            .delete()
+            .eq('id', instanceId)
+            .eq('scene_id', sceneId);
+
+        if (deleteError) {
+            console.error('[SceneAssets] Delete error:', deleteError);
+            return res.status(500).json({ error: 'Failed to delete scene asset instance' });
+        }
+
+        res.status(204).send();
+    } catch (error) {
+        console.error('[SceneAssets] Delete error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+export const sceneAssetsRouter = router;
+```
+
+**Integration**: Add to `backend/src/server.ts`:
+
+```typescript
+import { sceneAssetsRouter } from './routes/sceneAssets.js';
+// ...
+app.use('/api/projects', sceneAssetsRouter);
+```
+
+---
+
+## Task 4: Asset Inheritance Logic - Scene N → Scene N+1
+
+### File: `backend/src/services/assetInheritanceService.ts` (NEW FILE)
+
+**Purpose**: Core inheritance engine for scene asset state propagation
+
+```typescript
+/**
+ * Asset Inheritance Service
+ * Implements Scene N → Scene N+1 asset state propagation
+ * Adheres to inheritance_contract.md rules (lines 1-224)
+ */
+
+import { supabase } from '../config/supabase.js';
+
+export interface InheritanceSource {
+  priorSceneId: string;
+  priorSceneNumber: number;
+}
+
+export interface InheritedAssetState {
+  projectAssetId: string;
+  descriptionOverride?: string | null;
+  imageKeyUrl?: string | null;
+  statusTags: string[];
+  carryForward: boolean;
+  sourceSceneId: string; // For inherited_from_scene_id
+}
+
+export class AssetInheritanceService {
+  /**
+   * Get the prior scene for a given scene in the same branch
+   * Returns null if scene_number === 1
+   */
+  async getPriorScene(sceneId: string): Promise<InheritanceSource | null> {
+    // Get current scene number and branch
+    const { data: currentScene, error } = await supabase
+      .from('scenes')
+      .select('scene_number, branch_id')
+      .eq('id', sceneId)
+      .single();
+
+    if (error || !currentScene) {
+      throw new Error(`Scene ${sceneId} not found`);
+    }
+
+    // If this is scene 1, no prior scene
+    if (currentScene.scene_number === 1) {
+      return null;
+    }
+
+    // Find prior scene (scene_number - 1) in same branch
+    const { data: priorScene, error: priorError } = await supabase
+      .from('scenes')
+      .select('id, scene_number')
+      .eq('branch_id', currentScene.branch_id)
+      .eq('scene_number', currentScene.scene_number - 1)
+      .single();
+
+    if (priorError || !priorScene) {
+      console.warn(`[AssetInheritance] Prior scene not found for scene ${sceneId}`);
+      return null;
+    }
+
+    return {
+      priorSceneId: priorScene.id,
+      priorSceneNumber: priorScene.scene_number,
+    };
+  }
+
+  /**
+   * Get final asset states from the prior scene
+   * Returns array of inherited states (only assets with carry_forward=true)
+   */
+  async getInheritableAssetStates(priorSceneId: string): Promise<InheritedAssetState[]> {
+    const { data: priorInstances, error } = await supabase
+      .from('scene_asset_instances')
+      .select('*')
+      .eq('scene_id', priorSceneId);
+
+    if (error) {
+      throw new Error(`Failed to fetch prior scene assets: ${error.message}`);
+    }
+
+    if (!priorInstances || priorInstances.length === 0) {
+      return [];
+    }
+
+    // Filter by carry_forward and map to inheritance format
+    return priorInstances
+      .filter(instance => instance.carry_forward !== false) // Default true
+      .map(instance => ({
+        projectAssetId: instance.project_asset_id,
+        descriptionOverride: instance.description_override,
+        imageKeyUrl: instance.image_key_url,
+        statusTags: instance.status_tags || [],
+        carryForward: instance.carry_forward ?? true,
+        sourceSceneId: priorSceneId, // Track where this came from
+      }));
+  }
+
+  /**
+   * Bootstrap scene asset instances from project assets (Scene 1 only)
+   * Creates instances without inheritance (inherited_from_scene_id = NULL)
+   */
+  async bootstrapSceneAssetsFromProjectAssets(
+    sceneId: string,
+    branchId: string
+  ): Promise<number> {
+    console.log(`[AssetInheritance] Bootstrapping Scene 1 assets for scene ${sceneId}`);
+
+    // Get all locked project assets for branch
+    const { data: projectAssets, error: assetsError } = await supabase
+      .from('project_assets')
+      .select('id, description, image_key_url')
+      .eq('branch_id', branchId)
+      .eq('locked', true); // Only locked assets from Stage 5
+
+    if (assetsError) {
+      throw new Error(`Failed to fetch project assets: ${assetsError.message}`);
+    }
+
+    if (!projectAssets || projectAssets.length === 0) {
+      console.warn(`[AssetInheritance] No locked project assets found for branch ${branchId}`);
+      return 0;
+    }
+
+    // Create scene asset instances (no overrides, no inheritance)
+    const instancesToCreate = projectAssets.map(asset => ({
+      scene_id: sceneId,
+      project_asset_id: asset.id,
+      description_override: null,
+      image_key_url: asset.image_key_url, // Copy from project asset
+      status_tags: [],
+      carry_forward: true,
+      inherited_from_scene_id: null, // Scene 1 has no prior scene
+      effective_description: asset.description,
+    }));
+
+    const { data, error: insertError } = await supabase
+      .from('scene_asset_instances')
+      .insert(instancesToCreate)
+      .select();
+
+    if (insertError) {
+      throw new Error(`Failed to bootstrap scene assets: ${insertError.message}`);
+    }
+
+    console.log(`[AssetInheritance] Bootstrapped ${data.length} assets for Scene 1`);
+    return data.length;
+  }
+
+  /**
+   * Inherit asset states from prior scene to current scene
+   * Creates scene_asset_instances with inherited_from_scene_id set
+   */
+  async inheritAssetsFromPriorScene(
+    currentSceneId: string,
+    branchId: string
+  ): Promise<number> {
+    console.log(`[AssetInheritance] Inheriting assets for scene ${currentSceneId}`);
+
+    // Get prior scene
+    const priorScene = await this.getPriorScene(currentSceneId);
+
+    // If no prior scene (Scene 1), bootstrap from project_assets
+    if (!priorScene) {
+      return await this.bootstrapSceneAssetsFromProjectAssets(currentSceneId, branchId);
+    }
+
+    // Get inheritable states from prior scene
+    const inheritedStates = await this.getInheritableAssetStates(priorScene.priorSceneId);
+
+    if (inheritedStates.length === 0) {
+      console.warn(`[AssetInheritance] No inheritable assets from scene ${priorScene.priorSceneNumber}`);
+      return 0;
+    }
+
+    // Create new scene asset instances with inheritance
+    const instancesToCreate = inheritedStates.map(state => ({
+      scene_id: currentSceneId,
+      project_asset_id: state.projectAssetId,
+      description_override: state.descriptionOverride,
+      image_key_url: state.imageKeyUrl,
+      status_tags: state.statusTags,
+      carry_forward: state.carryForward,
+      inherited_from_scene_id: priorScene.priorSceneId, // Track prior scene
+      effective_description: state.descriptionOverride || '', // Will be computed by trigger/app logic
+    }));
+
+    const { data, error: insertError } = await supabase
+      .from('scene_asset_instances')
+      .insert(instancesToCreate)
+      .select();
+
+    if (insertError) {
+      throw new Error(`Failed to inherit scene assets: ${insertError.message}`);
+    }
+
+    console.log(`[AssetInheritance] Inherited ${data.length} assets from Scene ${priorScene.priorSceneNumber}`);
+    return data.length;
+  }
+
+  /**
+   * Get the inheritance chain for a scene asset instance
+   * Traces back through inherited_from_scene_id to find the root
+   */
+  async getInheritanceChain(instanceId: string): Promise<InheritanceChainNode[]> {
+    const chain: InheritanceChainNode[] = [];
+    let currentInstanceId: string | null = instanceId;
+
+    while (currentInstanceId) {
+      const { data: instance, error } = await supabase
+        .from('scene_asset_instances')
+        .select(`
+          id, 
+          scene_id, 
+          project_asset_id, 
+          description_override, 
+          status_tags, 
+          inherited_from_scene_id,
+          scene:scenes(scene_number)
+        `)
+        .eq('id', currentInstanceId)
+        .single();
+
+      if (error || !instance) {
+        break;
+      }
+
+      chain.push({
+        instanceId: instance.id,
+        sceneId: instance.scene_id,
+        sceneNumber: instance.scene.scene_number,
+        descriptionOverride: instance.description_override,
+        statusTags: instance.status_tags || [],
+      });
+
+      // Find prior scene instance for this asset
+      if (instance.inherited_from_scene_id) {
+        const { data: priorInstance } = await supabase
+          .from('scene_asset_instances')
+          .select('id')
+          .eq('scene_id', instance.inherited_from_scene_id)
+          .eq('project_asset_id', instance.project_asset_id)
+          .single();
+
+        currentInstanceId = priorInstance?.id || null;
+      } else {
+        currentInstanceId = null;
+      }
+    }
+
+    return chain.reverse(); // Root first
+  }
+}
+
+export interface InheritanceChainNode {
+  instanceId: string;
+  sceneId: string;
+  sceneNumber: number;
+  descriptionOverride?: string | null;
+  statusTags: string[];
+}
+```
+
+**Integration**: Add endpoint to trigger inheritance:
+
+```typescript
+// In sceneAssets.ts router
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/assets/inherit
+ * Trigger asset inheritance from prior scene (or bootstrap from project_assets)
+ */
+router.post('/:projectId/scenes/:sceneId/assets/inherit', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, sceneId } = req.params;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Verify scene exists
+        const { data: scene, error: sceneError } = await supabase
+            .from('scenes')
+            .select('id, branch_id, scene_number')
+            .eq('id', sceneId)
+            .eq('branch_id', project.active_branch_id)
+            .single();
+
+        if (sceneError || !scene) {
+            return res.status(404).json({ error: 'Scene not found' });
+        }
+
+        // Check if assets already exist for this scene
+        const { data: existingInstances } = await supabase
+            .from('scene_asset_instances')
+            .select('id')
+            .eq('scene_id', sceneId)
+            .limit(1);
+
+        if (existingInstances && existingInstances.length > 0) {
+            return res.status(400).json({ 
+                error: 'Scene already has asset instances. Delete them first to re-inherit.' 
+            });
+        }
+
+        // Execute inheritance
+        const inheritanceService = new AssetInheritanceService();
+        const count = await inheritanceService.inheritAssetsFromPriorScene(
+            sceneId,
+            project.active_branch_id
+        );
+
+        res.json({ 
+            message: `Inherited ${count} assets for Scene ${scene.scene_number}`,
+            count 
+        });
+    } catch (error) {
+        console.error('[SceneAssets] Inheritance error:', error);
+        res.status(500).json({ 
+            error: 'Asset inheritance failed',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+```
+
+---
+
+## Task 5: Context Manager Integration - Local Context Assembly
+
+### File: `backend/src/services/contextManager.ts`
+
+**Update `assembleLocalContext` method** (lines 174-189):
+
+```typescript
+async assembleLocalContext(
+  sceneId: string,
+  globalContext: GlobalContext
+): Promise<LocalContext> {
+  console.log(`[ContextManager] Assembling local context for scene ${sceneId}`);
+  
+  // Fetch scene details
+  const { data: scene, error: sceneError } = await supabase
+    .from('scenes')
+    .select('*')
+    .eq('id', sceneId)
+    .single();
+
+  if (sceneError || !scene) {
+    throw new Error(`Scene ${sceneId} not found`);
+  }
+
+  // Fetch scene asset instances with joined project asset data
+  const { data: sceneAssets, error: assetsError } = await supabase
+    .from('scene_asset_instances')
+    .select(`
+      *,
+      project_asset:project_assets(
+        id, name, asset_type, description, image_key_url
+      )
+    `)
+    .eq('scene_id', sceneId);
+
+  if (assetsError) {
+    console.error(`[ContextManager] Failed to fetch scene assets: ${assetsError.message}`);
+  }
+
+  // Format assets for LLM context
+  const formattedAssets = (sceneAssets || []).map(instance => ({
+    name: instance.project_asset.name,
+    type: instance.project_asset.asset_type,
+    description: instance.effective_description || instance.project_asset.description,
+    statusTags: instance.status_tags || [],
+    imageKeyUrl: instance.image_key_url || instance.project_asset.image_key_url,
+  }));
+
+  return {
+    sceneId: scene.id,
+    sceneScript: scene.script_excerpt,
+    previousSceneEndState: scene.end_state_summary,
+    sceneAssets: formattedAssets,
+  };
+}
+```
+
+**Update `LocalContext` interface** (lines 41-46):
+
+```typescript
+export interface LocalContext {
+  sceneId?: string;
+  sceneScript?: string;
+  previousSceneEndState?: string;
+  sceneAssets?: Array<{
+    name: string;
+    type: 'character' | 'prop' | 'location';
+    description: string;
+    statusTags: string[];
+    imageKeyUrl?: string;
+  }>;
+}
+```
+
+---
+
+## Task 6: Image Generation Integration - Scene-Specific Image Keys
+
+### File: `backend/src/services/image-generation/ImageGenerationService.ts`
+
+**Update `CreateImageJobRequest` interface** (lines 11-24) - already supports `sceneId` and `assetId`:
+
+```typescript
+// EXISTING - No changes needed
+export interface CreateImageJobRequest {
+    projectId: string;
+    branchId: string;
+    jobType: 'master_asset' | 'start_frame' | 'end_frame' | 'inpaint' | 'scene_asset'; // ADD 'scene_asset'
+    prompt: string;
+    visualStyleCapsuleId?: string;
+    width?: number;
+    height?: number;
+    assetId?: string;
+    sceneId?: string;
+    shotId?: string;
+    idempotencyKey?: string;
+    referenceImageUrl?: string;
+}
+```
+
+**Add scene asset instance job handler**:
+
+```typescript
+// In ImageGenerationService class
+
+/**
+ * Create image generation job for scene asset instance
+ * Uses scene-specific description override
+ */
+async createSceneAssetImageJob(
+  sceneInstanceId: string,
+  projectId: string,
+  branchId: string,
+  visualStyleCapsuleId: string
+): Promise<ImageJobResult> {
+  // Fetch scene asset instance
+  const { data: instance, error } = await supabase
+    .from('scene_asset_instances')
+    .select(`
+      *,
+      project_asset:project_assets(asset_type)
+    `)
+    .eq('id', sceneInstanceId)
+    .single();
+
+  if (error || !instance) {
+    throw new Error(`Scene asset instance ${sceneInstanceId} not found`);
+  }
+
+  // Use effective_description (override or base)
+  const prompt = instance.effective_description;
+  
+  // Determine aspect ratio from project_asset type
+  const dimensions = this.ASPECT_RATIOS[instance.project_asset.asset_type];
+
+  return await this.createImageJob({
+    projectId,
+    branchId,
+    jobType: 'scene_asset',
+    prompt,
+    visualStyleCapsuleId,
+    width: dimensions.width,
+    height: dimensions.height,
+    assetId: instance.project_asset_id,
+    sceneId: instance.scene_id,
+    idempotencyKey: `scene-asset-${sceneInstanceId}-${Date.now()}`,
+  });
+}
+```
+
+**Add endpoint to scene assets router**:
+
+```typescript
+// In sceneAssets.ts
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/assets/:instanceId/generate-image
+ * Generate image for scene asset instance (uses scene-specific description)
+ */
+router.post('/:projectId/scenes/:sceneId/assets/:instanceId/generate-image', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, sceneId, instanceId } = req.params;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Get visual style from Stage 5
+        const { data: stage5States } = await supabase
+            .from('stage_states')
+            .select('content')
+            .eq('branch_id', project.active_branch_id)
+            .eq('stage_number', 5)
+            .order('version', { ascending: false })
+            .limit(1);
+
+        const visualStyleId = stage5States?.[0]?.content?.locked_visual_style_capsule_id;
+        if (!visualStyleId) {
+            return res.status(400).json({ 
+                error: 'Visual style capsule not found. Complete Stage 5 first.' 
+            });
+        }
+
+        // Generate image
+        const imageService = new ImageGenerationService();
+        const result = await imageService.createSceneAssetImageJob(
+            instanceId,
+            projectId,
+            project.active_branch_id,
+            visualStyleId
+        );
+
+        res.json(result);
+    } catch (error) {
+        console.error('[SceneAssets] Image generation error:', error);
+        res.status(500).json({ 
+            error: 'Image generation failed',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+```
+
+---
+
+## Task 7: Modification Tracking - Audit Trail
+
+### Update Migration: `015_scene_asset_instances.sql`
+
+**Add modification tracking fields**:
+
+```sql
+-- In scene_asset_instances table, add:
+
+-- Modification Tracking (for audit trail)
+modification_count INTEGER DEFAULT 0, -- Increments on each update
+last_modified_field TEXT, -- Which field was last changed
+modification_reason TEXT, -- Optional user-provided reason for change
+```
+
+**Add trigger to track modifications**:
+
+```sql
+-- Modification tracking trigger
+CREATE OR REPLACE FUNCTION track_scene_asset_modifications()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Increment modification count
+    NEW.modification_count := OLD.modification_count + 1;
+    
+    -- Track which field changed
+    IF NEW.description_override IS DISTINCT FROM OLD.description_override THEN
+        NEW.last_modified_field := 'description_override';
+    ELSIF NEW.status_tags IS DISTINCT FROM OLD.status_tags THEN
+        NEW.last_modified_field := 'status_tags';
+    ELSIF NEW.image_key_url IS DISTINCT FROM OLD.image_key_url THEN
+        NEW.last_modified_field := 'image_key_url';
+    ELSIF NEW.carry_forward IS DISTINCT FROM OLD.carry_forward THEN
+        NEW.last_modified_field := 'carry_forward';
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER scene_asset_modification_tracker
+    BEFORE UPDATE ON scene_asset_instances
+    FOR EACH ROW
+    EXECUTE FUNCTION track_scene_asset_modifications();
+```
+
+---
+
+## Task 8: Testing & Validation
+
+### Test File: `backend/src/tests/sceneAssetInheritance.test.ts` (NEW FILE)
+
+```typescript
+/**
+ * Scene Asset Inheritance Tests
+ * Validates Scene N → Scene N+1 state propagation
+ */
+
+import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
+import { supabase } from '../config/supabase.js';
+import { AssetInheritanceService } from '../services/assetInheritanceService.js';
+
+describe('Scene Asset Inheritance', () => {
+  let testProjectId: string;
+  let testBranchId: string;
+  let testUserId: string;
+  let scene1Id: string;
+  let scene2Id: string;
+  let projectAssetId: string;
+
+  beforeAll(async () => {
+    // Setup test project, branch, scenes, and project_asset
+    // (Implementation details omitted for brevity)
+  });
+
+  afterAll(async () => {
+    // Cleanup test data
+  });
+
+  it('should bootstrap Scene 1 from project_assets', async () => {
+    const service = new AssetInheritanceService();
+    const count = await service.bootstrapSceneAssetsFromProjectAssets(scene1Id, testBranchId);
+    
+    expect(count).toBeGreaterThan(0);
+    
+    // Verify instance created with no inheritance
+    const { data: instances } = await supabase
+      .from('scene_asset_instances')
+      .select('*')
+      .eq('scene_id', scene1Id);
+    
+    expect(instances).toHaveLength(count);
+    expect(instances![0].inherited_from_scene_id).toBeNull();
+  });
+
+  it('should inherit assets from Scene 1 to Scene 2', async () => {
+    // Modify Scene 1 asset state
+    await supabase
+      .from('scene_asset_instances')
+      .update({ 
+        status_tags: ['muddy', 'torn'],
+        description_override: 'Modified description',
+        carry_forward: true
+      })
+      .eq('scene_id', scene1Id)
+      .eq('project_asset_id', projectAssetId);
+
+    // Inherit to Scene 2
+    const service = new AssetInheritanceService();
+    const count = await service.inheritAssetsFromPriorScene(scene2Id, testBranchId);
+    
+    expect(count).toBeGreaterThan(0);
+    
+    // Verify inheritance
+    const { data: scene2Instance } = await supabase
+      .from('scene_asset_instances')
+      .select('*')
+      .eq('scene_id', scene2Id)
+      .eq('project_asset_id', projectAssetId)
+      .single();
+    
+    expect(scene2Instance!.inherited_from_scene_id).toBe(scene1Id);
+    expect(scene2Instance!.status_tags).toEqual(['muddy', 'torn']);
+    expect(scene2Instance!.description_override).toBe('Modified description');
+  });
+
+  it('should respect carry_forward=false and not inherit', async () => {
+    // Set carry_forward to false in Scene 1
+    await supabase
+      .from('scene_asset_instances')
+      .update({ carry_forward: false })
+      .eq('scene_id', scene1Id)
+      .eq('project_asset_id', projectAssetId);
+
+    // Delete Scene 2 instances
+    await supabase
+      .from('scene_asset_instances')
+      .delete()
+      .eq('scene_id', scene2Id);
+
+    // Re-inherit
+    const service = new AssetInheritanceService();
+    await service.inheritAssetsFromPriorScene(scene2Id, testBranchId);
+    
+    // Verify asset was NOT inherited
+    const { data: scene2Instance } = await supabase
+      .from('scene_asset_instances')
+      .select('*')
+      .eq('scene_id', scene2Id)
+      .eq('project_asset_id', projectAssetId)
+      .single();
+    
+    expect(scene2Instance).toBeNull();
+  });
+
+  it('should trace inheritance chain across multiple scenes', async () => {
+    const service = new AssetInheritanceService();
+    
+    // Get Scene 2 instance
+    const { data: scene2Instance } = await supabase
+      .from('scene_asset_instances')
+      .select('id')
+      .eq('scene_id', scene2Id)
+      .eq('project_asset_id', projectAssetId)
+      .single();
+    
+    const chain = await service.getInheritanceChain(scene2Instance!.id);
+    
+    expect(chain).toHaveLength(2); // Scene 1 → Scene 2
+    expect(chain[0].sceneNumber).toBe(1);
+    expect(chain[1].sceneNumber).toBe(2);
+  });
+});
+```
+
+**Run tests**:
+
+```powershell
+cd "C:\Users\Daniel Lopez\Desktop\Aiuteur\wizardirector\backend"
+npm run test
+```
+
+---
+
+## Implementation Checklist
+
+### Database Layer
+- [ ] Create `backend/migrations/015_scene_asset_instances.sql`
+- [ ] Run migration: `psql -U postgres -d wizardirector < backend/migrations/015_scene_asset_instances.sql`
+- [ ] Verify table creation in Supabase dashboard
+- [ ] Test RLS policies with test user
+
+### Type Definitions
+- [ ] Update `src/types/scene.ts` with `SceneAssetInstance` interface
+- [ ] Add request/response types for API
+- [ ] Update `Scene` interface to include `assetInstances`
+- [ ] Update `LocalContext` interface in `contextManager.ts`
+
+### Backend Services
+- [ ] Create `backend/src/services/assetInheritanceService.ts`
+- [ ] Implement `getPriorScene()`, `getInheritableAssetStates()`, `bootstrapSceneAssetsFromProjectAssets()`, `inheritAssetsFromPriorScene()`
+- [ ] Add modification tracking trigger to migration
+
+### Backend Routes
+- [ ] Create `backend/src/routes/sceneAssets.ts`
+- [ ] Implement GET `/scenes/:sceneId/assets` (list)
+- [ ] Implement POST `/scenes/:sceneId/assets` (create)
+- [ ] Implement PUT `/scenes/:sceneId/assets/:instanceId` (update)
+- [ ] Implement DELETE `/scenes/:sceneId/assets/:instanceId` (delete)
+- [ ] Implement POST `/scenes/:sceneId/assets/inherit` (trigger inheritance)
+- [ ] Implement POST `/scenes/:sceneId/assets/:instanceId/generate-image`
+- [ ] Register router in `backend/src/server.ts`
+
+### Context Manager
+- [ ] Update `assembleLocalContext()` to fetch scene asset instances
+- [ ] Format scene assets for LLM prompt injection
+- [ ] Add scene assets to `LocalContext` interface
+
+### Image Generation
+- [ ] Add `'scene_asset'` job type to `CreateImageJobRequest`
+- [ ] Implement `createSceneAssetImageJob()` method
+- [ ] Update job completion handler to update `scene_asset_instances.image_key_url`
+
+### Testing
+- [ ] Create `backend/src/tests/sceneAssetInheritance.test.ts`
+- [ ] Write tests for bootstrapping Scene 1
+- [ ] Write tests for Scene N → N+1 inheritance
+- [ ] Write tests for `carry_forward=false` behavior
+- [ ] Write tests for inheritance chain tracing
+- [ ] Run test suite: `npm run test`
+
+### Documentation
+- [ ] Update API documentation with new scene asset endpoints
+- [ ] Document inheritance behavior in README
+- [ ] Add examples for status tags and carry_forward usage
+
+---
+
+## Dependencies & Prerequisites
+
+**Before starting**:
+1. Phase 0-4 completed (project_assets, scenes, shots tables exist)
+2. Stage 5 Visual Style Capsule selection implemented
+3. Migration system operational
+4. Supabase RLS policies tested
+
+**External dependencies**:
+- Supabase SDK (already installed)
+- Zod validation library (already installed)
+- Jest testing framework (already installed)
+
+---
+
+## Rollout Strategy
+
+### Phase 1: Database & Types (Week 1)
+- Run migration 015
+- Update TypeScript types
+- Test database constraints and RLS
+
+### Phase 2: Backend Logic (Week 1-2)
+- Implement `AssetInheritanceService`
+- Implement scene asset CRUD routes
+- Test inheritance logic with Postman/curl
+
+### Phase 3: Context Integration (Week 2)
+- Update `ContextManager` to use scene asset instances
+- Test LLM context assembly with mock data
+
+### Phase 4: Image Generation (Week 2-3)
+- Add scene asset image job type
+- Test image generation for scene-specific overrides
+
+### Phase 5: Testing & Validation (Week 3)
+- Write comprehensive tests
+- Test Scene 1 → Scene 2 → Scene 3 inheritance chain
+- Validate carry_forward behavior
+
+---
+
+## Edge Cases & Considerations
+
+1. **Orphaned Instances**: If a `project_asset` is deleted, cascade deletes all `scene_asset_instances`
+2. **Scene Reordering**: If scenes are reordered, inheritance chain breaks (requires manual re-inheritance)
+3. **Image Key Conflicts**: If user generates multiple images for same instance, store latest URL
+4. **Carry Forward Toggle**: Toggling `carry_forward` mid-production requires manual propagation
+5. **Performance**: Scene with 50+ assets may need pagination for instance list
+6. **Branch Divergence**: Asset instances are branch-scoped; merging branches requires conflict resolution (future work)
+
+---
+
+## Success Criteria
+
+✅ **Feature 5.1 is complete when**:
+1. Database migration creates `scene_asset_instances` table with all constraints
+2. Scene 1 can bootstrap asset instances from `project_assets`
+3. Scene 2+ inherits asset states from prior scene
+4. `status_tags` and `description_override` propagate correctly
+5. `carry_forward=false` prevents inheritance as expected
+6. Scene-specific images can be generated via API
+7. Context Manager includes scene assets in `LocalContext`
+8. All tests pass (Scene 1 bootstrap, Scene N→N+1 inheritance, carry_forward behavior)
+
+---
+
+## Next Steps (Feature 5.2+)
+
+After Feature 5.1 is complete:
+- **Feature 5.2**: Stage 8 UI for Visual Definition (Asset Drawer, drag-and-drop)
+- **Feature 5.3**: Status Metadata Tags UI (chips/badges, tag suggestions)
+- **Feature 5.4**: Asset State Evolution (mid-scene changes, timeline view)
+- **Feature 5.5**: Scene-to-Scene Continuity (visual diff, continuity warnings)
+
+---
+
+## References
+
+- **Database Schema**: `._docs/database-schema-state-transition-matrix.md` (lines 604-631)
+- **Inheritance Contract**: `._docs/inheritance_contract.md` (lines 1-224)
+- **AI Agent Registry**: `._docs/AI-agent-registry-context-flow-architecture.md` (lines 668-751)
+- **Migration Example**: `backend/migrations/008_global_assets.sql`
+- **Route Example**: `backend/src/routes/projectAssets.ts`
+- **Context Manager**: `backend/src/services/contextManager.ts` (lines 174-189)
+
+---
+
+**Author**: AI Assistant (Claude Sonnet 4.5)  
+**Date**: 2026-01-31  
+**Version**: 1.0
