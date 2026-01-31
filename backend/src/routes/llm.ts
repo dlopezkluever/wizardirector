@@ -294,14 +294,14 @@ router.post('/generate-from-template', async (req, res) => {
       styleCapsuleMetadata = {
         styleCapsuleId: globalContext.writingStyleCapsule.id,
         injectionContext: {
-          stage: validatedRequest.metadata.stage,
+          stage: validatedRequest.metadata?.stage,
           templateName: validatedRequest.templateName,
           formattedContextLength: validatedRequest.variables.writing_style_context?.length || 0,
           timestamp: new Date().toISOString(),
           traceId: response.traceId
         }
       };
-      console.log(`[API] Prepared style capsule metadata for stage ${validatedRequest.metadata.stage}`);
+      console.log(`[API] Prepared style capsule metadata for stage ${validatedRequest.metadata?.stage}`);
     }
 
     res.json({

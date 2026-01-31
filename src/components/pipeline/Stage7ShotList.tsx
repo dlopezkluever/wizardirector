@@ -18,8 +18,10 @@ import {
   ArrowLeft,
   Loader2,
   AlertTriangle,
+  AlertCircle,
   Save,
-  GripVertical
+  GripVertical,
+  Lock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,6 +35,15 @@ import { sceneService } from '@/lib/services/sceneService';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import type { Shot } from '@/types/scene';
+
+export interface ValidationError {
+  shotId: string;
+  shotOrder: number;
+  field: string;
+  message: string;
+  severity: 'error' | 'warning';
+}
+export type ValidationWarning = ValidationError;
 
 interface Stage7ShotListProps {
   projectId: string;
@@ -89,6 +100,18 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
   const [mergeDirection, setMergeDirection] = useState<'next' | 'previous'>('next');
   const [isMerging, setIsMerging] = useState(false);
 
+  // Lock / validation state
+  const [isSceneLocked, setIsSceneLocked] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+  const [validationWarnings, setValidationWarnings] = useState<ValidationWarning[]>([]);
+  const [showValidationModal, setShowValidationModal] = useState(false);
+  const [isLocking, setIsLocking] = useState(false);
+  const [isEditable, setIsEditable] = useState(true);
+  // Unlock confirmation when downstream frames exist
+  const [showUnlockConfirmModal, setShowUnlockConfirmModal] = useState(false);
+  const [unlockConfirmDetails, setUnlockConfirmDetails] = useState<{ framesAffected: number; videosAffected: number; estimatedCost: string } | null>(null);
+  const [isUnlocking, setIsUnlocking] = useState(false);
+
   // Initial data fetch
   useEffect(() => {
     const fetchOrExtractShots = async () => {
@@ -141,13 +164,15 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
     fetchOrExtractShots();
   }, [projectId, sceneId]);
 
-  // Fetch prior scene data for rearview mirror
+  // Fetch prior scene data for rearview mirror and current scene lock status
   useEffect(() => {
-    const fetchPriorScene = async () => {
+    const fetchPriorSceneAndLockStatus = async () => {
       try {
         const scenes = await sceneService.fetchScenes(projectId);
         const currentSceneIndex = scenes.findIndex(s => s.id === sceneId);
-        
+        const currentScene = currentSceneIndex >= 0 ? scenes[currentSceneIndex] : null;
+        setIsSceneLocked(!!currentScene?.shotListLockedAt);
+
         if (currentSceneIndex > 0) {
           const priorScene = scenes[currentSceneIndex - 1];
           setPriorSceneData({
@@ -159,11 +184,11 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
           setImageError(false);
         }
       } catch (error) {
-        console.error('Failed to fetch prior scene:', error);
+        console.error('Failed to fetch prior scene / lock status:', error);
       }
     };
-    
-    fetchPriorScene();
+
+    fetchPriorSceneAndLockStatus();
   }, [projectId, sceneId]);
 
   // Auto-save effect
@@ -331,6 +356,232 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
       });
     } finally {
       setIsMerging(false);
+    }
+  };
+
+  const validateShotsLocally = (): { errors: ValidationError[]; warnings: ValidationWarning[] } => {
+    const errors: ValidationError[] = [];
+    const warnings: ValidationWarning[] = [];
+
+    if (shots.length === 0) {
+      errors.push({
+        shotId: 'scene',
+        shotOrder: -1,
+        field: 'shot_count',
+        message: 'Scene must have at least one shot',
+        severity: 'error',
+      });
+      return { errors, warnings };
+    }
+
+    const shotIdCounts = new Map<string, number>();
+    shots.forEach(shot => {
+      const count = shotIdCounts.get(shot.shotId) || 0;
+      shotIdCounts.set(shot.shotId, count + 1);
+    });
+    shotIdCounts.forEach((count, shotId) => {
+      if (count > 1) {
+        errors.push({
+          shotId,
+          shotOrder: -1,
+          field: 'shotId',
+          message: `Duplicate shot ID "${shotId}" found`,
+          severity: 'error',
+        });
+      }
+    });
+
+    shots.forEach((shot, index) => {
+      if (!shot.action?.trim()) {
+        errors.push({ shotId: shot.shotId, shotOrder: index, field: 'action', message: 'Action is required', severity: 'error' });
+      }
+      if (!shot.setting?.trim()) {
+        errors.push({ shotId: shot.shotId, shotOrder: index, field: 'setting', message: 'Setting is required', severity: 'error' });
+      }
+      if (!shot.camera?.trim()) {
+        errors.push({ shotId: shot.shotId, shotOrder: index, field: 'camera', message: 'Camera is required', severity: 'error' });
+      }
+      if (shot.duration < 1) {
+        errors.push({ shotId: shot.shotId, shotOrder: index, field: 'duration', message: 'Minimum duration is 1 second', severity: 'error' });
+      } else if (shot.duration > 30) {
+        errors.push({ shotId: shot.shotId, shotOrder: index, field: 'duration', message: 'Maximum duration is 30 seconds', severity: 'error' });
+      } else if (shot.duration < 4) {
+        warnings.push({ shotId: shot.shotId, shotOrder: index, field: 'duration', message: `Duration ${shot.duration}s is very short`, severity: 'warning' });
+      } else if (shot.duration > 12) {
+        warnings.push({ shotId: shot.shotId, shotOrder: index, field: 'duration', message: `Duration ${shot.duration}s is unusually long`, severity: 'warning' });
+      }
+    });
+
+    const totalDuration = shots.reduce((sum, s) => sum + s.duration, 0);
+    const expectedMin = shots.length * 4;
+    const expectedMax = shots.length * 15;
+    if (totalDuration < expectedMin) {
+      warnings.push({ shotId: 'scene', shotOrder: -1, field: 'total_duration', message: `Scene duration (${totalDuration}s) is unusually short for ${shots.length} shots`, severity: 'warning' });
+    } else if (totalDuration > expectedMax) {
+      warnings.push({ shotId: 'scene', shotOrder: -1, field: 'total_duration', message: `Scene duration (${totalDuration}s) is very long for ${shots.length} shots`, severity: 'warning' });
+    }
+
+    return { errors, warnings };
+  };
+
+  const canEdit = !isSceneLocked && isEditable;
+
+  const getFieldValidationState = (shot: Shot, field: string): 'valid' | 'warning' | 'error' => {
+    if (!canEdit) return 'valid';
+    if (field === 'action' && !shot.action?.trim()) return 'error';
+    if (field === 'camera' && !shot.camera?.trim()) return 'error';
+    if (field === 'setting' && !shot.setting?.trim()) return 'error';
+    if (field === 'duration') {
+      if (shot.duration < 1 || shot.duration > 30) return 'error';
+      if (shot.duration < 4 || shot.duration > 12) return 'warning';
+    }
+    return 'valid';
+  };
+
+  const lockShotList = async (force: boolean) => {
+    try {
+      await shotService.lockShotList(projectId, sceneId, force);
+      setIsSceneLocked(true);
+      toast({
+        title: 'Shot list locked',
+        description: 'Scene is ready for asset assignment',
+      });
+      setShowValidationModal(false);
+      onComplete();
+    } catch (error: unknown) {
+      const err = error as { status?: number; data?: { errors?: ValidationError[]; warnings?: ValidationWarning[] }; message?: string };
+      setIsLocking(false);
+      if (err.status === 409) {
+        setValidationWarnings(err.data?.warnings ?? []);
+        setShowValidationModal(true);
+        setIsEditable(true);
+      } else if (err.status === 400) {
+        setValidationErrors(err.data?.errors ?? []);
+        setShowValidationModal(true);
+        setIsEditable(true);
+        toast({
+          title: 'Validation failed',
+          description: `${(err.data?.errors?.length ?? 0)} issues must be fixed`,
+          variant: 'destructive',
+        });
+      } else {
+        setIsEditable(true);
+        toast({
+          title: 'Failed to lock shot list',
+          description: err.message ?? 'Unknown error',
+          variant: 'destructive',
+        });
+      }
+    }
+  };
+
+  const handleLockShotList = async () => {
+    try {
+      setIsLocking(true);
+      setIsEditable(false);
+
+      if (pendingUpdates.size > 0) {
+        toast({
+          title: 'Saving final changes...',
+          description: 'Please wait',
+        });
+        const dirtyUpdates: Array<{ shotId: string; updates: Partial<Shot> }> = [];
+        for (const [shotId, updates] of pendingUpdates.entries()) {
+          dirtyUpdates.push({ shotId, updates });
+        }
+        try {
+          await Promise.all(
+            dirtyUpdates.map(({ shotId, updates }) => shotService.updateShot(projectId, sceneId, shotId, updates))
+          );
+          setPendingUpdates(new Map());
+        } catch (saveError) {
+          console.error('Failed to save pending changes:', saveError);
+          toast({
+            title: 'Failed to save changes',
+            description: saveError instanceof Error ? saveError.message : 'Please try again',
+            variant: 'destructive',
+          });
+          setIsEditable(true);
+          setIsLocking(false);
+          return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+
+      const { errors, warnings } = validateShotsLocally();
+      setValidationErrors(errors);
+      setValidationWarnings(warnings);
+
+      if (errors.length > 0 || warnings.length > 0) {
+        setShowValidationModal(true);
+        setIsEditable(true);
+        return;
+      }
+
+      await lockShotList(false);
+    } catch (error) {
+      console.error('Lock handler error:', error);
+      setIsEditable(true);
+      toast({
+        title: 'Failed to lock shot list',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLocking(false);
+    }
+  };
+
+  const handleUnlock = async () => {
+    try {
+      setIsUnlocking(true);
+      await shotService.unlockShotList(projectId, sceneId, { confirm: false });
+      setIsSceneLocked(false);
+      toast({
+        title: 'Shot list unlocked',
+        description: 'You can edit the shot list again',
+      });
+    } catch (error: unknown) {
+      const err = error as { status?: number; data?: { requiresConfirmation?: boolean; details?: { framesAffected?: number; videosAffected?: number; estimatedCost?: string } } };
+      if (err.status === 409 && err.data?.requiresConfirmation && err.data?.details) {
+        const d = err.data.details;
+        setUnlockConfirmDetails({
+          framesAffected: d.framesAffected ?? 0,
+          videosAffected: d.videosAffected ?? 0,
+          estimatedCost: d.estimatedCost ?? '0',
+        });
+        setShowUnlockConfirmModal(true);
+      } else {
+        toast({
+          title: 'Failed to unlock',
+          description: error instanceof Error ? error.message : 'Could not unlock shot list',
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      setIsUnlocking(false);
+    }
+  };
+
+  const confirmUnlockWithInvalidation = async () => {
+    try {
+      setIsUnlocking(true);
+      await shotService.unlockShotList(projectId, sceneId, { confirm: true });
+      setIsSceneLocked(false);
+      setShowUnlockConfirmModal(false);
+      setUnlockConfirmDetails(null);
+      toast({
+        title: 'Shot list unlocked',
+        description: 'Downstream frames/videos have been marked invalid. You can edit the shot list again.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Failed to unlock',
+        description: error instanceof Error ? error.message : 'Could not unlock shot list',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUnlocking(false);
     }
   };
 
@@ -507,6 +758,29 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
         >
           {selectedShot ? (
             <>
+              {/* Lock banner */}
+              {isSceneLocked && (
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg mx-4 mt-4 mb-0 p-3">
+                  <div className="flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-blue-500 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-blue-500">Shot List Locked</p>
+                      <p className="text-xs text-muted-foreground">
+                        This shot list has been approved. Unlock to make changes.
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleUnlock}
+                      disabled={isUnlocking}
+                      className="ml-auto shrink-0"
+                    >
+                      {isUnlocking ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Unlock'}
+                    </Button>
+                  </div>
+                </div>
+              )}
               {/* Inspector Header */}
               <div className="p-4 border-b border-border/50 bg-card/20">
                 <div className="flex items-center justify-between">
@@ -526,6 +800,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                     <Button 
                       variant="outline" 
                       size="sm"
+                      disabled={!canEdit}
                       onClick={() => handleSplitShot(selectedShot.id)}
                       className="border-primary/20 hover:border-primary/40"
                     >
@@ -537,11 +812,13 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                         <button
                           type="button"
                           onClick={() => setMergeDirection('next')}
+                          disabled={!canEdit}
                           className={cn(
                             'px-2 py-1.5 text-xs flex items-center gap-1 transition-colors',
                             mergeDirection === 'next'
                               ? 'bg-primary/20 text-primary'
-                              : 'bg-muted/30 text-muted-foreground hover:text-foreground'
+                              : 'bg-muted/30 text-muted-foreground hover:text-foreground',
+                            !canEdit && 'opacity-50 cursor-not-allowed'
                           )}
                           title="Merge with next shot"
                         >
@@ -551,11 +828,13 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                         <button
                           type="button"
                           onClick={() => setMergeDirection('previous')}
+                          disabled={!canEdit}
                           className={cn(
                             'px-2 py-1.5 text-xs flex items-center gap-1 transition-colors',
                             mergeDirection === 'previous'
                               ? 'bg-primary/20 text-primary'
-                              : 'bg-muted/30 text-muted-foreground hover:text-foreground'
+                              : 'bg-muted/30 text-muted-foreground hover:text-foreground',
+                            !canEdit && 'opacity-50 cursor-not-allowed'
                           )}
                           title="Merge with previous shot"
                         >
@@ -566,7 +845,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                       <Button 
                         variant="outline" 
                         size="sm"
-                        disabled={!canMerge || isMerging}
+                        disabled={!canEdit || !canMerge || isMerging}
                         onClick={handleMergeShot}
                         className="border-primary/20 hover:border-primary/40"
                       >
@@ -577,6 +856,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                     <Button 
                       variant="ghost" 
                       size="sm"
+                      disabled={!canEdit}
                       className="text-destructive hover:text-destructive hover:bg-destructive/10"
                       onClick={() => handleDeleteShot(selectedShot.id)}
                     >
@@ -600,8 +880,13 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                       value={selectedShot.duration}
                       onChange={(e) => handleShotUpdate(selectedShot.id, 'duration', parseInt(e.target.value) || 8)}
                       min={1}
-                      max={16}
-                      className="w-32"
+                      max={30}
+                      disabled={!canEdit || isSaving}
+                      className={cn(
+                        'w-32',
+                        getFieldValidationState(selectedShot, 'duration') === 'error' && 'border-b-2 border-b-red-500',
+                        getFieldValidationState(selectedShot, 'duration') === 'warning' && 'border-b-2 border-b-yellow-500'
+                      )}
                     />
                     <p className="text-xs text-muted-foreground mt-1">
                       Typical shot length is 8 seconds
@@ -618,9 +903,14 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                     <Textarea
                       value={selectedShot.action}
                       onChange={(e) => handleShotUpdate(selectedShot.id, 'action', e.target.value)}
+                      disabled={!canEdit || isSaving}
                       placeholder="Describe the atomic physical action for this shot..."
                       rows={4}
-                      className="resize-none"
+                      className={cn(
+                        'resize-none',
+                        getFieldValidationState(selectedShot, 'action') === 'error' && 'border-b-2 border-b-red-500',
+                        getFieldValidationState(selectedShot, 'action') === 'warning' && 'border-b-2 border-b-yellow-500'
+                      )}
                     />
                     <p className="text-xs text-muted-foreground mt-1">
                       Describe specific physical movements and visual details
@@ -637,6 +927,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                     <Textarea
                       value={selectedShot.dialogue}
                       onChange={(e) => handleShotUpdate(selectedShot.id, 'dialogue', e.target.value)}
+                      disabled={!canEdit || isSaving}
                       placeholder="CHARACTER: Exact dialogue spoken in this shot..."
                       rows={3}
                       className="resize-none font-mono text-sm"
@@ -653,6 +944,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                       <Input
                         value={selectedShot.charactersForeground.join(', ')}
                         onChange={(e) => handleShotUpdate(selectedShot.id, 'charactersForeground', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                        disabled={!canEdit || isSaving}
                         placeholder="Maya, John"
                       />
                       <p className="text-xs text-muted-foreground mt-1">
@@ -667,6 +959,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                       <Input
                         value={selectedShot.charactersBackground.join(', ')}
                         onChange={(e) => handleShotUpdate(selectedShot.id, 'charactersBackground', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                        disabled={!canEdit || isSaving}
                         placeholder="Crowd, extras"
                       />
                     </div>
@@ -681,7 +974,12 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                     <Input
                       value={selectedShot.setting}
                       onChange={(e) => handleShotUpdate(selectedShot.id, 'setting', e.target.value)}
+                      disabled={!canEdit || isSaving}
                       placeholder="Train Platform - Dawn"
+                      className={cn(
+                        getFieldValidationState(selectedShot, 'setting') === 'error' && 'border-b-2 border-b-red-500',
+                        getFieldValidationState(selectedShot, 'setting') === 'warning' && 'border-b-2 border-b-yellow-500'
+                      )}
                     />
                     <p className="text-xs text-muted-foreground mt-1">
                       Specific location and lighting conditions
@@ -697,7 +995,12 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
                     <Input
                       value={selectedShot.camera}
                       onChange={(e) => handleShotUpdate(selectedShot.id, 'camera', e.target.value)}
+                      disabled={!canEdit || isSaving}
                       placeholder="Wide shot, tracking left to right"
+                      className={cn(
+                        getFieldValidationState(selectedShot, 'camera') === 'error' && 'border-b-2 border-b-red-500',
+                        getFieldValidationState(selectedShot, 'camera') === 'warning' && 'border-b-2 border-b-yellow-500'
+                      )}
                     />
                     <p className="text-xs text-muted-foreground mt-1">
                       Shot type, movement, and angle
@@ -739,17 +1042,183 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
               Unsaved changes
             </span>
           )}
-          <Button 
-            variant="default" 
-            onClick={onComplete}
-            disabled={isSaving || shots.length === 0}
+          <Button
+            variant="default"
+            onClick={handleLockShotList}
+            disabled={isSceneLocked || !canEdit || isSaving || shots.length === 0 || isLocking}
             className="bg-primary hover:bg-primary/90 text-primary-foreground"
           >
-            <Check className="w-4 h-4 mr-2" />
-            Lock Shot List & Proceed
+            {isLocking ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Locking...
+              </>
+            ) : isSceneLocked ? (
+              <>
+                <Lock className="w-4 h-4 mr-2" />
+                Shot List Locked
+              </>
+            ) : (
+              <>
+                <Check className="w-4 h-4 mr-2" />
+                Lock Shot List & Proceed
+              </>
+            )}
           </Button>
         </div>
       </div>
+
+      {/* Validation Modal */}
+      <Dialog open={showValidationModal} onOpenChange={setShowValidationModal}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-yellow-500" />
+              Shot List Validation
+            </DialogTitle>
+            <DialogDescription>
+              {validationErrors.length > 0
+                ? 'Please fix the following issues before locking:'
+                : 'The following warnings were found. You can fix them or proceed anyway.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <ScrollArea className="max-h-96">
+            <div className="space-y-4">
+              {validationErrors.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-medium text-destructive mb-2 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" />
+                    Errors ({validationErrors.length})
+                  </h4>
+                  <div className="space-y-2">
+                    {validationErrors.map((error, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => {
+                          const shot = shots.find(s => s.shotId === error.shotId);
+                          if (shot) setSelectedShot(shot);
+                          setShowValidationModal(false);
+                        }}
+                        className="w-full text-left p-3 rounded-md bg-destructive/10 border border-destructive/30 hover:bg-destructive/20 transition-colors"
+                      >
+                        <div className="flex items-start gap-2">
+                          <Badge variant="destructive" className="font-mono text-xs">
+                            {error.shotId}
+                          </Badge>
+                          <span className="text-sm text-foreground">{error.message}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {validationWarnings.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-medium text-yellow-600 dark:text-yellow-500 mb-2 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4" />
+                    Warnings ({validationWarnings.length})
+                  </h4>
+                  <div className="space-y-2">
+                    {validationWarnings.map((warning, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => {
+                          if (warning.shotId !== 'scene') {
+                            const shot = shots.find(s => s.shotId === warning.shotId);
+                            if (shot) setSelectedShot(shot);
+                          }
+                          setShowValidationModal(false);
+                        }}
+                        className="w-full text-left p-3 rounded-md bg-yellow-500/10 border border-yellow-500/30 hover:bg-yellow-500/20 transition-colors"
+                      >
+                        <div className="flex items-start gap-2">
+                          <Badge variant="outline" className="font-mono text-xs border-yellow-500/50">
+                            {warning.shotId}
+                          </Badge>
+                          <span className="text-sm text-foreground">{warning.message}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+
+          <DialogFooter className="flex-row gap-2 sm:gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setShowValidationModal(false)}
+            >
+              {validationErrors.length > 0 ? 'Fix Issues' : 'Go Back'}
+            </Button>
+
+            {validationErrors.length === 0 && validationWarnings.length > 0 && (
+              <Button
+                onClick={() => {
+                  setIsLocking(true);
+                  lockShotList(true);
+                }}
+                disabled={isLocking}
+                className="bg-primary hover:bg-primary/90"
+              >
+                {isLocking ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Locking...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4 mr-2" />
+                    Lock Anyway
+                  </>
+                )}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Unlock confirmation (downstream frames/videos will be invalidated) */}
+      <Dialog open={showUnlockConfirmModal} onOpenChange={setShowUnlockConfirmModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-yellow-500" />
+              Unlock shot list?
+            </DialogTitle>
+            <DialogDescription>
+              {unlockConfirmDetails && (
+                <>
+                  This scene has downstream work. Unlocking will invalidate{' '}
+                  <strong>{unlockConfirmDetails.framesAffected} frame(s)</strong> and{' '}
+                  <strong>{unlockConfirmDetails.videosAffected} video(s)</strong>.
+                  {unlockConfirmDetails.estimatedCost !== '0' && (
+                    <> Estimated regeneration cost: ${unlockConfirmDetails.estimatedCost}</>
+                  )}
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { setShowUnlockConfirmModal(false); setUnlockConfirmDetails(null); }}>
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              onClick={confirmUnlockWithInvalidation}
+              disabled={isUnlocking}
+              className="bg-primary hover:bg-primary/90"
+            >
+              {isUnlocking ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Unlock & Invalidate'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Split Shot Dialog */}
       <Dialog open={showSplitDialog} onOpenChange={setShowSplitDialog}>
