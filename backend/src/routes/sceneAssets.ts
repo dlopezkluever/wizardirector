@@ -7,6 +7,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { supabase } from '../config/supabase.js';
 import { AssetInheritanceService } from '../services/assetInheritanceService.js';
+import { ImageGenerationService } from '../services/image-generation/ImageGenerationService.js';
 
 const router = Router();
 
@@ -244,6 +245,59 @@ router.post('/:projectId/scenes/:sceneId/assets/inherit', async (req, res) => {
     console.error('[SceneAssets] Inheritance error:', error);
     res.status(500).json({
       error: 'Asset inheritance failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/assets/:instanceId/generate-image
+ * Generate image for scene asset instance (uses scene-specific description)
+ */
+router.post('/:projectId/scenes/:sceneId/assets/:instanceId/generate-image', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId, instanceId } = req.params;
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const { data: stage5States } = await supabase
+      .from('stage_states')
+      .select('content')
+      .eq('branch_id', project.active_branch_id)
+      .eq('stage_number', 5)
+      .order('version', { ascending: false })
+      .limit(1);
+
+    const visualStyleId = stage5States?.[0]?.content?.locked_visual_style_capsule_id;
+    if (!visualStyleId) {
+      return res.status(400).json({
+        error: 'Visual style capsule not found. Complete Stage 5 first.',
+      });
+    }
+
+    const imageService = new ImageGenerationService();
+    const result = await imageService.createSceneAssetImageJob(
+      instanceId,
+      projectId,
+      project.active_branch_id,
+      visualStyleId
+    );
+
+    res.json(result);
+  } catch (error) {
+    console.error('[SceneAssets] Image generation error:', error);
+    res.status(500).json({
+      error: 'Image generation failed',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
