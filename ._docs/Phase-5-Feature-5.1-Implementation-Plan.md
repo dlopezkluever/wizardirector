@@ -13,7 +13,7 @@ This plan implements **stateful asset management** for scene-specific asset vari
 ```
 project_assets (1) → (N) scene_asset_instances (N) → (1) scenes
                                  ↓
-                          inherited_from_scene_id (self-referential)
+                          inherited_from_instance_id (self-referential FK to scene_asset_instances.id)
 ```
 
 **Data Flow**:
@@ -21,7 +21,9 @@ project_assets (1) → (N) scene_asset_instances (N) → (1) scenes
 2. User enters Stage 8 for Scene 1 → Scene asset instances created from `project_assets`
 3. User edits Scene 1 assets → `description_override`, `status_tags` stored
 4. User advances to Scene 2 → Inherit Scene 1 instance state (with `carry_forward` check)
-5. User edits Scene 2 asset → New instance with `inherited_from_scene_id = scene_1_instance.id`
+5. User edits Scene 2 asset → New instance with `inherited_from_instance_id = scene_1_asset_instance.id`
+
+**Inheritance Tracking**: Uses `inherited_from_instance_id` (FK to `scene_asset_instances.id`) instead of `inherited_from_scene_id` for **precise state tracking**. This allows exact inheritance chain traversal: Scene 2 Instance → Scene 1 Instance → Scene 1 Project Asset.
 
 ---
 
@@ -57,9 +59,10 @@ CREATE TABLE scene_asset_instances (
     carry_forward BOOLEAN DEFAULT TRUE, -- Should tags persist to next scene?
     
     -- Inheritance Tracking
-    inherited_from_scene_id UUID REFERENCES scenes(id) ON DELETE SET NULL,
-    -- Stores the scene ID from which this instance inherited its state
-    -- NULL if this is the first scene where the asset appears
+    inherited_from_instance_id UUID REFERENCES scene_asset_instances(id) ON DELETE SET NULL,
+    -- Stores the INSTANCE ID from which this instance inherited its state
+    -- NULL if this is the first scene where the asset appears (Scene 1 bootstrap)
+    -- Allows precise inheritance chain traversal: Scene N → Scene N-1 → ... → Scene 1
     
     -- Computed Fields (for context assembly)
     -- These are derived but stored for performance
@@ -76,7 +79,7 @@ CREATE TABLE scene_asset_instances (
 -- Indexes for performance
 CREATE INDEX idx_scene_instances_scene ON scene_asset_instances(scene_id);
 CREATE INDEX idx_scene_instances_asset ON scene_asset_instances(project_asset_id);
-CREATE INDEX idx_scene_instances_inherited ON scene_asset_instances(inherited_from_scene_id);
+CREATE INDEX idx_scene_instances_inherited ON scene_asset_instances(inherited_from_instance_id);
 CREATE INDEX idx_scene_instances_scene_asset ON scene_asset_instances(scene_id, project_asset_id); -- Composite for lookups
 
 -- ============================================================================
@@ -156,7 +159,7 @@ COMMENT ON TABLE scene_asset_instances IS 'Scene-specific asset states with inhe
 COMMENT ON COLUMN scene_asset_instances.description_override IS 'Scene-specific description override; NULL if using inherited/master description';
 COMMENT ON COLUMN scene_asset_instances.status_tags IS 'Visual condition metadata (e.g., muddy, torn, bloody) for prompt injection';
 COMMENT ON COLUMN scene_asset_instances.carry_forward IS 'If true, status_tags persist to next scene unless overridden';
-COMMENT ON COLUMN scene_asset_instances.inherited_from_scene_id IS 'Scene ID from which this instance inherited its state (NULL if first appearance)';
+COMMENT ON COLUMN scene_asset_instances.inherited_from_instance_id IS 'Instance ID from which this instance inherited its state (NULL if Scene 1 bootstrap); enables precise inheritance chain traversal';
 COMMENT ON COLUMN scene_asset_instances.effective_description IS 'Computed final description for LLM context (description_override OR inherited OR project_asset.description)';
 ```
 
@@ -202,7 +205,7 @@ export interface SceneAssetInstance {
   carry_forward: boolean; // Default: true
   
   // Inheritance tracking
-  inherited_from_scene_id?: string | null; // Prior scene's scene.id
+  inherited_from_instance_id?: string | null; // Prior scene's instance.id (precise tracking)
   
   // Computed/Joined fields (from project_assets)
   project_asset?: ProjectAsset; // Joined for display
@@ -220,7 +223,7 @@ export interface CreateSceneAssetInstanceRequest {
   descriptionOverride?: string;
   statusTags?: string[];
   carryForward?: boolean;
-  inheritedFromSceneId?: string;
+  inheritedFromInstanceId?: string; // FK to prior scene's instance
 }
 
 export interface UpdateSceneAssetInstanceRequest {
@@ -303,7 +306,7 @@ const CreateSceneAssetInstanceSchema = z.object({
   descriptionOverride: z.string().optional(),
   statusTags: z.array(z.string()).optional(),
   carryForward: z.boolean().optional(),
-  inheritedFromSceneId: z.string().uuid().optional(),
+  inheritedFromInstanceId: z.string().uuid().optional(), // FK to prior instance
 });
 
 const UpdateSceneAssetInstanceSchema = z.object({
@@ -393,7 +396,7 @@ router.post('/:projectId/scenes/:sceneId/assets', async (req, res) => {
             });
         }
         
-        const { projectAssetId, descriptionOverride, statusTags, carryForward, inheritedFromSceneId } = validation.data;
+        const { projectAssetId, descriptionOverride, statusTags, carryForward, inheritedFromInstanceId } = validation.data;
 
         // Verify project ownership
         const { data: project, error: projectError } = await supabase
@@ -443,7 +446,7 @@ router.post('/:projectId/scenes/:sceneId/assets', async (req, res) => {
                 description_override: descriptionOverride || null,
                 status_tags: statusTags || [],
                 carry_forward: carryForward ?? true,
-                inherited_from_scene_id: inheritedFromSceneId || null,
+                inherited_from_instance_id: inheritedFromInstanceId || null,
                 effective_description: effectiveDescription,
             })
             .select(`
@@ -476,6 +479,11 @@ router.post('/:projectId/scenes/:sceneId/assets', async (req, res) => {
 /**
  * PUT /api/projects/:projectId/scenes/:sceneId/assets/:instanceId
  * Update scene asset instance (description override, status tags, etc.)
+ * 
+ * IMPORTANT: When description_override changes, this endpoint DOES NOT automatically
+ * trigger image regeneration. The frontend must explicitly call the generate-image
+ * endpoint if a new visual is needed. This gives users control over when/if to
+ * regenerate expensive image jobs.
  */
 router.put('/:projectId/scenes/:sceneId/assets/:instanceId', async (req, res) => {
     try {
@@ -630,8 +638,28 @@ export interface InheritedAssetState {
   imageKeyUrl?: string | null;
   statusTags: string[];
   carryForward: boolean;
-  sourceSceneId: string; // For inherited_from_scene_id
+  sourceInstanceId: string; // For inherited_from_instance_id
 }
+
+/**
+ * Business Logic Rules for Asset Inheritance
+ * 
+ * CARRY_FORWARD=TRUE:
+ * - Instance inherits status_tags, description_override, and image_key_url from prior instance
+ * - Maintains link via inherited_from_instance_id for history tracking
+ * - Default behavior (most common case)
+ * 
+ * CARRY_FORWARD=FALSE:
+ * - Instance RESETS to project_asset base state (description, image_key_url)
+ * - status_tags are cleared (empty array)
+ * - description_override is NULL
+ * - inherited_from_instance_id is still set (for history/audit trail)
+ * - Use case: Asset "resets" between scenes (e.g., character changes costume back to original)
+ * 
+ * TEMPORAL VALIDATION:
+ * - Inheritance must respect scene_number order (Scene N can only inherit from Scene N-1)
+ * - Prevents "future inheritance" paradoxes
+ */
 
 export class AssetInheritanceService {
   /**
@@ -675,13 +703,17 @@ export class AssetInheritanceService {
   }
 
   /**
-   * Get final asset states from the prior scene
-   * Returns array of inherited states (only assets with carry_forward=true)
+   * Get inheritable asset states from the prior scene
+   * Returns array of inherited states based on carry_forward flag
+   * 
+   * BUSINESS LOGIC:
+   * - If carry_forward=true: Full state inheritance (description_override, status_tags, image_key_url)
+   * - If carry_forward=false: Reset to project_asset base state (empty tags, no override)
    */
   async getInheritableAssetStates(priorSceneId: string): Promise<InheritedAssetState[]> {
     const { data: priorInstances, error } = await supabase
       .from('scene_asset_instances')
-      .select('*')
+      .select('*, project_asset:project_assets(description, image_key_url)')
       .eq('scene_id', priorSceneId);
 
     if (error) {
@@ -692,28 +724,56 @@ export class AssetInheritanceService {
       return [];
     }
 
-    // Filter by carry_forward and map to inheritance format
-    return priorInstances
-      .filter(instance => instance.carry_forward !== false) // Default true
-      .map(instance => ({
-        projectAssetId: instance.project_asset_id,
-        descriptionOverride: instance.description_override,
-        imageKeyUrl: instance.image_key_url,
-        statusTags: instance.status_tags || [],
-        carryForward: instance.carry_forward ?? true,
-        sourceSceneId: priorSceneId, // Track where this came from
-      }));
+    // Map ALL instances (even carry_forward=false) to maintain inheritance links
+    return priorInstances.map(instance => {
+      if (instance.carry_forward === false) {
+        // RESET behavior: Clear overrides, return to project_asset base state
+        return {
+          projectAssetId: instance.project_asset_id,
+          descriptionOverride: null, // Reset override
+          imageKeyUrl: instance.project_asset.image_key_url, // Use base image
+          statusTags: [], // Clear tags
+          carryForward: false, // Preserve flag
+          sourceInstanceId: instance.id, // Maintain link for audit
+        };
+      } else {
+        // INHERIT behavior: Carry forward all state
+        return {
+          projectAssetId: instance.project_asset_id,
+          descriptionOverride: instance.description_override,
+          imageKeyUrl: instance.image_key_url,
+          statusTags: instance.status_tags || [],
+          carryForward: instance.carry_forward ?? true,
+          sourceInstanceId: instance.id,
+        };
+      }
+    });
   }
 
   /**
    * Bootstrap scene asset instances from project assets (Scene 1 only)
-   * Creates instances without inheritance (inherited_from_scene_id = NULL)
+   * Creates instances without inheritance (inherited_from_instance_id = NULL)
    */
   async bootstrapSceneAssetsFromProjectAssets(
     sceneId: string,
     branchId: string
   ): Promise<number> {
     console.log(`[AssetInheritance] Bootstrapping Scene 1 assets for scene ${sceneId}`);
+
+    // Verify this is Scene 1 (temporal validation)
+    const { data: scene, error: sceneError } = await supabase
+      .from('scenes')
+      .select('scene_number')
+      .eq('id', sceneId)
+      .single();
+
+    if (sceneError || !scene) {
+      throw new Error(`Scene ${sceneId} not found`);
+    }
+
+    if (scene.scene_number !== 1) {
+      throw new Error(`Bootstrap only allowed for Scene 1. Current scene number: ${scene.scene_number}`);
+    }
 
     // Get all locked project assets for branch
     const { data: projectAssets, error: assetsError } = await supabase
@@ -739,7 +799,7 @@ export class AssetInheritanceService {
       image_key_url: asset.image_key_url, // Copy from project asset
       status_tags: [],
       carry_forward: true,
-      inherited_from_scene_id: null, // Scene 1 has no prior scene
+      inherited_from_instance_id: null, // Scene 1 has no prior instance
       effective_description: asset.description,
     }));
 
@@ -758,13 +818,26 @@ export class AssetInheritanceService {
 
   /**
    * Inherit asset states from prior scene to current scene
-   * Creates scene_asset_instances with inherited_from_scene_id set
+   * Creates scene_asset_instances with inherited_from_instance_id set
+   * 
+   * TEMPORAL VALIDATION: Ensures scenes inherit in sequential order
    */
   async inheritAssetsFromPriorScene(
     currentSceneId: string,
     branchId: string
   ): Promise<number> {
     console.log(`[AssetInheritance] Inheriting assets for scene ${currentSceneId}`);
+
+    // Get current scene details for validation
+    const { data: currentScene, error: currentSceneError } = await supabase
+      .from('scenes')
+      .select('scene_number, branch_id')
+      .eq('id', currentSceneId)
+      .single();
+
+    if (currentSceneError || !currentScene) {
+      throw new Error(`Current scene ${currentSceneId} not found`);
+    }
 
     // Get prior scene
     const priorScene = await this.getPriorScene(currentSceneId);
@@ -774,7 +847,14 @@ export class AssetInheritanceService {
       return await this.bootstrapSceneAssetsFromProjectAssets(currentSceneId, branchId);
     }
 
-    // Get inheritable states from prior scene
+    // TEMPORAL VALIDATION: Ensure prior scene number is less than current
+    if (priorScene.priorSceneNumber >= currentScene.scene_number) {
+      throw new Error(
+        `Temporal paradox detected: Cannot inherit from Scene ${priorScene.priorSceneNumber} to Scene ${currentScene.scene_number}. Inheritance must flow forward in time.`
+      );
+    }
+
+    // Get inheritable states from prior scene (handles carry_forward logic)
     const inheritedStates = await this.getInheritableAssetStates(priorScene.priorSceneId);
 
     if (inheritedStates.length === 0) {
@@ -790,8 +870,8 @@ export class AssetInheritanceService {
       image_key_url: state.imageKeyUrl,
       status_tags: state.statusTags,
       carry_forward: state.carryForward,
-      inherited_from_scene_id: priorScene.priorSceneId, // Track prior scene
-      effective_description: state.descriptionOverride || '', // Will be computed by trigger/app logic
+      inherited_from_instance_id: state.sourceInstanceId, // FK to prior instance
+      effective_description: state.descriptionOverride || '', // Will be computed
     }));
 
     const { data, error: insertError } = await supabase
@@ -809,7 +889,7 @@ export class AssetInheritanceService {
 
   /**
    * Get the inheritance chain for a scene asset instance
-   * Traces back through inherited_from_scene_id to find the root
+   * Traces back through inherited_from_instance_id to find the root
    */
   async getInheritanceChain(instanceId: string): Promise<InheritanceChainNode[]> {
     const chain: InheritanceChainNode[] = [];
@@ -824,7 +904,7 @@ export class AssetInheritanceService {
           project_asset_id, 
           description_override, 
           status_tags, 
-          inherited_from_scene_id,
+          inherited_from_instance_id,
           scene:scenes(scene_number)
         `)
         .eq('id', currentInstanceId)
@@ -842,22 +922,11 @@ export class AssetInheritanceService {
         statusTags: instance.status_tags || [],
       });
 
-      // Find prior scene instance for this asset
-      if (instance.inherited_from_scene_id) {
-        const { data: priorInstance } = await supabase
-          .from('scene_asset_instances')
-          .select('id')
-          .eq('scene_id', instance.inherited_from_scene_id)
-          .eq('project_asset_id', instance.project_asset_id)
-          .single();
-
-        currentInstanceId = priorInstance?.id || null;
-      } else {
-        currentInstanceId = null;
-      }
+      // Move to prior instance in chain
+      currentInstanceId = instance.inherited_from_instance_id || null;
     }
 
-    return chain.reverse(); // Root first
+    return chain.reverse(); // Root first (Scene 1 → Scene 2 → ... → Current)
   }
 }
 
@@ -1250,12 +1319,12 @@ describe('Scene Asset Inheritance', () => {
       .eq('scene_id', scene1Id);
     
     expect(instances).toHaveLength(count);
-    expect(instances![0].inherited_from_scene_id).toBeNull();
+    expect(instances![0].inherited_from_instance_id).toBeNull();
   });
 
   it('should inherit assets from Scene 1 to Scene 2', async () => {
     // Modify Scene 1 asset state
-    await supabase
+    const { data: scene1Instance } = await supabase
       .from('scene_asset_instances')
       .update({ 
         status_tags: ['muddy', 'torn'],
@@ -1263,7 +1332,9 @@ describe('Scene Asset Inheritance', () => {
         carry_forward: true
       })
       .eq('scene_id', scene1Id)
-      .eq('project_asset_id', projectAssetId);
+      .eq('project_asset_id', projectAssetId)
+      .select()
+      .single();
 
     // Inherit to Scene 2
     const service = new AssetInheritanceService();
@@ -1279,18 +1350,30 @@ describe('Scene Asset Inheritance', () => {
       .eq('project_asset_id', projectAssetId)
       .single();
     
-    expect(scene2Instance!.inherited_from_scene_id).toBe(scene1Id);
+    // Verify instance-level inheritance
+    expect(scene2Instance!.inherited_from_instance_id).toBe(scene1Instance!.id);
     expect(scene2Instance!.status_tags).toEqual(['muddy', 'torn']);
     expect(scene2Instance!.description_override).toBe('Modified description');
   });
 
-  it('should respect carry_forward=false and not inherit', async () => {
-    // Set carry_forward to false in Scene 1
+  it('should respect carry_forward=false and reset to base state', async () => {
+    // Get Scene 1 instance
+    const { data: scene1Instance } = await supabase
+      .from('scene_asset_instances')
+      .select('*')
+      .eq('scene_id', scene1Id)
+      .eq('project_asset_id', projectAssetId)
+      .single();
+
+    // Set status tags and override, then set carry_forward to false
     await supabase
       .from('scene_asset_instances')
-      .update({ carry_forward: false })
-      .eq('scene_id', scene1Id)
-      .eq('project_asset_id', projectAssetId);
+      .update({ 
+        status_tags: ['muddy', 'torn'],
+        description_override: 'Modified description',
+        carry_forward: false 
+      })
+      .eq('id', scene1Instance!.id);
 
     // Delete Scene 2 instances
     await supabase
@@ -1302,15 +1385,22 @@ describe('Scene Asset Inheritance', () => {
     const service = new AssetInheritanceService();
     await service.inheritAssetsFromPriorScene(scene2Id, testBranchId);
     
-    // Verify asset was NOT inherited
+    // Verify asset WAS inherited (maintains link) but with RESET state
     const { data: scene2Instance } = await supabase
       .from('scene_asset_instances')
-      .select('*')
+      .select('*, project_asset:project_assets(description, image_key_url)')
       .eq('scene_id', scene2Id)
       .eq('project_asset_id', projectAssetId)
       .single();
     
-    expect(scene2Instance).toBeNull();
+    // Should still have inheritance link (for audit trail)
+    expect(scene2Instance!.inherited_from_instance_id).toBe(scene1Instance!.id);
+    
+    // But state should be RESET to project_asset base
+    expect(scene2Instance!.status_tags).toEqual([]);
+    expect(scene2Instance!.description_override).toBeNull();
+    expect(scene2Instance!.image_key_url).toBe(scene2Instance!.project_asset.image_key_url);
+    expect(scene2Instance!.carry_forward).toBe(false);
   });
 
   it('should trace inheritance chain across multiple scenes', async () => {
@@ -1330,6 +1420,29 @@ describe('Scene Asset Inheritance', () => {
     expect(chain[0].sceneNumber).toBe(1);
     expect(chain[1].sceneNumber).toBe(2);
   });
+
+  it('should prevent temporal paradoxes (inheriting from future scenes)', async () => {
+    const service = new AssetInheritanceService();
+    
+    // Create Scene 3
+    const { data: scene3 } = await supabase
+      .from('scenes')
+      .insert({
+        branch_id: testBranchId,
+        scene_number: 3,
+        slug: 'test-scene-3',
+        script_excerpt: 'Test scene 3',
+        status: 'draft'
+      })
+      .select()
+      .single();
+
+    // Try to inherit Scene 3 → Scene 2 (backwards in time)
+    // This should fail temporal validation
+    await expect(
+      service.inheritAssetsFromPriorScene(scene2Id, testBranchId)
+    ).rejects.toThrow(/Temporal paradox detected/);
+  });
 });
 ```
 
@@ -1346,34 +1459,42 @@ npm run test
 
 ### Database Layer
 - [ ] Create `backend/migrations/015_scene_asset_instances.sql`
+- [ ] Use `inherited_from_instance_id UUID REFERENCES scene_asset_instances(id)` (instance-level FK)
+- [ ] Add Scene 1 bootstrap validation constraint
+- [ ] Add temporal ordering validation (scene_number check)
 - [ ] Run migration: `psql -U postgres -d wizardirector < backend/migrations/015_scene_asset_instances.sql`
 - [ ] Verify table creation in Supabase dashboard
 - [ ] Test RLS policies with test user
 
 ### Type Definitions
 - [ ] Update `src/types/scene.ts` with `SceneAssetInstance` interface
+- [ ] Change `inherited_from_scene_id` to `inherited_from_instance_id` in TypeScript types
 - [ ] Add request/response types for API
 - [ ] Update `Scene` interface to include `assetInstances`
 - [ ] Update `LocalContext` interface in `contextManager.ts`
 
 ### Backend Services
 - [ ] Create `backend/src/services/assetInheritanceService.ts`
-- [ ] Implement `getPriorScene()`, `getInheritableAssetStates()`, `bootstrapSceneAssetsFromProjectAssets()`, `inheritAssetsFromPriorScene()`
+- [ ] Implement `getPriorScene()` (returns prior scene by scene_number)
+- [ ] Implement `getInheritableAssetStates()` with carry_forward=false reset logic
+- [ ] Implement `bootstrapSceneAssetsFromProjectAssets()` with Scene 1 validation
+- [ ] Implement `inheritAssetsFromPriorScene()` with temporal paradox prevention
+- [ ] Implement `getInheritanceChain()` using recursive `inherited_from_instance_id` lookup
 - [ ] Add modification tracking trigger to migration
 
 ### Backend Routes
 - [ ] Create `backend/src/routes/sceneAssets.ts`
-- [ ] Implement GET `/scenes/:sceneId/assets` (list)
-- [ ] Implement POST `/scenes/:sceneId/assets` (create)
-- [ ] Implement PUT `/scenes/:sceneId/assets/:instanceId` (update)
+- [ ] Implement GET `/scenes/:sceneId/assets` (list with joined project_asset)
+- [ ] Implement POST `/scenes/:sceneId/assets` (create with inheritedFromInstanceId)
+- [ ] Implement PUT `/scenes/:sceneId/assets/:instanceId` (update, no auto-image generation)
 - [ ] Implement DELETE `/scenes/:sceneId/assets/:instanceId` (delete)
-- [ ] Implement POST `/scenes/:sceneId/assets/inherit` (trigger inheritance)
-- [ ] Implement POST `/scenes/:sceneId/assets/:instanceId/generate-image`
+- [ ] Implement POST `/scenes/:sceneId/assets/inherit` (trigger inheritance with validation)
+- [ ] Implement POST `/scenes/:sceneId/assets/:instanceId/generate-image` (explicit image gen)
 - [ ] Register router in `backend/src/server.ts`
 
 ### Context Manager
 - [ ] Update `assembleLocalContext()` to fetch scene asset instances
-- [ ] Format scene assets for LLM prompt injection
+- [ ] Format scene assets for LLM prompt injection (use effective_description)
 - [ ] Add scene assets to `LocalContext` interface
 
 ### Image Generation
@@ -1383,16 +1504,20 @@ npm run test
 
 ### Testing
 - [ ] Create `backend/src/tests/sceneAssetInheritance.test.ts`
-- [ ] Write tests for bootstrapping Scene 1
-- [ ] Write tests for Scene N → N+1 inheritance
-- [ ] Write tests for `carry_forward=false` behavior
-- [ ] Write tests for inheritance chain tracing
+- [ ] Write test: Bootstrap Scene 1 (verify inherited_from_instance_id is NULL)
+- [ ] Write test: Scene 1 → Scene 2 inheritance (verify instance-level FK)
+- [ ] Write test: carry_forward=true behavior (full state inheritance)
+- [ ] Write test: carry_forward=false behavior (reset to base, maintain link)
+- [ ] Write test: Temporal paradox prevention (future inheritance blocked)
+- [ ] Write test: Inheritance chain tracing (Scene 1 → Scene 2 → Scene 3)
 - [ ] Run test suite: `npm run test`
 
 ### Documentation
 - [ ] Update API documentation with new scene asset endpoints
-- [ ] Document inheritance behavior in README
+- [ ] Document inheritance behavior and carry_forward logic in README
 - [ ] Add examples for status tags and carry_forward usage
+- [ ] Document temporal validation rules
+- [ ] Explain design decision: No auto-sync of project_asset changes
 
 ---
 
@@ -1443,23 +1568,47 @@ npm run test
 1. **Orphaned Instances**: If a `project_asset` is deleted, cascade deletes all `scene_asset_instances`
 2. **Scene Reordering**: If scenes are reordered, inheritance chain breaks (requires manual re-inheritance)
 3. **Image Key Conflicts**: If user generates multiple images for same instance, store latest URL
-4. **Carry Forward Toggle**: Toggling `carry_forward` mid-production requires manual propagation
+4. **Carry Forward Toggle**: Toggling `carry_forward` mid-production requires manual propagation to future scenes
 5. **Performance**: Scene with 50+ assets may need pagination for instance list
 6. **Branch Divergence**: Asset instances are branch-scoped; merging branches requires conflict resolution (future work)
+7. **Temporal Paradoxes**: Validation prevents inheriting from "future" scenes (scene_number must be sequential)
+8. **Project Asset Changes**: Changes to `project_assets.description` do NOT auto-sync to scene instances (prevents silent override of user edits). Instead, instances are marked as "outdated" and require explicit re-inheritance.
+
+### Design Decision: No Auto-Sync of Master Asset Changes
+
+**Rationale**: The inheritance contract (inheritance_contract.md lines 142-149) states that changes at the Narrative Stage (Stage 5 project_assets) should **invalidate** downstream stages (Stage 8 scene instances), not silently overwrite them.
+
+**Alternative Considered**: Adding a Postgres trigger to auto-update `scene_asset_instances.effective_description` when `project_assets.description` changes (if `description_override IS NULL`).
+
+**Rejected Because**:
+- Violates user agency (Stage 8 edits could be silently overwritten)
+- Creates confusion about source of truth
+- Makes debugging harder (hidden side effects)
+- Breaks auditability (no explicit user action)
+
+**Correct Behavior**: Add `is_outdated` flag (future feature) and version tracking, then require explicit user re-inheritance or manual sync.
 
 ---
 
 ## Success Criteria
 
 ✅ **Feature 5.1 is complete when**:
-1. Database migration creates `scene_asset_instances` table with all constraints
-2. Scene 1 can bootstrap asset instances from `project_assets`
-3. Scene 2+ inherits asset states from prior scene
-4. `status_tags` and `description_override` propagate correctly
-5. `carry_forward=false` prevents inheritance as expected
-6. Scene-specific images can be generated via API
-7. Context Manager includes scene assets in `LocalContext`
-8. All tests pass (Scene 1 bootstrap, Scene N→N+1 inheritance, carry_forward behavior)
+1. Database migration creates `scene_asset_instances` table with `inherited_from_instance_id` (instance-level FK)
+2. Scene 1 can bootstrap asset instances from `project_assets` (with validation that only Scene 1 can bootstrap)
+3. Scene 2+ inherits asset states from prior scene instance (not just scene)
+4. `status_tags` and `description_override` propagate correctly based on `carry_forward` flag
+5. `carry_forward=false` resets state to project_asset base (clears tags/overrides, maintains link)
+6. Temporal validation prevents inheriting from "future" scenes (scene_number order enforced)
+7. Scene-specific images can be generated via explicit API call (not automatic)
+8. Context Manager includes scene assets in `LocalContext` with effective_description
+9. Inheritance chain can be traced back to Scene 1 via recursive `inherited_from_instance_id` lookup
+10. All tests pass:
+    - Scene 1 bootstrap (with Scene 1 validation)
+    - Scene N→N+1 inheritance (instance-level)
+    - carry_forward=true behavior (full state inheritance)
+    - carry_forward=false behavior (reset to base, maintain link)
+    - Temporal paradox prevention (future inheritance blocked)
+    - Inheritance chain traversal (Scene 1 → Scene 2 → Scene 3)
 
 ---
 
@@ -1484,6 +1633,25 @@ After Feature 5.1 is complete:
 
 ---
 
-**Author**: AI Assistant (Claude Sonnet 4.5)  
-**Date**: 2026-01-31  
-**Version**: 1.0
+## Revision History
+
+**Version 1.1** (2026-01-31)
+- ✅ **REVISED**: Changed `inherited_from_scene_id` to `inherited_from_instance_id` for precise state tracking
+  - Rationale: Instance-level FK enables exact inheritance chain traversal without ambiguity
+  - Impact: Scene can be derived via join; instance ID is more precise
+- ✅ **ADDED**: Explicit business logic rules for `carry_forward=false` behavior
+  - carry_forward=true: Full state inheritance (tags, overrides, image)
+  - carry_forward=false: Reset to project_asset base state, clear tags/overrides
+- ✅ **ADDED**: Temporal validation to prevent "future inheritance" paradoxes
+  - Validates `prior_scene.scene_number < current_scene.scene_number`
+  - Throws error if inheritance would violate sequential order
+- ✅ **ADDED**: Scene 1 bootstrap validation (ensures only Scene 1 can bootstrap from project_assets)
+- ❌ **REJECTED**: Auto-sync trigger for `effective_description` on project_asset changes
+  - Violates inheritance contract (invalidation vs. silent override)
+  - Breaks user agency and auditability
+  - Correct approach: Flag as "outdated" + require explicit re-inheritance (future feature)
+- ℹ️ **CLARIFIED**: Image generation is manual (not automatic on description override)
+  - Gives user control over expensive image jobs
+  - Frontend must explicitly call `/generate-image` endpoint
+
+---
