@@ -38,25 +38,20 @@ export interface GlobalContext {
   visualStyleCapsule?: StyleCapsule;
 }
 
-/** Scene asset instance shape for local context (aligned with scene_asset_instances + joined project_asset). */
-export interface SceneAssetInstanceContext {
-  id: string;
-  scene_id: string;
-  project_asset_id: string;
-  description_override?: string | null;
-  image_key_url?: string | null;
-  status_tags: string[];
-  carry_forward: boolean;
-  inherited_from_instance_id?: string | null;
-  effective_description: string;
-  project_asset?: { name: string; asset_type: string; description: string; image_key_url?: string | null };
+/** Scene asset entry for LLM context (formatted from scene_asset_instances + project_asset). */
+export interface LocalContextSceneAsset {
+  name: string;
+  type: 'character' | 'prop' | 'location';
+  description: string;
+  statusTags: string[];
+  imageKeyUrl?: string;
 }
 
 export interface LocalContext {
   sceneId?: string;
   sceneScript?: string;
   previousSceneEndState?: string;
-  sceneAssets?: SceneAssetInstanceContext[];
+  sceneAssets?: LocalContextSceneAsset[];
 }
 
 export interface FullContext {
@@ -183,22 +178,62 @@ export class ContextManager {
 
   /**
    * Assembles local context for Phase B scene-specific generation
-   * Currently returns empty structure - to be implemented in Phase B
+   * Fetches scene details and scene asset instances with project_asset data for LLM context.
    */
   async assembleLocalContext(
     sceneId: string,
     globalContext: GlobalContext
   ): Promise<LocalContext> {
     console.log(`[ContextManager] Assembling local context for scene ${sceneId}`);
-    
-    // TODO: Phase B implementation
-    // - Fetch current scene script from stage_states
-    // - Fetch previous scene end state for continuity
-    // - Fetch scene asset instances with inherited states
-    
+
+    const { data: scene, error: sceneError } = await this.db.supabase
+      .from('scenes')
+      .select('id, script_excerpt, end_state_summary')
+      .eq('id', sceneId)
+      .single();
+
+    if (sceneError || !scene) {
+      throw new ContextManagerError(`Scene ${sceneId} not found`, 'SCENE_NOT_FOUND');
+    }
+
+    const { data: sceneAssets, error: assetsError } = await this.db.supabase
+      .from('scene_asset_instances')
+      .select(`
+        *,
+        project_asset:project_assets(
+          id, name, asset_type, description, image_key_url
+        )
+      `)
+      .eq('scene_id', sceneId);
+
+    if (assetsError) {
+      console.error(`[ContextManager] Failed to fetch scene assets: ${assetsError.message}`);
+    }
+
+    const projectAssetRow = (row: { project_asset?: { name: string; asset_type: string; description: string; image_key_url?: string | null } | null; effective_description?: string; status_tags?: string[]; image_key_url?: string | null }) =>
+      row.project_asset as { name: string; asset_type: string; description: string; image_key_url?: string | null } | null;
+
+    const formattedAssets: LocalContextSceneAsset[] = (sceneAssets || []).map((instance) => {
+      const pa = projectAssetRow(instance);
+      const name = pa?.name ?? '';
+      const assetType = (pa?.asset_type ?? 'prop') as 'character' | 'prop' | 'location';
+      const description = instance.effective_description ?? pa?.description ?? '';
+      const statusTags = instance.status_tags ?? [];
+      const imageKeyUrl = instance.image_key_url ?? pa?.image_key_url ?? undefined;
+      return {
+        name,
+        type: assetType,
+        description,
+        statusTags,
+        ...(imageKeyUrl && { imageKeyUrl }),
+      };
+    });
+
     return {
-      sceneId
-      // Other fields will be populated in Phase B
+      sceneId: scene.id,
+      sceneScript: scene.script_excerpt ?? undefined,
+      previousSceneEndState: scene.end_state_summary ?? undefined,
+      sceneAssets: formattedAssets,
     };
   }
 
