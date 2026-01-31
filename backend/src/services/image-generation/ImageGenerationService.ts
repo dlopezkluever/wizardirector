@@ -11,7 +11,7 @@ interface VisualStyleContext {
 export interface CreateImageJobRequest {
     projectId: string;
     branchId: string;
-    jobType: 'master_asset' | 'start_frame' | 'end_frame' | 'inpaint';
+    jobType: 'master_asset' | 'start_frame' | 'end_frame' | 'inpaint' | 'scene_asset';
     prompt: string;
     visualStyleCapsuleId?: string;
     width?: number;
@@ -89,9 +89,9 @@ export class ImageGenerationService {
             }
         }
 
-        // Enforce visual style for Stage 5 master assets
-        if (request.jobType === 'master_asset' && !request.visualStyleCapsuleId) {
-            throw new Error('Visual Style Capsule is required for master asset generation');
+        // Enforce visual style for Stage 5 master assets and scene asset keys
+        if ((request.jobType === 'master_asset' || request.jobType === 'scene_asset') && !request.visualStyleCapsuleId) {
+            throw new Error('Visual Style Capsule is required for master asset and scene asset generation');
         }
 
         const jobId = uuidv4();
@@ -138,6 +138,51 @@ export class ImageGenerationService {
             jobId,
             status: 'queued'
         };
+    }
+
+    /**
+     * Create image generation job for scene asset instance
+     * Uses scene-specific description override (effective_description)
+     */
+    async createSceneAssetImageJob(
+        sceneInstanceId: string,
+        projectId: string,
+        branchId: string,
+        visualStyleCapsuleId: string
+    ): Promise<ImageJobResult> {
+        const { data: instance, error } = await supabase
+            .from('scene_asset_instances')
+            .select(`
+              *,
+              project_asset:project_assets(asset_type)
+            `)
+            .eq('id', sceneInstanceId)
+            .single();
+
+        if (error || !instance) {
+            throw new Error(`Scene asset instance ${sceneInstanceId} not found`);
+        }
+
+        const projectAsset = instance.project_asset as { asset_type: 'character' | 'prop' | 'location' } | null;
+        if (!projectAsset) {
+            throw new Error(`Scene asset instance ${sceneInstanceId} has no project_asset`);
+        }
+
+        const prompt = instance.effective_description;
+        const dimensions = this.ASPECT_RATIOS[projectAsset.asset_type];
+
+        return await this.createImageJob({
+            projectId,
+            branchId,
+            jobType: 'scene_asset',
+            prompt,
+            visualStyleCapsuleId,
+            width: dimensions.width,
+            height: dimensions.height,
+            assetId: instance.project_asset_id,
+            sceneId: instance.scene_id,
+            idempotencyKey: `scene-asset-${sceneInstanceId}-${Date.now()}`,
+        });
     }
 
     /**
@@ -212,7 +257,6 @@ export class ImageGenerationService {
                 .getPublicUrl(storagePath);
 
             // If this is a master_asset job, update the project_assets table FIRST
-            // This ensures the asset is updated before the job is marked as completed
             if (request.jobType === 'master_asset' && request.assetId) {
                 const { error: updateError } = await supabase
                     .from('project_assets')
@@ -221,9 +265,23 @@ export class ImageGenerationService {
 
                 if (updateError) {
                     console.error(`[ImageService] Failed to update project_assets.image_key_url for asset ${request.assetId}:`, updateError);
-                    // Don't throw - job completed successfully, just log the error
                 } else {
                     console.log(`[ImageService] Updated project_assets.image_key_url for asset ${request.assetId}`);
+                }
+            }
+
+            // If this is a scene_asset job, update the scene_asset_instances table
+            if (request.jobType === 'scene_asset' && request.sceneId && request.assetId) {
+                const { error: sceneUpdateError } = await supabase
+                    .from('scene_asset_instances')
+                    .update({ image_key_url: urlData.publicUrl })
+                    .eq('scene_id', request.sceneId)
+                    .eq('project_asset_id', request.assetId);
+
+                if (sceneUpdateError) {
+                    console.error(`[ImageService] Failed to update scene_asset_instances.image_key_url:`, sceneUpdateError);
+                } else {
+                    console.log(`[ImageService] Updated scene_asset_instances.image_key_url for scene ${request.sceneId} asset ${request.assetId}`);
                 }
             }
 
@@ -292,7 +350,11 @@ export class ImageGenerationService {
         
         if (request.jobType === 'master_asset') {
             return `project_${request.projectId}/branch_${request.branchId}/master-assets/${request.assetId}_${timestamp}_${random}.png`;
-        } else if (request.shotId) {
+        }
+        if (request.jobType === 'scene_asset' && request.sceneId && request.assetId) {
+            return `project_${request.projectId}/branch_${request.branchId}/scene_${request.sceneId}/scene-assets/${request.assetId}_${timestamp}_${random}.png`;
+        }
+        if (request.shotId) {
             return `project_${request.projectId}/branch_${request.branchId}/scene_${request.sceneId}/shot_${request.shotId}/${request.jobType}_${timestamp}_${random}.png`;
         }
         
