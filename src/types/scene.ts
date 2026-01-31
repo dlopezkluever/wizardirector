@@ -62,7 +62,7 @@ export interface SceneAsset {
   masterAssetId?: string;
 }
 
-/** Aligned with database schema (migration 015 scene_asset_instances). */
+/** Aligned with database schema (migration 015 + 017 scene_asset_instances). */
 export interface SceneAssetInstance {
   id: string;
   scene_id: string;
@@ -74,6 +74,12 @@ export interface SceneAssetInstance {
   inherited_from_instance_id?: string | null;
   project_asset?: ProjectAsset;
   effective_description: string;
+  /** Audit trail: increments on each update (migration 017). */
+  modification_count?: number;
+  /** Audit trail: which field was last changed (migration 017). */
+  last_modified_field?: string | null;
+  /** Audit trail: optional user-provided reason for change (migration 017). */
+  modification_reason?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -92,6 +98,8 @@ export interface UpdateSceneAssetInstanceRequest {
   imageKeyUrl?: string;
   statusTags?: string[];
   carryForward?: boolean;
+  /** Optional reason for change (audit trail). */
+  modificationReason?: string | null;
 }
 
 export interface SceneAssetRelevanceResult {
