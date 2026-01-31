@@ -28,6 +28,7 @@ const UpdateSceneAssetInstanceSchema = z.object({
   imageKeyUrl: z.string().url().optional().nullable(),
   statusTags: z.array(z.string()).optional(),
   carryForward: z.boolean().optional(),
+  modificationReason: z.string().optional().nullable(),
 });
 
 // ============================================================================
@@ -367,6 +368,9 @@ router.put('/:projectId/scenes/:sceneId/assets/:instanceId', async (req, res) =>
     }
     if (updates.carryForward !== undefined) {
       payload.carry_forward = updates.carryForward;
+    }
+    if (updates.modificationReason !== undefined) {
+      payload.modification_reason = updates.modificationReason;
     }
 
     const { data: updatedInstance, error: updateError } = await supabase
