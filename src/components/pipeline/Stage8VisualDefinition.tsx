@@ -34,14 +34,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { RearviewMirror } from '@/components/pipeline/RearviewMirror';
+import { AssetDrawer } from '@/components/pipeline/AssetDrawer';
 import { sceneAssetService } from '@/lib/services/sceneAssetService';
 import { sceneService } from '@/lib/services/sceneService';
-import { projectAssetService } from '@/lib/services/projectAssetService';
 import { cn } from '@/lib/utils';
 import type { SceneAssetInstance, SceneAssetRelevanceResult } from '@/types/scene';
-import type { ProjectAsset } from '@/types/asset';
 
 const typeIcons = {
   character: Users,
@@ -191,99 +189,6 @@ function AssetDrawerTriggerPanel({
         </Button>
       </div>
     </motion.div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Asset Drawer (Sheet): list project assets, on select create scene instance
-// ---------------------------------------------------------------------------
-interface AssetDrawerProps {
-  projectId: string;
-  sceneId: string;
-  isOpen: boolean;
-  onClose: () => void;
-  onSceneInstanceCreated: () => void;
-}
-
-function AssetDrawer({ projectId, sceneId, isOpen, onClose, onSceneInstanceCreated }: AssetDrawerProps) {
-  const [projectAssets, setProjectAssets] = useState<ProjectAsset[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [creatingId, setCreatingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isOpen || !projectId) return;
-    setLoading(true);
-    projectAssetService
-      .listAssets(projectId)
-      .then(setProjectAssets)
-      .catch(() => toast.error('Failed to load project assets'))
-      .finally(() => setLoading(false));
-  }, [isOpen, projectId]);
-
-  const handleAdd = async (asset: ProjectAsset) => {
-    setCreatingId(asset.id);
-    try {
-      await sceneAssetService.createSceneAsset(projectId, {
-        sceneId,
-        projectAssetId: asset.id,
-      });
-      toast.success(`Added ${asset.name} to scene`);
-      onSceneInstanceCreated();
-      onClose();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to add asset');
-    } finally {
-      setCreatingId(null);
-    }
-  };
-
-  return (
-    <Sheet open={isOpen} onOpenChange={open => !open && onClose()}>
-      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>Add from project assets</SheetTitle>
-          <DialogDescription>Select an asset to add to this scene. Inheritance source: Master.</DialogDescription>
-        </SheetHeader>
-        <div className="mt-4">
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {projectAssets.map(asset => {
-                const Icon = typeIcons[(asset.asset_type ?? 'prop') as AssetTypeKey];
-                return (
-                  <div
-                    key={asset.id}
-                    className="flex items-center justify-between p-3 rounded-lg border border-border/30 hover:bg-card/50"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Icon className="w-4 h-4 text-primary" />
-                      <span className="text-sm font-medium">{asset.name}</span>
-                      <Badge variant="secondary" className="text-[10px] capitalize">
-                        {asset.asset_type}
-                      </Badge>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleAdd(asset)}
-                      disabled={creatingId !== null}
-                    >
-                      {creatingId === asset.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                    </Button>
-                  </div>
-                );
-              })}
-              {projectAssets.length === 0 && !loading && (
-                <p className="text-sm text-muted-foreground py-4">No project assets. Add assets in Stage 5.</p>
-              )}
-            </div>
-          )}
-        </div>
-      </SheetContent>
-    </Sheet>
   );
 }
 
@@ -498,9 +403,26 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
     setAssetDrawerOpen(true);
   }, []);
 
-  const handleSceneInstanceCreated = useCallback(() => {
-    refetch();
-  }, [refetch]);
+  const handleSceneInstanceCreated = useCallback(
+    (instance: SceneAssetInstance) => {
+      refetch();
+      toast.success(`Added ${instance.project_asset?.name ?? 'asset'} to scene`);
+      setAssetDrawerOpen(false);
+    },
+    [refetch]
+  );
+
+  /** Task 10: Gatekeeper – only allow proceeding to Stage 9 when all assets have visual references. */
+  const handleProceedToStage9 = useCallback(() => {
+    const missingImages = sceneAssets.filter(a => !a.image_key_url);
+    if (missingImages.length > 0) {
+      toast.error(
+        `Cannot proceed: ${missingImages.length} asset(s) missing visual references. Generate images first.`
+      );
+      return;
+    }
+    onComplete();
+  }, [sceneAssets, onComplete]);
 
   if (!projectId || !sceneId) {
     return (
@@ -582,7 +504,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
           onOpenAssetDrawer={() => setAssetDrawerOpen(true)}
           onCreateNewAsset={handleCreateNewAsset}
           onBack={onBack}
-          onComplete={onComplete}
+          onComplete={handleProceedToStage9}
         />
       </div>
 
