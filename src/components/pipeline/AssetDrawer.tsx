@@ -28,8 +28,10 @@ import { toast } from 'sonner';
 
 import { assetService } from '@/lib/services/assetService';
 import { projectAssetService } from '@/lib/services/projectAssetService';
+import { sceneAssetService } from '@/lib/services/sceneAssetService';
 import { AssetMatchModal } from './AssetMatchModal';
 import type { GlobalAsset, AssetType, ProjectAsset } from '@/types/asset';
+import type { SceneAssetInstance } from '@/types/scene';
 import { cn } from '@/lib/utils';
 
 interface AssetDrawerProps {
@@ -38,6 +40,9 @@ interface AssetDrawerProps {
   onClose: () => void;
   onAssetCloned?: (asset: ProjectAsset) => void;
   filterType?: AssetType; // Optional type filter
+  /** Optional scene context: after cloning, create a scene_asset_instance and call onSceneInstanceCreated */
+  sceneId?: string;
+  onSceneInstanceCreated?: (instance: SceneAssetInstance) => void;
 }
 
 const assetTypeConfig: Record<AssetType, { icon: any; label: string; color: string }> = {
@@ -64,6 +69,8 @@ export const AssetDrawer = ({
   onClose,
   onAssetCloned,
   filterType,
+  sceneId,
+  onSceneInstanceCreated,
 }: AssetDrawerProps) => {
   const [assets, setAssets] = useState<GlobalAsset[]>([]);
   const [loading, setLoading] = useState(false);
@@ -130,6 +137,26 @@ export const AssetDrawer = ({
     return filtered;
   }, [assets, searchQuery, selectedType]);
 
+  /** When scene context is provided, create a scene_asset_instance after we have a project asset. */
+  const ensureSceneInstanceIfNeeded = async (projectAsset: ProjectAsset): Promise<SceneAssetInstance | null> => {
+    if (!sceneId || !onSceneInstanceCreated) return null;
+    try {
+      const instance = await sceneAssetService.createSceneAsset(projectId, {
+        sceneId,
+        projectAssetId: projectAsset.id,
+        descriptionOverride: null,
+        statusTags: [],
+        carryForward: true,
+      });
+      onSceneInstanceCreated(instance);
+      return instance;
+    } catch (err) {
+      console.error('Failed to create scene instance:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to add asset to scene');
+      return null;
+    }
+  };
+
   const handleCloneAsset = async (asset: GlobalAsset) => {
     if (cloningAssetId) return; // Prevent multiple simultaneous clones
 
@@ -157,6 +184,7 @@ export const AssetDrawer = ({
         if (onAssetCloned) {
           onAssetCloned(clonedAsset);
         }
+        await ensureSceneInstanceIfNeeded(clonedAsset);
         setCloningAssetId(null);
       }
     } catch (error) {
@@ -174,6 +202,7 @@ export const AssetDrawer = ({
         if (onAssetCloned) {
           onAssetCloned(clonedAsset);
         }
+        await ensureSceneInstanceIfNeeded(clonedAsset);
       } catch (cloneError) {
         console.error('Failed to clone asset:', cloneError);
         const errorMessage = cloneError instanceof Error ? cloneError.message : 'Failed to clone asset';
@@ -184,18 +213,20 @@ export const AssetDrawer = ({
     }
   };
 
-  const handleMatched = (asset: ProjectAsset) => {
+  const handleMatched = async (asset: ProjectAsset) => {
     if (onAssetCloned) {
       onAssetCloned(asset);
     }
+    await ensureSceneInstanceIfNeeded(asset);
     setMatchModalOpen(false);
     setSelectedGlobalAsset(null);
   };
 
-  const handleClonedWithoutMatch = (asset: ProjectAsset) => {
+  const handleClonedWithoutMatch = async (asset: ProjectAsset) => {
     if (onAssetCloned) {
       onAssetCloned(asset);
     }
+    await ensureSceneInstanceIfNeeded(asset);
     setMatchModalOpen(false);
     setSelectedGlobalAsset(null);
   };
