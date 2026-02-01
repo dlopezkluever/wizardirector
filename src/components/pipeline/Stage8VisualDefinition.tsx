@@ -313,15 +313,14 @@ function CostConfirmModal({
         <DialogHeader>
           <DialogTitle>Generate scene starting visuals</DialogTitle>
           <DialogDescription>
-            Generate image keys for {selectedCount} asset{selectedCount !== 1 ? 's' : ''}. Estimated credits: {estimatedCredits}.
-            (Cost preview – Task 7.0)
+            This action will use approximately {estimatedCredits} credit{estimatedCredits !== 1 ? 's' : ''} and generate {selectedCount} image{selectedCount !== 1 ? 's' : ''}. Continue?
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose} disabled={isGenerating}>Cancel</Button>
           <Button variant="gold" onClick={onConfirm} disabled={isGenerating}>
             {isGenerating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-            Confirm
+            Confirm & Generate
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -348,6 +347,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
   const [assetDrawerOpen, setAssetDrawerOpen] = useState(false);
   const [costConfirmOpen, setCostConfirmOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ completed: number; total: number } | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [newAssetsRequired, setNewAssetsRequired] = useState<SceneAssetRelevanceResult['new_assets_required']>([]);
 
@@ -452,17 +452,31 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
   const handleBulkGenerateConfirmed = useCallback(async () => {
     setCostConfirmOpen(false);
     setIsGenerating(true);
+    setBulkProgress({ completed: 0, total: selectedForGeneration.length });
     try {
       const result = await sceneAssetService.bulkGenerateImages(projectId, sceneId, selectedForGeneration);
-      // Stub: no job polling yet; just refetch after a short delay
-      await new Promise(r => setTimeout(r, 1500));
+      const statuses = result.statuses;
+      await sceneAssetService.pollBulkImageJobs(statuses, {
+        pollIntervalMs: 2000,
+        maxAttempts: 60,
+        onProgress: (completed, total) => setBulkProgress({ completed, total }),
+      });
       queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
-      toast.success(`Bulk generation started for ${result.totalJobs} asset(s)`);
+      const completedCount = statuses.filter(s => s.status === 'completed').length;
+      const failedCount = statuses.filter(s => s.status === 'failed').length;
+      if (failedCount === 0) {
+        toast.success(`Generated ${completedCount} image(s)`);
+      } else if (completedCount > 0) {
+        toast.warning(`${completedCount} completed, ${failedCount} failed`);
+      } else {
+        toast.error('Image generation failed');
+      }
       setSelectedForGeneration([]);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Bulk generation failed');
     } finally {
       setIsGenerating(false);
+      setBulkProgress(null);
     }
   }, [projectId, sceneId, selectedForGeneration, queryClient]);
 
@@ -545,6 +559,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
           onToggleSelection={handleToggleSelection}
           onBulkGenerate={handleBulkGenerateClick}
           isGenerating={isGenerating}
+          bulkProgress={bulkProgress}
           newAssetsRequired={newAssetsRequired}
           onOpenAssetDrawer={() => setAssetDrawerOpen(true)}
           onIgnoreSuggested={index => setNewAssetsRequired(prev => prev.filter((_, i) => i !== index))}
