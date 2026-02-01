@@ -589,564 +589,6 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 \---
 
-\#\# Phase 15: Advanced AI Features — **DELETE ENTIRELY** (per scope-change)
-
-\*\*Scope\*\*: Per scope-change—this phase is **removed** from the active roadmap. Rationale: Style transfer, voice cloning, auto music, scene understanding, smart suggestions are academic/large scope; pipeline already covers core value. Revisit after PMF.
-
-\*\*Deliverable\*\*: *(None for MVP. Deferred to stretch goals / post-PMF.)*
-
-\---
-
-\#\# Phase 16: Collaboration & Teams — **DELETE ENTIRELY** (per scope-change)
-
-\*\*Scope\*\*: No enterprise/collaboration until you have users. Solo users first. Revisit after 100+ paying users.
-
-\*\*Goal\*\*: *(Removed from MVP. Original: Enable multi-user collaboration on projects.)*
-
-\#\#\# Feature 16.1: Team Management  
-\*\*Purpose\*\*: Organize users into teams  
-\- \[ \] Implement teams table and API  
-\- \[ \] Create team creation/management UI  
-\- \[ \] Add user invitation system  
-\- \[ \] Build role-based permissions  
-\- \[ \] Implement team switching
-
-\#\#\# Feature 16.2: Project Sharing  
-\*\*Purpose\*\*: Share projects with team members  
-\- \[ \] Add project sharing permissions  
-\- \[ \] Implement share link generation  
-\- \[ \] Create permission levels (view/edit/admin)  
-\- \[ \] Build access revocation  
-\- \[ \] Add share notification system
-
-\#\#\# Feature 16.3: Real-time Collaboration  
-\*\*Purpose\*\*: Multiple users editing simultaneously  
-\- \[ \] Integrate WebSocket server  
-\- \[ \] Implement presence indicators  
-\- \[ \] Add live cursor tracking  
-\- \[ \] Build conflict resolution  
-\- \[ \] Create collaboration activity feed
-
-\#\#\# Feature 16.4: Comments & Annotations  
-\*\*Purpose\*\*: Feedback and review system  
-\- \[ \] Implement comments table  
-\- \[ \] Create comment thread UI  
-\- \[ \] Add @mention notifications  
-\- \[ \] Build comment resolution workflow  
-\- \[ \] Implement comment filtering
-
-\#\#\# Feature 16.5: Approval Workflows  
-\*\*Purpose\*\*: Formal review and approval process  
-\- \[ \] Create approval request system  
-\- \[ \] Build approval status tracking  
-\- \[ \] Implement approver notifications  
-\- \[ \] Add approval history  
-\- \[ \] Create custom approval workflows
-
-\*\*Deliverable\*\*: Teams can collaborate on projects, leave feedback, work simultaneously, and manage formal approval processes.
-
-\---
-
-\#\# Phase 17: Enterprise Features — **DELETE ENTIRELY** (per scope-change)
-
-\*\*Scope\*\*: No enterprise features before product-market fit. Revisit after 100+ paying users.
-
-\*\*Goal\*\*: *(Removed from MVP. Original: SSO, audit logs, custom models, advanced security.)*
-
-\#\#\# Feature 17.1: Single Sign-On (SSO)  
-\*\*Purpose\*\*: Enterprise authentication integration  
-\- \[ \] Implement SAML 2.0 support  
-\- \[ \] Add OAuth 2.0 providers (Google, Microsoft, Okta)  
-\- \[ \] Create SSO configuration UI for admins  
-\- \[ \] Build user provisioning automation  
-\- \[ \] Add SSO session management
-
-\#\#\# Feature 17.2: Advanced Audit Logging  
-\*\*Purpose\*\*: Comprehensive compliance and security tracking  
-\- \[ \] Implement detailed action logging (CRUD operations)  
-\- \[ \] Create audit log export functionality  
-\- \[ \] Build audit log search and filtering  
-\- \[ \] Add compliance report generation  
-\- \[ \] Implement immutable audit trail
-
-\#\#\# Feature 17.3: Custom Model Integration  
-\*\*Purpose\*\*: Enterprise-specific AI model deployment  
-\- \[ \] Create custom model registration system  
-\- \[ \] Implement private model API routing  
-\- \[ \] Build model performance benchmarking  
-\- \[ \] Add model cost configuration  
-\- \[ \] Create model access controls
-
-\#\#\# Feature 17.4: Data Residency Controls  
-\*\*Purpose\*\*: Region-specific data storage for compliance  
-\- \[ \] Implement multi-region storage routing  
-\- \[ \] Create data residency policy configuration  
-\- \[ \] Build region-specific database instances  
-\- \[ \] Add data migration tools  
-\- \[ \] Implement compliance reporting by region
-
-\#\#\# Feature 17.5: Advanced Security Features  
-\*\*Purpose\*\*: Enterprise-grade security controls  
-\- \[ \] Implement IP whitelisting  
-\- \[ \] Add two-factor authentication (2FA)  
-\- \[ \] Create session timeout policies  
-\- \[ \] Build security audit dashboard  
-\- \[ \] Implement data encryption at rest
-
-\*\*Deliverable\*\*: Enterprise customers can integrate their SSO systems, meet compliance requirements with audit logs, deploy custom AI models, control data residency, and enforce advanced security policies.
-
-\---
-
-\#\# Phase 18: Scalability & Infrastructure — **DELETE ENTIRELY** (per scope-change)
-
-\*\*Scope\*\*: Premature scaling. Single instance handles thousands of users. Revisit when spending >$1000/month on infrastructure.
-
-\*\*Goal\*\*: *(Removed from MVP. Original: Horizontal scaling, sharding, caching, message queue, IaC.)*
-
-\#\#\# Feature 18.1: Horizontal Scaling  
-\*\*Purpose\*\*: Scale backend services independently  
-\- \[ \] Implement stateless API server design  
-\- \[ \] Add load balancer configuration  
-\- \[ \] Create auto-scaling policies  
-\- \[ \] Build service discovery (Consul/similar)  
-\- \[ \] Implement graceful shutdown handling
-
-\#\#\# Feature 18.2: Database Sharding  
-\*\*Purpose\*\*: Distribute data across multiple database instances  
-\- \[ \] Design sharding key strategy (by user/project)  
-\- \[ \] Implement database router layer  
-\- \[ \] Add shard management tools  
-\- \[ \] Build cross-shard query optimization  
-\- \[ \] Create shard rebalancing system
-
-\#\#\# Feature 18.3: Caching Strategy  
-\*\*Purpose\*\*: Reduce database load and improve response times  
-\- \[ \] Implement Redis for session caching  
-\- \[ \] Add query result caching layer  
-\- \[ \] Create cache invalidation logic  
-\- \[ \] Build cache warming strategies  
-\- \[ \] Implement distributed cache (Redis Cluster)
-
-\#\#\# Feature 18.4: Message Queue System  
-\*\*Purpose\*\*: Decouple services and handle async workloads  
-\- \[ \] Implement message broker (RabbitMQ/Kafka)  
-\- \[ \] Create message producer/consumer patterns  
-\- \[ \] Add message retry and dead letter handling  
-\- \[ \] Build message monitoring dashboard  
-\- \[ \] Implement message prioritization
-
-\#\#\# Feature 18.5: Infrastructure as Code  
-\*\*Purpose\*\*: Reproducible, version-controlled infrastructure  
-\- \[ \] Implement Terraform configurations  
-\- \[ \] Create Docker containers for all services  
-\- \[ \] Add Kubernetes deployment manifests  
-\- \[ \] Build CI/CD pipeline automation  
-\- \[ \] Implement blue-green deployment strategy
-
-\*\*Deliverable\*\*: Application infrastructure can scale horizontally, handle high traffic loads, and is fully automated with infrastructure as code for reliable deployments.
-
-\---
-
-\#\# Phase 19: Advanced Export & Integration — **DELETE ENTIRELY** (per scope-change)
-
-\*\*Scope\*\*: Integration before core product works. Export to standard video format; users handle integrations. Revisit when users ask.
-
-\*\*Goal\*\*: *(Removed from MVP. Original: ProRes/DNxHD, third-party integrations, API, batch, template marketplace.)*
-
-\#\#\# Feature 19.1: Advanced Video Formats  
-\*\*Purpose\*\*: Support professional post-production workflows  
-\- \[ \] Add ProRes export support  
-\- \[ \] Implement DNxHD codec support  
-\- \[ \] Create resolution upscaling options  
-\- \[ \] Build color grading presets  
-\- \[ \] Add HDR video export
-
-\#\#\# Feature 19.2: Third-Party Integrations  
-\*\*Purpose\*\*: Connect with creative ecosystem  
-\- \[ \] Integrate with Frame.io for review  
-\- \[ \] Add YouTube direct upload  
-\- \[ \] Implement Vimeo integration  
-\- \[ \] Create Dropbox/Google Drive export  
-\- \[ \] Build custom webhook system
-
-\#\#\# Feature 19.3: API for External Tools  
-\*\*Purpose\*\*: Enable programmatic access  
-\- \[ \] Create public REST API with documentation  
-\- \[ \] Implement API key management  
-\- \[ \] Add rate limiting per API key  
-\- \[ \] Build SDK libraries (Python, JavaScript)  
-\- \[ \] Create API usage analytics
-
-\#\#\# Feature 19.4: Batch Processing  
-\*\*Purpose\*\*: Handle multiple projects simultaneously  
-\- \[ \] Implement batch project creation  
-\- \[ \] Add bulk regeneration operations  
-\- \[ \] Create batch export functionality  
-\- \[ \] Build batch status tracking  
-\- \[ \] Implement batch operation scheduling
-
-\#\#\# Feature 19.5: Template Marketplace  
-\*\*Purpose\*\*: Share and monetize project templates  
-\- \[ \] Create template submission system  
-\- \[ \] Build template marketplace UI  
-\- \[ \] Implement template preview  
-\- \[ \] Add template ratings and reviews  
-\- \[ \] Create revenue sharing system
-
-\*\*Deliverable\*\*: Users can export in professional formats, integrate with external tools, access functionality via API, perform batch operations, and share/monetize templates.
-
-\---
-
-\#\# Phase 20: AI Model Training & Customization — **DELETE ENTIRELY** (per scope-change)
-
-\*\*Scope\*\*: Academic/large scope. Not MVP. Revisit after PMF.
-
-\*\*Goal\*\*: *(Removed from MVP. Original: Custom model training, style transfer, character consistency, dialogue style.)*
-
-\#\#\# Feature 20.1: Custom Model Training Infrastructure  
-\*\*Purpose\*\*: Fine-tune models on user data  
-\- \[ \] Set up GPU training infrastructure  
-\- \[ \] Implement training job queue system  
-\- \[ \] Create training data preparation pipeline  
-\- \[ \] Build model versioning system  
-\- \[ \] Add training progress monitoring
-
-\#\#\# Feature 20.2: Style Transfer Training  
-\*\*Purpose\*\*: Train models on user's visual style  
-\- \[ \] Implement image dataset upload  
-\- \[ \] Create LoRA training pipeline  
-\- \[ \] Build style model testing interface  
-\- \[ \] Add style model deployment  
-\- \[ \] Implement style model versioning
-
-\#\#\# Feature 20.3: Character Consistency Training  
-\*\*Purpose\*\*: Fine-tune models for consistent character appearance  
-\- \[ \] Create character image dataset builder  
-\- \[ \] Implement character embedding training  
-\- \[ \] Build character model testing  
-\- \[ \] Add character model to generation pipeline  
-\- \[ \] Create character model sharing
-
-\#\#\# Feature 20.4: Dialogue Style Training  
-\*\*Purpose\*\*: Train text models on user's writing style  
-\- \[ \] Implement text corpus upload  
-\- \[ \] Create dialogue model fine-tuning  
-\- \[ \] Build dialogue style testing  
-\- \[ \] Add custom model selection in pipeline  
-\- \[ \] Implement model performance comparison
-
-\#\#\# Feature 20.5: Model Management Dashboard  
-\*\*Purpose\*\*: Centralized custom model control  
-\- \[ \] Create model inventory view  
-\- \[ \] Build model performance metrics  
-\- \[ \] Add model A/B testing  
-\- \[ \] Implement model deprecation workflow  
-\- \[ \] Create model usage analytics
-
-\*\*Deliverable\*\*: Advanced users can train custom models on their content for personalized visual styles, consistent characters, and unique dialogue patterns.
-
-\---
-
-\#\# Phase 21: Advanced Continuity & Quality Control — **DEFER** (per scope-change)
-
-\*\*Scope\*\*: Nice-to-have post-launch. Ship core pipeline first; add when users report quality issues.
-
-\*\*Goal\*\*: Implement sophisticated continuity checking and quality assurance tools.
-
-\#\#\# Feature 21.1: AI-Powered Continuity Analysis  
-\*\*Purpose\*\*: Automated detection of continuity errors  
-\- \[ \] Implement visual consistency scoring  
-\- \[ \] Create character appearance tracking  
-\- \[ \] Build prop position validation  
-\- \[ \] Add lighting consistency checking  
-\- \[ \] Implement automated flagging system
-
-\#\#\# Feature 21.2: Quality Scoring System  
-\*\*Purpose\*\*: Evaluate generation quality automatically  
-\- \[ \] Create image quality metrics (sharpness, artifacts)  
-\- \[ \] Implement video quality scoring  
-\- \[ \] Build dialogue clarity detection  
-\- \[ \] Add automated retake suggestions  
-\- \[ \] Create quality threshold alerts
-
-\#\#\# Feature 21.3: Smart Regeneration  
-\*\*Purpose\*\*: Targeted regeneration based on quality issues  
-\- \[ \] Implement issue-to-parameter mapping  
-\- \[ \] Create automatic prompt adjustment  
-\- \[ \] Build progressive refinement system  
-\- \[ \] Add smart retry with variation  
-\- \[ \] Implement convergence detection
-
-\#\#\# Feature 21.4: Scene Preview System  
-\*\*Purpose\*\*: Fast preview rendering for iteration  
-\- \[ \] Implement low-res preview generation  
-\- \[ \] Create animatic-style scene preview  
-\- \[ \] Build quick frame interpolation  
-\- \[ \] Add preview-to-final upgrade  
-\- \[ \] Implement preview caching
-
-\#\#\# Feature 21.5: Automated QA Pipeline  
-\*\*Purpose\*\*: Systematic quality checks before approval  
-\- \[ \] Create pre-flight check system  
-\- \[ \] Implement automated validation rules  
-\- \[ \] Build quality gate configuration  
-\- \[ \] Add QA report generation  
-\- \[ \] Create exception approval workflow
-
-\*\*Deliverable\*\*: Sophisticated quality control systems automatically detect issues, suggest fixes, and ensure high-quality output before expensive generation operations.
-
-\---
-
-\#\# Phase 22: Enhanced User Experience — **DEFER** (per scope-change)
-
-\*\*Scope\*\*: Customizable workspace, smart suggestions, accessibility—defer until after PMF.
-
-\*\*Goal\*\*: Refine and enhance user interface based on feedback and usage patterns.
-
-\#\#\# Feature 22.1: Customizable Workspace  
-\*\*Purpose\*\*: Personalized UI layout  
-\- \[ \] Implement drag-and-drop dashboard layout  
-\- \[ \] Create customizable sidebar  
-\- \[ \] Add panel resizing and docking  
-\- \[ \] Build workspace presets (Director, Writer, etc.)  
-\- \[ \] Implement workspace sync across devices
-
-\#\#\# Feature 22.2: Advanced Search & Navigation  
-\*\*Purpose\*\*: Quick access to content across large projects  
-\- \[ \] Implement full-text search across all content  
-\- \[ \] Create fuzzy search with relevance ranking  
-\- \[ \] Build search filters and facets  
-\- \[ \] Add recent items and favorites  
-\- \[ \] Implement keyboard-driven navigation
-
-\#\#\# Feature 22.3: Smart Suggestions  
-\*\*Purpose\*\*: AI-powered workflow assistance  
-\- \[ \] Implement context-aware suggestions  
-\- \[ \] Create next-action recommendations  
-\- \[ \] Build smart template suggestions  
-\- \[ \] Add workflow optimization tips  
-\- \[ \] Implement learning from user behavior
-
-\#\#\# Feature 22.4: Rich Media Preview  
-\*\*Purpose\*\*: Enhanced content preview capabilities  
-\- \[ \] Create inline video player with scrubbing  
-\- \[ \] Implement image comparison sliders  
-\- \[ \] Build script reader view with audio  
-\- \[ \] Add storyboard visualization  
-\- \[ \] Create timeline overview with thumbnails
-
-\#\#\# Feature 22.5: Accessibility Improvements  
-\*\*Purpose\*\*: Make application accessible to all users  
-\- \[ \] Implement WCAG 2.1 AA compliance  
-\- \[ \] Add screen reader support  
-\- \[ \] Create keyboard navigation for all features  
-\- \[ \] Build high-contrast theme  
-\- \[ \] Implement text-to-speech for scripts
-
-\*\*Deliverable\*\*: A highly customizable, accessible interface with intelligent suggestions and powerful search capabilities that adapt to user preferences and working styles.
-
-\---
-
-\#\# Phase 23: Mobile & Cross-Platform — **DELETE ENTIRELY** (per scope-change)
-
-\*\*Scope\*\*: Whole separate product. Focus on desktop web. Responsive web is sufficient. Revisit: never for MVP.
-
-\*\*Goal\*\*: *(Removed from MVP. Original: PWA, mobile-optimized UI, native iOS/Android, desktop Electron/Tauri.)*
-
-\#\#\# Feature 23.1: Progressive Web App (PWA)  
-\*\*Purpose\*\*: Installable web app with offline capability  
-\- \[ \] Implement service worker with caching  
-\- \[ \] Add offline mode for viewing projects  
-\- \[ \] Create app manifest for installation  
-\- \[ \] Build push notification support  
-\- \[ \] Implement background sync
-
-\#\#\# Feature 23.2: Mobile-Optimized Interface  
-\*\*Purpose\*\*: Full-featured mobile experience  
-\- \[ \] Redesign navigation for mobile  
-\- \[ \] Create touch-optimized controls  
-\- \[ \] Implement mobile-specific gestures  
-\- \[ \] Build responsive video player  
-\- \[ \] Add mobile asset management
-
-\#\#\# Feature 23.3: Native Mobile Apps (iOS/Android)  
-\*\*Purpose\*\*: Enhanced mobile performance  
-\- \[ \] Set up React Native project structure  
-\- \[ \] Implement native authentication  
-\- \[ \] Create native video player  
-\- \[ \] Build offline-first sync system  
-\- \[ \] Add mobile push notifications
-
-\#\#\# Feature 23.4: Desktop Applications  
-\*\*Purpose\*\*: Native apps for Mac/Windows/Linux  
-\- \[ \] Set up Electron project structure  
-\- \[ \] Implement local file system access  
-\- \[ \] Create native menu integration  
-\- \[ \] Build auto-update system  
-\- \[ \] Add system tray integration
-
-\#\#\# Feature 23.5: Tablet-Optimized Experience  
-\*\*Purpose\*\*: Leveraging larger mobile screens  
-\- \[ \] Create split-view layouts for tablets  
-\- \[ \] Implement Apple Pencil support (iPad)  
-\- \[ \] Build stylus input for annotations  
-\- \[ \] Add tablet-specific workflows  
-\- \[ \] Implement drag-and-drop between apps
-
-\*\*Deliverable\*\*: Full-featured mobile and native applications that enable users to work on projects from any device with optimized interfaces and offline capabilities.
-
-\---
-
-\#\# Phase 24: Analytics & Insights — **DEFER** (per scope-change)
-
-\*\*Scope\*\*: Business intelligence without a business. Simplified alternative: add Google Analytics. Defer full analytics until users exist.
-
-\*\*Goal\*\*: Provide users with insights into their creative process and project metrics.
-
-\#\#\# Feature 24.1: Project Analytics Dashboard  
-\*\*Purpose\*\*: Visualize project progress and metrics  
-\- \[ \] Create project statistics overview  
-\- \[ \] Build timeline visualization  
-\- \[ \] Implement cost breakdown charts  
-\- \[ \] Add stage completion metrics  
-\- \[ \] Create productivity analytics
-
-\#\#\# Feature 24.2: Creative Insights  
-\*\*Purpose\*\*: Analyze creative patterns and trends  
-\- \[ \] Implement genre/tone analysis  
-\- \[ \] Create character development tracking  
-\- \[ \] Build narrative structure visualization  
-\- \[ \] Add pacing analysis  
-\- \[ \] Implement dialogue analytics
-
-\#\#\# Feature 24.3: Performance Metrics  
-\*\*Purpose\*\*: Track generation performance and efficiency  
-\- \[ \] Create generation success rate tracking  
-\- \[ \] Build quality score trends  
-\- \[ \] Implement regeneration frequency analysis  
-\- \[ \] Add time-to-completion metrics  
-\- \[ \] Create efficiency recommendations
-
-\#\#\# Feature 24.4: Comparative Analytics  
-\*\*Purpose\*\*: Compare projects and identify best practices  
-\- \[ \] Implement cross-project comparison  
-\- \[ \] Create benchmark metrics  
-\- \[ \] Build best practice identification  
-\- \[ \] Add template effectiveness analysis  
-\- \[ \] Implement A/B test results
-
-\#\#\# Feature 24.5: Export & Reporting  
-\*\*Purpose\*\*: Generate reports for stakeholders  
-\- \[ \] Create custom report builder  
-\- \[ \] Implement PDF report generation  
-\- \[ \] Add scheduled report delivery  
-\- \[ \] Build shareable dashboard links  
-\- \[ \] Create presentation mode
-
-\*\*Deliverable\*\*: Comprehensive analytics providing insights into creative process, project efficiency, costs, and patterns that help users improve their workflow.
-
-\---
-
-\#\# Phase 25: Community & Social Features — **DELETE ENTIRELY** (per scope-change)
-
-\*\*Scope\*\*: No users yet. Create Discord when you have 20+ active users. Revisit after community exists.
-
-\*\*Goal\*\*: *(Removed from MVP. Original: Public gallery, social sharing, forums, tutorials, challenges.)*
-
-\#\#\# Feature 25.1: Public Project Gallery  
-\*\*Purpose\*\*: Showcase community work  
-\- \[ \] Create public project submission system  
-\- \[ \] Build gallery browsing interface  
-\- \[ \] Implement project likes and bookmarks  
-\- \[ \] Add featured projects section  
-\- \[ \] Create curator tools
-
-\#\#\# Feature 25.2: Social Sharing  
-\*\*Purpose\*\*: Share work on social platforms  
-\- \[ \] Implement social media sharing buttons  
-\- \[ \] Create optimized preview cards  
-\- \[ \] Build share tracking analytics  
-\- \[ \] Add embedded player for external sites  
-\- \[ \] Implement viral loop mechanics
-
-\#\#\# Feature 25.3: Community Forums  
-\*\*Purpose\*\*: User discussion and support  
-\- \[ \] Create forum/discussion board system  
-\- \[ \] Implement topic categorization  
-\- \[ \] Build moderation tools  
-\- \[ \] Add reputation/karma system  
-\- \[ \] Create expert badges
-
-\#\#\# Feature 25.4: Tutorial & Learning System  
-\*\*Purpose\*\*: User-generated educational content  
-\- \[ \] Create tutorial creation tools  
-\- \[ \] Build interactive tutorial player  
-\- \[ \] Implement tutorial discovery  
-\- \[ \] Add tutorial ratings and feedback  
-\- \[ \] Create certification program
-
-\#\#\# Feature 25.5: Challenges & Contests  
-\*\*Purpose\*\*: Engage community with creative challenges  
-\- \[ \] Implement challenge creation system  
-\- \[ \] Build submission and voting interface  
-\- \[ \] Create leaderboard system  
-\- \[ \] Add prize/reward distribution  
-\- \[ \] Implement challenge archives
-
-\*\*Deliverable\*\*: Vibrant community features that enable users to share work, learn from each other, and participate in creative challenges.
-
-\---
-
-\#\# Phase 26: Localization & Internationalization — **DEFER** (per scope-change)
-
-\*\*Scope\*\*: English-only until 10%+ of users request non-English. Revisit when international demand exists.
-
-\*\*Goal\*\*: Make application accessible to global users in multiple languages and regions.
-
-\#\#\# Feature 26.1: Multi-Language Support  
-\*\*Purpose\*\*: Translate application interface  
-\- \[ \] Implement i18n framework (react-i18next)  
-\- \[ \] Extract all UI strings to translation files  
-\- \[ \] Create translation management system  
-\- \[ \] Add language selector UI  
-\- \[ \] Implement dynamic language switching
-
-\#\#\# Feature 26.2: Content Translation  
-\*\*Purpose\*\*: Translate generated content  
-\- \[ \] Integrate translation API (Google Translate/DeepL)  
-\- \[ \] Add content translation workflow  
-\- \[ \] Implement bilingual script editing  
-\- \[ \] Create translation memory system  
-\- \[ \] Add language-specific Style Capsules
-
-\#\#\# Feature 26.3: Regional Adaptations  
-\*\*Purpose\*\*: Customize for different markets  
-\- \[ \] Implement region-specific content guidelines  
-\- \[ \] Create cultural sensitivity checks  
-\- \[ \] Add region-specific payment methods  
-\- \[ \] Implement local currency support  
-\- \[ \] Create region-specific templates
-
-\#\#\# Feature 26.4: Multi-Language AI Models  
-\*\*Purpose\*\*: Support content generation in multiple languages  
-\- \[ \] Integrate multi-language LLMs  
-\- \[ \] Implement language-specific prompt templates  
-\- \[ \] Create language detection system  
-\- \[ \] Add cross-language consistency checking  
-\- \[ \] Build language-specific quality metrics
-
-\#\#\# Feature 26.5: Localization Management  
-\*\*Purpose\*\*: Manage translations at scale  
-\- \[ \] Create translator portal  
-\- \[ \] Implement translation workflow  
-\- \[ \] Build translation quality review  
-\- \[ \] Add translation versioning  
-\- \[ \] Create localization analytics
-
-\*\*Deliverable\*\*: Fully localized application supporting multiple languages with region-specific adaptations and AI models for global content creation.
-
-\---
-
 \#\# Phase 27: Legal & Compliance — **SIMPLIFIED** (per scope-change)
 
 \*\*Goal\*\*: Terms of Service and Privacy Policy pages only (templates). Defer GDPR, copyright, content moderation, age verification.
@@ -1167,110 +609,36 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 \---
 
-\#\# Phase 28: Testing & Quality Assurance — **DEFER (partial)** per scope-change
+\#\# Phase 28: Testing & Quality Assurance (MVP scope)
 
-\*\*Goal\*\*: Basic unit tests for critical functions only. Defer comprehensive coverage, integration/E2E, performance, security testing until stable.
+\*\*Goal\*\*: Basic unit tests for critical functions only. Full testing plan deferred—see *Deferred For Later Post-MVP Development*.
 
 \#\#\# Feature 28.1: Basic Unit Tests (MVP only)  
 \*\*Purpose\*\*: Test critical functions only  
 \- \[ \] Write unit tests for critical functions (prompt assembly, cost calc, key services)  
-\- \[ \] *Defer: 80% coverage, integration tests, E2E, performance, security. "Write tests when you find bugs."*
+\- \[ \] *Full testing plan (integration, E2E, performance, security) deferred—see Deferred section.*
 
-\#\#\# Feature 28.2: Integration Testing  
-\*\*Purpose\*\*: Test component interactions  
-\- \[ \] Create API integration tests  
-\- \[ \] Build database integration tests  
-\- \[ \] Implement third-party service tests  
-\- \[ \] Add workflow integration tests  
-\- \[ \] Create test data factories
-
-\#\#\# Feature 28.3: End-to-End Testing  
-\*\*Purpose\*\*: Test complete user workflows  
-\- \[ \] Implement Playwright/Cypress framework  
-\- \[ \] Create critical path E2E tests  
-\- \[ \] Build multi-stage workflow tests  
-\- \[ \] Add visual regression testing  
-\- \[ \] Implement cross-browser testing
-
-\#\#\# Feature 28.4: Performance Testing  
-\*\*Purpose\*\*: Ensure application performance  
-\- \[ \] Implement load testing (k6/Artillery)  
-\- \[ \] Create stress testing scenarios  
-\- \[ \] Build performance benchmarking  
-\- \[ \] Add performance regression detection  
-\- \[ \] Implement continuous performance monitoring
-
-\#\#\# Feature 28.5: Security Testing  
-\*\*Purpose\*\*: Identify and fix security vulnerabilities  
-\- \[ \] Implement automated security scanning  
-\- \[ \] Create penetration testing protocols  
-\- \[ \] Build dependency vulnerability checking  
-\- \[ \] Add SQL injection testing  
-\- \[ \] Implement OWASP Top 10 validation
-
-\*\*Deliverable\*\*: Comprehensive testing infrastructure with high coverage ensuring application reliability, performance, and security.
+\*\*Deliverable\*\*: Critical functions covered by unit tests. Expand when stable.
 
 \---
 
-\#\# Phase 29: Documentation & Developer Experience — **DEFER (partial)** per scope-change
+\#\# Phase 29: Documentation & Developer Experience (MVP scope)
 
-\*\*Goal\*\*: Basic README with setup instructions and simple one-page user guide. Defer API docs, developer docs, video tutorials, knowledge base until users exist.
+\*\*Goal\*\*: Basic README with setup instructions and simple one-page user guide. Full documentation plan deferred—see *Deferred For Later Post-MVP Development*.
 
 \#\#\# Feature 29.1: Basic README & User Guide (MVP only)  
 \*\*Purpose\*\*: Setup and one-page user guide  
 \- \[ \] README with setup instructions (frontend + backend)  
 \- \[ \] Simple one-page user guide (how to run pipeline)  
-\- \[ \] *Defer: API docs, developer docs, video tutorials, knowledge base. "Write docs when users ask questions repeatedly."*
+\- \[ \] *Full documentation (API docs, developer docs, video tutorials, knowledge base) deferred—see Deferred section.*
 
-\#\#\# Feature 29.2: API Documentation  
-\*\*Purpose\*\*: Enable third-party developers  
-\- \[ \] Create OpenAPI/Swagger specifications  
-\- \[ \] Build interactive API explorer  
-\- \[ \] Implement code examples in multiple languages  
-\- \[ \] Add webhook documentation  
-\- \[ \] Create API changelog
-
-\#\#\# Feature 29.3: Developer Documentation  
-\*\*Purpose\*\*: Enable contributions and integrations  
-\- \[ \] Create architecture documentation  
-\- \[ \] Build component library documentation (Storybook)  
-\- \[ \] Implement code contribution guidelines  
-\- \[ \] Add setup and development guides  
-\- \[ \] Create plugin development documentation
-
-\#\#\# Feature 29.4: Content Library  
-\*\*Purpose\*\*: Educational resources and best practices  
-\- \[ \] Create filmmaking best practices guide  
-\- \[ \] Build prompt engineering guide  
-\- \[ \] Implement case studies  
-\- \[ \] Add workflow templates documentation  
-\- \[ \] Create glossary of terms
-
-\#\#\# Feature 29.5: Support System  
-\*\*Purpose\*\*: Help users when documentation isn't enough  
-\- \[ \] Create ticket support system  
-\- \[ \] Implement live chat support  
-\- \[ \] Build knowledge base  
-\- \[ \] Add community support forums  
-\- \[ \] Create escalation workflow
-
-\*\*Deliverable\*\*: Comprehensive documentation ecosystem supporting users, developers, and integrators with clear guidance and support systems.
-
-\---
-
-\#\# Phase 30: Business Intelligence & Admin Tools — **DELETE ENTIRELY** (per scope-change)
-
-\*\*Scope\*\*: Admin dashboard for managing... what? Use Supabase UI, Stripe dashboard, etc. Revisit when you have operations to manage.
-
-\*\*Goal\*\*: *(Removed from MVP. Original: Admin dashboard, user management, financial management, content moderation, platform config.)*
-
-\*\*Deliverable\*\*: *(None for MVP. Use Supabase UI, Stripe dashboard, etc.)*
+\*\*Deliverable\*\*: README and one-page user guide. Expand when users exist.
 
 \---
 
 \#\# Summary & Revised Roadmap (per scope-change-post-4.md)
 
-This task list has been **narrowed** for solo-developer focus. Phases 15–30 are marked **DELETE** or **DEFER**; only the items below are in the active roadmap.
+This task list has been **narrowed** for solo-developer focus. Deleted phases (15–20, 23, 25, 30) have been removed; deferred phases (21, 22, 24, 26, plus full scope of 28–29) are in **Deferred For Later Post-MVP Development** at the end. Only the items below are in the active roadmap.
 
 ---
 
@@ -1300,16 +668,7 @@ This task list has been **narrowed** for solo-developer focus. Phases 15–30 ar
 - Phase 28: Expand test coverage when stable  
 - Phase 29: Better documentation when users exist  
 
----
-
-### **DEFER** (Not in MVP)
-
-- Phases 21, 22, 24, 26: Advanced continuity, enhanced UX, analytics, localization  
-- Phases 28–29 (most): Comprehensive testing and docs  
-
-### **DELETE** (Removed from active roadmap)
-
-- Phases 15, 16, 17, 18, 19, 20, 23, 25, 30: Advanced AI, enterprise, marketplace, scale, integrations, training, mobile, community, admin  
+\*\*Deferred work\*\*: Phases and features deferred per scope-change are collected in **Deferred For Later Post-MVP Development** at the end of this document.
 
 ---
 
@@ -1317,4 +676,298 @@ This task list has been **narrowed** for solo-developer focus. Phases 15–30 ar
 
 \*\*Critical Path\*\*: Phases 0–9 (core 12-stage pipeline) + basic branch UI, error handling, Sentry, Terms/Privacy.
 
-\*\*Goal\*\*: Ship the core product. Get users. Learn. Iterate. Don't build 30 phases of features no one asked for.  
+\*\*Goal\*\*: Ship the core product. Get users. Learn. Iterate. Don't build 30 phases of features no one asked for.
+
+---
+
+\#\# Deferred For Later Post-MVP Development
+
+The following phases and features were deferred per \`scope-change-post-4.md\`. They are listed here for reference when planning post-launch work.
+
+---
+
+\#\#\# Phase 21: Advanced Continuity & Quality Control (Deferred)
+
+\*\*Goal\*\*: Implement sophisticated continuity checking and quality assurance tools.
+
+\#\#\#\# Feature 21.1: AI-Powered Continuity Analysis  
+\*\*Purpose\*\*: Automated detection of continuity errors  
+\- \[ \] Implement visual consistency scoring  
+\- \[ \] Create character appearance tracking  
+\- \[ \] Build prop position validation  
+\- \[ \] Add lighting consistency checking  
+\- \[ \] Implement automated flagging system
+
+\#\#\#\# Feature 21.2: Quality Scoring System  
+\*\*Purpose\*\*: Evaluate generation quality automatically  
+\- \[ \] Create image quality metrics (sharpness, artifacts)  
+\- \[ \] Implement video quality scoring  
+\- \[ \] Build dialogue clarity detection  
+\- \[ \] Add automated retake suggestions  
+\- \[ \] Create quality threshold alerts
+
+\#\#\#\# Feature 21.3: Smart Regeneration  
+\*\*Purpose\*\*: Targeted regeneration based on quality issues  
+\- \[ \] Implement issue-to-parameter mapping  
+\- \[ \] Create automatic prompt adjustment  
+\- \[ \] Build progressive refinement system  
+\- \[ \] Add smart retry with variation  
+\- \[ \] Implement convergence detection
+
+\#\#\#\# Feature 21.4: Scene Preview System  
+\*\*Purpose\*\*: Fast preview rendering for iteration  
+\- \[ \] Implement low-res preview generation  
+\- \[ \] Create animatic-style scene preview  
+\- \[ \] Build quick frame interpolation  
+\- \[ \] Add preview-to-final upgrade  
+\- \[ \] Implement preview caching
+
+\#\#\#\# Feature 21.5: Automated QA Pipeline  
+\*\*Purpose\*\*: Systematic quality checks before approval  
+\- \[ \] Create pre-flight check system  
+\- \[ \] Implement automated validation rules  
+\- \[ \] Build quality gate configuration  
+\- \[ \] Add QA report generation  
+\- \[ \] Create exception approval workflow
+
+\*\*Deliverable\*\*: Sophisticated quality control systems automatically detect issues, suggest fixes, and ensure high-quality output before expensive generation operations.
+
+---
+
+\#\#\# Phase 22: Enhanced User Experience (Deferred)
+
+\*\*Goal\*\*: Refine and enhance user interface based on feedback and usage patterns.
+
+\#\#\#\# Feature 22.1: Customizable Workspace  
+\*\*Purpose\*\*: Personalized UI layout  
+\- \[ \] Implement drag-and-drop dashboard layout  
+\- \[ \] Create customizable sidebar  
+\- \[ \] Add panel resizing and docking  
+\- \[ \] Build workspace presets (Director, Writer, etc.)  
+\- \[ \] Implement workspace sync across devices
+
+\#\#\#\# Feature 22.2: Advanced Search & Navigation  
+\*\*Purpose\*\*: Quick access to content across large projects  
+\- \[ \] Implement full-text search across all content  
+\- \[ \] Create fuzzy search with relevance ranking  
+\- \[ \] Build search filters and facets  
+\- \[ \] Add recent items and favorites  
+\- \[ \] Implement keyboard-driven navigation
+
+\#\#\#\# Feature 22.3: Smart Suggestions  
+\*\*Purpose\*\*: AI-powered workflow assistance  
+\- \[ \] Implement context-aware suggestions  
+\- \[ \] Create next-action recommendations  
+\- \[ \] Build smart template suggestions  
+\- \[ \] Add workflow optimization tips  
+\- \[ \] Implement learning from user behavior
+
+\#\#\#\# Feature 22.4: Rich Media Preview  
+\*\*Purpose\*\*: Enhanced content preview capabilities  
+\- \[ \] Create inline video player with scrubbing  
+\- \[ \] Implement image comparison sliders  
+\- \[ \] Build script reader view with audio  
+\- \[ \] Add storyboard visualization  
+\- \[ \] Create timeline overview with thumbnails
+
+\#\#\#\# Feature 22.5: Accessibility Improvements  
+\*\*Purpose\*\*: Make application accessible to all users  
+\- \[ \] Implement WCAG 2.1 AA compliance  
+\- \[ \] Add screen reader support  
+\- \[ \] Create keyboard navigation for all features  
+\- \[ \] Build high-contrast theme  
+\- \[ \] Implement text-to-speech for scripts
+
+\*\*Deliverable\*\*: A highly customizable, accessible interface with intelligent suggestions and powerful search capabilities that adapt to user preferences and working styles.
+
+---
+
+\#\#\# Phase 24: Analytics & Insights (Deferred)
+
+\*\*Goal\*\*: Provide users with insights into their creative process and project metrics.
+
+\#\#\#\# Feature 24.1: Project Analytics Dashboard  
+\*\*Purpose\*\*: Visualize project progress and metrics  
+\- \[ \] Create project statistics overview  
+\- \[ \] Build timeline visualization  
+\- \[ \] Implement cost breakdown charts  
+\- \[ \] Add stage completion metrics  
+\- \[ \] Create productivity analytics
+
+\#\#\#\# Feature 24.2: Creative Insights  
+\*\*Purpose\*\*: Analyze creative patterns and trends  
+\- \[ \] Implement genre/tone analysis  
+\- \[ \] Create character development tracking  
+\- \[ \] Build narrative structure visualization  
+\- \[ \] Add pacing analysis  
+\- \[ \] Implement dialogue analytics
+
+\#\#\#\# Feature 24.3: Performance Metrics  
+\*\*Purpose\*\*: Track generation performance and efficiency  
+\- \[ \] Create generation success rate tracking  
+\- \[ \] Build quality score trends  
+\- \[ \] Implement regeneration frequency analysis  
+\- \[ \] Add time-to-completion metrics  
+\- \[ \] Create efficiency recommendations
+
+\#\#\#\# Feature 24.4: Comparative Analytics  
+\*\*Purpose\*\*: Compare projects and identify best practices  
+\- \[ \] Implement cross-project comparison  
+\- \[ \] Create benchmark metrics  
+\- \[ \] Build best practice identification  
+\- \[ \] Add template effectiveness analysis  
+\- \[ \] Implement A/B test results
+
+\#\#\#\# Feature 24.5: Export & Reporting  
+\*\*Purpose\*\*: Generate reports for stakeholders  
+\- \[ \] Create custom report builder  
+\- \[ \] Implement PDF report generation  
+\- \[ \] Add scheduled report delivery  
+\- \[ \] Build shareable dashboard links  
+\- \[ \] Create presentation mode
+
+\*\*Deliverable\*\*: Comprehensive analytics providing insights into creative process, project efficiency, costs, and patterns that help users improve their workflow.
+
+---
+
+\#\#\# Phase 26: Localization & Internationalization (Deferred)
+
+\*\*Goal\*\*: Make application accessible to global users in multiple languages and regions.
+
+\#\#\#\# Feature 26.1: Multi-Language Support  
+\*\*Purpose\*\*: Translate application interface  
+\- \[ \] Implement i18n framework (react-i18next)  
+\- \[ \] Extract all UI strings to translation files  
+\- \[ \] Create translation management system  
+\- \[ \] Add language selector UI  
+\- \[ \] Implement dynamic language switching
+
+\#\#\#\# Feature 26.2: Content Translation  
+\*\*Purpose\*\*: Translate generated content  
+\- \[ \] Integrate translation API (Google Translate/DeepL)  
+\- \[ \] Add content translation workflow  
+\- \[ \] Implement bilingual script editing  
+\- \[ \] Create translation memory system  
+\- \[ \] Add language-specific Style Capsules
+
+\#\#\#\# Feature 26.3: Regional Adaptations  
+\*\*Purpose\*\*: Customize for different markets  
+\- \[ \] Implement region-specific content guidelines  
+\- \[ \] Create cultural sensitivity checks  
+\- \[ \] Add region-specific payment methods  
+\- \[ \] Implement local currency support  
+\- \[ \] Create region-specific templates
+
+\#\#\#\# Feature 26.4: Multi-Language AI Models  
+\*\*Purpose\*\*: Support content generation in multiple languages  
+\- \[ \] Integrate multi-language LLMs  
+\- \[ \] Implement language-specific prompt templates  
+\- \[ \] Create language detection system  
+\- \[ \] Add cross-language consistency checking  
+\- \[ \] Build language-specific quality metrics
+
+\#\#\#\# Feature 26.5: Localization Management  
+\*\*Purpose\*\*: Manage translations at scale  
+\- \[ \] Create translator portal  
+\- \[ \] Implement translation workflow  
+\- \[ \] Build translation quality review  
+\- \[ \] Add translation versioning  
+\- \[ \] Create localization analytics
+
+\*\*Deliverable\*\*: Fully localized application supporting multiple languages with region-specific adaptations and AI models for global content creation.
+
+---
+
+\#\#\# Phase 28: Testing & Quality Assurance — Full Scope (Deferred)
+
+\*\*Goal\*\*: Implement comprehensive testing infrastructure for reliability and quality.
+
+\#\#\#\# Feature 28.1: Unit Testing Coverage  
+\*\*Purpose\*\*: Test individual components and functions  
+\- \[ \] Implement Jest/Vitest test framework  
+\- \[ \] Create tests for all utility functions  
+\- \[ \] Build component unit tests  
+\- \[ \] Add service layer tests  
+\- \[ \] Achieve 80%+ code coverage
+
+\#\#\#\# Feature 28.2: Integration Testing  
+\*\*Purpose\*\*: Test component interactions  
+\- \[ \] Create API integration tests  
+\- \[ \] Build database integration tests  
+\- \[ \] Implement third-party service tests  
+\- \[ \] Add workflow integration tests  
+\- \[ \] Create test data factories
+
+\#\#\#\# Feature 28.3: End-to-End Testing  
+\*\*Purpose\*\*: Test complete user workflows  
+\- \[ \] Implement Playwright/Cypress framework  
+\- \[ \] Create critical path E2E tests  
+\- \[ \] Build multi-stage workflow tests  
+\- \[ \] Add visual regression testing  
+\- \[ \] Implement cross-browser testing
+
+\#\#\#\# Feature 28.4: Performance Testing  
+\*\*Purpose\*\*: Ensure application performance  
+\- \[ \] Implement load testing (k6/Artillery)  
+\- \[ \] Create stress testing scenarios  
+\- \[ \] Build performance benchmarking  
+\- \[ \] Add performance regression detection  
+\- \[ \] Implement continuous performance monitoring
+
+\#\#\#\# Feature 28.5: Security Testing  
+\*\*Purpose\*\*: Identify and fix security vulnerabilities  
+\- \[ \] Implement automated security scanning  
+\- \[ \] Create penetration testing protocols  
+\- \[ \] Build dependency vulnerability checking  
+\- \[ \] Add SQL injection testing  
+\- \[ \] Implement OWASP Top 10 validation
+
+\*\*Deliverable\*\*: Comprehensive testing infrastructure with high coverage ensuring application reliability, performance, and security.
+
+---
+
+\#\#\# Phase 29: Documentation & Developer Experience — Full Scope (Deferred)
+
+\*\*Goal\*\*: Create comprehensive documentation for users, developers, and API consumers.
+
+\#\#\#\# Feature 29.1: User Documentation  
+\*\*Purpose\*\*: Help users understand and use the platform  
+\- \[ \] Create comprehensive user guide  
+\- \[ \] Build interactive documentation  
+\- \[ \] Implement contextual help system  
+\- \[ \] Add video tutorials  
+\- \[ \] Create FAQ and troubleshooting guides
+
+\#\#\#\# Feature 29.2: API Documentation  
+\*\*Purpose\*\*: Enable third-party developers  
+\- \[ \] Create OpenAPI/Swagger specifications  
+\- \[ \] Build interactive API explorer  
+\- \[ \] Implement code examples in multiple languages  
+\- \[ \] Add webhook documentation  
+\- \[ \] Create API changelog
+
+\#\#\#\# Feature 29.3: Developer Documentation  
+\*\*Purpose\*\*: Enable contributions and integrations  
+\- \[ \] Create architecture documentation  
+\- \[ \] Build component library documentation (Storybook)  
+\- \[ \] Implement code contribution guidelines  
+\- \[ \] Add setup and development guides  
+\- \[ \] Create plugin development documentation
+
+\#\#\#\# Feature 29.4: Content Library  
+\*\*Purpose\*\*: Educational resources and best practices  
+\- \[ \] Create filmmaking best practices guide  
+\- \[ \] Build prompt engineering guide  
+\- \[ \] Implement case studies  
+\- \[ \] Add workflow templates documentation  
+\- \[ \] Create glossary of terms
+
+\#\#\#\# Feature 29.5: Support System  
+\*\*Purpose\*\*: Help users when documentation isn't enough  
+\- \[ \] Create ticket support system  
+\- \[ \] Implement live chat support  
+\- \[ \] Build knowledge base  
+\- \[ \] Add community support forums  
+\- \[ \] Create escalation workflow
+
+\*\*Deliverable\*\*: Comprehensive documentation ecosystem supporting users, developers, and integrators with clear guidance and support systems.
