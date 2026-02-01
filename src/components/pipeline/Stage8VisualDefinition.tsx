@@ -13,11 +13,8 @@ import {
   MapPin,
   Package,
   Check,
-  Lock,
   ArrowLeft,
   Sparkles,
-  Image as ImageIcon,
-  Edit3,
   Plus,
   RefreshCw,
   Loader2,
@@ -25,8 +22,8 @@ import {
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { SceneAssetListPanel } from '@/components/pipeline/Stage8/SceneAssetListPanel';
+import { VisualStateEditorPanel } from '@/components/pipeline/Stage8/VisualStateEditorPanel';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -137,167 +134,6 @@ function EmptyStatePanel({ onDetectAssets, onAddManually, isDetecting }: EmptySt
         </div>
       </Card>
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Visual State Editor (center): effective_description, project_asset, inheritance, audit
-// ---------------------------------------------------------------------------
-interface VisualStateEditorPanelProps {
-  selectedAsset: SceneAssetInstance | null;
-  onUpdateAsset: (instanceId: string, updates: { descriptionOverride?: string; modificationReason?: string | null; statusTags?: string[] }) => void;
-  onGenerateImage: (instanceId: string) => void;
-  projectId: string;
-  sceneId: string;
-  isUpdating?: boolean;
-  isGeneratingImage?: boolean;
-  inheritedFromSceneNumber?: number | null;
-}
-
-function VisualStateEditorPanel({
-  selectedAsset,
-  onUpdateAsset,
-  onGenerateImage,
-  projectId,
-  sceneId,
-  isUpdating,
-  isGeneratingImage,
-  inheritedFromSceneNumber,
-}: VisualStateEditorPanelProps) {
-  const [localDescription, setLocalDescription] = useState('');
-  const [localReason, setLocalReason] = useState('');
-
-  useEffect(() => {
-    if (selectedAsset) {
-      setLocalDescription(selectedAsset.description_override ?? selectedAsset.effective_description ?? '');
-      setLocalReason(selectedAsset.modification_reason ?? '');
-    }
-  }, [selectedAsset?.id, selectedAsset?.description_override, selectedAsset?.effective_description, selectedAsset?.modification_reason]);
-
-  if (!selectedAsset) {
-    return (
-      <div className="flex-1 flex items-center justify-center bg-card/20">
-        <p className="text-muted-foreground">Select an asset to edit</p>
-      </div>
-    );
-  }
-
-  const name = selectedAsset.project_asset?.name ?? 'Unknown';
-  const assetType = selectedAsset.project_asset?.asset_type ?? 'prop';
-  const Icon = typeIcons[assetType as AssetTypeKey];
-  const isLocked = (selectedAsset.status_tags ?? []).includes('locked');
-
-  const handleSaveDescription = () => {
-    if (localDescription !== (selectedAsset.description_override ?? selectedAsset.effective_description))
-      onUpdateAsset(selectedAsset.id, { descriptionOverride: localDescription });
-  };
-
-  const handleLock = () => {
-    const tags = selectedAsset.status_tags ?? [];
-    const withLocked = tags.includes('locked') ? tags : [...tags, 'locked'];
-    onUpdateAsset(selectedAsset.id, {
-      modificationReason: localReason || 'Locked by user',
-      statusTags: withLocked,
-    });
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="flex-1 flex flex-col overflow-hidden bg-card/20"
-    >
-      <div className="p-4 border-b border-border/50 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Icon className="w-5 h-5 text-primary" />
-          <div>
-            <h3 className="text-lg font-semibold text-foreground">{name}</h3>
-            <p className="text-xs text-muted-foreground">
-              {selectedAsset.inherited_from_instance_id
-                ? inheritedFromSceneNumber != null
-                  ? `Inheriting from Scene ${inheritedFromSceneNumber}`
-                  : 'Inheriting from prior scene'
-                : 'Inheritance source: Master'}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          {!isLocked && (
-            <Button variant="outline" size="sm" onClick={handleLock} disabled={isUpdating}>
-              <Lock className="w-4 h-4 mr-1" />
-              Lock
-            </Button>
-          )}
-          <Button
-            variant="gold"
-            size="sm"
-            onClick={() => onGenerateImage(selectedAsset.id)}
-            disabled={isGeneratingImage}
-          >
-            {isGeneratingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1" />}
-            Generate image
-          </Button>
-        </div>
-      </div>
-
-      <ScrollArea className="flex-1">
-        <div className="p-6 space-y-6">
-          {selectedAsset.project_asset?.image_key_url && (
-            <div>
-              <label className="text-sm font-medium text-foreground flex items-center gap-2 mb-3">
-                <ImageIcon className="w-4 h-4 text-primary" />
-                Master reference
-              </label>
-              <div className="aspect-video max-w-xs rounded-lg border border-border/30 overflow-hidden bg-muted/50">
-                <img
-                  src={selectedAsset.project_asset.image_key_url}
-                  alt={name}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className="text-sm font-medium text-foreground flex items-center gap-2 mb-3">
-              <Edit3 className="w-4 h-4 text-primary" />
-              Visual state description
-            </label>
-            <Textarea
-              value={localDescription}
-              onChange={e => setLocalDescription(e.target.value)}
-              onBlur={handleSaveDescription}
-              placeholder="Starting look for this asset in this scene…"
-              rows={6}
-              disabled={isLocked}
-            />
-            <p className="text-xs text-muted-foreground mt-2">
-              Mid-scene visual changes are handled in Stage 10.
-            </p>
-          </div>
-
-          {(selectedAsset.modification_count != null && selectedAsset.modification_count > 0) && (
-            <div className="bg-card/50 rounded-lg p-4 border border-border/30">
-              <h4 className="text-sm font-medium text-foreground mb-2">Audit</h4>
-              <p className="text-xs text-muted-foreground">
-                Modifications: {selectedAsset.modification_count}
-                {selectedAsset.last_modified_field && ` • Last field: ${selectedAsset.last_modified_field}`}
-              </p>
-            </div>
-          )}
-
-          {selectedAsset.inherited_from_instance_id && (
-            <div className="bg-card/50 rounded-lg p-4 border border-border/30">
-              <h4 className="text-sm font-medium text-foreground mb-2">Inheritance</h4>
-              <p className="text-xs text-muted-foreground">
-                This instance inherits from a prior scene instance. Edits here create a new scene
-                instance and are saved to the asset history.
-              </p>
-            </div>
-          )}
-        </div>
-      </ScrollArea>
-    </motion.div>
   );
 }
 
@@ -551,7 +387,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ instanceId, updates }: { instanceId: string; updates: { descriptionOverride?: string; modificationReason?: string | null; statusTags?: string[] } }) =>
+    mutationFn: ({ instanceId, updates }: { instanceId: string; updates: { descriptionOverride?: string; modificationReason?: string | null; statusTags?: string[]; carryForward?: boolean } }) =>
       sceneAssetService.updateSceneAsset(projectId, sceneId, instanceId, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
@@ -631,7 +467,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
   }, [projectId, sceneId, selectedForGeneration, queryClient]);
 
   const handleUpdateAsset = useCallback(
-    (instanceId: string, updates: { descriptionOverride?: string; modificationReason?: string | null; statusTags?: string[] }) => {
+    (instanceId: string, updates: { descriptionOverride?: string; modificationReason?: string | null; statusTags?: string[]; carryForward?: boolean }) => {
       updateMutation.mutate({ instanceId, updates });
     },
     [updateMutation]
