@@ -26,6 +26,16 @@ export interface BulkImageGenerationResult {
   }>;
 }
 
+export interface ImageJobStatusResponse {
+  jobId: string;
+  status: string;
+  publicUrl?: string;
+  error?: { code?: string; message?: string; failureStage?: string };
+  cost?: { estimated?: number; actual?: number };
+  createdAt?: string;
+  completedAt?: string;
+}
+
 class SceneAssetService {
   /**
    * List all asset instances for a scene
@@ -275,6 +285,78 @@ class SceneAssetService {
       totalJobs: instanceIds.length,
       statuses,
     };
+  }
+
+  /**
+   * Get status of a single image generation job (for polling)
+   */
+  async getImageJobStatus(jobId: string): Promise<ImageJobStatusResponse> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/images/jobs/${jobId}`, {
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch job status');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Poll bulk image jobs until all are completed or failed (or timeout).
+   * Updates statuses in place; optionally call onProgress(completed, total) each poll round.
+   */
+  async pollBulkImageJobs(
+    statuses: Array<{ instanceId: string; jobId: string; status: string }>,
+    options?: {
+      pollIntervalMs?: number;
+      maxAttempts?: number;
+      onProgress?: (completed: number, total: number) => void;
+    }
+  ): Promise<void> {
+    const pollIntervalMs = options?.pollIntervalMs ?? 2000;
+    const maxAttempts = options?.maxAttempts ?? 60;
+    const onProgress = options?.onProgress;
+
+    const toPoll = statuses.filter(s => s.jobId && s.status !== 'completed' && s.status !== 'failed');
+    if (toPoll.length === 0) return;
+
+    let attempt = 0;
+    while (attempt < maxAttempts) {
+      const results = await Promise.all(
+        toPoll.map(async (s) => {
+          try {
+            const job = await this.getImageJobStatus(s.jobId);
+            return { ...s, status: job.status };
+          } catch {
+            return { ...s };
+          }
+        })
+      );
+
+      results.forEach((r, idx) => {
+        const orig = toPoll[idx];
+        if (orig) orig.status = r.status;
+      });
+
+      const completed = statuses.filter(s => s.status === 'completed' || s.status === 'failed').length;
+      const total = statuses.length;
+      onProgress?.(completed, total);
+
+      const allDone = statuses.every(s => s.status === 'completed' || s.status === 'failed');
+      if (allDone) break;
+
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+      attempt++;
+    }
   }
 }
 
