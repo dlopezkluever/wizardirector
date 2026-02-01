@@ -21,13 +21,14 @@ import {
   Plus,
   RefreshCw,
   Loader2,
-  Eye,
+  Brain,
 } from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { SceneAssetListPanel } from '@/components/pipeline/Stage8/SceneAssetListPanel';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -93,7 +94,7 @@ function ContinuityHeader({ priorSceneEndState, priorEndFrame, priorSceneName }:
 }
 
 // ---------------------------------------------------------------------------
-// Empty State: no assets – user chooses Detect or Add Manually
+// Empty State: no assets – user chooses Detect or Add Manually (Task 8)
 // ---------------------------------------------------------------------------
 interface EmptyStatePanelProps {
   onDetectAssets: () => void;
@@ -103,19 +104,17 @@ interface EmptyStatePanelProps {
 
 function EmptyStatePanel({ onDetectAssets, onAddManually, isDetecting }: EmptyStatePanelProps) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8">
-      <div className="text-center max-w-md">
-        <Eye className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-        <h3 className="font-display text-lg font-semibold text-foreground mb-2">
-          No scene assets yet
-        </h3>
-        <p className="text-sm text-muted-foreground mb-6">
-          Detect required assets from the shot list and script, or add assets manually from the
-          project library.
+    <div className="flex-1 flex items-center justify-center p-8">
+      <Card className="max-w-md text-center p-8">
+        <Sparkles className="w-16 h-16 mx-auto mb-4 text-primary" />
+        <h2 className="text-2xl font-bold mb-2">No Assets Defined Yet</h2>
+        <p className="text-muted-foreground mb-6">
+          Define which characters, props, and locations appear at the start of this scene.
         </p>
-        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+        <div className="space-y-3">
           <Button
             variant="gold"
+            className="w-full"
             onClick={onDetectAssets}
             disabled={isDetecting}
           >
@@ -126,159 +125,18 @@ function EmptyStatePanel({ onDetectAssets, onAddManually, isDetecting }: EmptySt
               </>
             ) : (
               <>
-                <Sparkles className="w-4 h-4 mr-2" />
-                Detect Required Assets
+                <Brain className="w-4 h-4 mr-2" />
+                Detect Required Assets (AI)
               </>
             )}
           </Button>
-          <Button variant="outline" onClick={onAddManually}>
+          <Button variant="outline" className="w-full" onClick={onAddManually}>
             <Plus className="w-4 h-4 mr-2" />
-            Add Manually
+            Add Assets Manually
           </Button>
         </div>
-      </div>
+      </Card>
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Scene Asset List Panel (left): grouped by type, source badge, status, multi-select
-// ---------------------------------------------------------------------------
-interface SceneAssetListPanelProps {
-  assets: SceneAssetInstance[];
-  selectedAsset: SceneAssetInstance | null;
-  selectedForGeneration: string[];
-  onSelectAsset: (asset: SceneAssetInstance | null) => void;
-  onToggleSelection: (instanceId: string) => void;
-  onBulkGenerate: () => void;
-  isGenerating: boolean;
-  onInherit?: () => void;
-  isInheriting?: boolean;
-}
-
-function SceneAssetListPanel({
-  assets,
-  selectedAsset,
-  selectedForGeneration,
-  onSelectAsset,
-  onToggleSelection,
-  onBulkGenerate,
-  isGenerating,
-  onInherit,
-  isInheriting,
-}: SceneAssetListPanelProps) {
-  const grouped = assets.reduce(
-    (acc, a) => {
-      const type = (a.project_asset?.asset_type ?? 'prop') as AssetTypeKey;
-      if (!acc[type]) acc[type] = [];
-      acc[type].push(a);
-      return acc;
-    },
-    {} as Record<AssetTypeKey, SceneAssetInstance[]>
-  );
-  const order: AssetTypeKey[] = ['character', 'location', 'prop'];
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      className="w-80 border-r border-border/50 bg-card/30 backdrop-blur-sm flex flex-col shrink-0"
-    >
-      <div className="p-4 border-b border-border/50">
-        <h2 className="font-display text-lg font-semibold text-foreground">Scene Visual Elements</h2>
-        <p className="text-xs text-muted-foreground mt-1">
-          {assets.length} assets • {assets.filter(a => reviewStatus(a) === 'locked').length} locked
-        </p>
-        {onInherit && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="mt-2 w-full"
-            onClick={onInherit}
-            disabled={isInheriting}
-          >
-            {isInheriting ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-1" />}
-            Inherit from prior scene
-          </Button>
-        )}
-      </div>
-
-      <ScrollArea className="flex-1">
-        <div className="p-2">
-          {order.map(type => {
-            const list = grouped[type] ?? [];
-            if (list.length === 0) return null;
-            const Icon = typeIcons[type];
-            return (
-              <div key={type} className="mb-4">
-                <div className="flex items-center gap-2 px-2 py-1 mb-1">
-                  <Icon className="w-4 h-4 text-primary" />
-                  <span className="text-xs font-medium text-foreground capitalize">{type}s</span>
-                  <span className="text-xs text-muted-foreground">({list.length})</span>
-                </div>
-                {list.map(instance => {
-                  const status = reviewStatus(instance);
-                  const source = sourceBadge(instance);
-                  const name = instance.project_asset?.name ?? 'Unknown';
-                  return (
-                    <motion.div
-                      key={instance.id}
-                      whileHover={{ scale: 1.01 }}
-                      className={cn(
-                        'p-3 rounded-lg mb-1 cursor-pointer transition-all',
-                        selectedAsset?.id === instance.id
-                          ? 'bg-primary/10 border border-primary/30'
-                          : 'bg-card/50 border border-border/30 hover:border-border'
-                      )}
-                      onClick={() => onSelectAsset(instance)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Checkbox
-                          checked={selectedForGeneration.includes(instance.id)}
-                          onCheckedChange={() => onToggleSelection(instance.id)}
-                          onClick={e => e.stopPropagation()}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="text-sm font-medium text-foreground truncate">{name}</span>
-                            <Badge variant="secondary" className={cn('text-[10px] shrink-0', statusColors[status])}>
-                              {status === 'locked' && <Lock className="w-2 h-2 mr-1" />}
-                              {status}
-                            </Badge>
-                          </div>
-                          <span className="text-xs text-muted-foreground">{source}</span>
-                        </div>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
-      </ScrollArea>
-
-      <div className="p-4 border-t border-border/50">
-        <Button
-          variant="gold"
-          className="w-full"
-          disabled={selectedForGeneration.length === 0 || isGenerating}
-          onClick={onBulkGenerate}
-        >
-          {isGenerating ? (
-            <>
-              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-              Generating…
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-4 h-4 mr-2" />
-              Generate Scene Starting Visuals ({selectedForGeneration.length})
-            </>
-          )}
-        </Button>
-      </div>
-    </motion.div>
   );
 }
 
@@ -654,6 +512,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
   const [assetDrawerOpen, setAssetDrawerOpen] = useState(false);
   const [costConfirmOpen, setCostConfirmOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isDetecting, setIsDetecting] = useState(false);
   const [newAssetsRequired, setNewAssetsRequired] = useState<SceneAssetRelevanceResult['new_assets_required']>([]);
 
   // Prior scene data for Continuity Header
@@ -708,28 +567,6 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const detectMutation = useMutation({
-    mutationFn: () => sceneAssetService.detectRelevantAssets(projectId, sceneId),
-    onSuccess: async (relevance: SceneAssetRelevanceResult) => {
-      for (const ra of relevance.relevant_assets) {
-        const projectAssetId = ra.project_asset_id;
-        try {
-          await sceneAssetService.createSceneAsset(projectId, {
-            sceneId,
-            projectAssetId,
-            descriptionOverride: ra.starting_description || undefined,
-          });
-        } catch {
-          // Skip duplicates or errors
-        }
-      }
-      if (relevance.new_assets_required?.length) setNewAssetsRequired(relevance.new_assets_required);
-      queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
-      toast.success(`Added ${relevance.relevant_assets.length} relevant asset(s). ${relevance.new_assets_required?.length ?? 0} new assets suggested.`);
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
   const generateImageMutation = useMutation({
     mutationFn: (instanceId: string) => sceneAssetService.generateSceneAssetImage(projectId, sceneId, instanceId),
     onSuccess: () => {
@@ -739,9 +576,31 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const handleDetectAndPopulateAssets = useCallback(() => {
-    detectMutation.mutate();
-  }, [detectMutation]);
+  const handleDetectAndPopulateAssets = useCallback(async () => {
+    setIsDetecting(true);
+    try {
+      const relevance = await sceneAssetService.detectRelevantAssets(projectId, sceneId);
+      const createPromises = relevance.relevant_assets.map(ra =>
+        sceneAssetService.createSceneAsset(projectId, {
+          sceneId,
+          projectAssetId: ra.project_asset_id,
+          descriptionOverride: ra.starting_description ? ra.starting_description : undefined,
+          statusTags: ra.status_tags_inherited ?? [],
+          carryForward: true,
+        })
+      );
+      await Promise.all(createPromises);
+      queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
+      toast.success(`Detected ${relevance.relevant_assets.length} relevant assets`);
+      if (relevance.new_assets_required?.length > 0) {
+        setNewAssetsRequired(relevance.new_assets_required);
+      }
+    } catch (error) {
+      toast.error(`Asset detection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsDetecting(false);
+    }
+  }, [projectId, sceneId, queryClient]);
 
   const handleToggleSelection = useCallback((instanceId: string) => {
     setSelectedForGeneration(prev =>
@@ -820,7 +679,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
         <EmptyStatePanel
           onDetectAssets={handleDetectAndPopulateAssets}
           onAddManually={() => setAssetDrawerOpen(true)}
-          isDetecting={detectMutation.isPending}
+          isDetecting={isDetecting}
         />
         <AssetDrawer
           projectId={projectId}
@@ -850,6 +709,9 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
           onToggleSelection={handleToggleSelection}
           onBulkGenerate={handleBulkGenerateClick}
           isGenerating={isGenerating}
+          newAssetsRequired={newAssetsRequired}
+          onOpenAssetDrawer={() => setAssetDrawerOpen(true)}
+          onIgnoreSuggested={index => setNewAssetsRequired(prev => prev.filter((_, i) => i !== index))}
           onInherit={() => inheritMutation.mutate()}
           isInheriting={inheritMutation.isPending}
         />
