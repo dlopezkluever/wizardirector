@@ -55,6 +55,8 @@ export interface SceneAssetListPanelProps {
   onToggleSelection: (instanceId: string) => void;
   onBulkGenerate: () => void;
   isGenerating: boolean;
+  /** During bulk generation: { completed, total } for progress display */
+  bulkProgress?: { completed: number; total: number } | null;
   /** Suggested assets from relevance agent (not in library); show "Add from library" / "Ignore" */
   newAssetsRequired?: NewAssetRequired[];
   onOpenAssetDrawer?: () => void;
@@ -136,6 +138,7 @@ export function SceneAssetListPanel({
   onToggleSelection,
   onBulkGenerate,
   isGenerating,
+  bulkProgress = null,
   newAssetsRequired = [],
   onOpenAssetDrawer,
   onIgnoreSuggested,
@@ -262,7 +265,9 @@ export function SceneAssetListPanel({
           {isGenerating ? (
             <>
               <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-              Generating ({selectedForGeneration.length})…
+              {bulkProgress
+                ? `Generating (${bulkProgress.completed}/${bulkProgress.total})…`
+                : `Generating (${selectedForGeneration.length})…`}
             </>
           ) : (
             <>
