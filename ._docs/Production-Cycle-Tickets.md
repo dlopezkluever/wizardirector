@@ -67,4 +67,4 @@ Additionally, the "Visual State Description" Would be i deal if could automatica
 
 ## We are trying to make the lives of the animator easier ; master image added should be the key feature added 
 
-## lets discuss the rearview mirror
+## lets discuss the rearview mirror, Is it really all that usefull 
