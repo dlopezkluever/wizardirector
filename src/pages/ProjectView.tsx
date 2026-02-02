@@ -323,6 +323,10 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
           setActiveSceneId(sceneId);
           setSceneStage(stage as SceneStage);
           setCurrentStage(stage);
+          // Restore completedSceneStages so sidebar allows navigating back to Stage 8 after viewing Stage 7
+          setCompletedSceneStages(
+            Array.from({ length: Math.max(0, stage - 7) }, (_, i) => (7 + i) as SceneStage)
+          );
           if (stage === 8 && !sceneIdFromUrl) {
             const newParams = new URLSearchParams(searchParams);
             newParams.set('stage', '8');
@@ -340,6 +344,9 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
     } else if (sceneIdFromUrl && currentStage >= 7) {
       setActiveSceneId(sceneIdFromUrl);
       setSceneStage(currentStage as SceneStage);
+      setCompletedSceneStages(
+        Array.from({ length: Math.max(0, currentStage - 7) }, (_, i) => (7 + i) as SceneStage)
+      );
     }
   }, [searchParams, projectId]);
 
