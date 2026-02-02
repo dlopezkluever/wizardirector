@@ -4,13 +4,22 @@
  * Task 4: 5.2-dev-plan-v1 (740–830)
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { User, MapPin, Package, Lock, RefreshCw, Sparkles, Plus, X, Link2 } from 'lucide-react';
+import { User, MapPin, Package, Lock, RefreshCw, Sparkles, Plus, X, Link2, Search, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuTrigger,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { getTagColors } from '@/lib/constants/statusTags';
 import type { SceneAssetInstance, SceneAssetRelevanceResult } from '@/types/scene';
@@ -48,6 +57,13 @@ const statusColors: Record<string, string> = {
 
 type NewAssetRequired = SceneAssetRelevanceResult['new_assets_required'][number];
 
+export interface AssetFilters {
+  searchQuery: string;
+  tagFilters: string[];
+  hasTagsOnly: boolean;
+  carryForwardOnly: boolean;
+}
+
 export interface SceneAssetListPanelProps {
   assets: SceneAssetInstance[];
   selectedAsset: SceneAssetInstance | null;
@@ -64,6 +80,8 @@ export interface SceneAssetListPanelProps {
   onIgnoreSuggested?: (index: number) => void;
   onInherit?: () => void;
   isInheriting?: boolean;
+  /** Task 4: notify parent when filters change */
+  onFilterChange?: (filters: AssetFilters) => void;
 }
 
 function AssetTypeGroup({
@@ -168,6 +186,13 @@ function AssetTypeGroup({
   );
 }
 
+const defaultFilters: AssetFilters = {
+  searchQuery: '',
+  tagFilters: [],
+  hasTagsOnly: false,
+  carryForwardOnly: false,
+};
+
 export function SceneAssetListPanel({
   assets,
   selectedAsset,
@@ -182,20 +207,69 @@ export function SceneAssetListPanel({
   onIgnoreSuggested,
   onInherit,
   isInheriting,
+  onFilterChange,
 }: SceneAssetListPanelProps) {
+  const [filters, setFilters] = useState<AssetFilters>(defaultFilters);
+
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    assets.forEach(a => {
+      (a.status_tags ?? []).forEach(tag => tagSet.add(tag));
+    });
+    return Array.from(tagSet).sort();
+  }, [assets]);
+
+  const filteredAssets = useMemo(() => {
+    let result = [...assets];
+
+    if (filters.searchQuery) {
+      const q = filters.searchQuery.toLowerCase();
+      result = result.filter(a =>
+        (a.project_asset?.name ?? '').toLowerCase().includes(q)
+      );
+    }
+
+    if (filters.tagFilters.length > 0) {
+      result = result.filter(a =>
+        filters.tagFilters.every(tag => (a.status_tags ?? []).includes(tag))
+      );
+    }
+
+    if (filters.hasTagsOnly) {
+      result = result.filter(a => (a.status_tags?.length ?? 0) > 0);
+    }
+
+    if (filters.carryForwardOnly) {
+      result = result.filter(a => a.carry_forward);
+    }
+
+    return result;
+  }, [assets, filters]);
+
+  const updateFilters = (partial: Partial<AssetFilters>) => {
+    const newFilters = { ...filters, ...partial };
+    setFilters(newFilters);
+    onFilterChange?.(newFilters);
+  };
+
+  const clearFilters = () => {
+    setFilters(defaultFilters);
+    onFilterChange?.(defaultFilters);
+  };
+
   const groupedAssets = useMemo(
     () => ({
-      character: assets.filter(a => (a.project_asset?.asset_type ?? 'prop') === 'character'),
-      location: assets.filter(a => (a.project_asset?.asset_type ?? 'prop') === 'location'),
-      prop: assets.filter(a => (a.project_asset?.asset_type ?? 'prop') === 'prop'),
+      character: filteredAssets.filter(a => (a.project_asset?.asset_type ?? 'prop') === 'character'),
+      location: filteredAssets.filter(a => (a.project_asset?.asset_type ?? 'prop') === 'location'),
+      prop: filteredAssets.filter(a => (a.project_asset?.asset_type ?? 'prop') === 'prop'),
     }),
-    [assets]
+    [filteredAssets]
   );
 
   const order: AssetTypeKey[] = ['character', 'location', 'prop'];
-  const withVisuals = assets.filter(a => a.image_key_url).length;
-  const totalTags = assets.reduce((sum, a) => sum + (a.status_tags?.length ?? 0), 0);
-  const assetsWithTags = assets.filter(a => (a.status_tags?.length ?? 0) > 0).length;
+  const withVisuals = filteredAssets.filter(a => a.image_key_url).length;
+  const totalTags = filteredAssets.reduce((sum, a) => sum + (a.status_tags?.length ?? 0), 0);
+  const assetsWithTags = filteredAssets.filter(a => (a.status_tags?.length ?? 0) > 0).length;
 
   return (
     <motion.div
@@ -206,7 +280,7 @@ export function SceneAssetListPanel({
       <div className="p-4 border-b border-border/50">
         <h2 className="font-display text-lg font-semibold text-foreground">Scene Assets</h2>
         <p className="text-xs text-muted-foreground mt-1">
-          {assets.length} asset{assets.length !== 1 ? 's' : ''} • {withVisuals} with visuals • {assetsWithTags} with tags ({totalTags} total)
+          {filteredAssets.length} asset{filteredAssets.length !== 1 ? 's' : ''} • {withVisuals} with visuals • {assetsWithTags} with tags ({totalTags} total)
         </p>
         {onInherit && (
           <Button
@@ -225,6 +299,112 @@ export function SceneAssetListPanel({
               </>
             )}
           </Button>
+        )}
+      </div>
+
+      <div className="space-y-2 px-4 pb-3 border-b border-border/50">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Search assets by name..."
+            value={filters.searchQuery}
+            onChange={e => updateFilters({ searchQuery: e.target.value })}
+            className="pl-9 pr-9"
+          />
+          {filters.searchQuery && (
+            <button
+              type="button"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              onClick={() => updateFilters({ searchQuery: '' })}
+              aria-label="Clear search"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <Filter className="w-4 h-4" />
+                <span>Filters</span>
+                {(filters.tagFilters.length > 0 || filters.hasTagsOnly || filters.carryForwardOnly) && (
+                  <Badge variant="secondary" className="ml-1 px-1.5 py-0 h-4 text-[10px]">
+                    {filters.tagFilters.length + (filters.hasTagsOnly ? 1 : 0) + (filters.carryForwardOnly ? 1 : 0)}
+                  </Badge>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              <DropdownMenuLabel>Filter by Status</DropdownMenuLabel>
+              <DropdownMenuCheckboxItem
+                checked={filters.hasTagsOnly}
+                onCheckedChange={checked => updateFilters({ hasTagsOnly: !!checked })}
+              >
+                Has any tags
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={filters.carryForwardOnly}
+                onCheckedChange={checked => updateFilters({ carryForwardOnly: !!checked })}
+              >
+                Carry forward enabled
+              </DropdownMenuCheckboxItem>
+
+              {allTags.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Filter by Tags</DropdownMenuLabel>
+                  {allTags.map(tag => (
+                    <DropdownMenuCheckboxItem
+                      key={tag}
+                      checked={filters.tagFilters.includes(tag)}
+                      onCheckedChange={checked => {
+                        updateFilters({
+                          tagFilters: checked
+                            ? [...filters.tagFilters, tag]
+                            : filters.tagFilters.filter(t => t !== tag),
+                        });
+                      }}
+                    >
+                      {tag}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {(filters.searchQuery || filters.tagFilters.length > 0 || filters.hasTagsOnly || filters.carryForwardOnly) && (
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              Clear all
+            </Button>
+          )}
+        </div>
+
+        {filters.tagFilters.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {filters.tagFilters.map(tag => {
+              const colors = getTagColors(tag);
+              return (
+                <Badge
+                  key={tag}
+                  variant="secondary"
+                  className={cn('gap-1 pr-1 border', colors.bg, colors.text, colors.border)}
+                >
+                  {tag}
+                  <button
+                    type="button"
+                    className="rounded-full p-0.5 hover:bg-muted transition-colors"
+                    onClick={() => updateFilters({ tagFilters: filters.tagFilters.filter(t => t !== tag) })}
+                    aria-label={`Remove filter ${tag}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              );
+            })}
+          </div>
         )}
       </div>
 
