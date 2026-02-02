@@ -21,7 +21,7 @@ import {
   Brain,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
-import { SceneAssetListPanel } from '@/components/pipeline/Stage8/SceneAssetListPanel';
+import { SceneAssetListPanel, type AssetFilters } from '@/components/pipeline/Stage8/SceneAssetListPanel';
 import { VisualStateEditorPanel } from '@/components/pipeline/Stage8/VisualStateEditorPanel';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -255,6 +255,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
   const [bulkProgress, setBulkProgress] = useState<{ completed: number; total: number } | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [newAssetsRequired, setNewAssetsRequired] = useState<SceneAssetRelevanceResult['new_assets_required']>([]);
+  const [assetFilters, setAssetFilters] = useState<AssetFilters | null>(null);
 
   // Prior scene data for Continuity Header
   const [priorSceneData, setPriorSceneData] = useState<{
@@ -487,6 +488,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
           onIgnoreSuggested={index => setNewAssetsRequired(prev => prev.filter((_, i) => i !== index))}
           onInherit={() => inheritMutation.mutate()}
           isInheriting={inheritMutation.isPending}
+          onFilterChange={setAssetFilters}
         />
 
         <VisualStateEditorPanel
