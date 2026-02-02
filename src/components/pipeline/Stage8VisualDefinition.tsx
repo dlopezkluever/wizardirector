@@ -248,11 +248,21 @@ interface Stage8VisualDefinitionProps {
 
 export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack }: Stage8VisualDefinitionProps) {
   const queryClient = useQueryClient();
+  // Keep URL in sync so refresh stays on Stage 8 with this scene
+  useEffect(() => {
+    if (sceneId) {
+      const url = new URL(window.location.href);
+      url.searchParams.set('stage', '8');
+      url.searchParams.set('sceneId', sceneId);
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [sceneId]);
   const [selectedAsset, setSelectedAsset] = useState<SceneAssetInstance | null>(null);
   const [selectedForGeneration, setSelectedForGeneration] = useState<string[]>([]);
   const [assetDrawerOpen, setAssetDrawerOpen] = useState(false);
   const [costConfirmOpen, setCostConfirmOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isGeneratingSingle, setIsGeneratingSingle] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ completed: number; total: number } | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [newAssetsRequired, setNewAssetsRequired] = useState<SceneAssetRelevanceResult['new_assets_required']>([]);
@@ -367,14 +377,24 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const generateImageMutation = useMutation({
-    mutationFn: (instanceId: string) => sceneAssetService.generateSceneAssetImage(projectId, sceneId, instanceId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
-      toast.success('Image generation started');
+  // Poll single image job until completed/failed (Issue 1b: image appears without refresh)
+  const pollSingleImageJob = useCallback(
+    async (jobId: string): Promise<void> => {
+      const maxAttempts = 60;
+      const pollIntervalMs = 2000;
+      for (let i = 0; i < maxAttempts; i++) {
+        const job = await sceneAssetService.getImageJobStatus(jobId);
+        if (job.status === 'completed') return;
+        if (job.status === 'failed') {
+          const msg = job.error?.message ?? job.error?.code ?? 'Image generation failed';
+          throw new Error(typeof msg === 'string' ? msg : 'Image generation failed');
+        }
+        await new Promise(r => setTimeout(r, pollIntervalMs));
+      }
+      throw new Error('Image generation timeout');
     },
-    onError: (e: Error) => toast.error(e.message),
-  });
+    []
+  );
 
   const handleDetectAndPopulateAssets = useCallback(async () => {
     setIsDetecting(true);
@@ -425,7 +445,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
         maxAttempts: 60,
         onProgress: (completed, total) => setBulkProgress({ completed, total }),
       });
-      queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
+      await queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
       const completedCount = statuses.filter(s => s.status === 'completed').length;
       const failedCount = statuses.filter(s => s.status === 'failed').length;
       if (failedCount === 0) {
@@ -452,10 +472,20 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
   );
 
   const handleGenerateImage = useCallback(
-    (instanceId: string) => {
-      generateImageMutation.mutate(instanceId);
+    async (instanceId: string) => {
+      setIsGeneratingSingle(true);
+      try {
+        const result = await sceneAssetService.generateSceneAssetImage(projectId, sceneId, instanceId);
+        await pollSingleImageJob(result.jobId);
+        await queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
+        toast.success('Image generated successfully');
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Image generation failed');
+      } finally {
+        setIsGeneratingSingle(false);
+      }
     },
-    [generateImageMutation]
+    [projectId, sceneId, queryClient, pollSingleImageJob]
   );
 
   const handleCreateNewAsset = useCallback(() => {
@@ -556,7 +586,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
           projectId={projectId}
           sceneId={sceneId}
           isUpdating={updateMutation.isPending}
-          isGeneratingImage={generateImageMutation.isPending}
+          isGeneratingImage={isGeneratingSingle}
           inheritedFromSceneNumber={priorSceneData?.sceneNumber ?? null}
         />
 
