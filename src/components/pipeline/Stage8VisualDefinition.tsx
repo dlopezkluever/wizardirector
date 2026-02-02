@@ -23,6 +23,7 @@ import {
 import { Card } from '@/components/ui/card';
 import { SceneAssetListPanel, type AssetFilters } from '@/components/pipeline/Stage8/SceneAssetListPanel';
 import { VisualStateEditorPanel } from '@/components/pipeline/Stage8/VisualStateEditorPanel';
+import { TagCarryForwardPrompt, type TagCarryForwardDecision } from '@/components/pipeline/Stage8/TagCarryForwardPrompt';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -263,11 +264,22 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
     endFrame?: string;
     sceneNumber?: number;
   } | null>(null);
+  const [currentSceneNumber, setCurrentSceneNumber] = useState<number>(0);
+
+  // Tag carry-forward prompt (Task 5, Feature 5.3)
+  const [showTagCarryForwardPrompt, setShowTagCarryForwardPrompt] = useState(false);
+  const [priorInstancesWithTags, setPriorInstancesWithTags] = useState<Array<{
+    instance: SceneAssetInstance;
+    assetName: string;
+  }>>([]);
 
   useEffect(() => {
     if (!projectId || !sceneId) return;
     sceneService.fetchScenes(projectId).then(scenes => {
       const idx = scenes.findIndex(s => s.id === sceneId);
+      if (idx >= 0) {
+        setCurrentSceneNumber(scenes[idx].sceneNumber);
+      }
       if (idx <= 0) return;
       const prior = scenes[idx - 1];
       setPriorSceneData({
@@ -283,6 +295,52 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
     queryFn: () => sceneAssetService.listSceneAssets(projectId, sceneId),
     enabled: Boolean(projectId && sceneId),
   });
+
+  // Task 5: Show tag carry-forward prompt when entering Stage 8 with inherited instances that have tags
+  useEffect(() => {
+    if (!sceneAssets || sceneAssets.length === 0 || !priorSceneData?.sceneNumber) return;
+
+    const inheritedWithTags = sceneAssets.filter(a =>
+      a.inherited_from_instance_id &&
+      (a.status_tags?.length ?? 0) > 0
+    );
+
+    const promptKey = `tag-prompt-${sceneId}`;
+    const alreadyPrompted = localStorage.getItem(promptKey);
+
+    if (inheritedWithTags.length > 0 && !alreadyPrompted) {
+      setPriorInstancesWithTags(
+        inheritedWithTags.map(a => ({
+          instance: a,
+          assetName: a.project_asset?.name ?? 'Unknown',
+        }))
+      );
+      setShowTagCarryForwardPrompt(true);
+    }
+  }, [sceneAssets, priorSceneData?.sceneNumber, sceneId]);
+
+  const handleTagCarryForwardConfirm = useCallback(async (decisions: TagCarryForwardDecision[]) => {
+    try {
+      await Promise.all(
+        decisions.map(decision =>
+          sceneAssetService.updateSceneAsset(projectId, sceneId, decision.instanceId, {
+            statusTags: decision.tagsToCarry,
+            modificationReason: decision.carryAll
+              ? 'Carried forward all tags from prior scene'
+              : decision.tagsToCarry.length === 0
+                ? 'Removed all tags from prior scene'
+                : 'Carried forward selected tags from prior scene',
+          })
+        )
+      );
+      localStorage.setItem(`tag-prompt-${sceneId}`, 'true');
+      queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
+      toast.success('Tag carry-forward applied');
+    } catch (error) {
+      console.error('Tag carry-forward error:', error);
+      toast.error('Failed to apply tag carry-forward');
+    }
+  }, [projectId, sceneId, queryClient]);
 
   const createMutation = useMutation({
     mutationFn: (req: { sceneId: string; projectAssetId: string; descriptionOverride?: string }) =>
@@ -525,6 +583,18 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
         estimatedCredits={selectedForGeneration.length * COST_PER_IMAGE}
         onConfirm={handleBulkGenerateConfirmed}
         isGenerating={isGenerating}
+      />
+
+      <TagCarryForwardPrompt
+        isOpen={showTagCarryForwardPrompt}
+        onClose={() => {
+          setShowTagCarryForwardPrompt(false);
+          localStorage.setItem(`tag-prompt-${sceneId}`, 'true');
+        }}
+        priorSceneNumber={priorSceneData?.sceneNumber ?? 0}
+        currentSceneNumber={currentSceneNumber}
+        priorInstances={priorInstancesWithTags}
+        onConfirm={handleTagCarryForwardConfirm}
       />
     </div>
   );
