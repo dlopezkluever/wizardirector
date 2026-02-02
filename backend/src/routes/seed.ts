@@ -169,7 +169,7 @@ Convert this beat sheet into a complete, industry-standard screenplay with rich 
     const createdTemplates = [];
     for (const template of templates) {
       try {
-        const created = await promptTemplateService.create(template);
+        const created = await promptTemplateService.createTemplate(template);
         createdTemplates.push(created);
         console.log(`✅ Created template: ${template.name}`);
       } catch (error) {

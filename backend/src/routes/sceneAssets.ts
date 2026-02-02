@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { supabase } from '../config/supabase.js';
 import { AssetInheritanceService } from '../services/assetInheritanceService.js';
 import { ImageGenerationService } from '../services/image-generation/ImageGenerationService.js';
+import { SceneAssetRelevanceService } from '../services/sceneAssetRelevanceService.js';
 
 const router = Router();
 
@@ -87,6 +88,53 @@ router.get('/:projectId/scenes/:sceneId/assets', async (req, res) => {
   } catch (err) {
     console.error('[SceneAssets] List error:', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/assets/detect-relevance
+ * AI agent detects which assets are needed for this scene (Stage 8 relevance)
+ */
+router.post('/:projectId/scenes/:sceneId/assets/detect-relevance', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId } = req.params;
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const { data: scene, error: sceneError } = await supabase
+      .from('scenes')
+      .select('id, branch_id')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+
+    if (sceneError || !scene) {
+      return res.status(404).json({ error: 'Scene not found' });
+    }
+
+    const relevanceService = new SceneAssetRelevanceService();
+    const result = await relevanceService.detectRelevantAssets(
+      sceneId,
+      project.active_branch_id
+    );
+
+    res.json(result);
+  } catch (error) {
+    console.error('[SceneAssets] Relevance detection error:', error);
+    res.status(500).json({
+      error: 'Asset relevance detection failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
 });
 

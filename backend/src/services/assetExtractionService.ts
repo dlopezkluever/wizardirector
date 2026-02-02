@@ -122,7 +122,7 @@ export class AssetExtractionService {
       const characters = scene.expected_characters || [];
       if (characters.length === 0) return;
 
-      characters.forEach(char => {
+      characters.forEach((char: string) => {
         const charName = char.trim();
         if (!charName) return;
 
@@ -158,7 +158,7 @@ export class AssetExtractionService {
       const props = scene.expected_props || [];
       if (props.length === 0) return;
 
-      props.forEach(prop => {
+      props.forEach((prop: string) => {
         const propName = prop.trim();
         if (!propName) return;
 
