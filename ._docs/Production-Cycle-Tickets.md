@@ -35,6 +35,11 @@ Like Please read these aspects of the prd and think with me how we can improve t
 
 
 
+Easy Additional Fixes:
+
+## see image "Locked" status should not be a status flag with the rest 
+
+
 More Complex & Open-Ended / Creative Tickets:
 
 
@@ -59,12 +64,22 @@ Modifications: 2 • Last field: image_key_url). See here, wouldn't it be nice t
 ## 2. Broadly Speaking
 
 ## This seems completely disconnected to the shot list scene; like outside of the basic "extraction" that occurs how is the prior information of the "scene" and "shot-list" helping with things like the visual style decription/captions?"
+### If we want highest utility, the "Visual State Description" would function best if they could automatically have the correct "description" generated to describe what the state of the asset needs to be in for the scene, using infrencing from the the context of the scene / shot-list. 
+### If we can couple that feature WITH the selection ability of the Master reference, WHERE the master reference image defualts to the latest "scene Instance image" of said asset (so lets say scene 3 had protaginist put on a disguise; well in scene 4, when in stage 8, the master reference should now be scene inference image from scene 3 (protaginist in disguise); from here the user can choose to edit further; this is where the rearview mirror comes in hand; to be able to see the most recent frames of stage )
 
-## Can't lock and proceed without generating each and every asset; which is annoyingful, as the point of stage 8 is just to add a "final polish" of the assets which you cared about getting right, so if there stuff you don't care about, you could just proceed without worrying about /customizing it; like just move forward
+Would it be best to have assets geneerated with all white/transparent/all black backgrounds, thus only focusing/generating the item/asset of desire, without possibly confusing background noise that's not relevant to the asset when then injected into the generation of frames + videos
+
+
+## Can't Proceed without generating a scene instance image for each and every asset; which is annoying, as the point of stage 8 is just to add a "final polish" of the assets which you cared about getting right, so if there stuff you don't care about, you could just proceed without worrying about /customizing it; like just move forward ... This relates to Stage 5, which forces the users to likewise set every single asset, even if they don't specifically care about each and everyone. Though, with stage 5, there's the argumenet that everything should try to be defined, that way they can be used as source of truth for the future generations
 
 ## 
-Additionally, the "Visual State Description" Would be i deal if could automatically have the correct "description" generated to describe what the state of the asset needed to be in for the scene, using infrencing/ the prior context of the scene "
+
+## 
 
 ## We are trying to make the lives of the animator easier ; master image added should be the key feature added 
 
 ## lets discuss the rearview mirror, Is it really all that usefull 
+
+## Change the Right Side-bar to say "Add new assets", fix the "Create Scene Asset" button to allow for users to actualy create a new asset, not open the asset drawer
+
+## 
