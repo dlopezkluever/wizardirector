@@ -6,12 +6,13 @@
 
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { User, MapPin, Package, Lock, RefreshCw, Sparkles, Plus, X } from 'lucide-react';
+import { User, MapPin, Package, Lock, RefreshCw, Sparkles, Plus, X, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
+import { getTagColors } from '@/lib/constants/statusTags';
 import type { SceneAssetInstance, SceneAssetRelevanceResult } from '@/types/scene';
 
 type AssetTypeKey = 'character' | 'location' | 'prop';
@@ -121,6 +122,43 @@ function AssetTypeGroup({
                   </Badge>
                 </div>
                 <span className="text-xs text-muted-foreground">{source}</span>
+                {/* Status Tags */}
+                {instance.status_tags && instance.status_tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {instance.status_tags.slice(0, 3).map(tag => {
+                      const colors = getTagColors(tag);
+                      return (
+                        <Badge
+                          key={tag}
+                          variant="secondary"
+                          className={cn(
+                            'text-[10px] px-1.5 py-0 h-4 border',
+                            colors.bg,
+                            colors.text,
+                            colors.border
+                          )}
+                        >
+                          {tag}
+                        </Badge>
+                      );
+                    })}
+                    {instance.status_tags.length > 3 && (
+                      <Badge
+                        variant="secondary"
+                        className="text-[10px] px-1.5 py-0 h-4 text-muted-foreground"
+                      >
+                        +{instance.status_tags.length - 3}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+                {/* Carry Forward Indicator (only if tags exist and carry_forward is true) */}
+                {instance.status_tags && instance.status_tags.length > 0 && instance.carry_forward && (
+                  <div className="flex items-center gap-1 mt-1 text-[10px] text-muted-foreground">
+                    <Link2 className="w-3 h-3" />
+                    <span>Will carry forward</span>
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>
@@ -156,6 +194,8 @@ export function SceneAssetListPanel({
 
   const order: AssetTypeKey[] = ['character', 'location', 'prop'];
   const withVisuals = assets.filter(a => a.image_key_url).length;
+  const totalTags = assets.reduce((sum, a) => sum + (a.status_tags?.length ?? 0), 0);
+  const assetsWithTags = assets.filter(a => (a.status_tags?.length ?? 0) > 0).length;
 
   return (
     <motion.div
@@ -166,7 +206,7 @@ export function SceneAssetListPanel({
       <div className="p-4 border-b border-border/50">
         <h2 className="font-display text-lg font-semibold text-foreground">Scene Assets</h2>
         <p className="text-xs text-muted-foreground mt-1">
-          {assets.length} assets • {withVisuals} with visuals
+          {assets.length} asset{assets.length !== 1 ? 's' : ''} • {withVisuals} with visuals • {assetsWithTags} with tags ({totalTags} total)
         </p>
         {onInherit && (
           <Button
