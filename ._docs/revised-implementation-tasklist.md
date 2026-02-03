@@ -269,7 +269,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 \---
 
-\#\# Phase 5: Asset Inheritance & Stage 8
+## Phase 5: Asset Inheritance & Stage 8
 
 \*\*Goal\*\*: Implement stateful asset system. Assets evolve across scenes with condition tracking.
 
@@ -311,7 +311,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 \---
 
-\#\# Phase 6: Prompt Engineering & Stage 9
+## Phase 6: Prompt Engineering & Stage 9
 
 \*\*Goal\*\*: Implement deterministic prompt assembly system. Users can see and edit exact prompts sent to AI models.
 
@@ -360,7 +360,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 
 \---
 
-\#\# Phase 7: Frame Generation & Stage 10
+## Phase 7: Frame Generation & Stage 10
 
 \*\*Goal\*\*: Implement anchor frame generation with continuity checking. Users generate start/end frames to constrain video output.
 

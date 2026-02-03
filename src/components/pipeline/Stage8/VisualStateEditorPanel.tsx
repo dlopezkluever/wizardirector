@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
+import { toast } from 'sonner';
 import {
   User,
   MapPin,
@@ -171,14 +172,18 @@ export function VisualStateEditorPanel({
 
   const handleLock = useCallback(() => {
     if (!selectedAsset) return;
-    const tags = selectedAsset.status_tags ?? [];
-    const withLocked = tags.includes('locked') ? tags : [...tags, 'locked'];
+    if (statusTags.includes('locked')) {
+      toast.info('Asset is already locked');
+      return;
+    }
+    const newTags = [...statusTags, 'locked'];
     onUpdateAsset(selectedAsset.id, {
-      modificationReason: 'Locked by user',
-      statusTags: withLocked,
+      modificationReason: 'Asset locked',
+      statusTags: newTags,
     });
-    setStatusTags(withLocked);
-  }, [selectedAsset, onUpdateAsset]);
+    setStatusTags(newTags);
+    toast.success('Asset locked');
+  }, [selectedAsset, statusTags, onUpdateAsset]);
 
   if (!selectedAsset) {
     return (
@@ -191,7 +196,7 @@ export function VisualStateEditorPanel({
   const assetType = (selectedAsset.project_asset?.asset_type ?? 'prop') as AssetTypeKey;
   const Icon = typeIcons[assetType];
   const name = selectedAsset.project_asset?.name ?? 'Unknown';
-  const isLocked = (selectedAsset.status_tags ?? []).includes('locked');
+  const isLocked = statusTags.includes('locked');
   const showAudit = (selectedAsset.modification_count ?? 0) > 0;
 
   return (

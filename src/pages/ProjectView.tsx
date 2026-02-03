@@ -61,17 +61,23 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
     return projectId && projectId !== 'new' ? `project_${projectId}_stage` : null;
   };
 
-  // Helper function to persist stage to localStorage and URL
+  const getSceneIdStorageKey = (projectId: string | null | undefined) => {
+    return projectId && projectId !== 'new' ? `project_${projectId}_sceneId` : null;
+  };
+
+  // Helper function to persist stage to localStorage and URL (sceneId required for Stage 8)
   const persistStage = (stage: number, sceneId?: string | null) => {
     if (!projectId || projectId === 'new') return;
-    
-    // Persist to localStorage
+
     const storageKey = getStageStorageKey(projectId);
     if (storageKey) {
       localStorage.setItem(storageKey, stage.toString());
     }
+    if (stage >= 7 && sceneId) {
+      const sceneKey = getSceneIdStorageKey(projectId);
+      if (sceneKey) localStorage.setItem(sceneKey, sceneId);
+    }
 
-    // Update URL search params
     const newParams = new URLSearchParams(searchParams);
     newParams.set('stage', stage.toString());
     if (sceneId) {
@@ -143,24 +149,39 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
     hasRestoredStage.current = false;
   }, [projectId]);
 
-  // Restore persisted stage on initial mount (before hydration)
+  // Restore persisted stage on initial mount (before hydration). Stage 8 requires sceneId.
   useEffect(() => {
-    if (projectId === 'new') {
-      return;
-    }
+    if (projectId === 'new') return;
 
-    // Check URL params first (always respect URL)
     const stageFromUrl = searchParams.get('stage');
+    const sceneIdFromUrl = searchParams.get('sceneId');
     let persistedStage: number | null = null;
-    
+    let persistedSceneId: string | null = null;
+
     if (stageFromUrl) {
       const stage = parseInt(stageFromUrl, 10);
       if (!isNaN(stage) && stage >= 1 && stage <= 12) {
         persistedStage = stage;
+        if (stage === 8) {
+          if (sceneIdFromUrl) persistedSceneId = sceneIdFromUrl;
+          else {
+            const sceneKey = getSceneIdStorageKey(projectId);
+            if (sceneKey) persistedSceneId = localStorage.getItem(sceneKey);
+            if (persistedSceneId) {
+              const newParams = new URLSearchParams(searchParams);
+              newParams.set('stage', '8');
+              newParams.set('sceneId', persistedSceneId);
+              setSearchParams(newParams, { replace: true });
+            } else {
+              console.warn('[Stage8] No sceneId for Stage 8, redirecting to Stage 7');
+              persistedStage = 7;
+              persistedSceneId = null;
+            }
+          }
+        } else if (stage >= 7 && sceneIdFromUrl) persistedSceneId = sceneIdFromUrl;
       }
     }
 
-    // Fall back to localStorage if no URL param and we haven't restored yet
     if (persistedStage === null && !hasRestoredStage.current) {
       const storageKey = getStageStorageKey(projectId);
       if (storageKey) {
@@ -169,46 +190,39 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
           const stage = parseInt(storedStage, 10);
           if (!isNaN(stage) && stage >= 1 && stage <= 12) {
             persistedStage = stage;
-            // Update URL to match localStorage
+            if (stage === 8) {
+              const sceneKey = getSceneIdStorageKey(projectId);
+              if (sceneKey) persistedSceneId = localStorage.getItem(sceneKey);
+              if (!persistedSceneId) {
+                persistedStage = 7;
+                persistedSceneId = null;
+              }
+            }
             const newParams = new URLSearchParams(searchParams);
-            newParams.set('stage', stage.toString());
+            newParams.set('stage', persistedStage.toString());
+            if (persistedSceneId) newParams.set('sceneId', persistedSceneId);
             setSearchParams(newParams, { replace: true });
           }
         }
       }
     }
 
-    // Restore if we have a persisted stage and it's different from current
-    // Always respect URL params (user navigation), but use hasRestoredStage to prevent localStorage loops
     if (persistedStage !== null && persistedStage !== currentStage) {
-      // For Stage 6+, restore immediately (no validation needed)
       if (persistedStage > 5) {
         setCurrentStage(persistedStage);
-        // Also restore sceneId if present
-        const sceneIdFromUrl = searchParams.get('sceneId');
-        if (sceneIdFromUrl && persistedStage >= 7) {
-          setActiveSceneId(sceneIdFromUrl);
+        if (persistedSceneId && persistedStage >= 7) {
+          setActiveSceneId(persistedSceneId);
           setSceneStage(persistedStage as SceneStage);
         }
-        // Only mark as restored if we got it from localStorage (not URL)
-        // This allows URL changes to always be respected
-        if (!stageFromUrl) {
-          hasRestoredStage.current = true;
-        }
+        if (!stageFromUrl) hasRestoredStage.current = true;
         return;
       }
-      // For Stage 1-5, we'll validate in the hydration effect
-      // but set it temporarily so it's available
       setCurrentStage(persistedStage);
-      // Only mark as restored if we got it from localStorage (not URL)
-      if (!stageFromUrl) {
-        hasRestoredStage.current = true;
-      }
+      if (!stageFromUrl) hasRestoredStage.current = true;
     } else if (persistedStage === currentStage && !stageFromUrl) {
-      // Already at the correct stage and it came from localStorage
       hasRestoredStage.current = true;
     }
-  }, [projectId, searchParams, setSearchParams]); // Run when projectId or URL changes (removed currentStage to avoid loops)
+  }, [projectId, searchParams, setSearchParams]);
 
   // Hydrate stage progression from database
   useEffect(() => {
@@ -296,28 +310,45 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
     }
   }, [stages, currentStage]);
 
-  // Restore scene context from URL on mount/refresh
+  // Restore scene context from URL on mount/refresh (Stage 8 must have sceneId from URL or localStorage)
   useEffect(() => {
     const sceneIdFromUrl = searchParams.get('sceneId');
     const stageFromUrl = searchParams.get('stage');
-    
+
     if (stageFromUrl) {
       const stage = parseInt(stageFromUrl, 10);
-      if (!isNaN(stage) && stage >= 7 && sceneIdFromUrl) {
-        setActiveSceneId(sceneIdFromUrl);
-        setSceneStage(stage as SceneStage);
-        setCurrentStage(stage); // Don't persist here, already persisted
-      } else if (!isNaN(stage) && stage === 6 && !sceneIdFromUrl) {
-        // Stage 6 (Script Hub) without scene
+      if (!isNaN(stage) && stage >= 7) {
+        const sceneId = sceneIdFromUrl ?? (stage === 8 ? localStorage.getItem(getSceneIdStorageKey(projectId) ?? '') : null);
+        if (sceneId) {
+          setActiveSceneId(sceneId);
+          setSceneStage(stage as SceneStage);
+          setCurrentStage(stage);
+          // Restore completedSceneStages so sidebar allows navigating back to Stage 8 after viewing Stage 7
+          setCompletedSceneStages(
+            Array.from({ length: Math.max(0, stage - 7) }, (_, i) => (7 + i) as SceneStage)
+          );
+          if (stage === 8 && !sceneIdFromUrl) {
+            const newParams = new URLSearchParams(searchParams);
+            newParams.set('stage', '8');
+            newParams.set('sceneId', sceneId);
+            setSearchParams(newParams, { replace: true });
+          }
+        } else if (stage === 6) {
+          setActiveSceneId(null);
+          setCurrentStage(stage);
+        }
+      } else if (!isNaN(stage) && stage === 6) {
         setActiveSceneId(null);
-        setCurrentStage(stage); // Don't persist here, already persisted
+        setCurrentStage(stage);
       }
     } else if (sceneIdFromUrl && currentStage >= 7) {
-      // Legacy support: sceneId without stage param
       setActiveSceneId(sceneIdFromUrl);
       setSceneStage(currentStage as SceneStage);
+      setCompletedSceneStages(
+        Array.from({ length: Math.max(0, currentStage - 7) }, (_, i) => (7 + i) as SceneStage)
+      );
     }
-  }, [searchParams]);
+  }, [searchParams, projectId]);
 
   const handleStageComplete = async (stageNumber: number) => {
     try {

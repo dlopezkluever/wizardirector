@@ -4,7 +4,7 @@
  * When carry_forward is true, this instance's state (including status_tags) is used as starting state for next scene.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Tag, Plus, X, Link2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -38,6 +38,11 @@ export function StatusTagsEditor({
   const [inputValue, setInputValue] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+
+  useEffect(() => {
+    setSelectedIndex(-1);
+  }, [suggestions]);
 
   const handleAddTag = (tag?: string) => {
     const trimmed = (tag ?? inputValue).trim().toLowerCase();
@@ -62,6 +67,48 @@ export function StatusTagsEditor({
 
   const handleRemoveTag = (tag: string) => {
     onChange(tags.filter((t) => t !== tag));
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSuggestions || suggestions.length === 0) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleAddTag();
+      }
+      return;
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedIndex((prev) =>
+          prev < suggestions.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : -1));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (selectedIndex >= 0) {
+          handleAddTag(suggestions[selectedIndex]);
+        } else {
+          handleAddTag();
+        }
+        break;
+      case 'Tab':
+        if (selectedIndex < 0 && suggestions.length > 0) {
+          e.preventDefault();
+          handleAddTag(suggestions[0]);
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setShowSuggestions(false);
+        setSelectedIndex(-1);
+        break;
+    }
   };
 
   return (
@@ -106,32 +153,45 @@ export function StatusTagsEditor({
               <Input
                 value={inputValue}
                 onChange={(e) => handleInputChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddTag();
-                  }
-                  if (e.key === 'Escape') {
-                    setShowSuggestions(false);
-                  }
-                }}
+                onKeyDown={handleKeyDown}
                 onFocus={() => {
                   if (inputValue.trim()) setShowSuggestions(true);
                 }}
                 onBlur={() => {
                   setTimeout(() => setShowSuggestions(false), 200);
                 }}
+                role="combobox"
+                aria-expanded={showSuggestions}
+                aria-controls="tag-suggestions-list"
+                aria-activedescendant={
+                  selectedIndex >= 0
+                    ? `tag-suggestion-${selectedIndex}`
+                    : undefined
+                }
                 placeholder="Add tag (e.g. muddy, torn, bloody)"
               />
               {showSuggestions && suggestions.length > 0 && (
-                <div className="absolute z-10 w-full mt-1 rounded-lg border border-border bg-card shadow-lg">
+                <div
+                  id="tag-suggestions-list"
+                  role="listbox"
+                  className="absolute z-10 w-full mt-1 rounded-lg border border-border bg-card shadow-lg"
+                >
                   <div className="p-1 space-y-0.5 max-h-48 overflow-y-auto">
-                    {suggestions.map((suggestion) => (
+                    {suggestions.map((suggestion, idx) => (
                       <button
                         key={suggestion}
+                        id={`tag-suggestion-${idx}`}
+                        role="option"
+                        aria-selected={idx === selectedIndex}
                         type="button"
-                        className="w-full text-left px-3 py-1.5 text-sm rounded hover:bg-muted transition-colors"
+                        className={cn(
+                          'w-full text-left px-3 py-1.5 text-sm rounded transition-colors',
+                          idx === selectedIndex
+                            ? 'bg-primary text-primary-foreground'
+                            : 'hover:bg-muted'
+                        )}
                         onClick={() => handleAddTag(suggestion)}
+                        onMouseEnter={() => setSelectedIndex(idx)}
                       >
                         {suggestion}
                       </button>

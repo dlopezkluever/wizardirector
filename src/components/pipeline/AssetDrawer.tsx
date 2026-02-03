@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   User, MapPin, Package, Search, X, Loader2, 
-  Grid3x3, List, Copy, Check
+  Grid3x3, List, Copy, Check, Frown
 } from 'lucide-react';
 
 import {
@@ -45,6 +46,11 @@ interface AssetDrawerProps {
   onSceneInstanceCreated?: (instance: SceneAssetInstance) => void;
 }
 
+type AssetSource = 'project' | 'global';
+
+/** Display shape shared by GlobalAsset and ProjectAsset in the list */
+type DrawerAsset = GlobalAsset | ProjectAsset;
+
 const assetTypeConfig: Record<AssetType, { icon: any; label: string; color: string }> = {
   character: {
     icon: User,
@@ -72,8 +78,7 @@ export const AssetDrawer = ({
   sceneId,
   onSceneInstanceCreated,
 }: AssetDrawerProps) => {
-  const [assets, setAssets] = useState<GlobalAsset[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [source, setSource] = useState<AssetSource>('project');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<AssetType | 'all'>(filterType || 'all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -82,60 +87,59 @@ export const AssetDrawer = ({
   const [selectedGlobalAsset, setSelectedGlobalAsset] = useState<GlobalAsset | null>(null);
   const [extractedAssets, setExtractedAssets] = useState<ProjectAsset[]>([]);
 
-  // Fetch assets when drawer opens
-  useEffect(() => {
-    if (isOpen) {
-      fetchAssets();
-    } else {
-      // Reset state when drawer closes
-      setAssets([]);
-      setSearchQuery('');
-      setSelectedType(filterType || 'all');
-    }
-  }, [isOpen, filterType]);
+  const { data: projectAssets = [], isLoading: loadingProject } = useQuery({
+    queryKey: ['project-assets', projectId],
+    queryFn: () => projectAssetService.listAssets(projectId),
+    enabled: isOpen && source === 'project',
+  });
 
-  const fetchAssets = async () => {
-    setLoading(true);
-    try {
-      const filter: { type?: AssetType; searchQuery?: string } = {};
-      if (selectedType !== 'all') {
-        filter.type = selectedType as AssetType;
-      }
-      if (searchQuery) {
-        filter.searchQuery = searchQuery;
-      }
+  const { data: globalAssets = [], isLoading: loadingGlobal } = useQuery({
+    queryKey: ['global-assets'],
+    queryFn: () => assetService.listAssets(),
+    enabled: isOpen && source === 'global',
+  });
 
-      const fetchedAssets = await assetService.listAssets(filter);
-      setAssets(fetchedAssets);
-    } catch (error) {
-      console.error('Failed to fetch assets:', error);
-      toast.error('Failed to load assets from global library');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const assets: DrawerAsset[] = source === 'project' ? projectAssets : globalAssets;
+  const loading = source === 'project' ? loadingProject : loadingGlobal;
 
-  // Filter assets based on search query
   const filteredAssets = useMemo(() => {
-    let filtered = assets;
-
-    // Apply search filter
+    let filtered = [...assets];
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(
-        (asset) =>
-          asset.name.toLowerCase().includes(query) ||
-          asset.description.toLowerCase().includes(query)
+        (a) =>
+          a.name.toLowerCase().includes(query) ||
+          (a.description ?? '').toLowerCase().includes(query)
       );
     }
-
-    // Apply type filter
     if (selectedType !== 'all') {
-      filtered = filtered.filter((asset) => asset.asset_type === selectedType);
+      filtered = filtered.filter((a) => a.asset_type === selectedType);
     }
-
     return filtered;
   }, [assets, searchQuery, selectedType]);
+
+  const handleSelectProjectAsset = async (asset: ProjectAsset) => {
+    if (!sceneId || !onSceneInstanceCreated) {
+      toast.info('Asset already in project');
+      onClose();
+      return;
+    }
+    try {
+      const instance = await sceneAssetService.createSceneAsset(projectId, {
+        sceneId,
+        projectAssetId: asset.id,
+        descriptionOverride: null,
+        statusTags: [],
+        carryForward: true,
+      });
+      onSceneInstanceCreated(instance);
+      toast.success(`Added ${asset.name} to scene`);
+      onClose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to add asset to scene';
+      toast.error(msg);
+    }
+  };
 
   /** When scene context is provided, create a scene_asset_instance after we have a project asset. */
   const ensureSceneInstanceIfNeeded = async (projectAsset: ProjectAsset): Promise<SceneAssetInstance | null> => {
@@ -236,13 +240,43 @@ export const AssetDrawer = ({
       <DrawerContent className="h-[90vh]">
         <DrawerHeader className="border-b">
           <div className="flex items-center justify-between">
-            <div>
-              <DrawerTitle>Browse Global Asset Library</DrawerTitle>
+            <div className="flex-1 min-w-0">
+              <DrawerTitle className="flex flex-wrap items-center gap-2">
+                <span>Asset Library</span>
+                <div className="flex items-center rounded-lg border border-border p-1 bg-muted/50 text-sm font-normal">
+                  <button
+                    type="button"
+                    className={cn(
+                      'px-3 py-1 rounded transition-colors text-xs',
+                      source === 'project'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                    onClick={() => setSource('project')}
+                  >
+                    Project Assets
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      'px-3 py-1 rounded transition-colors text-xs',
+                      source === 'global'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                    onClick={() => setSource('global')}
+                  >
+                    Global Library
+                  </button>
+                </div>
+              </DrawerTitle>
               <DrawerDescription>
-                Clone assets from your global library into this project
+                {source === 'project'
+                  ? 'Assets from Stage 5 (Master Assets for this project)'
+                  : 'Curated global asset library (shared across all projects)'}
               </DrawerDescription>
             </div>
-            <Button variant="ghost" size="icon" onClick={onClose}>
+            <Button variant="ghost" size="icon" onClick={onClose} className="shrink-0">
               <X className="h-4 w-4" />
             </Button>
           </div>
@@ -314,15 +348,28 @@ export const AssetDrawer = ({
               </div>
             ) : filteredAssets.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="rounded-full bg-muted p-6 mb-4">
-                  <Package className="h-12 w-12 text-muted-foreground" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2">No assets found</h3>
-                <p className="text-muted-foreground max-w-md">
-                  {searchQuery || selectedType !== 'all'
-                    ? 'Try adjusting your search or filters'
-                    : 'Create assets in the Global Library to clone them here'}
-                </p>
+                {source === 'project' ? (
+                  <>
+                    <Frown className="w-16 h-16 text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No Project Assets Yet</h3>
+                    <p className="text-sm text-muted-foreground max-w-sm mb-4">
+                      Project assets are created in Stage 5 (Master Assets). Switch to Global Library to browse and clone assets.
+                    </p>
+                    <Button variant="outline" onClick={() => setSource('global')}>
+                      Browse Global Library
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Frown className="w-16 h-16 text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No Assets Found</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {searchQuery || selectedType !== 'all'
+                        ? 'Try adjusting your search or filters.'
+                        : 'Create assets in the Global Library to clone them here.'}
+                    </p>
+                  </>
+                )}
               </div>
             ) : (
               <div className={cn(
@@ -334,11 +381,12 @@ export const AssetDrawer = ({
                   {filteredAssets.map((asset) => {
                     const config = assetTypeConfig[asset.asset_type];
                     const Icon = config.icon;
-                    const isCloning = cloningAssetId === asset.id;
+                    const isGlobal = source === 'global';
+                    const isCloning = isGlobal && cloningAssetId === asset.id;
 
                     return (
                       <motion.div
-                        key={asset.id}
+                        key={`${source}-${asset.id}`}
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.95 }}
@@ -374,35 +422,47 @@ export const AssetDrawer = ({
                           <CardHeader className="flex-1">
                             <CardTitle className="line-clamp-1">{asset.name}</CardTitle>
                             <CardDescription className="line-clamp-2">
-                              {asset.description}
+                              {asset.description ?? ''}
                             </CardDescription>
                           </CardHeader>
 
                           <CardContent className="pt-0 space-y-3">
                             <div className="flex items-center justify-between text-xs text-muted-foreground">
-                              <span>v{asset.version}</span>
+                              <span>
+                                {'version' in asset && asset.version != null ? `v${asset.version}` : '—'}
+                              </span>
                               <span>{new Date(asset.created_at).toLocaleDateString()}</span>
                             </div>
 
-                            {/* Clone Button */}
-                            <Button
-                              onClick={() => handleCloneAsset(asset)}
-                              disabled={isCloning}
-                              className="w-full"
-                              size="sm"
-                            >
-                              {isCloning ? (
-                                <>
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                  Cloning...
-                                </>
-                              ) : (
-                                <>
-                                  <Copy className="mr-2 h-4 w-4" />
-                                  Clone to Project
-                                </>
-                              )}
-                            </Button>
+                            {source === 'project' ? (
+                              <Button
+                                onClick={() => handleSelectProjectAsset(asset as ProjectAsset)}
+                                className="w-full"
+                                size="sm"
+                              >
+                                <Copy className="mr-2 h-4 w-4" />
+                                Add to Scene
+                              </Button>
+                            ) : (
+                              <Button
+                                onClick={() => handleCloneAsset(asset as GlobalAsset)}
+                                disabled={isCloning}
+                                className="w-full"
+                                size="sm"
+                              >
+                                {isCloning ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Cloning...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="mr-2 h-4 w-4" />
+                                    Clone to Project
+                                  </>
+                                )}
+                              </Button>
+                            )}
                           </CardContent>
                         </Card>
                       </motion.div>
