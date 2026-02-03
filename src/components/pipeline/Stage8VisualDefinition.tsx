@@ -300,6 +300,13 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
     }).catch(() => {});
   }, [projectId, sceneId]);
 
+  const { data: scenes } = useQuery({
+    queryKey: ['scenes', projectId],
+    queryFn: () => sceneService.fetchScenes(projectId),
+    enabled: !!projectId,
+  });
+  const currentScene = scenes?.find(s => s.id === sceneId);
+
   const { data: sceneAssets = [], isLoading, refetch } = useQuery({
     queryKey: ['scene-assets', projectId, sceneId],
     queryFn: () => sceneAssetService.listSceneAssets(projectId, sceneId),
@@ -532,6 +539,26 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
   if (sceneAssets.length === 0) {
     return (
       <div className="flex-1 flex flex-col overflow-hidden">
+        {currentScene && (
+          <div className="px-6 py-3 border-b border-border/50 bg-card/30 backdrop-blur-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Badge variant="secondary" className="text-sm font-mono">
+                  Scene {currentScene.sceneNumber}
+                </Badge>
+                <h2 className="text-lg font-semibold">
+                  {currentScene.slug}
+                </h2>
+              </div>
+              <Badge
+                variant={currentScene.status === 'shot_list_ready' ? 'default' : 'outline'}
+                className="text-xs"
+              >
+                {currentScene.status.replace(/_/g, ' ')}
+              </Badge>
+            </div>
+          </div>
+        )}
         <ContinuityHeader
           priorSceneEndState={priorSceneData?.endState}
           priorEndFrame={priorSceneData?.endFrame}
@@ -555,6 +582,26 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      {currentScene && (
+        <div className="px-6 py-3 border-b border-border/50 bg-card/30 backdrop-blur-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Badge variant="secondary" className="text-sm font-mono">
+                Scene {currentScene.sceneNumber}
+              </Badge>
+              <h2 className="text-lg font-semibold">
+                {currentScene.slug}
+              </h2>
+            </div>
+            <Badge
+              variant={currentScene.status === 'shot_list_ready' ? 'default' : 'outline'}
+              className="text-xs"
+            >
+              {currentScene.status.replace(/_/g, ' ')}
+            </Badge>
+          </div>
+        </div>
+      )}
       <ContinuityHeader
         priorSceneEndState={priorSceneData?.endState}
         priorEndFrame={priorSceneData?.endFrame}
