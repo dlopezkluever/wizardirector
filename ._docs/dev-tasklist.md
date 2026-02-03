@@ -559,3 +559,78 @@ Implement "Conflict Resolution UIs," "Visual Diffs," and "Version History/Rollba
 \- \[ \] Implement cost estimation for invalidations
 
 \*\*Deliverable\*\*: Users can create experimental branches to try narrative changes without losing completed work. The system tracks all versions and provides visual history for navigation.
+
+
+\#\# Phase 11: UI/UX Polish — **SIMPLIFIED** (per scope-change)
+
+\*\*Goal\*\*: Basic loading states, error handling, and keyboard shortcuts only. No animations/transitions, onboarding, help system, or mobile-specific polish for MVP.
+
+\#\#\# Feature 11.1: Basic Loading States & Error Handling  
+\*\*Purpose\*\*: Reliable feedback during async operations  
+\- \[ \] Add loading states for key actions (save, regenerate, generate)  
+\- \[ \] Implement clear error handling and user-visible error messages  
+\- \[ \] Add basic progress indication where appropriate  
+\- \[ \] *Defer: Framer Motion, micro-interactions, page transitions*
+
+\#\#\# Feature 11.2: Keyboard Shortcuts  
+\*\*Purpose\*\*: Power user efficiency for common actions  
+\- \[ \] Implement keyboard shortcut system  
+\- \[ \] Add stage navigation shortcuts  
+\- \[ \] Create action shortcuts (save, regenerate, etc.)  
+\- \[ \] *Defer: shortcut help modal, customizable key bindings*
+
+\*\*Scope\*\*: Per scope-change—Animation/Transitions, Onboarding, Advanced Editing, Mobile Responsiveness **deferred**. Keep only loading states, error handling, keyboard shortcuts.
+
+\*\*Deliverable\*\*: Basic polish: loading states, error handling, and keyboard shortcuts for common actions. Advanced UX (onboarding, animations, help system, mobile) deferred.
+
+\---
+
+\#\# Phase 12: Export & Project Finalization — **SIMPLIFIED** (per scope-change)
+
+\*\*Goal\*\*: Single-format video export (MP4 only) for MVP. Defer NLE, asset packages, audio stems, archival.
+
+\#\#\# Feature 12.1: Video Export (MP4 only)  
+\*\*Purpose\*\*: Package final video as MP4  
+\- \[ \] Implement MP4 video export  
+\- \[ \] Create project export API endpoint  
+\- \[ \] Build export job queue (or inline)  
+\- \[ \] Implement export progress tracking  
+\- \[ \] *Defer: ProRes, WebM, high-bitrate options*
+
+\#\#\# Features 12.2–12.5 — **DEFER**  
+\*\*Scope\*\*: NLE Integration (EDL/XML), Asset Package Export (ZIP), Audio Stems, Project Archival **deferred** to post-launch per scope-change.
+
+\*\*Deliverable\*\*: Users can export final video as MP4. Advanced export (NLE, asset packages, archival) deferred.
+
+\---
+
+\#\# Phase 13: Performance Optimization — **DEFER (partial)** per scope-change
+
+\*\*Goal\*\*: Keep only basic database indexes. Defer all other optimization until you have performance problems.
+
+\#\#\# Feature 13.1: Database Optimization (MVP only)  
+\*\*Purpose\*\*: Basic indexes for hot queries  
+\- \[ \] Add database indexes for hot queries (projects, branches, stage_states, key FKs)  
+\- \[ \] *Defer: frontend code splitting, Redis/caching, CDN, job optimization, read replicas*
+
+\*\*Scope\*\*: Per scope-change—"Keep Feature 13.1 (Database Optimization) - Basic indexes only. Defer all others until you have performance problems."
+
+\*\*Deliverable\*\*: Critical queries indexed. Broader performance work deferred until needed.
+
+\---
+
+\#\# Phase 14: Monitoring & Observability — **SIMPLIFIED** (per scope-change)
+
+\*\*Goal\*\*: Error tracking with Sentry only. Defer APM, LangSmith, cost analytics, user analytics, audit logging.
+
+\#\#\# Feature 14.1: Error Tracking (Sentry)  
+\*\*Purpose\*\*: Catch and track production errors  
+\- \[ \] Integrate Sentry (or similar) for frontend and backend  
+\- \[ \] Ensure health check endpoints exist  
+\- \[ \] *Defer: APM, LangSmith regression testing, cost analytics, user analytics, audit logging*
+
+\*\*Scope\*\*: Per scope-change—"Just add Sentry. Done." Features 14.2–14.5 deferred.
+
+\*\*Deliverable\*\*: Crashes and errors reported to Sentry. Broader observability deferred.
+
+\---
