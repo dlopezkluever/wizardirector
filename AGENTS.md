@@ -30,7 +30,7 @@
 - **Frontend**: React 18 + TypeScript + Vite + shadcn/ui + Zustand + React Query
 - **Backend**: Express + TypeScript + Supabase + LLM integrations (OpenAI, Anthropic, Gemini)
 - **Database**: Supabase PostgreSQL with RLS policies + S3-compatible storage
-- **AI Services**: Google Veo3 (video), Nano Banana (images), ElevenLabs (voice, optional)
+- **AI Services**: Google Veo3 (video), Gemini/Nano Banana (images), ElevenLabs (voice, optional)
 
 **Key Directories**:
 - `src/` - Frontend components, stores, services, types

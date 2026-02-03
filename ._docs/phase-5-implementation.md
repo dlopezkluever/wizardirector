@@ -160,7 +160,9 @@ Because 015/016 are already in use, this is a **new** migration (017) instead of
 No new linter issues were reported. After you run migration 017, updates to scene asset instances will get an audit trail (count, last field, and optional reason).
 
 
-# IMPLEMENTNTAION SUMMARY: Feature 5.2: Stage 8 \- Visual Definition UI  
+# **5.2 IMPLEMENTNTAION SUMMARY**:
+
+Feature 5.2: Stage 8 \- Visual Definition UI  
 \*\*Purpose\*\*: Define scene starting visual state  
 \- \[ \] Create Scene Visual Elements panel  
 \- \[ \] Build Visual State Editor with pre-filled descriptions  
@@ -263,9 +265,6 @@ Auth uses `supabase.auth.getSession()` and `Authorization: Bearer` on all reques
 - `src/lib/services/sceneAssetService.ts` (new)
 - `src/components/pipeline/Stage8VisualDefinition.tsx` (rewritten: real API, continuity header, empty state, three panels, drawer, cost stub)
 - `src/pages/ProjectView.tsx` (pass `projectId` and guard with `activeSceneId` for Stage 8)
-
------------------------------
-# Task
 
 Summary of what was implemented:
 
@@ -451,7 +450,7 @@ ________________________________________________________________
 \- \[ \] Add tag-based search and filtering
 
 
-# **IMPLEMENTATION SUMMARY**:
+# **5.3 IMPLEMENTATION SUMMARY**:
 
 Task 1: Ran MIGRATION: 016_...-.sql
 ---
@@ -599,3 +598,199 @@ Because 015/016 are already in use, this is a **new** migration (017) instead of
 - **`UpdateSceneAssetInstanceRequest`**: added optional `modificationReason?: string | null` for the audit reason.
 
 No new linter issues were reported. After you run migration 017, updates to scene asset instances will get an audit trail (count, last field, and optional reason).
+
+-------------------------------
+# **5.3b Issues**  
+
+## Implementation Summary (Issues 1a & 1b)
+
+### Issue 1a: Stage 8 redirect on refresh
+
+**Problem:** Refreshing on Stage 8 sent users back to Stage 7 because `sceneId` was missing from the URL and restoration didn’t handle Stage 8 correctly.
+
+**Changes:**
+
+1. **`src/pages/ProjectView.tsx`**
+   - **Persistence:** `getSceneIdStorageKey()` added. `persistStage(stage, sceneId)` now writes `project_${projectId}_sceneId` to localStorage when `stage >= 7` and `sceneId` is provided.
+   - **Restoration:** Restore effect now:
+     - For **Stage 8 from URL**: if `sceneId` is missing, reads `sceneId` from localStorage, updates URL with `sceneId`, and uses it; if still no `sceneId`, falls back to Stage 7 and logs a warning.
+     - For **Stage 8 from localStorage**: restores `sceneId` from localStorage; if missing, uses Stage 7 instead of 8.
+     - Sets `activeSceneId` and `sceneStage` whenever a valid Stage 8 + `sceneId` is restored.
+   - **Scene context effect:** When `stage >= 7`, `sceneId` can come from URL or, for Stage 8, from localStorage; URL is updated with `sceneId` when it was restored from localStorage.
+
+2. **`src/components/pipeline/Stage8VisualDefinition.tsx`**
+   - **URL sync:** `useEffect` on `sceneId` that calls `window.history.replaceState` to set `?stage=8&sceneId=...` so the current Stage 8 scene is reflected in the URL (and survives refresh).
+
+**Result:** Refreshing on Stage 8 keeps you on Stage 8 with the same scene; opening a link with `?stage=8&sceneId=...` or restoring from localStorage also works.
+
+---
+
+### Issue 1b: Generated images not appearing without refresh
+
+**Problem:** After single or bulk image generation, new images didn’t show until a manual refresh because there was no polling for single jobs and no cache invalidation after bulk polling.
+
+**Changes (all in `src/components/pipeline/Stage8VisualDefinition.tsx`):**
+
+1. **Single image**
+   - Replaced the “fire-and-forget” `generateImageMutation` with an async flow:
+     - Call `sceneAssetService.generateSceneAssetImage(...)` to get `jobId`.
+     - New `pollSingleImageJob(jobId)` helper: polls `getImageJobStatus(jobId)` every 2s, up to 60 attempts; resolves on `completed`, throws on `failed` or timeout.
+     - After polling completes successfully: `await queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] })` and show success toast; on error, show error toast.
+   - Added `isGeneratingSingle` state; the panel’s “Generate Image” uses `isGeneratingImage={isGeneratingSingle}` so the button shows loading during the full poll.
+
+2. **Bulk images**
+   - Existing `handleBulkGenerateConfirmed` already called `queryClient.invalidateQueries` after `pollBulkImageJobs`. Change: added `await` so the refetch is triggered before clearing bulk progress state.
+
+**Result:** Single and bulk generated images show in the UI as soon as jobs complete, without a manual refresh.
+
+ADDITIONAL FIX FOR Issue 1a +1b - Summary of the change:
+
+**`src/pages/ProjectView.tsx`**
+
+1. **When restoring from URL** (e.g. `?stage=8&sceneId=...` or after refresh): after setting `sceneStage` and `currentStage`, we now set `completedSceneStages` to the list of scene stages before the restored one:
+   - Restore to Stage 7 → `[]`
+   - Restore to Stage 8 → `[7]`
+   - Restore to Stage 9 → `[7, 8]`, etc.
+
+2. **In the fallback branch** (when we have `sceneIdFromUrl` and `currentStage >= 7` but no `stage` in the URL): we set `completedSceneStages` the same way from `currentStage`.
+
+So after a refresh on Stage 8 (or opening a link with `stage=8`), `completedSceneStages` is `[7]`. If you then go to Stage 7 to review, the sidebar still has Stage 7 as “completed,” so Stage 8 is no longer locked and you can click the Stage 8 icon to go back without unlocking/relocking Stage 7.
+---
+
+## Issue 2a: Status Tags Wiped When Locking Asset — Implementation Summary
+
+**Root cause**  
+Lock used `selectedAsset.status_tags`, which could be stale because tag edits go through `StatusTagsEditor` and the parent’s `selectedAsset` only updates after a refetch. Lock then sent only `['locked']` (or an outdated list), so the backend overwrote the real tags.
+
+**Changes made**
+
+1. **`src/components/pipeline/Stage8/VisualStateEditorPanel.tsx`**
+   - **`handleLock`**  
+     - Uses local state **`statusTags`** instead of `selectedAsset.status_tags` so the payload is always the current tags (including any just added).  
+     - Builds `newTags = [...statusTags, 'locked']` and sends that full array to the backend.  
+     - If already locked, shows `toast.info('Asset is already locked')` and returns.  
+     - After calling `onUpdateAsset`, updates local state with `setStatusTags(newTags)` and shows `toast.success('Asset locked')`.
+   - **`isLocked`**  
+     - Now derived from **`statusTags`** (`statusTags.includes('locked')`) so the UI stays in sync with local state and doesn’t rely on stale `selectedAsset.status_tags`.
+   - **Imports**  
+     - Added `import { toast } from 'sonner'` for the new toasts.
+
+**Already correct (no code changes)**  
+- Local state for tags (`statusTags`) and sync from `selectedAsset` in `useEffect` were already in place.  
+- `handleStatusTagsChange` already updates `statusTags` and calls `onUpdateAsset` with the full new list.  
+- `Stage8VisualDefinition` already invalidates the scene-assets query on `updateMutation.onSuccess`, so refetched data stays in sync.  
+- Backend PUT in `sceneAssets.ts` already writes `payload.status_tags = updates.statusTags`; the fix is on the frontend sending the full array.
+
+**How to verify**  
+- Add tags (e.g. `muddy`, `bloody`) to an asset, then click **Lock Asset**.  
+- Tags should remain `['muddy', 'bloody', 'locked']` in the UI and after refresh.  
+- Locking again should show “Asset is already locked” and not duplicate `locked`.
+
+---
+
+## Implementation Summary: Issue 3a/3b – Project Assets in Asset Drawer
+
+**Goal:** Asset Drawer defaults to **Project Assets** (Stage 5) with a toggle to **Global Library**, and selecting a project asset adds it to the scene without cloning.
+
+**File updated:** `src/components/pipeline/AssetDrawer.tsx`
+
+### 1. Source and data
+
+- **`AssetSource`:** `'project' | 'global'`.
+- **`DrawerAsset`:** `GlobalAsset | ProjectAsset` for unified list rendering.
+- **State:** `source` with default `'project'`.
+- **Data:**  
+  - Project: `useQuery(['project-assets', projectId], projectAssetService.listAssets(projectId))` when `isOpen && source === 'project'`.  
+  - Global: `useQuery(['global-assets'], assetService.listAssets())` when `isOpen && source === 'global'`.  
+- **Derived:** `assets = source === 'project' ? projectAssets : globalAssets`, single `loading` from the active query.
+
+### 2. Header and toggle
+
+- Title: **"Asset Library"** with an inline toggle: **Project Assets** | **Global Library** (pill style, active state).
+- Description:  
+  - Project: *"Assets from Stage 5 (Master Assets for this project)"*.  
+  - Global: *"Curated global asset library (shared across all projects)"*.
+
+### 3. Project asset selection
+
+- **`handleSelectProjectAsset(asset: ProjectAsset)`:**  
+  - If no `sceneId`/`onSceneInstanceCreated`: toast *"Asset already in project"*, then `onClose()`.  
+  - Else: `sceneAssetService.createSceneAsset(projectId, { sceneId, projectAssetId: asset.id, ... })`, call `onSceneInstanceCreated(instance)`, toast *"Added {name} to scene"*, then `onClose()`.
+
+### 4. List behavior
+
+- **Filtering:** Same search and type filter for both sources; `filteredAssets` uses `(a.description ?? '')` so both types are safe.
+- **Cards:**  
+  - **Project:** Button **"Add to Scene"** → `handleSelectProjectAsset(asset)`.  
+  - **Global:** Button **"Clone to Project"** → existing `handleCloneAsset(asset)` (and match modal when applicable).  
+- **Version:** Shown as `v{version}` for global assets; `—` for project assets (`'version' in asset` check).
+- **Keys:** `key={\`${source}-${asset.id}\`}` so project vs global don’t reuse the same key.
+
+### 5. Empty states
+
+- **Project, no assets:** Frown icon, *"No Project Assets Yet"*, short explanation, and **"Browse Global Library"** button that sets `source` to `'global'`.
+- **Global, no assets:** Frown icon, *"No Assets Found"*, and text that depends on whether search/filters are applied.
+
+### 6. Dependencies
+
+- **Imports:** `useQuery` from `@tanstack/react-query`, `Frown` from `lucide-react`; removed `useEffect` (no manual fetch).
+- **Stage8VisualDefinition:** Unchanged; it already passes `projectId`, `sceneId`, and `onSceneInstanceCreated` to `AssetDrawer`.
+
+**Result:** Opening the Asset Drawer from Stage 8 shows **Project Assets** first; users can add them to the scene with one click or switch to **Global Library** to clone global assets. Search and type filters work for both sources, and empty states guide users appropriately.
+
+---
+
+## Issue 5: Scene slug & number in Stage 8 UI — done
+
+**Changes in `src/components/pipeline/Stage8VisualDefinition.tsx`:**
+
+1. **Scenes query and current scene**
+   - Added `useQuery` for `['scenes', projectId]` calling `sceneService.fetchScenes(projectId)` when `projectId` is set.
+   - Derived `currentScene = scenes?.find(s => s.id === sceneId)` so the current scene has `sceneNumber`, `slug`, and `status`.
+
+2. **Scene header above continuity**
+   - In both the empty-state branch (no assets) and the main branch (with assets), added a scene identifier block above `ContinuityHeader`:
+     - Left: Badge “Scene {sceneNumber}” + `h2` with `slug`.
+     - Right: Badge for scene status (e.g. “shot list ready” or “draft”), with `shot_list_ready` using the default badge variant.
+   - Styling: `px-6 py-3`, `border-b border-border/50`, `bg-card/30 backdrop-blur-sm` so it matches the existing header look.
+
+**Result:** At the top of Stage 8 you now see “Scene N” and the scene slug (e.g. “INT. MANSION - NIGHT”), plus the scene status. The header appears for both the empty state and when the scene has assets; it only renders when `currentScene` is defined. No new linter issues.
+
+---
+
+## Issue 2b: Stage 8 – Tag Dropdown Keyboard Navigation
+
+**File:** `src/components/pipeline/Stage8/StatusTagsEditor.tsx`
+
+### Changes
+
+1. **State**
+   - `selectedIndex` (number, default `-1`) to track the highlighted suggestion.
+   - `useEffect` resets `selectedIndex` to `-1` whenever `suggestions` changes.
+
+2. **Keyboard handler `handleKeyDown`**
+   - **No suggestions:** only Enter runs `handleAddTag()` (add custom tag).
+   - **With suggestions:**
+     - **ArrowDown:** move highlight down (clamped to last item).
+     - **ArrowUp:** move highlight up (down to `-1`).
+     - **Enter:** if `selectedIndex >= 0`, add `suggestions[selectedIndex]`; otherwise add custom tag from input.
+     - **Tab:** if nothing is selected and there are suggestions, add first suggestion (and prevent default).
+     - **Escape:** close dropdown and clear `selectedIndex`.
+
+3. **Input**
+   - Replaced inline `onKeyDown` with `handleKeyDown`.
+   - Added: `role="combobox"`, `aria-expanded={showSuggestions}`, `aria-controls="tag-suggestions-list"`, `aria-activedescendant` when `selectedIndex >= 0`.
+
+4. **Suggestions list**
+   - Container: `id="tag-suggestions-list"`, `role="listbox"`.
+   - Each option: `id={`tag-suggestion-${idx}`}`, `role="option"`, `aria-selected={idx === selectedIndex}`.
+   - Highlight: `idx === selectedIndex` uses `bg-primary text-primary-foreground`; others use `hover:bg-muted`.
+   - `onMouseEnter={() => setSelectedIndex(idx)}` so hover and keyboard stay in sync.
+
+### Behavior
+
+- Typing shows suggestions; Arrow Up/Down move highlight, Enter adds highlighted or custom tag.
+- Tab adds the first suggestion when the list is open.
+- Escape closes the list. Hover updates highlight; click still adds the tag.
+
+No new dependencies; existing `cn` import is used for option classes. Lint is clean.

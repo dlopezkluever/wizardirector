@@ -192,7 +192,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 \- \[ \] Add search and filter functionality  
 \- \[ \] Implement asset deletion with dependency checking
 
-\#\#\# Feature 3.3: Stage 5 \- Asset Extraction & Definition  
+### Feature 3.3: Stage 5 \- Asset Extraction & Definition  
 \*\*Purpose\*\*: Parse script and generate visual keys  
 \- \[ \] Implement LLM-based asset extraction from Stage 4 script  
 \- \[ \] Create asset definition editor UI (description \+ image)  
@@ -200,7 +200,7 @@ This document outlines the iterative development plan for Aiuteur, progressing f
 \- \[ \] Add iterative image regeneration with guidance  
 \- \[ \] Implement "Lock Master Asset" gatekeeper
 
-\#\#\# Feature 3.4: Project-Level Assets  
+### Feature 3.4: Project-Level Assets  
 \*\*Purpose\*\*: Project-specific asset instances  
 \- \[ \] Implement \`project\_assets\` table  
 \- \[ \] Create asset inheritance from global library  
