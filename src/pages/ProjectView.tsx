@@ -464,9 +464,10 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
                 onBack={handleSceneStageBack}
               />
             )}
-            {sceneStage === 9 && (
-              <Stage9PromptSegmentation 
-                sceneId={activeSceneId} 
+            {sceneStage === 9 && projectId && activeSceneId && (
+              <Stage9PromptSegmentation
+                projectId={projectId}
+                sceneId={activeSceneId}
                 onComplete={handleSceneStageComplete}
                 onBack={handleSceneStageBack}
               />
