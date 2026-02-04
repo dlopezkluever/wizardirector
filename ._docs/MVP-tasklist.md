@@ -28,9 +28,9 @@ This document outlines the revised development plan for Aiuteur, addressing stra
 - [ ] **Prompt Assembly Service**: Create comprehensive prompt assembler that merges shot data + asset data into formatted prompts
   - Frame Prompts: Visually descriptive, asset-heavy, spatially explicit (references Stage 8 visual states)
   - Video Prompts: Action/audio focused, dialogue + SFX cues, minimal visual description
-  - Hide system scaffolding prompts from user interface
-- [ ] **Stage 9 UI Components**: Build shot-based prompt inspector with expandable cards
-  - Show Frame Prompt section (read-only by default, optional manual edit toggle)
+  - Hide system scaffolding prompts from user interface *Shouldn't be there at all*
+- [ ] **Stage 9 UI Components**: Build shot-based prompt inspector with expandable cards 
+  - Show Frame Prompt section (read-only by default, manual edit toggle)
   - Show Video Prompt section (always editable)
   - Add model compatibility tags (start frame only vs start+end frames)
   - Include Veo3-specific prompt formatting per PRD specifications
@@ -40,6 +40,7 @@ This document outlines the revised development plan for Aiuteur, addressing stra
   - `GET /api/projects/:projectId/scenes/:sceneId/shots/:shotId/prompts` - Get prompts
   - `PUT /api/projects/:projectId/scenes/:sceneId/shots/:shotId/prompts` - Update prompts
   - `POST /api/projects/:projectId/scenes/:sceneId/generate-prompts` - Bulk prompt generation
+
 
 ### Feature 1.2: Stage 10 - Frame Generation with Real Gemini Integration ✅ **COMPLETE IMPLEMENTATION**
 
