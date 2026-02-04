@@ -124,11 +124,22 @@ export interface SceneAssetRelevanceResult {
 
 export interface PromptSet {
   shotId: string;
+  shotUuid?: string; // Database UUID for API calls
   framePrompt: string;
   videoPrompt: string;
   systemPrompt?: string;
   requiresEndFrame: boolean;
   compatibleModels: string[];
+  promptsGeneratedAt?: string | null;
+  // Shot context data (included in API response)
+  duration?: number;
+  dialogue?: string;
+  action?: string;
+  setting?: string;
+  camera?: string;
+  // UI state (not persisted)
+  isGenerating?: boolean;
+  hasChanges?: boolean;
 }
 
 export interface FramePair {

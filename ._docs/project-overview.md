@@ -12,9 +12,10 @@
 
 1. **Executive Summary & Core Utility** \* 1.1 Core Value Proposition  
    * 1.2 Core Problem & Solution (The Inversion)  
-2. **System Architecture & Data Strategy** \* 2.1 Context Management Strategy (Global vs. Local)  
-   * 2.2 Style Capsule System (Written and Visual Styles)  
-   * 2.3 Stateful Asset Management (Inheritance Logic)  
+2. **System Architecture & Data Strategy** \* 2.1 Context Management Strategy (Global vs. Local)
+   * 2.2 Style Capsule System (Written and Visual Styles)
+   * 2.3 Stateful Asset Management (Inheritance Logic)
+   * 2.4 Asset Extraction & Dependency Management (Single Extraction System)  
 3. **Phase A: The Global Narrative & Style Engine (Stages 1–5)**  
    * 3.1 Stage 1: Input Modes & Style Capsule Initialization  
    * 3.2 Stage 2: Treatment Generation (Iterative Prose)  
@@ -85,7 +86,7 @@ To prevent Large Language Model (LLM) hallucinations, token limit overflows, and
 | Context Type | Data Contained | LLM Access | Purpose |
 | ----- | ----- | ----- | ----- |
 | **Global Context** | Beat Sheet, Project Summary, Master Character Descriptions, Style Capsule Selections. | Always (Phase A & B) | Maintains plot cohesion and stylistic tone across the entire project. |
-| **Local Context** | Current Scene Script (Stage 4), Current Shot List (Stage 7), **Previous Scene End-State** (Assets, Final Frame). | Only during the active Scene's lifecycle (Phase B). | Prevents token overflow; ensures continuity between Scene N and Scene N+1. |
+| **Local Context** | Current Scene Script (Just the scene, extracted from stage 4), Current Shot List (Stage 7), **Previous Scene End-State** (Assets, Final Frame). | Only during the active Scene's lifecycle (Phase B). | Prevents token overflow; ensures continuity between Scene N and Scene N+1. |
 
 ### **2.2 Style Capsule System (Written and Visual Styles)**
 
@@ -110,6 +111,78 @@ Assets (Characters, Props, Wardrobe) must retain their state across scenes to en
 3. **Stateful Editing:** In Stage 8, the user can modify the inherited asset for the *current* scene only (e.g., add mud to the coat, change hairstyle). This saves a new instance: "John Doe (Scene N+1 \- Muddy)." 
 4. **Status Metadata Tags:** Assets include a metadata layer for "Conditions" (e.g., "Wet," "Bloody," "Torn Wardrobe"). These tags are generated in Phase B based on shot outcomes and can be toggled to persist across scene boundaries. 
 5. **Database Storage:** The system must track and store these scene-specific asset instances, which are automatically pulled into the Local Context for the current scene.
+
+### **2.4 Asset Extraction & Dependency Management (Single Extraction System)**
+
+To maximize efficiency and eliminate redundant AI calls, the system implements a revolutionary single-extraction approach that creates a comprehensive asset manifest at Stage 5, eliminating the need for repeated extraction at subsequent stages.
+
+#### **Single Comprehensive Extraction (Stage 5)**
+
+**Trigger:** Upon completion of Stage 4 (Master Script).
+**Process:** One LLM call parses the entire Master Script to extract both Master Assets AND scene-level mappings.
+**Output:** Complete asset manifest with scene dependencies.
+
+**Data Generated:**
+1. **Master Assets:** All unique characters, props, and locations with full descriptions
+2. **Scene-Level Mapping:** Which assets appear in which scenes
+3. **Dependency Population:** Automatic population of `scenes.dependencies` JSONB field
+
+#### **Database Schema Integration**
+
+**`scenes.dependencies` Structure:**
+```json
+{
+  "characters": ["protagonist", "antagonist", "sidekick"],
+  "locations": ["kitchen", "forest clearing"],
+  "props": ["magic sword", "ancient book"],
+  "extractedAt": "2026-02-04T10:30:00Z"
+}
+```
+
+**Simultaneous Population Strategy:**
+- `project_assets` table populated with Master Assets
+- `scenes.dependencies` field populated with scene-specific mappings
+- Asset-to-scene relationships established deterministically
+
+#### **Efficiency Gains**
+
+**Eliminated Redundant Extractions:**
+- **Stage 6 (Script Hub):** Queries `scenes.dependencies` instead of extracting
+- **Stage 8 (Visual Definition):** Uses cached dependencies for auto-suggestions instead of AI relevance detection
+- **Phase B Operations:** All scene-based workflows reference pre-extracted data
+
+**Manual Addition Support:**
+- Users can still manually add assets in Stage 5 or Stage 8
+- Manual additions don't trigger full re-extraction
+- System maintains backward compatibility with existing workflows
+
+#### **Cache Invalidation Strategy**
+
+**Invalidation Triggers:**
+- Stage 4 Master Script modifications
+- Mandatory branching operations (Section 7.2)
+- User-initiated "Re-extract Assets" action
+
+**Invalidation Process:**
+1. Detect Master Script changes
+2. Regenerate complete asset manifest
+3. Update all scene dependencies
+4. Preserve manually-added assets where possible
+5. Flag downstream stages for review
+
+#### **Data Flow Architecture**
+
+```
+Master Script (Stage 4)
+    ↓ [Single LLM Call]
+Asset Manifest Creation
+    ↓ [Parallel Population]
+project_assets ←→ scenes.dependencies
+    ↓ [Cached Access]
+Stage 6/8 Workflows (No Re-extraction)
+```
+
+This approach transforms asset management from a distributed, repetitive process into a centralized, deterministic system that respects the principle of Stage 4 as the "Global Narrative Truth."
 
 ## **3\. Phase A: The Global Narrative Engine (Linear Flow)**
 
@@ -169,15 +242,23 @@ The user **MUST** select one of the four modes to initialize the narrative pipel
 * **Targeted Regeneration, Manual Editability, Full Regeneration;** Similar functionality to Stage 2 & 3, with use of  "Regeneration Guidance" box (Section 5.3).  
 * **Branching Trigger:** If the user initiates a **Regeneration of the Master Script** from an edited Beat Sheet, the **Mandatory Branching Rule** (Section 7.2) is triggered.
 
-### **3.5 Stage 5: Global Asset Definition & Style Lock (NEW)**
+### **3.5 Stage 5: Global Asset Definition & Style Lock**
 
-**Input:** Locked Master Script (Stage 4). **Output:** A set of finalized **Master Assets** (Visual Keys) and the locked **Visual Style Capsule / Style Anchor**.
+**Input:** Locked Master Script (Stage 4). **Output:** A set of finalized **Master Assets** (Visual Keys), locked **Visual Style Capsule / Style Anchor**, and populated scene dependencies.
 
 **Functional Requirements:**
 
-* **Asset Extraction:** The system uses an LLM to automatically parse the Stage 4 script and deterministically extract all unique **Key Characters**, **Key Props**, and **Key Settings** mentioned.  
-* **Visual Style Lock:** The user selects the definitive **Visual Style Capsule / Style Anchor** (e.g., "Neo-Noir," "Pixar Animation"). This choice is locked as a **Global Context Constraint** for all subsequent image/video generation calls.  
-* **Image Key Generation:** For each extracted asset, the user guides the Nano Banana API to generate a definitive **Master Asset Visual Key (Image)**, utilizing the locked Visual Style.  
+* **Single Comprehensive Asset Extraction:** The system uses ONE LLM call to parse the entire Stage 4 script and extract:
+  - All unique **Key Characters**, **Key Props**, and **Key Settings** with full descriptions
+  - **Scene-level mapping** showing which assets appear in which specific scenes
+  - Simultaneous population of `project_assets` table AND `scenes.dependencies` JSONB fields
+  - This eliminates redundant extraction calls in subsequent stages (6, 8)
+* **Visual Style Lock:** The user selects the definitive **Visual Style Capsule / Style Anchor** (e.g., "Neo-Noir," "Pixar Animation"). This choice is locked as a **Global Context Constraint** for all subsequent image/video generation calls.
+* **Image Key Generation with Transparent Background Enforcement:** For each extracted asset, the user guides the Gemini API to generate a definitive **Master Asset Visual Key (Image)**:
+  - **Characters & Props:** Automatically inject "isolated on transparent background" into generation prompts
+  - **Locations:** Generate with environmental context (no transparent background)
+  - Post-processing background removal applied to characters/props if needed
+* **Manual Asset Addition:** Users can manually add assets not detected by extraction, which are stored separately and don't trigger re-extraction
 * **Gatekeeper:** All extracted **Master Assets** must have a locked **Image Key** before the user can proceed.
 
 ## **4\. Phase B: The Production Engine (Scene-by-Scene Cycle) (Stages 6-12)**
@@ -186,9 +267,11 @@ Note: Advanced detail for UI & Agentic Toolage & Iterative Design for each stage
 
 ### **4.1 Stage 6: The "Script Hub" & Scene Cycle**
 
-* **Hub UI:** A visual list of all scenes in the Master Script (Stage 4).  
-* **Status Indicators:** Each scene must display its current status (Draft, Shot List Ready, Frames Locked, Video Complete, **Outdated/Continuity Broken**).  
+* **Hub UI:** A visual list of all scenes in the Master Script (Stage 4).
+* **Status Indicators:** Each scene must display its current status (Draft, Shot List Ready, Frames Locked, Video Complete, **Outdated/Continuity Broken**).
+* **Scene Dependency Display:** Each scene shows its asset dependencies (characters, locations, props) as populated by Stage 5's comprehensive extraction, eliminating the need for real-time asset detection.
 * **Workflow:** The user selects a scene, completes the subsequent stages (**7-12**), and is returned to the Hub.
+* **Dependency Queries:** Stage 6 queries pre-populated `scenes.dependencies` data instead of extracting scene information, providing instant scene context without LLM calls.
 
 ### **4.2 Stage 7: The Technical Shot List (Granular Breakdown & Control)**
 
@@ -212,37 +295,65 @@ Note: Advanced detail for UI & Agentic Toolage & Iterative Design for each stage
 
 ### **4.3 Stage 8: Visual & Character Definition (Asset Assembly)**
 
-**Input:** Locked Shot List (Stage 7\) \+ Visual Style Capsule / Style Anchor. **Output:** A list of visual descriptions for all characters and settings in the current scene.
+**Input:** Locked Shot List (Stage 7\) + Visual Style Capsule / Style Anchor + Scene Dependencies from Stage 5. **Output:** Scene-specific asset instances with visual keys and status tags.
 
 **Functional Requirements:**
 
-* **Asset Drawer Integration:** The **Asset Drawer UI (Section 5.3)** is the primary input tool. Users drag "Master" or "Scene N Instance" assets into the current scene's list.  
-* **Stateful Modification:** A dedicated text field must allow modification of the inherited state, generating a new, unique **Scene Instance** description. (e.g., Original: "Clean shirt." Modification: "Shirt is now ripped and bloody."). This modification must be saved back to the Asset Library history.  
-* **Style Lock:** User confirms the **Visual Style Capsule / Style Anchor** selection for the scene (e.g., "Switching from Anime to Photorealistic"). This style selection will be critical for **Stage 8**.
+* **Dependency-Based Asset Auto-Suggestion:** Scene uses pre-populated `scenes.dependencies` from Stage 5's comprehensive extraction to instantly suggest relevant assets, eliminating the need for AI relevance detection.
+* **"Use Master Asset As-Is" Checkbox:** Pre-selected checkbox allowing users to copy master asset images directly to scene instances without generation, providing instant progression for unchanged assets.
+* **Historical Master Reference Carousel:** Master reference defaults to most recent scene instance image from previous scenes, with carousel navigation through:
+  - Original Master Asset image
+  - Scene 1 instance → Scene 2 instance → Scene 3 instance, etc.
+  - Arrow controls for cycling through asset history
+* **Generation Attempts Carousel:** When generating scene instance images, users can:
+  - Generate multiple attempts for the same asset
+  - View thumbnail carousel of all generation attempts
+  - Select preferred attempt from history
+  - Compare quality across multiple tries
+* **Manual Image Upload:** Users can upload custom images for scene-specific assets, integrated into the generation attempts carousel system.
+* **Asset Drawer Integration:** Enhanced **Asset Drawer UI (Section 5.3)** for adding new assets not detected by Stage 5 extraction.
+* **Stateful Modification:** Dedicated text field for modifying inherited state, generating new **Scene Instance** descriptions with full audit trail.
+* **Status Tags Management:** Visual condition tracking (muddy, bloody, torn, etc.) with carry-forward toggle for persistence across scenes.
+* **Style Lock:** User confirms the **Visual Style Capsule / Style Anchor** selection for the scene, with automatic transparent background injection for characters/props.
 
 ### **4.4 Stage 9: Prompt Segmentation (The Merger and Formatting)**
 
-**Input:** Shot List Data (Stage 7\) \+ Asset Data (Stage 8). **Output:** The final, concatenated, formatted prompt string sent to the video and image generation APIs.
+**Input:** Shot List Data (Stage 7\) + Asset Data (Stage 8). **Output:** Separated, editable **Frame Prompts** and **Video Prompts** for each shot.
 
-**Process:** The system automatically synthesizes the final prompt by merging the data streams:
+**Prompt Type Separation:**
 
-* **Visual Elements (Image Gen Prompt):** Combines Camera, Characters, Action, and Setting with the selected Visual Style Capsule / Style Anchor.  
-* **Audio Elements (Veo3 Prompt):** Isolates Dialogue and adds SFX cues.
+* **Frame Prompts:** Visually descriptive, asset-heavy, spatially explicit prompts for start/end frame generation
+  - References Stage 8 visual states and shot-level camera/blocking
+  - Auto-generated by LLM but **read-only by default** with optional manual edit toggle
+  - Used exclusively for image generation (Stage 10)
+* **Video Prompts:** Action and audio-focused prompts for video generation
+  - Dialogue, accents, timing, and sound effects fully specified
+  - Minimal visual description (assumes anchor frames encode visual truth)
+  - **Always editable** and auto-generated by LLM
+  - Used exclusively for video generation (Stage 12)
+* **System Scaffolding Prompts:** Internal orchestration logic (not shown to users)
+  - Hidden from user interface
+  - Encodes intent and dependency rules for model coordination
 
 **Veo3 Prompt Formatting Requirements (MANDATORY):**
 
-The prompt structure must adhere to the LLM's preferred format for generating video with integrated audio:
+The video prompt structure must adhere to Veo3's preferred format:
 
 * **Visual Section:** `[Camera]`
    $$Character$$$$Action$$
   . [Style Capsule / Style Anchor injection - explicit design pillars and reference imagery adherence]
-* **Audio Section:** `Audio: [SFX Cues]. Character [Name] speaks: "[Dialogue Line]"
+* **Audio Section:** `Audio: [SFX Cues]. Character [Name] speaks: "[Dialogue Line]"`
 
-**Iterative Tool:** Users must have a final, direct text editor view of the **full, final prompt string**. They can manually tweak keywords (e.g., changing "dimly lit" to "harsh fluorescent lighting") before proceeding.
+**User Interface Requirements:**
+
+* **Shot-Based Prompt Inspector:** Expandable cards per shot showing both prompt types
+* **Prompt Validation:** Length validation, forbidden character checking, preview component
+* **Full User Editability:** Both Frame and Video prompts auto-generated but fully editable by users
+* **Model Compatibility Tags:** Indicate start-frame-only vs start+end-frame requirements
 
 ### **4.5 Stage 10: Frame Generation (The Anchors & Continuity)**
 
-**Input:** Final Prompts (Stage 9\) \+ Rearview Mirror Data (Previous Scene's End Frame). **Tool:** Nano Banana API (or similar image generation model). **Process:** Generates two anchor frames per 8-second shot.
+**Input:** Final Frame Prompts (Stage 9\) + Rearview Mirror Data (Previous Scene's End Frame). **Tool:** Google Gemini API (Flash-1 model). **Process:** Generates start/end anchor frames per 8-second shot using real image generation service.
 
 1. **Start Frame Generation:** Must use the Prompt AND the previous shot's End Frame (from the Rearview Mirror) as a visual seed/reference to ensure continuity. (Though the shot maybe totally different than the last clip)  
 2. **End Frame Generation:** Uses the Prompt and predicts the visual outcome 8 seconds later.
@@ -596,41 +707,57 @@ Stage 8 defines the **starting visual state** of all relevant characters, locati
 
 **Scene Visual Elements Panel (Left):**
 
-* Auto-populated list of relevant visual elements derived from Stage 7  
-* Grouped by Characters, Locations, Props  
-* Each element displays:  
-  * Source (Master Asset, Prior Scene Instance, or New Scene Asset)  
+* Auto-populated list from Stage 5's `scenes.dependencies` (no real-time extraction)
+* Grouped by Characters, Locations, Props
+* Each element displays:
+  * Source (Master Asset, Prior Scene Instance, or New Scene Asset)
   * Review status (Unreviewed, Edited, Locked)
+  * Status tags with carry-forward indicators
+  * Multi-select capability for bulk operations
 
 **Visual State Editor (Center):**
 
-* Editable text description representing the starting look  
-* Pre-filled from Stage 5 assets and adjusted for scene context  
-* Supports:  
-  * Free text editing  
-  * Highlight-based agentic edits (optional)
+* **"Use Master Asset As-Is" Checkbox:** Pre-selected checkbox for instant progression without generation
+* **Historical Master Reference Carousel:** Arrow controls to cycle through:
+  - Original Master Asset image
+  - Previous scene instances chronologically
+  - Visual indicators showing current selection
+* **Generation Attempts Carousel:** When generating scene instance images:
+  - Display thumbnails of all generation attempts
+  - Metadata on hover (timestamp, cost, prompt used)
+  - "Select This One" action to set active instance
+  - Compare multiple attempts before selection
+* **Manual Image Upload:** File upload component with format validation
+* **Editable text description** representing the starting look
+* **Status Tags Management:** Visual condition chips (muddy, bloody, torn) with carry-forward toggles
 
-**Asset Drawer (Right):**
+**Asset Drawer Trigger Panel (Right):**
 
-* Global asset library access  
-* Supports:  
-  * Dragging in existing assets  
-  * Creating new scene-only assets  
-  * Optional promotion of new assets to Master Assets
+* **"Add New Assets" Interface** (renamed from "Create Scene Asset")
+* Global and project asset library toggle
+* Supports:
+  * Adding assets not detected by Stage 5 extraction
+  * Creating new scene-only assets
+  * Manual asset promotion to global library
+  * Search and filtering within large asset libraries
 
-### **Bulk Generation Flow**
+### **Enhanced Generation Flow**
 
-1. User edits text descriptions for all relevant elements  
-2. User multi-selects elements requiring updated visuals  
-3. User clicks **Generate Scene Starting Visuals**  
-4. Nano Banana generates image keys for selected elements only  
-5. Generated images are stored as Scene Instance Visual Keys
+1. **Dependency Loading:** System loads pre-populated assets from Stage 5's scene dependencies
+2. **User Selection:** User reviews assets, toggles "Use Master Asset As-Is" as needed
+3. **Description Editing:** User modifies text descriptions for assets requiring customization
+4. **Reference Selection:** User chooses master references via historical carousel
+5. **Bulk Generation:** User multi-selects elements requiring image generation
+6. **Generation & Comparison:** Multiple attempts generated, user selects preferred versions via carousel
+7. **Status Tag Application:** Visual conditions applied with carry-forward settings
 
-### **Agentic Tooling**
+### **Enhanced Agentic Tooling**
 
-* **Relevance Extraction Agent:** Identifies which assets are needed and when they first appear  
-* **Text Edit Agent (Scoped):** Applies user-directed edits to highlighted text only  
-* **Bulk Generation Orchestrator:** Manages parallel image generation and retries
+* **Dependency Query Agent:** Retrieves cached asset dependencies (no extraction needed)
+* **Historical Reference Manager:** Builds asset history chains across scenes
+* **Text Edit Agent (Scoped):** Applies user-directed edits to highlighted text only
+* **Multi-Attempt Generation Orchestrator:** Manages parallel generation with version tracking
+* **Transparent Background Injector:** Automatically applies background isolation for characters/props
 
 ### **Constraints**
 

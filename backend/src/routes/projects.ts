@@ -5,6 +5,7 @@ import { ShotExtractionService } from '../services/shotExtractionService.js';
 import { ShotSplitService } from '../services/shotSplitService.js';
 import { ShotMergeService } from '../services/shotMergeService.js';
 import { shotValidationService } from '../services/shotValidationService.js';
+import { promptGenerationService, type ShotData, type SceneAssetInstanceData } from '../services/promptGenerationService.js';
 
 const router = Router();
 
@@ -1599,6 +1600,374 @@ router.post('/:id/scenes/:sceneId/shots/unlock', async (req, res) => {
     });
   } catch (error) {
     console.error('Error in POST /api/projects/:id/scenes/:sceneId/shots/unlock:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ----- Stage 9: Prompt Segmentation -----
+
+// GET /api/projects/:id/scenes/:sceneId/prompts - Get all shot prompts for a scene
+router.get('/:id/scenes/:sceneId/prompts', async (req, res) => {
+  try {
+    const { id: projectId, sceneId } = req.params;
+    const userId = req.user!.id;
+
+    // Verify project ownership
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Verify scene exists in project's active branch
+    const { data: scene, error: sceneError } = await supabase
+      .from('scenes')
+      .select('id, scene_number')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+
+    if (sceneError || !scene) {
+      return res.status(404).json({ error: 'Scene not found' });
+    }
+
+    // Fetch all shots with prompt data
+    const { data: shots, error: shotsError } = await supabase
+      .from('shots')
+      .select(`
+        id,
+        shot_id,
+        duration,
+        dialogue,
+        action,
+        characters_foreground,
+        characters_background,
+        setting,
+        camera,
+        continuity_flags,
+        beat_reference,
+        frame_prompt,
+        video_prompt,
+        requires_end_frame,
+        compatible_models,
+        prompts_generated_at
+      `)
+      .eq('scene_id', sceneId)
+      .order('shot_order', { ascending: true });
+
+    if (shotsError) {
+      console.error('Error fetching shots:', shotsError);
+      return res.status(500).json({ error: 'Failed to fetch shots' });
+    }
+
+    // Transform to PromptSet format
+    const promptSets = (shots || []).map((shot: any) => ({
+      shotId: shot.shot_id,
+      shotUuid: shot.id,
+      framePrompt: shot.frame_prompt || '',
+      videoPrompt: shot.video_prompt || '',
+      requiresEndFrame: shot.requires_end_frame ?? true,
+      compatibleModels: shot.compatible_models || ['Veo3'],
+      promptsGeneratedAt: shot.prompts_generated_at || null,
+      // Include shot data for context
+      duration: shot.duration,
+      dialogue: shot.dialogue || '',
+      action: shot.action,
+      setting: shot.setting,
+      camera: shot.camera,
+    }));
+
+    res.json({ prompts: promptSets, sceneNumber: scene.scene_number });
+  } catch (error) {
+    console.error('Error in GET /api/projects/:id/scenes/:sceneId/prompts:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/projects/:id/scenes/:sceneId/shots/:shotId/prompts - Update prompts for a single shot
+router.put('/:id/scenes/:sceneId/shots/:shotId/prompts', async (req, res) => {
+  try {
+    const { id: projectId, sceneId, shotId } = req.params;
+    const { framePrompt, videoPrompt, requiresEndFrame, compatibleModels } = req.body;
+    const userId = req.user!.id;
+
+    // Verify project ownership
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Verify scene exists
+    const { data: scene, error: sceneError } = await supabase
+      .from('scenes')
+      .select('id')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+
+    if (sceneError || !scene) {
+      return res.status(404).json({ error: 'Scene not found' });
+    }
+
+    // Build update object with only provided fields
+    const updateData: any = { updated_at: new Date().toISOString() };
+
+    if (framePrompt !== undefined) {
+      if (typeof framePrompt !== 'string') {
+        return res.status(400).json({ error: 'framePrompt must be a string' });
+      }
+      if (framePrompt.length > 1500) {
+        return res.status(400).json({ error: 'framePrompt exceeds maximum length (1500 characters)' });
+      }
+      updateData.frame_prompt = framePrompt;
+    }
+
+    if (videoPrompt !== undefined) {
+      if (typeof videoPrompt !== 'string') {
+        return res.status(400).json({ error: 'videoPrompt must be a string' });
+      }
+      if (videoPrompt.length > 1000) {
+        return res.status(400).json({ error: 'videoPrompt exceeds maximum length (1000 characters)' });
+      }
+      updateData.video_prompt = videoPrompt;
+    }
+
+    if (requiresEndFrame !== undefined) {
+      if (typeof requiresEndFrame !== 'boolean') {
+        return res.status(400).json({ error: 'requiresEndFrame must be a boolean' });
+      }
+      updateData.requires_end_frame = requiresEndFrame;
+    }
+
+    if (compatibleModels !== undefined) {
+      if (!Array.isArray(compatibleModels)) {
+        return res.status(400).json({ error: 'compatibleModels must be an array' });
+      }
+      updateData.compatible_models = compatibleModels;
+    }
+
+    // Update the shot
+    const { data: updatedShot, error: updateError } = await supabase
+      .from('shots')
+      .update(updateData)
+      .eq('id', shotId)
+      .eq('scene_id', sceneId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('Error updating shot prompts:', updateError);
+      return res.status(500).json({ error: 'Failed to update shot prompts' });
+    }
+
+    res.json({
+      success: true,
+      shot: {
+        shotId: updatedShot.shot_id,
+        shotUuid: updatedShot.id,
+        framePrompt: updatedShot.frame_prompt || '',
+        videoPrompt: updatedShot.video_prompt || '',
+        requiresEndFrame: updatedShot.requires_end_frame ?? true,
+        compatibleModels: updatedShot.compatible_models || ['Veo3'],
+        promptsGeneratedAt: updatedShot.prompts_generated_at,
+      },
+    });
+  } catch (error) {
+    console.error('Error in PUT /api/projects/:id/scenes/:sceneId/shots/:shotId/prompts:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/projects/:id/scenes/:sceneId/generate-prompts - Generate prompts for shots using LLM
+router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
+  try {
+    const { id: projectId, sceneId } = req.params;
+    const { shotIds } = req.body; // Optional: specific shot IDs to regenerate
+    const userId = req.user!.id;
+
+    console.log(`[Stage9] Generating prompts for scene ${sceneId}`);
+
+    // Verify project ownership
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Verify scene exists
+    const { data: scene, error: sceneError } = await supabase
+      .from('scenes')
+      .select('id, scene_number')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+
+    if (sceneError || !scene) {
+      return res.status(404).json({ error: 'Scene not found' });
+    }
+
+    // Fetch shots (all or specific)
+    let shotsQuery = supabase
+      .from('shots')
+      .select('*')
+      .eq('scene_id', sceneId)
+      .order('shot_order', { ascending: true });
+
+    if (shotIds && Array.isArray(shotIds) && shotIds.length > 0) {
+      shotsQuery = shotsQuery.in('id', shotIds);
+    }
+
+    const { data: shots, error: shotsError } = await shotsQuery;
+
+    if (shotsError || !shots || shots.length === 0) {
+      return res.status(400).json({ error: 'No shots found for this scene' });
+    }
+
+    // Fetch scene asset instances for context
+    const { data: assetInstances } = await supabase
+      .from('scene_asset_instances')
+      .select(`
+        id,
+        description_override,
+        status_tags,
+        project_assets!inner (
+          id,
+          name,
+          asset_type,
+          description
+        )
+      `)
+      .eq('scene_id', sceneId);
+
+    // Transform asset instances to service format
+    const sceneAssets: SceneAssetInstanceData[] = (assetInstances || []).map((instance: any) => ({
+      id: instance.id,
+      project_asset: instance.project_assets ? {
+        id: instance.project_assets.id,
+        name: instance.project_assets.name,
+        asset_type: instance.project_assets.asset_type,
+        description: instance.project_assets.description,
+      } : undefined,
+      description_override: instance.description_override,
+      effective_description: instance.description_override || instance.project_assets?.description || '',
+      status_tags: instance.status_tags || [],
+    }));
+
+    // Fetch visual style capsule if applied to the project
+    // For now, we'll skip style capsule - can be added later via stage_state lookups
+    const styleCapsule = null;
+
+    // Transform shots to service format
+    const shotDataList: ShotData[] = shots.map((shot: any) => ({
+      id: shot.id,
+      shot_id: shot.shot_id,
+      duration: shot.duration,
+      dialogue: shot.dialogue || '',
+      action: shot.action,
+      characters_foreground: shot.characters_foreground || [],
+      characters_background: shot.characters_background || [],
+      setting: shot.setting,
+      camera: shot.camera,
+      continuity_flags: shot.continuity_flags,
+      beat_reference: shot.beat_reference,
+    }));
+
+    // Generate prompts using the service
+    const results = await promptGenerationService.generateBulkPromptSets(
+      shotDataList,
+      sceneAssets,
+      styleCapsule
+    );
+
+    // Update shots with generated prompts
+    const now = new Date().toISOString();
+    const updatePromises = results
+      .filter(r => r.success)
+      .map(r =>
+        supabase
+          .from('shots')
+          .update({
+            frame_prompt: r.framePrompt,
+            video_prompt: r.videoPrompt,
+            requires_end_frame: r.requiresEndFrame,
+            compatible_models: r.compatibleModels,
+            prompts_generated_at: now,
+            updated_at: now,
+          })
+          .eq('id', r.shotId)
+      );
+
+    await Promise.all(updatePromises);
+
+    // Fetch updated shots
+    const { data: updatedShots } = await supabase
+      .from('shots')
+      .select(`
+        id,
+        shot_id,
+        frame_prompt,
+        video_prompt,
+        requires_end_frame,
+        compatible_models,
+        prompts_generated_at,
+        duration,
+        dialogue,
+        action,
+        setting,
+        camera
+      `)
+      .eq('scene_id', sceneId)
+      .order('shot_order', { ascending: true });
+
+    // Transform response
+    const promptSets = (updatedShots || []).map((shot: any) => ({
+      shotId: shot.shot_id,
+      shotUuid: shot.id,
+      framePrompt: shot.frame_prompt || '',
+      videoPrompt: shot.video_prompt || '',
+      requiresEndFrame: shot.requires_end_frame ?? true,
+      compatibleModels: shot.compatible_models || ['Veo3'],
+      promptsGeneratedAt: shot.prompts_generated_at || null,
+      duration: shot.duration,
+      dialogue: shot.dialogue || '',
+      action: shot.action,
+      setting: shot.setting,
+      camera: shot.camera,
+    }));
+
+    const successCount = results.filter(r => r.success).length;
+    const failedCount = results.filter(r => !r.success).length;
+
+    console.log(`[Stage9] Generated prompts: ${successCount} succeeded, ${failedCount} failed`);
+
+    res.json({
+      success: true,
+      prompts: promptSets,
+      generated: successCount,
+      failed: failedCount,
+      errors: results.filter(r => !r.success).map(r => ({ shotId: r.shotId, error: r.error })),
+    });
+  } catch (error: any) {
+    if (error?.code === 'RATE_LIMIT') {
+      return res.status(429).json({ error: 'Rate limit exceeded. Please try again shortly.' });
+    }
+    console.error('Error in POST /api/projects/:id/scenes/:sceneId/generate-prompts:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

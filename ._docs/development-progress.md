@@ -1,8 +1,8 @@
 # Aiuteur - Development Progress Report
 
-**Last Updated:** January 31, 2026  
-**Phases Completed:** 0-4  
-**Project Status:** Phases A & B Foundation with Core Asset Management
+**Last Updated:** February 3, 2026
+**Phases Completed:** 0-5
+**Project Status:** Complete Asset Inheritance System with Stage 8 Visual Definition
 
 ---
 
@@ -134,12 +134,12 @@ Aiuteur is a narrative-to-AI-film pipeline web application implementing a determ
 
 ### Database Statistics
 
-- **Applied Migrations:** 14
-- **Core Tables:** 11
+- **Applied Migrations:** 17
+- **Core Tables:** 12
 - **Junction Tables:** 2
-- **Triggers:** 2 (branch creation, shot list locking)
+- **Triggers:** 3 (branch creation, shot list locking, scene asset modification tracking)
 - **Functions:** 3
-- **RLS Policies:** 35+
+- **RLS Policies:** 40+
 
 ### Core Tables (As Implemented)
 
@@ -462,6 +462,34 @@ Aiuteur is a narrative-to-AI-film pipeline web application implementing a determ
 
 ---
 
+#### 12. `scene_asset_instances` - Scene-Specific Asset Variations (Migration 015)
+
+**Purpose:** Track asset state changes across scenes with inheritance and modification tracking
+
+**Key Fields:**
+- `id` (UUID, PK)
+- `scene_id` (UUID, FK → scenes)
+- `project_asset_id` (UUID, FK → project_assets)
+- `description_override` (TEXT, nullable) - Scene-specific description changes
+- `image_key_url` (TEXT, nullable) - Scene-specific generated image
+- `status_tags` (TEXT[]) - Visual conditions (muddy, bloody, torn, locked)
+- `carry_forward` (BOOLEAN, default TRUE) - Whether tags persist to next scene
+- `inherited_from_instance_id` (UUID, FK → scene_asset_instances, nullable)
+- `modification_count` (INTEGER, default 0) - Incremented on each update
+- `last_modified_field` (TEXT) - Which field was last changed
+- `modification_reason` (TEXT) - User-supplied reason for modification
+- `effective_description` (COMPUTED) - Resolved description (override or base)
+
+**Unique Constraint:** (scene_id, project_asset_id)
+
+**Trigger:** `scene_asset_modification_tracker` automatically updates `modification_count` and `last_modified_field` on any update
+
+**Status:** ✅ Implemented with full audit trail (Migration 015-017)
+
+**Design Note:** This table enables stateful asset management where assets can evolve across scenes (muddy to clean, injured to healed) while maintaining inheritance chains and modification history.
+
+---
+
 ### Database Relationships Diagram
 
 ```
@@ -469,16 +497,21 @@ projects (1) ──→ (N) branches
 branches (1) ──→ (N) stage_states
 branches (1) ──→ (N) scenes
 scenes (1) ──→ (N) shots
+scenes (1) ──→ (N) scene_asset_instances
 
 style_capsule_libraries (1) ──→ (N) style_capsules
 style_capsules (N) ←── (N) style_capsule_applications ──→ (N) stage_states
 
 global_assets (N) ←── (N) project_assets
 project_assets (N) ──→ (1) projects
+project_assets (1) ──→ (N) scene_asset_instances
+
+scene_asset_instances (N) ──→ (1) scene_asset_instances (inheritance chain)
 
 image_generation_jobs (N) ──→ (1) projects
 image_generation_jobs (N) ──→ (1) global_assets (via image_generation_job_id)
 image_generation_jobs (N) ──→ (1) project_assets (via image_generation_job_id)
+image_generation_jobs (N) ──→ (1) scene_asset_instances (via image_generation_job_id)
 ```
 
 ---
@@ -530,6 +563,20 @@ CREATE POLICY "Users can view own project branches" ON branches
 - Prevents accidentally reverting downstream statuses (frames_locked, video_complete)
 
 **Status:** ✅ Active (Critical for Stage 7 workflow)
+
+---
+
+#### 3. `scene_asset_modification_tracker()` (Migration 017)
+
+**Purpose:** Auto-track modifications to scene asset instances for audit trail
+
+**Behavior:**
+- **Before Update:** Increments `modification_count` by 1
+- **Field Detection:** Sets `last_modified_field` to first changed field (priority order: `description_override`, `status_tags`, `image_key_url`, `carry_forward`)
+- **Reason Tracking:** `modification_reason` is set only via API calls, not by trigger
+- Enables complete audit trail for asset state changes across scenes
+
+**Status:** ✅ Active (Critical for Phase 5 asset inheritance tracking)
 
 ---
 
@@ -688,12 +735,29 @@ CREATE POLICY "Users can view own project branches" ON branches
 
 ---
 
+#### 11. `/api/projects/:projectId/scenes/:sceneId/assets` (Protected)
+
+**Purpose:** Scene asset instance management (stateful asset inheritance)
+
+**Methods:**
+- `GET /api/projects/:projectId/scenes/:sceneId/assets` - List scene asset instances with joined project_asset data
+- `POST /api/projects/:projectId/scenes/:sceneId/assets` - Create scene asset instance
+- `PUT /api/projects/:projectId/scenes/:sceneId/assets/:instanceId` - Update instance (description, image_key_url, status_tags, carry_forward)
+- `DELETE /api/projects/:projectId/scenes/:sceneId/assets/:instanceId` - Delete scene asset instance
+- `POST /api/projects/:projectId/scenes/:sceneId/assets/inherit` - Inherit assets from prior scene
+- `POST /api/projects/:projectId/scenes/:sceneId/assets/detect-relevance` - AI-powered relevant asset detection
+- `POST /api/projects/:projectId/scenes/:sceneId/assets/:instanceId/generate-image` - Generate scene-specific image key
+
+**Status:** ✅ Implemented with full CRUD, inheritance, and AI detection (Phase 5)
+
+---
+
 ### Backend Services
 
 #### Core Services (Implemented)
 
 1. **`llm-client.ts`** - LLM abstraction layer with LangSmith tracing
-2. **`contextManager.ts`** - Global vs. Local context separation
+2. **`contextManager.ts`** - Global vs. Local context separation with scene asset instance support
 3. **`styleCapsuleService.ts`** - Style capsule retrieval and formatting
 4. **`assetExtractionService.ts`** - Extract assets from script (Stage 5)
 5. **`assetDescriptionMerger.ts`** - Merge asset descriptions across script
@@ -703,8 +767,10 @@ CREATE POLICY "Users can view own project branches" ON branches
 9. **`shotMergeService.ts`** - Merge shots logic
 10. **`continuityRiskAnalyzer.ts`** - Scene dependency risk analysis (Stage 6)
 11. **`sceneDependencyExtraction.ts`** - Extract character/location/prop dependencies
-12. **`ImageGenerationService.ts`** - Async image generation orchestration
+12. **`ImageGenerationService.ts`** - Async image generation orchestration (including scene_asset support)
 13. **`NanoBananaClient.ts`** - Nano Banana API integration
+14. **`assetInheritanceService.ts`** - Scene asset inheritance logic and prior scene analysis (Phase 5)
+15. **`sceneAssetRelevanceService.ts`** - AI-powered asset relevance detection for scenes (Phase 5)
 
 ---
 
@@ -764,7 +830,7 @@ Frontend (React + TypeScript)
 | 5 | `Stage5Assets.tsx` | ✅ Complete | Asset extraction + image gen |
 | 6 | `Stage6ScriptHub.tsx` | ✅ Complete | Scene list with status |
 | 7 | `Stage7ShotList.tsx` | ✅ Complete | Shot table with validation |
-| 8 | `Stage8VisualDefinition.tsx` | 🔶 In Progress | Asset inheritance UI |
+| 8 | `Stage8VisualDefinition.tsx` | ✅ Complete | Full asset inheritance & status tag system |
 | 9 | `Stage9PromptSegmentation.tsx` | 🔶 Stubbed | Prompt merger UI |
 | 10 | `Stage10FrameGeneration.tsx` | 🔶 Stubbed | Frame gen UI |
 | 11 | `Stage11Confirmation.tsx` | 🔶 Stubbed | Cost review UI |
@@ -793,6 +859,13 @@ Frontend (React + TypeScript)
 2. **`AssetCard.tsx`** - Asset card with image + metadata
 3. **`AssetDialog.tsx`** - Create/edit asset dialog
 4. **`DeleteAssetDialog.tsx`** - Delete confirmation with dependency check
+
+#### Stage 8 Components (✅ Complete - Phase 5)
+
+1. **`SceneAssetListPanel.tsx`** - Left panel with asset grouping, status badges, multi-select, and bulk generation
+2. **`VisualStateEditorPanel.tsx`** - Center panel for editing asset descriptions, status tags, and image generation
+3. **`StatusTagsEditor.tsx`** - Status tag management with keyboard navigation and carry-forward toggles
+4. **`AssetDrawerTriggerPanel.tsx`** - Right panel for adding assets and proceeding to Stage 9
 
 #### UI Primitives (shadcn/ui)
 
@@ -843,6 +916,7 @@ interface AuthState {
 - `styleCapsuleService.ts` - Style capsule operations
 - `assetService.ts` - Global asset operations
 - `projectAssetService.ts` - Project asset operations
+- `sceneAssetService.ts` - Scene asset instance management with inheritance and AI detection (Phase 5)
 
 **Status:** ✅ Implemented
 
@@ -926,10 +1000,17 @@ User Action → Frontend Component → API Call → Backend Route → Service La
    Scene selected → POST /api/llm/shots/extract → LLM generates shot breakdown → User edits table → POST /api/projects/:id/scenes/:sceneId/shots → Validate completeness → PUT /api/.../shots/lock → Set scene.shot_list_locked_at
    ```
 
-8. **Stage 8 (Visual Definition):** (In Progress)
+8. **Stage 8 (Visual Definition):** ✅ Complete (Phase 5)
    ```
-   Shot list locked → Inherit assets from Stage 5 → User modifies for scene → Generate scene-specific image keys
+   Shot list locked → AI detects relevant assets → Inherit from prior scene → User modifies status tags/descriptions → Generate scene-specific image keys → Lock assets for Stage 9
    ```
+
+**Stage 8 Data Flow Details:**
+- `POST /api/projects/:id/scenes/:sceneId/assets/detect-relevance` → AI suggests relevant project assets
+- `POST /api/projects/:id/scenes/:sceneId/assets/inherit` → Creates scene instances from prior scene states
+- `PUT /api/projects/:id/scenes/:sceneId/assets/:instanceId` → Updates descriptions, status tags, carry_forward
+- `POST /api/projects/:id/scenes/:sceneId/assets/:instanceId/generate-image` → Generates scene-specific images
+- Bulk operations with polling for multiple asset image generation
 
 9-12: (Stubbed - Not yet implemented)
 
@@ -1012,6 +1093,11 @@ src/
 │   ├── layout/             # Layout components (Sidebar, MainLayout)
 │   ├── dashboard/          # Dashboard components
 │   ├── pipeline/           # Pipeline stage components (Stages 1-12)
+│   │   └── Stage8/         # Stage 8 specific components (Phase 5)
+│   │       ├── SceneAssetListPanel.tsx
+│   │       ├── VisualStateEditorPanel.tsx
+│   │       ├── StatusTagsEditor.tsx
+│   │       └── AssetDrawerTriggerPanel.tsx
 │   ├── styleCapsules/      # Style capsule UI
 │   ├── assets/             # Asset management UI
 │   └── auth/               # Auth components
@@ -1042,7 +1128,7 @@ src/
 
 ```
 backend/src/
-├── routes/                 # API route handlers (10 routers)
+├── routes/                 # API route handlers (11 routers)
 │   ├── health.ts
 │   ├── projects.ts
 │   ├── stageStates.ts
@@ -1050,13 +1136,16 @@ backend/src/
 │   ├── styleCapsules.ts
 │   ├── assets.ts
 │   ├── projectAssets.ts
+│   ├── sceneAssets.ts
 │   ├── images.ts
 │   └── seed.ts
-├── services/               # Business logic services (13 services)
+├── services/               # Business logic services (15 services)
 │   ├── llm-client.ts
 │   ├── contextManager.ts
 │   ├── styleCapsuleService.ts
 │   ├── assetExtractionService.ts
+│   ├── assetInheritanceService.ts
+│   ├── sceneAssetRelevanceService.ts
 │   ├── shotExtractionService.ts
 │   ├── shotValidationService.ts
 │   ├── continuityRiskAnalyzer.ts
@@ -1101,7 +1190,10 @@ backend/migrations/
 ├── 011_add_scene_dependencies.sql     # Scene dependency JSONB
 ├── 012_add_shot_order_to_shots.sql    # Shot order field
 ├── 013_add_end_frame_thumbnail.sql    # Scene end frame thumbnail
-└── 014_add_shot_list_locking_with_trigger.sql # Shot list locking + trigger
+├── 014_add_shot_list_locking_with_trigger.sql # Shot list locking + trigger
+├── 015_scene_asset_instances.sql      # Scene asset instances table (Phase 5)
+├── 016_add_scene_asset_job_type.sql   # Extend image generation jobs for scene assets (Phase 5)
+└── 017_scene_asset_modification_tracking.sql # Audit trail for scene asset changes (Phase 5)
 ```
 
 ---
@@ -1188,25 +1280,33 @@ backend/migrations/
 
 ---
 
-### Phase 5: 🔶 Asset Inheritance & Stage 8 (In Progress)
+### Phase 5: ✅ Asset Inheritance & Stage 8 (Complete)
 
-**Status:** Partially implemented
+**Status:** Fully implemented
 
-**Implemented:**
-- ✅ Database foundation (asset inheritance exists in schema)
-- ✅ Scene asset instance concept (from Phase 3 schema)
+**Deliverables:**
+- ✅ Scene asset instances database schema (Migration 015-017)
+- ✅ Asset inheritance service with prior scene analysis
+- ✅ Scene asset CRUD API endpoints with audit trail
+- ✅ AI-powered relevant asset detection service
+- ✅ Complete Stage 8 Visual Definition UI
+- ✅ Status metadata tags with carry-forward logic
+- ✅ Scene-specific image generation workflow
+- ✅ Bulk image generation with polling and progress tracking
+- ✅ Asset drawer integration with project/global toggle
+- ✅ Visual state editor with modification tracking
+- ✅ Scene header with slug and status display
+- ✅ Keyboard navigation for tag dropdown
+- ✅ URL persistence for Stage 8 scene navigation
+- ✅ Gatekeeper validation for Stage 9 progression
 
-**In Progress:**
-- 🔶 Stage 8 UI (Visual Definition)
-- 🔶 Asset drawer component (exists but needs Stage 8 integration)
-- 🔶 Scene-specific asset modification
-- 🔶 Status metadata tags (database field exists, UI pending)
-- 🔶 Scene-to-scene continuity enforcement
-
-**Planned (Not Started):**
-- ❌ Stage 8: Bulk image generation workflow
-- ❌ Mid-scene visual evolution tracking
-- ❌ Asset state rollback functionality
+**Key Features Implemented:**
+- **Scene Asset Instances:** Full database schema with inheritance chains, modification tracking, and audit trails
+- **Asset State Propagation:** Assets carry state changes (muddy, bloody, torn) between scenes with carry_forward toggle
+- **AI Asset Detection:** LLM-powered relevance detection that suggests which project assets should appear in each scene
+- **Three-Panel UI:** Scene asset list (left), visual state editor (center), asset drawer trigger (right)
+- **Bulk Operations:** Multi-select asset generation with cost confirmation and progress polling
+- **Status Tags System:** Visual condition tracking with keyboard-navigable dropdown and carry-forward options
 
 ---
 
@@ -1263,9 +1363,8 @@ npm run test:connectivity # Test Supabase connection
 ### Database
 
 1. **No `invalidation_logs` table yet** - Planned for Phase 10, but not implemented
-2. **No `scene_asset_instances` table** - Schema exists in docs but not migrated
-3. **No `frames` or `videos` tables** - Planned for Phases 7-9
-4. **Branching UI incomplete** - Database structure exists, UI not built
+2. **No `frames` or `videos` tables** - Planned for Phases 7-9
+3. **Branching UI incomplete** - Database structure exists, UI not built
 
 ### Backend
 
@@ -1277,13 +1376,13 @@ npm run test:connectivity # Test Supabase connection
 
 ### Frontend
 
-1. **Stages 8-12 incomplete** - Stages 8-12 are stubbed components with minimal functionality
+1. **Stages 9-12 incomplete** - Stages 9-12 are stubbed components with minimal functionality
 2. **No artifact vault UI** - ProjectHeader has button, but modal not implemented
 3. **No version history UI** - Branching system exists in DB, but UI not built
-4. **No cost estimation display** - UI for credit costs not implemented
-5. **No notification system** - No in-app or email notifications for async jobs
-6. **No regeneration guidance modal** - "The Why Box" component not created
-7. **Asset versioning UI** - Database tracks versions, but UI doesn't show version history
+4. **No notification system** - No in-app or email notifications for async jobs (polling implemented for Stage 8)
+5. **No regeneration guidance modal** - "The Why Box" component not created
+6. **Asset versioning UI** - Database tracks versions, but UI doesn't show version history
+7. **Scene asset inheritance chain UI** - Database tracks inheritance chains, but no visual tree in UI
 
 ### Testing
 
@@ -1309,28 +1408,42 @@ npm run test:connectivity # Test Supabase connection
 
 ## Conclusion
 
-Aiuteur has successfully implemented **Phases 0-4**, establishing a solid foundation for a narrative-to-AI-film pipeline with:
+Aiuteur has successfully implemented **Phases 0-5**, establishing a comprehensive foundation for a narrative-to-AI-film pipeline with:
 
-✅ **14 database migrations** creating a robust schema  
-✅ **Git-style branching system** for non-linear project evolution  
-✅ **Style Capsule system** replacing RAG with deterministic style injection  
-✅ **Complete Phase A (Stages 1-5)** with LLM-powered narrative generation  
-✅ **Phase B foundation (Stages 6-7)** with scene/shot management  
-✅ **Asset management** (global, project, and scene-scoped)  
-✅ **Shot list validation & locking** with database trigger enforcement  
-✅ **LangSmith observability** for debugging LLM calls  
+✅ **17 database migrations** creating a robust schema with full asset inheritance
+✅ **Git-style branching system** for non-linear project evolution
+✅ **Style Capsule system** replacing RAG with deterministic style injection
+✅ **Complete Phase A (Stages 1-5)** with LLM-powered narrative generation
+✅ **Complete Phase B foundation (Stages 6-8)** with scene/shot management and stateful asset system
+✅ **Asset management** (global, project, and scene-scoped with inheritance chains)
+✅ **Shot list validation & locking** with database trigger enforcement
+✅ **Scene asset instances** with status tags, carry-forward logic, and modification tracking
+✅ **AI-powered asset detection** for scene relevance analysis
+✅ **Complete Stage 8 UI** with three-panel layout, bulk operations, and cost confirmation
+✅ **LangSmith observability** for debugging LLM calls
 
-### Next Steps (Phase 5+)
+### Next Steps (Phase 6+)
 
-1. **Complete Stage 8** - Asset inheritance UI and scene-specific visual definition
-2. **Implement Nano Banana integration** - Actual image generation (not just job tracking)
-3. **Build Stages 9-12** - Prompt segmentation, frame generation, cost review, video generation
-4. **Add testing** - Frontend tests, E2E tests, increased backend coverage
-5. **Performance optimization** - Caching, pagination, lazy loading
-6. **Branching UI** - Build version history and artifact vault interfaces
+1. **Build Stage 9** - Prompt segmentation and model preparation
+2. **Implement Frame Generation (Stage 10)** - Nano Banana integration for anchor frames
+3. **Add Cost Management (Stage 11)** - Transparent cost tracking and gateways
+4. **Build Video Generation (Stage 12)** - Veo3 integration and review workflow
+5. **Add testing** - Frontend tests, E2E tests, increased backend coverage
+6. **Performance optimization** - Caching, pagination, lazy loading
+7. **Branching UI** - Build version history and artifact vault interfaces
+
+### Current System Capabilities
+
+The system now supports complete asset state management across scenes, allowing:
+- Characters that get muddy and stay muddy between scenes
+- Props that break and remain broken unless fixed
+- Visual consistency enforcement through inheritance chains
+- AI-powered suggestions for which assets should appear in each scene
+- Bulk image generation with progress tracking and cost estimation
+- Full audit trails for all asset modifications
 
 ---
 
-**Document Version:** 1.0  
-**Generated:** January 31, 2026  
-**Codebase State:** Phases 0-4 Complete, Phase 5 In Progress
+**Document Version:** 2.0
+**Generated:** February 3, 2026
+**Codebase State:** Phases 0-5 Complete (Full Asset Inheritance System), Phase 6+ Pending
