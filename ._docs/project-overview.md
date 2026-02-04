@@ -85,7 +85,7 @@ To prevent Large Language Model (LLM) hallucinations, token limit overflows, and
 | Context Type | Data Contained | LLM Access | Purpose |
 | ----- | ----- | ----- | ----- |
 | **Global Context** | Beat Sheet, Project Summary, Master Character Descriptions, Style Capsule Selections. | Always (Phase A & B) | Maintains plot cohesion and stylistic tone across the entire project. |
-| **Local Context** | Current Scene Script (Stage 4), Current Shot List (Stage 7), **Previous Scene End-State** (Assets, Final Frame). | Only during the active Scene's lifecycle (Phase B). | Prevents token overflow; ensures continuity between Scene N and Scene N+1. |
+| **Local Context** | Current Scene Script (Just the scene, extracted from stage 4), Current Shot List (Stage 7), **Previous Scene End-State** (Assets, Final Frame). | Only during the active Scene's lifecycle (Phase B). | Prevents token overflow; ensures continuity between Scene N and Scene N+1. |
 
 ### **2.2 Style Capsule System (Written and Visual Styles)**
 
