@@ -471,7 +471,41 @@ This document outlines the revised development plan for Aiuteur, addressing stra
   - Highlight problem areas requiring attention
   - Track continuity resolution progress
 
-**Deliverable**: Robust continuity system that tracks scene end-states, provides meaningful continuity warnings, and offers basic version control to protect completed work.
+### Feature 4.4: Invalidation & Cascade Detection ✅ **COST MANAGEMENT**
+
+**Purpose**: Track cascading changes from upstream stages and prevent wasted credits on outdated content
+
+**Architectural Importance**: Global changes (Phase A: Stages 1-5) can invalidate local work (Phase B: Stages 6-12)
+
+**Core Features:**
+- [ ] **Invalidation Logs Table**: Create tracking system for cascade detection
+  - Implement `invalidation_logs` table with timestamp and reason tracking
+  - Link invalidations to specific stage changes
+  - Store affected downstream artifacts
+- [ ] **Global Invalidation Logic**: Detect Phase A changes that affect Phase B
+  - Master Script changes (Stage 4) invalidate all scene-level work
+  - Asset definition changes (Stage 5) invalidate scene instances
+  - Beat Sheet changes (Stage 3) trigger partial invalidation
+- [ ] **Local Invalidation Logic**: Scene-level change propagation
+  - Shot list changes (Stage 7) invalidate frames and videos for that scene
+  - Visual state changes (Stage 8) invalidate downstream frames
+  - Prompt changes (Stage 9) flag need for regeneration
+- [ ] **Continuity Break Detection**: Identify when changes break scene dependencies
+  - Detect asset removal that affects downstream scenes
+  - Flag character/prop state changes that create inconsistencies
+  - Warn when prior scene end-state no longer matches current scene
+- [ ] **Cost Estimation for Invalidations**: Calculate regeneration costs
+  - Estimate credits needed to regenerate invalidated content
+  - Show cost breakdown by stage and scene
+  - Provide "regenerate all" vs "selective regenerate" cost comparison
+  - Display warning modals before confirming destructive changes
+- [ ] **Smart Invalidation UI**: User-friendly invalidation management
+  - Visual indicators for invalidated stages (orange/red status)
+  - "Review Invalidations" modal showing affected content
+  - Batch regeneration options with cost preview
+  - Option to proceed with partial invalidation (acknowledge risks)
+
+**Deliverable**: Robust continuity system that tracks scene end-states, provides meaningful continuity warnings, offers basic version control to protect completed work, and prevents costly mistakes through intelligent invalidation tracking.
 
 ---
 
@@ -539,7 +573,14 @@ This document outlines the revised development plan for Aiuteur, addressing stra
 - [ ] **Navigation Improvements**: Streamline stage navigation
   - Fix URL persistence issues
   - Improve stage switching responsiveness
-  - Add keyboard shortcuts for power users
+- [ ] **Keyboard Shortcuts System**: Power user efficiency features
+  - Implement global keyboard shortcut handler
+  - Add stage navigation shortcuts (Ctrl+1-12 for stages, Ctrl+Left/Right for prev/next)
+  - Create action shortcuts (Ctrl+S save, Ctrl+R regenerate, Ctrl+G generate)
+  - Build shortcut help modal (Ctrl+/ or ? key)
+  - Add customizable key bindings in user settings
+  - Display keyboard hints in tooltips and UI
+  - Test cross-platform compatibility (Windows/Mac/Linux)
 - [ ] **Asset Drawer Improvements**: Enhance Stage 8 asset management
   - Change "Create Scene Asset" to "Add New Assets" for clarity
   - Improve asset drawer performance with large asset libraries
