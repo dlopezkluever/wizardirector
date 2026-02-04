@@ -4,7 +4,7 @@
 
 This document outlines the revised development plan for Aiuteur, addressing strategic sequencing concerns and incorporating comprehensive architectural decisions. Each phase delivers working functionality with minimal technical debt while building toward a complete 12-stage AI-powered film generation platform.
 
-**Current State**: Phases 0-5.3b Complete (Asset Inheritance System with Stage 8 Visual Definition)
+**Current State**: See ._docs/development-progress.md (Currently through a rough implementation of stages 1-8 of the pipeline; 9-12 filled with mock data)
 
 **Target State**: Full 12-stage pipeline with real API integrations, optimized data flow, and production-ready video output.
 
