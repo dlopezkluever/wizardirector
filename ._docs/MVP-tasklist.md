@@ -586,7 +586,73 @@ This document outlines the revised development plan for Aiuteur, addressing stra
   - Improve asset drawer performance with large asset libraries
   - Add asset search and filtering within drawer
 
-### Feature 5.4: Testing Infrastructure ✅ **QUALITY ASSURANCE**
+### Feature 5.4: Onboarding & User Education ✅ **USER RETENTION**
+
+**Purpose**: Guide new users through pipeline and reduce learning curve
+
+**Critical for User Acquisition**: First-time user experience directly impacts retention and word-of-mouth growth
+
+**Core Features:**
+- [ ] **First-Time User Onboarding Flow**: Interactive tutorial system
+  - Create welcome modal explaining 12-stage pipeline concept
+  - Build step-by-step guided tour through Stages 1-4
+  - Highlight key features (Style Capsules, Asset Library, Scene Pipeline)
+  - Implement progress tracking (dismiss tour, resume later)
+- [ ] **Interactive Tutorial Overlays**: Contextual guidance
+  - Stage-specific tooltips explaining key actions
+  - Highlight important buttons on first visit (Generate, Lock, Approve)
+  - Progressive disclosure (show advanced features after basics)
+  - Dismissible overlays with "Don't show again" option
+- [ ] **Example Project Templates**: Pre-built starting points
+  - Create 2-3 example projects (Short Film, Music Video, Commercial)
+  - Include sample treatments, beat sheets, and assets
+  - Allow users to "Clone Example" to learn by exploring
+  - Add "How This Was Made" annotations in examples
+- [ ] **Contextual Help System**: In-app documentation
+  - Add help icons (?) next to complex features
+  - Implement help panel with searchable documentation
+  - Create video tutorial embeds for key workflows
+  - Link to external documentation/blog posts
+- [ ] **Empty State Improvements**: Guidance when no data exists
+  - Replace empty project lists with "Create Your First Project" CTA
+  - Add helpful prompts in empty asset libraries
+  - Show example inputs in empty text fields
+  - Provide suggestions for next steps at each stage
+
+### Feature 5.5: Basic Video Export System ✅ **MVP COMPLETION**
+
+**Purpose**: Enable users to download and share their completed videos
+
+**Essential for MVP**: Users must be able to export their work to consider the product functional
+
+**Core Features:**
+- [ ] **Export API Endpoint**: Create video export service
+  - Implement POST `/api/projects/:projectId/scenes/:sceneId/export` endpoint
+  - Support MP4 format with H.264 codec (universal compatibility)
+  - Add export quality options (720p, 1080p, 4K)
+  - Include metadata embedding (project name, scene info, timestamp)
+- [ ] **Export Job Queue**: Handle long-running exports
+  - Integrate with existing async job system (from Stage 12)
+  - Add export job status tracking (queued, processing, completed, failed)
+  - Implement progress percentage updates
+  - Store completed exports in Supabase Storage with expiration
+- [ ] **Export UI Components**: User-facing export interface
+  - Add "Export Video" button to Stage 12 (Video Review)
+  - Create export configuration modal (format, quality, filename)
+  - Build export progress indicator with cancellation option
+  - Implement download link generation with expiration notice
+- [ ] **Export History Tracking**: Log all exports
+  - Store export records in database with timestamp and settings
+  - Display export history in project settings
+  - Allow re-download of recent exports (7-day retention)
+  - Track export credits/costs if applicable
+- [ ] **Multi-Scene Export**: Scene concatenation (optional for MVP)
+  - Add "Export Full Project" option to concatenate all scene videos
+  - Implement scene stitching with transition handling
+  - Generate master timeline with scene markers
+  - Support partial export (select specific scenes)
+
+### Feature 5.6: Testing Infrastructure ✅ **QUALITY ASSURANCE**
 
 **Purpose**: Add comprehensive testing coverage for reliability
 
@@ -608,7 +674,7 @@ This document outlines the revised development plan for Aiuteur, addressing stra
   - Implement graceful degradation
   - Add user-friendly error messages
 
-**Deliverable**: Polished, reliable pipeline with improved generation quality, smooth user experience, and comprehensive testing coverage.
+**Deliverable**: Polished, reliable pipeline with improved generation quality, smooth user experience, comprehensive onboarding for new users, functional video export system, and comprehensive testing coverage.
 
 ---
 
@@ -744,12 +810,16 @@ This document outlines the revised development plan for Aiuteur, addressing stra
 - [ ] End-state summaries automatically generated
 - [ ] Basic branching system prevents work loss
 - [ ] Continuity system provides meaningful warnings
+- [ ] Invalidation system tracks cascade changes and prevents costly mistakes
 - [ ] Users feel confident about scene-to-scene consistency
 
 ### Phase 5 Success Criteria
 - [ ] All critical issues from Issue-Tickets.md resolved
 - [ ] Improved generation quality across the pipeline
 - [ ] Smooth user experience with minimal friction
+- [ ] Keyboard shortcuts implemented for power users
+- [ ] Onboarding system guides new users through pipeline
+- [ ] Users can export completed videos in MP4 format
 - [ ] Comprehensive testing coverage
 
 ### Phase 6 Success Criteria
@@ -760,7 +830,18 @@ This document outlines the revised development plan for Aiuteur, addressing stra
 
 ---
 
-**Document Version**: 1.0
+**Document Version**: 1.1
 **Created**: February 4, 2026
+**Last Updated**: February 4, 2026
 **Status**: Phase 1 Ready for Implementation
 **Next Review**: After Phase 1 Completion
+
+### Changelog
+**v1.1** (February 4, 2026):
+- Added Feature 4.4: Invalidation & Cascade Detection to Phase 4
+- Enhanced Feature 5.3: Keyboard Shortcuts System (expanded from brief mention to full implementation plan)
+- Added Feature 5.4: Onboarding & User Education (critical for user retention)
+- Added Feature 5.5: Basic Video Export System (essential for MVP completion)
+- Renumbered Feature 5.4 → 5.6 (Testing Infrastructure)
+- Updated Phase 4 and Phase 5 Success Criteria to reflect new features
+- Changes based on analysis of missing features from old-tasklist.md
