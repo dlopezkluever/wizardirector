@@ -1,717 +1,724 @@
-# Aiuteur Implementation Task List
+# New Aiuteur MVP Implementation Task List
 
 ## Overview
 
-This document outlines the iterative development plan for Aiuteur, progressing from the current frontend skeleton to a fully functional AI-powered film generation platform. Each phase delivers a working product with increasing capability.
+This document outlines the revised development plan for Aiuteur, addressing strategic sequencing concerns and incorporating comprehensive architectural decisions. Each phase delivers working functionality with minimal technical debt while building toward a complete 12-stage AI-powered film generation platform.
 
-**Current State**: Frontend UI skeleton with no backend, no data persistence, no AI integrations.
+**Current State**: Phases 0-5.3b Complete (Asset Inheritance System with Stage 8 Visual Definition)
 
-**Target State**: Full 12-stage pipeline with AI generation, version control, cost management, and production-ready video output.
+**Target State**: Full 12-stage pipeline with real API integrations, optimized data flow, and production-ready video output.
 
----
-
-## Phase 0: **DONE** Setup & Foundation (Barebones Functioning System) **DONE**
-
-**Goal**: Establish minimal infrastructure to support basic data flow and state persistence. No AI integrations yet—focus on making the skeleton "live" with mock data that persists.
-
-### Feature 0.1: Backend API Foundation
-**Purpose**: Create minimal REST API structure for frontend communication
-- [ ] Set up Fly.io deployment configuration and environment
-- [ ] Create Express.js server with CORS and basic middleware
-- [ ] Implement health check endpoint (`/api/health`)
-- [ ] Add error handling middleware
-- [ ] Configure environment variables for API keys (placeholder values)
-
-### Feature 0.2: Database Schema Implementation
-**Purpose**: Establish data persistence layer
-- [ ] Set up Supabase project and configure connection
-- [ ] Implement `projects` table with RLS policies
-- [ ] Implement `branches` table with foreign key to projects
-- [ ] Create initial migration scripts
-- [ ] Test database connection from backend API
-
-### Feature 0.3: Authentication System
-**Purpose**: Enable user-specific project management
-- [ ] Integrate Supabase Auth in frontend
-- [ ] Create login/signup UI components
-- [ ] Implement protected route middleware
-- [ ] Add authentication state management in Zustand
-- [ ] Test user session persistence
-
-### Feature 0.4: Project CRUD Operations
-**Purpose**: Enable basic project lifecycle management
-- [ ] Implement POST `/api/projects` (create project)
-- [ ] Implement GET `/api/projects/:id` (fetch project)
-- [ ] Implement GET `/api/projects` (list user projects)
-- [ ] Connect frontend Dashboard to real API calls
-- [ ] Replace mock project data with database queries
-
-### Feature 0.5: State Persistence Hookup
-**Purpose**: Make pipeline state survive page refreshes
-- [ ] Implement `stage_states` table with JSONB content field
-- [ ] Create API endpoint POST `/api/projects/:id/stages/:stageNumber`
-- [ ] Add auto-save functionality in pipeline components
-- [ ] Implement state hydration on page load
-- [ ] Test stage progression and data persistence
-
-**Deliverable**: Users can create projects, navigate pipeline stages, and see their work persist across sessions. No AI generation yet—all content is manually entered or uses placeholder text.
+**Development Philosophy**: Feature completion approach - get core functionality working end-to-end, then systematically improve quality and add advanced features.
 
 ---
 
-## Phase 1: **DONE** Phase 1: MVP \- Stage 1-4 Text Pipeline (Minimal Viable Product) **DONE**
+## Phase 1: Pipeline Connectivity (Stages 9-12) ⭐ **PRIORITY**
 
-**Goal**: Deliver core narrative creation pipeline (Phase A: Stages 1-4) with real LLM integration. Users can input a story idea and get a structured script output.
+**Goal**: Establish end-to-end pipeline functionality with real API integrations. Build Stages 9-12 to completion standard ("do it as well as possible") while prioritizing connectivity over perfection.
 
+### Feature 1.1: Stage 9 - Prompt Segmentation & Model Preparation ✅ **COMPLETE IMPLEMENTATION**
 
-### Feature 1.1 : LLM Service Integration & Observability
-**Purpose**: Connect to text generation AI services with full debugging visibility
-- [ ] Set up LangSmith project and API keys
-- [ ] Set up Gemini/OpenAI/Anthropic client wrapped with LangSmith tracer
-- [ ] Create `llm-client.ts` service with retry logic
-- [ ] Implement prompt template system (database-stored)
-- [ ] Add token counting and cost estimation utilities
-- [ ] Test LLM connectivity and verify trace appearance in LangSmith
+**Purpose**: Deterministic prompt assembly and user-editable prompt management
 
-### Feature 1.2: Stage 1 - Input Modes (Complete)
-**Purpose**: Functional narrative input system
-- [ ] Implement file upload component for multi-file staging
-- [ ] Add file type validation (text, PDF, screenplay formats)
-- [ ] Create project configuration form with validation
-- [ ] Store Stage 1 configuration in database
-- [ ] Implement mode-specific processing logic
+**Database Requirements:**
+- Extend `shots` table with `frame_prompt` and `video_prompt` fields (already exists)
+- Add prompt versioning/history tracking
 
-### Feature 1.3: Stage 2 - Treatment Generation (Complete)
-**Purpose**: AI-powered prose treatment generation
-- [ ] Build prompt template for treatment generation
-- [ ] Implement 3-variant generation system
-- [ ] Create variation selection UI with side-by-side comparison
-- [ ] Add rich text editor with manual editing
-- [ ] Implement targeted regeneration (highlight + right-click)
+**Core Features:**
+- [ ] **Prompt Assembly Service**: Create comprehensive prompt assembler that merges shot data + asset data into formatted prompts
+  - Frame Prompts: Visually descriptive, asset-heavy, spatially explicit (references Stage 8 visual states)
+  - Video Prompts: Action/audio focused, dialogue + SFX cues, minimal visual description
+  - Hide system scaffolding prompts from user interface
+- [ ] **Stage 9 UI Components**: Build shot-based prompt inspector with expandable cards
+  - Show Frame Prompt section (read-only by default, optional manual edit toggle)
+  - Show Video Prompt section (always editable)
+  - Add model compatibility tags (start frame only vs start+end frames)
+  - Include Veo3-specific prompt formatting per PRD specifications
+- [ ] **Prompt Validation & Preview**: Implement length validation, forbidden character checking, preview component
+- [ ] **LLM Integration**: Auto-generate both prompt types via LLM, maintain full user editability
+- [ ] **API Endpoints**:
+  - `GET /api/projects/:projectId/scenes/:sceneId/shots/:shotId/prompts` - Get prompts
+  - `PUT /api/projects/:projectId/scenes/:sceneId/shots/:shotId/prompts` - Update prompts
+  - `POST /api/projects/:projectId/scenes/:sceneId/generate-prompts` - Bulk prompt generation
 
-### Feature 1.4: Stage 3 - Beat Sheet Editor (Complete)
-**Purpose**: Interactive structural editing
-- [ ] Implement drag-and-drop beat reordering with @dnd-kit
-- [ ] Create beat extraction LLM agent
-- [ ] Add inline beat editing with auto-save
-- [ ] Implement beat splitting/merging actions
-- [ ] Add "Confirm Beat Sheet" gatekeeper logic
+### Feature 1.2: Stage 10 - Frame Generation with Real Gemini Integration ✅ **COMPLETE IMPLEMENTATION**
 
-### Feature 1.5: Stage 4 - Master Script Generator (Complete)
-**Purpose**: Generate production-ready screenplay
-- [ ] Build verbose script generation prompt template
-- [ ] Implement screenplay formatting (INT/EXT, character names, dialogue)
-- [ ] Create script editor with industry-standard layout
-- [ ] Add scene extraction logic for Phase B
-- [ ] Implement "Approve Master Script" checkpoint
+**Purpose**: Generate start/end anchor frames using real Gemini API with continuity validation
 
-### Feature 1.6: Stage Progression & Gating
-**Purpose**: Enforce pipeline dependencies and checkpoints
-- [ ] Implement stage status state machine (draft/locked/invalidated)
-- [ ] Add stage advancement validation logic
-- [ ] Create visual progress timeline component
-- [ ] Implement "lock stage" functionality
-- [ ] Add navigation guards for incomplete stages
+**Database Requirements:**
+- Create `frames` table with shot references and generation metadata
+- Link to existing `image_generation_jobs` system for tracking
 
-**Deliverable**: Users can input a story idea, iteratively refine it through AI-generated treatments and beat sheets, and receive a formatted master script. This is the first complete value delivery—users get a structured screenplay from a rough idea.
+**Core Features:**
+- [ ] **Gemini API Integration**: Replace mock calls with real Gemini API (Flash-1/Nano Banana model)
+  - Implement frame generation service with retry logic
+  - Add cost tracking and credit deduction
+  - Include transparent background injection for characters/props
+- [ ] **Generation Mode Implementation**:
+  - Quick Mode: Bulk generate all required frames (speed-optimized)
+  - Control Mode: Sequential generation with approval gates (cost-optimized)
+  - Optional toggle for start-frame-only generation (Sora-style models)
+- [ ] **Stage 10 UI**: Build comprehensive frame generation interface
+  - Shot frame panel with status indicators
+  - Visual rearview mirror with ghost/flicker comparison
+  - Grid-based generation view (Quick Mode)
+  - Step-by-step progression (Control Mode)
+  - Frame approval interface with regeneration options
+- [ ] **Continuity System**: Implement frame dependency manager
+  - Enforce correct frame chaining
+  - Region-level inpainting agent for localized corrections
+  - Continuity drift detection and flagging
+- [ ] **API Endpoints**:
+  - `POST /api/projects/:projectId/scenes/:sceneId/generate-frames` - Start frame generation
+  - `GET /api/projects/:projectId/scenes/:sceneId/frames` - Get frames status
+  - `PUT /api/projects/:projectId/scenes/:sceneId/frames/:frameId/approve` - Approve frame
+  - `POST /api/projects/:projectId/scenes/:sceneId/frames/:frameId/regenerate` - Regenerate with guidance
 
----
+### Feature 1.3: Stage 11 - Comprehensive Review & Cost Gateway ✅ **COMPLETE IMPLEMENTATION**
 
-## Phase 2: **DONE** Phase 2: Style Capsule System **DONE**
+**Purpose**: Final economic and dependency review with comprehensive scene summary
 
+**Database Requirements:**
+- Extend cost calculation system for real-time pricing
+- Add project-level credit balance tracking
 
-**Goal**: Add creative control through style customization. Users can upload reference materials to guide tone, pacing, and aesthetic.
-\*\*Goal\*\*: Add creative control through style customization. Users can upload reference materials to guide tone, pacing, and aesthetic.
+**Core Features:**
+- [ ] **Scene Summary Display**: Build comprehensive review interface
+  - List all shots with shot IDs and metadata
+  - Start/end frame previews for each shot
+  - Final prompt snapshots for both frame and video prompts
+  - Scene dependency warnings when applicable
+- [ ] **Cost Calculation Engine**: Implement transparent cost tracking
+  - Per-shot cost breakdown showing individual generation costs
+  - Scene total cost calculation (sum of all shots)
+  - Running total showing cumulative project costs from previous generations
+  - Credit balance display and low-credit warnings
+- [ ] **Dependency Analysis**: Show continuity risks and warnings
+  - Prior scene end-state compatibility
+  - Asset state mismatches
+  - Missing frame dependencies
+- [ ] **Confirmation Gateway**: "Confirm & Render" action with validation
+  - Block progression if insufficient credits
+  - Require explicit confirmation for high-cost scenes
+  - Queue job for Stage 12 video generation
+- [ ] **API Endpoints**:
+  - `GET /api/projects/:projectId/scenes/:sceneId/cost-breakdown` - Calculate costs
+  - `GET /api/projects/:projectId/credit-balance` - Get user credits
+  - `POST /api/projects/:projectId/scenes/:sceneId/confirm-render` - Confirm and queue
 
-\#\#\# Feature 2.0: Style Capsule Database Migration
-\*\*Purpose\*\*: Migrate database schema from RAG to Style Capsule system  
-\- \[ \] Create migration 004: Replace RAG tables with Style Capsule schema  
-\- \[ \] Implement \`style\_capsule\_libraries\` table (user collections)  
-\- \[ \] Implement \`style\_capsules\` table (individual capsules with text/metadata)  
-\- \[ \] Implement \`style\_capsule\_applications\` table (audit logging)  
-\- \[ \] Update projects table: replace \`written\_style\_rag\_id\`/\`visual\_style\_rag\_id\` with Style Capsule references  
-\- \[ \] Remove any existing RAG-related database structures
+### Feature 1.4: Stage 12 - Video Generation with Real Veo3 Integration ✅ **COMPLETE IMPLEMENTATION**
 
-\#\#\# Feature 2.1: Writing Style Capsule Library
-\*\*Purpose\*\*: Enable tone/style consistency across text generation  
-\- \[ \] Create Style Capsule upload UI for text samples and descriptors  
-\- \[ \] Implement Style Capsule creation with text examples and metadata  
-\- \[ \] Build Style Capsule management interface (create/edit/delete)  
-\- \[ \] Add Style Capsule injection logic to Stage 2-4 prompts  
-\- \[ \] Implement preset Writing Style Capsules for common styles
+**Purpose**: Generate final videos using real Veo3 API with review and iteration workflow
 
-\#\#\# Feature 2.2: Visual Style Capsule Library  
-\*\*Purpose\*\*: Control visual aesthetic for image/video generation  
-\- \[ \] Create visual reference image upload interface  
-\- \[ \] Implement Style Anchor creation with descriptors and design pillars  
-\- \[ \] Build visual style selector UI component  
-\- \[ \] Add Visual Style Capsule management page  
-\- \[ \] Link visual style selection to asset generation
+**Database Requirements:**
+- Create `videos` table linked to scenes and shots
+- Implement job queue system for async video processing
+- Add notification system for completion alerts
 
-\#\#\# Feature 2.3: Context Management System  
-\*\*Purpose\*\*: Implement Global vs Local context strategy  
-\- \[ \] Create Context Manager service class  
-\- \[ \] Implement global context assembly (Beat Sheet, Master Script summary)  
-\- \[ \] Add local context windowing for scenes  
-\- \[ \] Build context injection into LLM prompts  
-*\- \[ \] Add context size monitoring and truncation*
+**Core Features:**
+- [ ] **Veo3 API Integration**: Implement real video generation via Vertex AI
+  - Submit confirmed start/end frames and formatted prompts to Veo3
+  - Handle async video generation with webhook completion
+  - Implement retry logic and error handling
+  - Support 8-second shot specifications per pipeline design
+- [ ] **Async Job System**: Build background video processing
+  - Job queue implementation (Bull/similar)
+  - Background worker process for long-running tasks
+  - Job status tracking and progress monitoring
+  - Email/in-app notifications on completion/failure
+- [ ] **Stage 12 UI**: Build video review and iteration interface
+  - Timeline-based video player with shot markers
+  - Full scene assembly preview (multiple 8-second clips)
+  - Issue classification controls (visual continuity, timing, dialogue/audio, narrative)
+  - Playback controls (play/pause/scrub)
+- [ ] **Iteration Routing**: Implement failure attribution and correction paths
+  - Map issues to upstream stages (Stage 8 for visual issues, Stage 7 for narrative issues)
+  - "Return to Stage X" actions with issue description capture
+  - Success path: "Complete Scene" returns to Script Hub
+- [ ] **Notification System**:
+  - In-app toast notifications for render completion
+  - Email alerts with project/scene context
+  - Render re-entry logic (clicking notification drops user into Stage 12 review)
+- [ ] **API Endpoints**:
+  - `POST /api/projects/:projectId/scenes/:sceneId/generate-video` - Start video generation
+  - `GET /api/projects/:projectId/scenes/:sceneId/video-status` - Check generation progress
+  - `POST /api/projects/:projectId/scenes/:sceneId/video/:videoId/approve` - Approve video
+  - `PUT /api/projects/:projectId/scenes/:sceneId/return-to-stage` - Route back for fixes
 
-\#\#\# Feature 2.4: Style Capsule-Enhanced Generation  
-\*\*Purpose\*\*: Apply style guidance to AI outputs  
-\- \[ \] Modify Stage 2 prompts to include Writing Style Capsule injection  
-\- \[ \] Update Stage 4 script generation with Style Capsule application  
-\- \[ \] Implement deterministic Style Capsule selection logic  
-\- \[ \] Implement Style Capsule application logging in \`style\_capsule\_applications\` table  
-\- \[ \] Test style consistency across regenerations
+### Feature 1.5: End-to-End Pipeline Testing ✅ **COMPLETE IMPLEMENTATION**
 
-\*\*Deliverable\*\*: Users can define custom written and visual styles by uploading reference materials. Generated treatments and scripts reflect the uploaded style, making output more personalized and consistent with user vision.
+**Purpose**: Validate complete pipeline functionality with real APIs
 
----
+**Core Features:**
+- [ ] **Integration Tests**: Build comprehensive test suite
+  - Test data flow from Stage 4 → Stage 12
+  - Validate asset inheritance across stages
+  - Test real API integrations (Gemini + Veo3)
+  - Verify cost calculations and credit deductions
+- [ ] **Error Handling**: Implement robust error management
+  - API failure recovery and retry logic
+  - User-friendly error messaging
+  - Graceful degradation for service outages
+- [ ] **Performance Monitoring**: Add observability
+  - LangSmith tracing for all API calls
+  - Performance metrics for stage transitions
+  - Cost tracking and budget alerts
 
-## Phase 3: **DONE** Phase 3: Asset Management & Stage 5 **DONE**
-
-**Goal**: Enable visual asset definition and management. Users can define characters, props, and locations with generated image references.
-
-### Feature 3.1: Image Generation Service
-**Purpose**: Integrate Nano Banana for asset image keys
-- [ ] Set up Nano Banana API client
-- [ ] Implement image generation request/response handling
-- [ ] Add Supabase Storage integration for image uploads
-- [ ] Create image generation queue system
-- [ ] Implement error handling and retry logic
-
-### Feature 3.2: Global Asset Library
-**Purpose**: Centralized asset management across projects
-- [ ] Implement `global_assets` table and API endpoints
-- [ ] Create asset creation UI (name, type, description)
-- [ ] Build asset gallery/grid view component
-- [ ] Add search and filter functionality
-- [ ] Implement asset deletion with dependency checking
-
-### Feature 3.3: Stage 5 - Asset Extraction & Definition
-**Purpose**: Parse script and generate visual keys
-- [ ] Implement LLM-based asset extraction from Stage 4 script
-- [ ] Create asset definition editor UI (description + image)
-- [ ] Build image key generation workflow
-- [ ] Add iterative image regeneration with guidance
-- [ ] Implement "Lock Master Asset" gatekeeper
-
-### Feature 3.4: Project-Level Assets
-**Purpose**: Project-specific asset instances
-- [ ] Implement `project_assets` table
-- [ ] Create asset inheritance from global library
-- [ ] Add project asset drawer UI component
-- [ ] Implement asset promotion (project → global)
-- [ ] Build asset versioning system
-
-### Feature 3.5: Visual Style Lock
-**Purpose**: Enforce consistent visual aesthetic
-- [ ] Create visual style selector in Stage 5
-- [ ] Implement style lock enforcement in image generation
-- [ ] Add style preview component
-- [ ] Store locked style in global context
-- [ ] Test style consistency across multiple assets
-
-**Deliverable**: Users can extract characters, props, and settings from their script, generate reference images for each, and lock a visual style. This establishes the visual foundation for video generation.
-
----
-
-## Phase 4: **DONE** Phase B Foundation - Scenes & Shots **DONE**
-
-**Goal**: Implement scene-based workflow (Stage 6-7). Users can break down their script into technical shot lists.
-
-### Feature 4.1: Scene Extraction & Parsing
-**Purpose**: Convert Master Script into scene database entries
-- [ ] Implement `scenes` table
-- [ ] Build scene extraction logic from Stage 4 script
-- [ ] Create scene heading parser (INT/EXT/DAY/NIGHT)
-- [ ] Store scene content and metadata
-- [ ] Implement scene ordering and numbering
-
-### Feature 4.2: Stage 6 - Script Hub
-**Purpose**: Scene navigation and status tracking
-\- \[ \] Create scene list UI with status indicators  
-\- \[ \] Implement scene selection and navigation  
-\- \[ \] Build scene overview panel with dependencies (characters, locations, props)  
-\- \[ \] Implement fuzzy matching (Levenshtein distance, threshold 0.85) for asset identification  
-\- \[ \] Add continuity risk analyzer (advisory)  
-\- \[ \] Create "Enter Scene Pipeline" action
-
-### Feature 4.3: Stage 7 - Shot List Generator
-**Purpose**: Break scenes into timed, technical shots
-- [ ] Implement `shots` table with mandatory fields
-- [ ] Build shot extraction LLM agent
-- [ ] Create shot table UI (spreadsheet-style)
-- [ ] Add shot field editing with auto-save
-- [ ] Implement shot splitting/merging logic
-
-### Feature 4.4: Rearview Mirror Component
-**Purpose**: Display prior scene end-state for continuity
-- [ ] Create collapsible rearview mirror UI component
-- [ ] Implement prior scene data fetching
-- [ ] Display final action/dialogue from previous scene
-- [ ] Add visual frame preview (when available)
-- [ ] Integrate into Stage 7-10 interfaces
-
-### Feature 4.5: Shot List Validation & Locking
-**Purpose**: Enforce shot list completeness
-- [ ] Add field validation (required fields, duration limits)
-- [ ] Implement shot coherence checking
-- [ ] Create "Lock Shot List" gatekeeper
-- [ ] Add warning modal for incomplete shots
-- [ ] Store locked shot list in database
-
-**Deliverable**: Users can navigate scenes, break them into detailed shot lists with camera specs and action, and see continuity context from prior scenes. This bridges narrative (Phase A) to production (Phase B).
+**Deliverable**: Users can progress from Stage 4 (Master Script) through Stage 12 (Video Review) with real AI-generated frames and videos, proper cost tracking, and comprehensive error handling.
 
 ---
 
-## Phase 5: **IN PROGRESS** Asset Inheritance & Stage 8 **IN PROGRESS**
+## Phase 2: Critical Blockers (Issues Preventing Progression)
 
-**Goal**: Implement stateful asset system. Assets evolve across scenes with condition tracking.
+**Goal**: Fix blocking issues that prevent smooth pipeline operation. Address critical bugs and UX problems that halt user progress.
 
-### Feature 5.1: Scene Asset Instances
-**Purpose**: Scene-specific asset variations
-- [ ] Implement `scene_asset_instances` table
-- [ ] Create asset inheritance logic (Scene N → Scene N+1)
-- [ ] Build scene asset state propagation
-- [ ] Add asset modification tracking
-- [ ] Implement scene-specific image key generation
+### Feature 2.1: Stage 8 Master Asset Influence Bug Fix ✅ **CRITICAL**
 
-### Feature 5.2: Stage 8 - Visual Definition UI
-**Purpose**: Define scene starting visual state
-- [ ] Create Scene Visual Elements panel
-- [ ] Build Visual State Editor with pre-filled descriptions
-- [ ] Implement Asset Drawer for global asset access
-- [ ] Add drag-and-drop asset assignment
-- [ ] Create bulk asset image generation workflow
+**Purpose**: Resolve issue where scene instance images ignore master asset references
 
-### Feature 5.3: Status Metadata Tags
-**Purpose**: Track visual conditions (muddy, bloody, torn)
-- [ ] Add status tags field to scene asset instances
-- [ ] Create tag UI component (chips/badges)
-- [ ] Implement condition carry-forward prompt
-- [ ] Build tag persistence logic across scenes
-- [ ] Add tag-based search and filtering
+**Blocking Issue**: Scene instance generation currently uninfluenced by master asset images, breaking visual consistency
 
-### 5.3b Deal with Stage 8 Issues
-**Purpose**: Fix critical Stage 8 bugs including stage navigation persistence, image generation UI updates, status tag preservation, project asset access, and UX enhancements.
-todos:
-- 1a: "Fix Stage 7 redirect on refresh: Update           
-    ProjectView URL persistence to include sceneId, fix validation logic, add localStorage backup"
-- 1b: "Fix image generation UI refresh: Add polling for 
-    single generation, invalidate React Query cache after bulk polling completes"
-- 2a: "Fix status tags wiped on lock: Use local state in 
-    VisualStateEditorPanel, preserve existing tags when adding 'locked'"
-- 3ab: "Add project assets to drawer: Add source toggle 
-    (project/global), default to project assets in Stage 8, handle both selection flows"
-  - 2b: "Add keyboard navigation to tag dropdown:   
-    Implement arrow keys, Enter, Tab, Escape handlers with visual highlighting"
-  - 5: "Add scene header: Display scene number and 
+**Core Features:**
+- [ ] **Master Asset Reference Fix**: Investigate and repair image generation logic
+  - Debug why master asset images aren't influencing scene instance generation
+  - Ensure visual style capsules don't override master asset references
+  - Test generation with proper asset + style injection
+- [ ] **Pre-selected "Use Master Asset As-Is" Checkbox**:
+  - Add checkbox to Stage 8 visual state editor (pre-selected by default)
+  - When checked, copy master asset image directly to scene instance without generation
+  - Allow users to bypass generation entirely for unchanged assets
+- [ ] **Master Asset Influence Testing**: Validate fix with controlled test cases
+  - Generate scene instances with strong master asset references
+  - Verify visual style capsule balance (influence but don't override)
+  - Test across different asset types (characters, props, locations)
 
------ **Everything Up Until This Point Complete** -----
+### Feature 2.2: Asset Generation Carousel System ✅ **CRITICAL UX**
 
+**Purpose**: Allow users to compare and select from multiple generation attempts
 
-### Feature 5.4: Asset State Evolution
-**Purpose**: Handle mid-scene visual changes
-- [ ] Implement asset state change detection
-- [ ] Create asset change logging system
-- [ ] Add visual evolution tracking
-- [ ] Build asset timeline view
-- [ ] Implement state rollback functionality
+**User Problem**: Currently if regeneration produces worse result, user has no way to revert to previous attempt
 
-### Feature 5.5: Scene-to-Scene Continuity
-**Purpose**: Ensure visual consistency across scene boundaries
-- [ ] Implement end-state summary generation
-- [ ] Create continuity flag system
-- [ ] Add visual diff component (before/after)
-- [ ] Build automatic continuity warning system
-- [ ] Implement manual continuity override
+**Core Features:**
+- [ ] **Generation History Storage**: Track multiple generation attempts
+  - Store all generated images for each scene asset instance
+  - Maintain generation metadata (timestamp, cost, prompt used)
+  - Implement cleanup policy for storage management
+- [ ] **Carousel UI Component**: Build generation selection interface
+  - Display thumbnails of all generation attempts
+  - Allow cycling through attempts with arrow controls
+  - Show generation metadata on hover/selection
+  - "Select This One" action to set as active scene instance image
+- [ ] **Database Schema Updates**:
+  - Add `scene_asset_generation_attempts` table
+  - Link to scene_asset_instances with generation history
+  - Track selected attempt vs generation attempts
 
-**Deliverable**: Assets (characters, props) maintain state across scenes. Users can modify asset appearance for specific scenes, track conditions, and ensure visual continuity. Characters can get muddy, clothes can tear, and these changes persist.
+### Feature 2.3: Master Reference Historical Carousel ✅ **CRITICAL UX**
 
----
+**Purpose**: Enable users to reference previous scene instances as master references
 
-## Phase 6: Prompt Engineering & Stage 9
+**User Need**: Scene 4 master reference should default to Scene 3's selected instance, with ability to choose from all previous instances
 
-**Goal**: Implement deterministic prompt assembly system. Users can see and edit exact prompts sent to AI models.
+**Core Features:**
+- [ ] **Historical Master Reference Logic**: Build scene-to-scene reference system
+  - Default master reference to most recent scene instance image
+  - Query previous scenes for selected scene instance images
+  - Build chronological reference chain
+- [ ] **Historical Carousel UI**: Create master reference selection interface
+  - Display current default (most recent scene instance)
+  - Arrow controls to cycle through: Master Asset → Scene 1 instance → Scene 2 instance → etc.
+  - Clear visual indication of current selection
+  - "Use This Reference" confirmation action
+- [ ] **Reference Chain Management**: Handle edge cases
+  - First scene defaults to Master Asset image
+  - Skip scenes without generated instances
+  - Handle scene deletion/reordering
 
-### Feature 6.1: Prompt Taxonomy Implementation
-**Purpose**: Separate frame, video, and system prompts
-- [ ] Implement prompt type enum (frame/video/system)
-- [ ] Create prompt template versioning system
-- [ ] Build prompt assembly logic per shot
-- [ ] Add prompt field validation
-- [ ] Store prompt history in database
+### Feature 2.4: Manual Image Upload for Scene Instances ✅ **CRITICAL UX**
 
-### Feature 6.2: Stage 9 - Prompt Inspector UI
-**Purpose**: Expose and edit model inputs
-- [ ] Create expandable shot card component
-- [ ] Build Frame Prompt section (read-only by default)
-- [ ] Add Video Prompt section (editable)
-- [ ] Implement manual edit toggle
-- [ ] Create model compatibility indicator
+**Purpose**: Allow users to upload custom images for scene-specific assets
 
-### Feature 6.3: Prompt Assembly Agent
-**Purpose**: Merge shot + asset data into formatted prompts
-- [ ] Build shot data → frame prompt logic
-- [ ] Implement action + dialogue → video prompt logic
-- [ ] Add visual style RAG injection
-- [ ] Create character profile merging
-- [ ] Implement prompt sanity checker
+**Core Features:**
+- [ ] **Upload Interface**: Add upload capability to Stage 8
+  - File upload component in visual state editor
+  - Support standard image formats (PNG, JPG, WebP)
+  - Image validation and processing
+- [ ] **Upload Processing**: Handle custom image integration
+  - Resize/optimize uploaded images
+  - Store in Supabase Storage with proper naming
+  - Update scene_asset_instances with uploaded image URL
+- [ ] **Upload Integration**: Ensure uploaded images work in carousel system
+  - Include uploaded images in generation attempts carousel
+  - Allow mixing uploaded + generated images
+  - Proper metadata tracking for uploads
 
-### Feature 6.4: Veo3 / Sora Prompt Formatting
-**Purpose**: Format prompts for video generation API
-- [ ] Implement Veo3-specific prompt structure
-- [ ] Add visual section formatter
-- [ ] Build audio section formatter (dialogue + SFX)
-- [ ] Create character voice mapping
-- [ ] Add timing specification
+### Feature 2.5: Stage Opening System Fix ✅ **BLOCKING UX**
 
-### Feature 6.5: Prompt Validation & Preview
-**Purpose**: Catch formatting issues before generation
-- [ ] Implement prompt length validation
-- [ ] Add forbidden character checking
-- [ ] Create prompt preview component
-- [ ] Build prompt comparison tool (variant A vs B)
-- [ ] Implement prompt testing interface
+**Purpose**: Fix system that automatically skips ahead one stage when opening projects
 
-**Deliverable**: Users can see exactly what prompts will be sent to AI models, edit them for fine control, and validate they meet API requirements. This transparency enables debugging and refinement.
+**Blocking Issue**: Users can't return to their actual current stage, forced to work ahead
 
----
+**Core Features:**
+- [ ] **Stage Detection Logic**: Fix current stage calculation
+  - Determine actual current stage based on completion status
+  - Handle edge cases (partial completion, locked stages)
+  - Respect user's last active stage
+- [ ] **URL Navigation Fix**: Ensure proper stage restoration
+  - Update ProjectView URL persistence to include exact stage
+  - Add localStorage backup for stage position
+  - Fix validation logic that forces advancement
 
-## Phase 7: Frame Generation & Stage 10
+### Feature 2.6: Asset Generation Requirement Fix ✅ **BLOCKING PROGRESSION**
 
-**Goal**: Implement anchor frame generation with continuity checking. Users generate start/end frames to constrain video output.
+**Purpose**: Allow progression without generating every single asset
 
-### Feature 7.1: Frame Generation Service
-**Purpose**: Integrate Nano Banana for frame generation
-- [ ] Implement `frames` table
-- [ ] Create frame generation API endpoint
-- [ ] Add prior frame seeding logic
-- [ ] Build frame storage in Supabase
-- [ ] Implement frame approval workflow
+**Blocking Issue**: Stage 8 currently requires scene instance generation for every asset before proceeding
 
-### Feature 7.2: Generation Mode Selection
-**Purpose**: Speed vs cost optimization
-- [ ] Create mode selector UI (Quick/Control)
-- [ ] Implement Quick Mode (bulk generation)
-- [ ] Build Control Mode (sequential approval)
-- [ ] Add cost estimation for each mode
-- [ ] Store mode preference in user settings
+**Core Features:**
+- [ ] **Optional Asset Generation**: Modify Stage 8 gatekeeper logic
+  - Allow progression with some assets using master reference only
+  - Implement "Generate Later" option for non-critical assets
+  - Maintain requirement for critical/primary assets
+- [ ] **Smart Asset Prioritization**: Identify which assets require generation
+  - Mark primary characters as required
+  - Allow secondary props/locations to use master references
+  - User override capability for forcing generation
 
-### Feature 7.3: Stage 10 - Frame Generation UI
-**Purpose**: Generate and review anchor frames
-- [ ] Create shot frame panel with status indicators
-- [ ] Build visual rearview mirror with comparison
-- [ ] Implement bulk generation workflow (Quick Mode)
-- [ ] Add step-by-step workflow (Control Mode)
-- [ ] Create frame approval interface
-
-### Feature 7.4: Continuity Validation
-**Purpose**: Detect and fix visual inconsistencies
-- [ ] Implement frame dependency manager
-- [ ] Build continuity drift detector
-- [ ] Create visual diff component (ghost/flicker)
-- [ ] Add automatic flagging of continuity breaks
-- [ ] Implement region-level inpainting for fixes
-
-### Feature 7.5: Frame Iteration & Refinement
-**Purpose**: Enable targeted frame regeneration
-- [ ] Add frame regeneration with guidance
-- [ ] Implement localized inpainting interface
-- [ ] Create frame history tracking
-- [ ] Build frame comparison view
-- [ ] Add frame version rollback
-
-**Deliverable**: Users generate image frames that anchor video generation, with tools to ensure continuity between shots. The system catches visual drift and provides localized fixing tools.
+**Deliverable**: Users can progress through the pipeline without hitting blocking issues, with improved asset reference system and generation flexibility.
 
 ---
 
-## Phase 8: Cost Management & Stage 11
+## Phase 3: Data Flow Optimization (Single Extraction + Inheritance)
 
-**Goal**: Implement transparent cost tracking and gating. Users see costs before expensive operations and can make informed decisions.
+**Goal**: Implement optimized asset extraction and inheritance systems. Eliminate redundant AI calls and establish clean data flow from Stage 4 through production.
 
-### Feature 8.1: Cost Calculation Engine
-**Purpose**: Accurate credit estimation across operations
-- [ ] Create cost model database (per operation type)
-- [ ] Implement cost calculation utilities
-- [ ] Add per-shot cost estimation
-- [ ] Build scene-level cost aggregation
-- [ ] Create project-level cost tracking
+### Feature 3.1: Revolutionary Stage 5 Asset Extraction ✅ **ARCHITECTURE CHANGE**
 
-### Feature 8.2: Stage 11 - Confirmation Gateway
-**Purpose**: Final checkpoint before video generation
-- [ ] Create scene summary view (all shots + frames)
-- [ ] Build cost breakdown display
-- [ ] Implement dependency warning system
-- [ ] Add prompt snapshot preview
-- [ ] Create "Confirm & Render" action
+**Purpose**: Single comprehensive extraction that includes scene-level mapping, eliminating redundant AI calls
 
-### Feature 8.3: Cost Tracking & History
-**Purpose**: Monitor spending across project lifecycle
-- [ ] Implement cost logging in database
-- [ ] Create cost history view
-- [ ] Build per-user credit balance system
-- [ ] Add low-credit warnings
-- [ ] Implement cost analytics dashboard
+**Current Problem**: Assets extracted multiple times (Stage 5, 6, 8) causing inefficiency and inconsistency
 
-### Feature 8.4: Credit Purchase System
-**Purpose**: Enable users to buy generation credits
-- [ ] Integrate payment processor (Stripe/similar)
-- [ ] Create credit package selection UI
-- [ ] Implement purchase flow
-- [ ] Add receipt generation
-- [ ] Build credit balance updates
+**Architectural Alignment**: Stage 4 is "Global Narrative Truth" - Stage 5 should create complete asset manifest from this truth
 
-### Feature 8.5: Cost Optimization Recommendations
-**Purpose**: Help users reduce unnecessary spending
-- [ ] Implement cost-saving suggestion engine
-- [ ] Add "cheapest path" analyzer
-- [ ] Create bulk operation pricing
-- [ ] Build cost comparison tool (mode A vs B)
-- [ ] Implement smart regeneration recommendations
+**Core Features:**
+- [ ] **Comprehensive LLM Extraction Service**: Build enhanced asset extraction
+  - Parse entire Master Script in one LLM call
+  - Extract Master Assets (characters, props, locations) with full descriptions
+  - Generate scene-level mapping showing which assets appear in which scenes
+  - Return structured data for both global and scene-specific storage
+- [ ] **Scene-Level Mapping Implementation**: Populate scenes.dependencies automatically
+  - Update dependencies JSONB field: `{characters: string[], locations: string[], props: string[]}`
+  - Map asset appearances to scene_number or scene_id
+  - Store extractedAt timestamp for cache invalidation
+- [ ] **Database Population Logic**: Simultaneous population strategy
+  - Populate project_assets table with Master Assets
+  - Update scenes.dependencies field for each scene
+  - Link assets to scenes via dependency mapping
+  - Maintain backward compatibility with existing manual additions
+- [ ] **Stage 6/8 Optimization**: Convert to dependency queries
+  - Stage 6: Query scenes.dependencies instead of running scene extraction
+  - Stage 8: Use dependencies for auto-suggestions instead of AI relevance detection
+  - Maintain ability to manually add missing assets (Stage 5 additions, Stage 8 custom assets)
+- [ ] **Cache Invalidation Strategy**: Handle Master Script changes
+  - Detect when Stage 4 Master Script is modified
+  - Invalidate and regenerate asset manifest
+  - Update all scene dependencies
+  - Maintain manual asset additions
 
-**Deliverable**: Users see transparent cost breakdowns before expensive operations, can purchase credits, and receive recommendations to optimize spending. This builds trust and prevents surprise charges.
+### Feature 3.2: Transparent Background Auto-Injection ✅ **CONSISTENCY ENFORCEMENT**
 
----
+**Purpose**: Automatically inject "isolated on transparent background" for characters and props during generation
 
-## Phase 9: Video Generation & Stage 12
+**Implementation Strategy**: Prompt engineering solution with post-processing fallback
 
-**Goal**: Implement video generation pipeline. Users can render final videos and review output.
+**Core Features:**
+- [ ] **Automatic Prompt Injection**: Deterministic style injection
+  - Modify image generation requests in Stage 5 and Stage 8
+  - Auto-inject "isolated on transparent background" for asset_type: 'character' and 'prop'
+  - Exclude locations from transparent background injection
+  - Apply injection at generation request time (not user-visible)
+- [ ] **Post-Processing Implementation**: Background removal safety net
+  - Integrate background removal library (Rembg or specialized API)
+  - Process characters and props after generation
+  - Remove halos and solid color backgrounds
+  - Save cleaned images to Supabase Storage
+- [ ] **Quality Validation**: Test and iterate transparent background results
+  - A/B test prompt engineering vs post-processing
+  - Validate across different asset types
+  - Adjust injection strategy based on results
+- [ ] **Asset Type Logic Table**:
+  ```
+  Asset Type | Prompt Injection | Background Removal | Purpose
+  Character  | Enforced         | Required          | Scene consistency
+  Prop       | Enforced         | Required          | Multi-shot interaction
+  Location   | Prohibited       | None              | Environmental context
+  ```
 
-### Feature 9.1: Veo3 Video Service
-**Purpose**: Integrate Google Veo3 for video generation
-- [ ] Set up Veo3 API client
-- [ ] Implement `videos` table
-- [ ] Create video generation request handling
-- [ ] Add webhook for generation completion
-- [ ] Build video storage in Supabase
+### Feature 3.3: Advanced Asset Inheritance Chain ✅ **DATA FLOW OPTIMIZATION**
 
-### Feature 9.2: Asynchronous Job System
-**Purpose**: Handle long-running video generation
-- [ ] Implement job queue (Bull/similar)
-- [ ] Create background worker process
-- [ ] Add job status tracking
-- [ ] Build retry logic for failed jobs
-- [ ] Implement job cancellation
+**Purpose**: Build comprehensive asset state tracking and inheritance system
 
-### Feature 9.3: Stage 12 - Video Review UI
-**Purpose**: Playback and evaluation interface
-- [ ] Create timeline-based video player
-- [ ] Build shot marker overlay
-- [ ] Implement full-scene assembly preview
-- [ ] Add playback controls (play/pause/scrub)
-- [ ] Create issue classification controls
+**Core Features:**
+- [ ] **Enhanced Scene Asset Instances**: Improve inheritance tracking
+  - Strengthen inherited_from_instance_id chain tracking
+  - Build asset timeline view showing state evolution
+  - Add inheritance validation and repair tools
+- [ ] **Asset State Evolution Logic**: Handle mid-scene changes intelligently
+  - Detect asset state changes during shot list creation
+  - Log visual evolution context from action descriptions
+  - Prepare for Stage 10 frame generation consumption
+- [ ] **Inheritance Performance**: Optimize asset queries
+  - Create efficient queries for asset history chains
+  - Implement asset state caching for quick retrieval
+  - Build asset dependency graphs for complex projects
 
-### Feature 9.4: Notification System
-**Purpose**: Alert users when renders complete
-- [ ] Implement in-app toast notifications
-- [ ] Add email notification system
-- [ ] Create notification preferences
-- [ ] Build notification history
-- [ ] Implement render re-entry logic
+### Feature 3.4: Context Manager Enhancement ✅ **GLOBAL/LOCAL OPTIMIZATION**
 
-### Feature 9.5: Iteration Routing
-**Purpose**: Route users to correct upstream stage for fixes
-- [ ] Implement failure attribution agent
-- [ ] Create issue-to-stage mapping
-- [ ] Build "Return to Stage X" actions
-- [ ] Add issue description capture
-- [ ] Implement regeneration workflow
+**Purpose**: Optimize context assembly for LLM calls with proper asset inheritance
 
-**Deliverable**: Users can generate final videos, receive notifications when complete, review output, and iterate by returning to upstream stages to fix issues. This completes the core production pipeline.
+**Core Features:**
+- [ ] **Enhanced Global Context**: Strengthen Phase A context assembly
+  - Include asset manifest from optimized Stage 5 extraction
+  - Incorporate visual style locks and constraints
+  - Add project-level continuity rules
+- [ ] **Optimized Local Context**: Improve Phase B context efficiency
+  - Use cached scene dependencies instead of real-time extraction
+  - Include relevant asset inheritance chains
+  - Add prior scene end-state for continuity
+- [ ] **Context Size Management**: Prevent token overflow
+  - Implement intelligent context truncation
+  - Prioritize recent asset states over distant history
+  - Add context size monitoring and alerts
 
----
-
-Phase 10a: Basic Version Control & Branching — **SIMPLIFIED** (per scope-change)
-
-\*\*Goal\*\*: Basic branch switching only. No Artifact Vault, Visual Diff, Conflict Resolution, or Rollback UI for MVP.
-
-\#\#\# Feature 10.1: Basic Branch Switching UI (MVP only)  
-\*\*Purpose\*\*: Switch between branches and create new ones  
-\- \[ \] Add dropdown (or equivalent) to switch between existing branches  
-\- \[ \] Add "Create new branch" action  
-\- \[ \] Use existing \`branches\` table and creation logic  
-\- \[ \] *Defer: tree visualization, artifact vault, invalidation logic, conflict resolution, visual diff, rollback UI*
-
-### NOTES:
-
--- See Stage 4/5 Transition Logic (Gate Approach) {4.1-task-7.md in 10/}
-
--- Return to Stage 7: Phase 10 Alignment (Immutability): **Intentional scope for 4.3:** In-place updates to the `shots` table (PUT for auto-save, delete-and-insert for split) are acceptable for this phase. Full versioning, branching, and immutability ("completed stages are never mutated in place") will be addressed in **Phase 10: Version Control & Branching** (Story Timelines). No shot-level versioning or `stage_states`-style snapshots are required for 4.3; the "Lock & Proceed" behavior and any rollback/version history will be ironed out when implementing Phase 10.
-
-**Scope**: Per scope-change—"Just add a dropdown in UI to switch between branches and create new ones. That's it." Features 10.2–10.5 (Artifact Vault, Version History UI, Conflict Resolution, Invalidation Logic) **deferred** to post-launch.
-
-**Complex Conflict Resolution*
-*2. **Later (Phase 10):** Build the fancy UI that shows a side-by-side comparison of Global vs. Local changes and lets the user "Pick and Choose" which ones to keep.
-(**Recommendation for Phase 10 (Later):**
-Implement "Conflict Resolution UIs," "Visual Diffs," and "Version History/Rollbacks." These are the "Advanced" features listed in your task list.)
-
-**Deliverable**: Users can switch branches and create new ones from the UI. Advanced version control (visual diff, conflict resolution, artifact vault) deferred.
-
-
-\#\# Phase 12: Export & Project Finalization — **SIMPLIFIED** (per scope-change)
-
-\*\*Goal\*\*: Single-format video export (MP4 only) for MVP. Defer NLE, asset packages, audio stems, archival.
-
-\#\#\# Feature 12.1: Video Export (MP4 only)  
-\*\*Purpose\*\*: Package final video as MP4  
-\- \[ \] Implement MP4 video export  
-\- \[ \] Create project export API endpoint  
-\- \[ \] Build export job queue (or inline)  
-\- \[ \] Implement export progress tracking  
-\- \[ \] *Defer: ProRes, WebM, high-bitrate options*
-
-\#\#\# Features 12.2–12.5 — **DEFER**  
-\*\*Scope\*\*: NLE Integration (EDL/XML), Asset Package Export (ZIP), Audio Stems, Project Archival **deferred** to post-launch per scope-change.
-
-\*\*Deliverable\*\*: Users can export final video as MP4. Advanced export (NLE, asset packages, archival) deferred.
-
-
-
----------------- Launch MVP! ---------------
-
-
-
-## Phase 10b: Advanced Version Control & Branching
-
-**Goal**: Implement git-style "Story Timelines" branching system. Users can experiment without destroying completed work.
-
-### Feature 10.1: Branching Data Model
-**Purpose**: Enable non-linear project evolution
-- [ ] Enhance `branches` table with parent references
-- [ ] Implement branch creation logic
-- [ ] Add branch merging rules
-- [ ] Create branch deletion with safeguards
-- [ ] Build branch comparison utilities
-
-### Feature 10.2: Mandatory Branching Rules
-**Purpose**: Enforce branching for destructive operations
-- [ ] Detect Stage 3 → Stage 4 regeneration trigger
-- [ ] Implement auto-branch creation modal
-- [ ] Add branch naming interface
-- [ ] Store commit messages (regeneration guidance)
-- [ ] Prevent progress without branching
-
-### Feature 10.3: Version History UI
-**Purpose**: Visualize and navigate project timeline
-- [ ] Create tree visualization component
-- [ ] Build branch timeline view
-- [ ] Implement node selection and switching
-- [ ] Add branch metadata display
-- [ ] Create version comparison interface
-
-### Feature 10.4: Artifact Vault
-**Purpose**: Central repository for all generated content
-- [ ] Create artifact storage system
-- [ ] Build branch-grouped artifact view
-- [ ] Implement artifact tagging
-- [ ] Add artifact search and filter
-- [ ] Create artifact promotion to global library
-
-### Feature 10.5: Invalidation Logic
-**Purpose**: Cascade changes through dependent artifacts
-- [ ] Implement `invalidation_logs` table
-- [ ] Build global invalidation logic
-- [ ] Add local (scene) invalidation
-- [ ] Create continuity break detection
-- [ ] Implement cost estimation for invalidations
-
-**Deliverable**: Users can create experimental branches to try narrative changes without losing completed work. The system tracks all versions and provides visual history for navigation.
+**Deliverable**: Streamlined asset extraction and inheritance system that eliminates redundant AI calls, provides consistent asset states, and enables efficient scene-by-scene production workflow.
 
 ---
 
-## Phase 11: Advanced UI/UX & Polish
+## Phase 4: Continuity & State Management
 
-**Goal**: Enhance user experience with animations, keyboard shortcuts, tutorials, and quality-of-life improvements.
+**Goal**: Implement robust continuity system and minimal version control. Ensure visual and narrative consistency across scenes with proper state tracking.
 
-### Feature 11.1: Animations & Transitions
-**Purpose**: Smooth, professional interface feel
-- [ ] Implement Framer Motion stage transitions
-- [ ] Add micro-interactions (button hovers, clicks)
-- [ ] Create loading state animations
-- [ ] Build progress bar animations
-- [ ] Add page transition effects
+### Feature 4.1: End-State Summary Generation ✅ **CONTINUITY FOUNDATION**
 
-### Feature 11.2: Keyboard Shortcuts
-**Purpose**: Power user efficiency
-- [ ] Implement keyboard shortcut system
-- [ ] Add stage navigation shortcuts
-- [ ] Create action shortcuts (save, regenerate, etc.)
-- [ ] Build shortcut help modal
-- [ ] Add customizable key bindings
+**Purpose**: Generate comprehensive scene end-states for cross-scene continuity
 
-### Feature 11.3: Onboarding & Tutorials
-**Purpose**: Guide new users through pipeline
-- [ ] Create first-time user onboarding flow
-- [ ] Build interactive tutorial overlays
-- [ ] Implement contextual help tooltips
-- [ ] Add video tutorial embeds
-- [ ] Create example project templates
+**Trigger**: Execute after Stage 10 completion (frame generation)
 
-### Feature 11.4: Advanced Editing Tools
-**Purpose**: Enhance content creation experience
-- [ ] Add markdown support in text editors
-- [ ] Implement syntax highlighting for scripts
-- [ ] Create collaborative editing (real-time)
-- [ ] Build version diffing visualization
-- [ ] Add advanced search across content
+**Core Features:**
+- [ ] **End-State Generation Service**: Build LLM-powered summary generator
+  - Analyze final shot action and dialogue
+  - Incorporate scene asset final states and status tags
+  - Generate natural language summary of scene conclusion
+  - Update scenes.end_state_summary field automatically
+- [ ] **Rearview Mirror Enhancement**: Improve continuity display
+  - Show rich end-state summary instead of empty/mock data
+  - Display final frame thumbnail with state context
+  - Add visual indicators for significant state changes
+- [ ] **Continuity Validation**: Strengthen risk analysis
+  - Compare prior end-state to current scene expectations
+  - Flag character/location/prop inconsistencies
+  - Provide specific continuity warnings with suggestions
+- [ ] **Manual Override System**: Handle continuity conflicts
+  - Add "Acknowledge and Proceed" option for risky continuity
+  - "Mark as Reviewed" status for confirmed continuity breaks
+  - Store override reasons in database for audit trail
 
-### Feature 11.5: Mobile Responsiveness
-**Purpose**: Usable interface on smaller screens
-- [ ] Optimize layout for tablet screens
-- [ ] Create mobile-friendly navigation
-- [ ] Implement touch-optimized controls
-- [ ] Add mobile-specific UI patterns
-- [ ] Test across device sizes
+### Feature 4.2: Minimal Branching & Version Control ✅ **VERSION MANAGEMENT**
 
-**Deliverable**: A polished, professional interface with smooth animations, helpful guidance for new users, and power-user features for efficiency.
+**Purpose**: Implement basic version control to prevent accidental work loss
+
+**Scope**: Simple "save as new version" functionality with Story Timelines access
+
+**Core Features:**
+- [ ] **Version Creation System**: Build checkpoint functionality
+  - "Create New Branch" action at critical decision points
+  - Auto-branch for destructive operations (Stage 4 script regeneration)
+  - User-initiated branching from any stage
+- [ ] **Story Timelines Interface**: Build version access UI
+  - Visual branch tree showing project evolution
+  - Node display with commit messages and timestamps
+  - "Switch to this Version" action for branch navigation
+- [ ] **Branch Management**: Basic branch operations
+  - Branch naming and description
+  - Branch comparison (basic metadata)
+  - Branch deletion with safeguards
+- [ ] **Data Preservation**: Ensure work protection
+  - Prevent accidental overwrites of completed stages
+  - Maintain asset generations across branches
+  - Preserve cost tracking per branch
+
+### Feature 4.3: Enhanced Continuity Risk Analysis ✅ **SCENE-TO-SCENE CONSISTENCY**
+
+**Purpose**: Strengthen continuity validation using real end-state data
+
+**Core Features:**
+- [ ] **Content-Aware Continuity**: Improve risk detection
+  - Use actual end-state summaries for comparison
+  - Analyze character/prop state changes
+  - Detect location consistency issues
+  - Flag timeline and logical continuity problems
+- [ ] **Visual Continuity Tracking**: Frame-based consistency
+  - Compare final frames across scenes for visual drift
+  - Track character appearance consistency
+  - Monitor prop and location visual evolution
+- [ ] **Automated Continuity Warnings**: Proactive issue detection
+  - Generate specific warnings with context
+  - Suggest corrections for common continuity issues
+  - Provide continuity repair recommendations
+- [ ] **Continuity Dashboard**: Project-level continuity overview
+  - Show continuity status across all scenes
+  - Highlight problem areas requiring attention
+  - Track continuity resolution progress
+
+**Deliverable**: Robust continuity system that tracks scene end-states, provides meaningful continuity warnings, and offers basic version control to protect completed work.
+
+---
+
+## Phase 5: Quality Improvements & UX Polish
+
+**Goal**: Address remaining issues from Issue-Tickets.md by category. Improve user experience and generation quality without adding new major features.
+
+### Feature 5.1: Blocking Issues Resolution ✅ **REMAINING BLOCKERS**
+
+**Purpose**: Address any remaining issues that prevent pipeline progression
+
+**Issues to Address:**
+- [ ] **Asset Generation Requirements**: Fine-tune Stage 8 progression rules
+  - Allow progression with master asset references
+  - Implement smart default selection
+  - Add bulk "Use Master As-Is" options
+- [ ] **Script Generation**: Ensure Stage 4 auto-generates when needed
+  - Fix cases where Stage 4 fails to trigger
+  - Add fallback generation logic
+  - Improve script formatting consistency
+- [ ] **Stage Pipeline Graphic**: Fix inconsistent status colors
+  - Standardize green/yellow status meanings
+  - Ensure accurate progress representation
+  - Debug status calculation logic
+
+### Feature 5.2: Data Quality Improvements ✅ **GENERATION QUALITY**
+
+**Purpose**: Improve quality of AI-generated content throughout pipeline
+
+**Core Features:**
+- [ ] **Asset Description Enhancement**: Implement adaptive descriptions
+  - Context-aware asset description generation based on scene/shot requirements
+  - Merge master asset descriptions with scene-specific context
+  - Example: Persephone (blonde nature princess → dark goth underworld queen)
+- [ ] **Writing Quality Enhancement**: Improve dialogue and narrative generation
+  - Experiment with prompt techniques for better dialogue
+  - Enhance writing style capsule effectiveness
+  - Focus style injection on dialogue specifically
+- [ ] **Visual Consistency**: Strengthen asset visual consistency
+  - Balance master asset influence vs visual style capsule
+  - Optimize transparent background results
+  - Improve character consistency across scenes
+- [ ] **Prompt Engineering Optimization**: Refine system prompts
+  - Evaluate effectiveness of current prompts
+  - A/B test different prompting strategies
+  - Add system prompt evaluation framework
+
+### Feature 5.3: UX Polish ✅ **USER EXPERIENCE**
+
+**Purpose**: Address usability issues that don't block progression but harm user experience
+
+**Core Features:**
+- [ ] **Auto-Save Optimization**: Add debouncing to reduce spam
+  - Implement smart debouncing for Stages 1-3
+  - Reduce excessive save frequency
+  - Maintain data integrity with efficient saves
+- [ ] **Project Organization**: Add folder system to dashboard
+  - Allow projects to be organized in folders
+  - Add project search and filtering
+  - Show current stage and scene on project cards
+- [ ] **Stage 4 Script UI**: Fix screenplay editor issues
+  - Improve character and dialogue handling
+  - Fix funky formatting issues
+  - Enhance screenplay toolbar functionality
+- [ ] **Navigation Improvements**: Streamline stage navigation
+  - Fix URL persistence issues
+  - Improve stage switching responsiveness
+  - Add keyboard shortcuts for power users
+- [ ] **Asset Drawer Improvements**: Enhance Stage 8 asset management
+  - Change "Create Scene Asset" to "Add New Assets" for clarity
+  - Improve asset drawer performance with large asset libraries
+  - Add asset search and filtering within drawer
+
+### Feature 5.4: Testing Infrastructure ✅ **QUALITY ASSURANCE**
+
+**Purpose**: Add comprehensive testing coverage for reliability
+
+**Core Features:**
+- [ ] **Frontend Testing**: Implement React component testing
+  - Add React Testing Library tests for critical components
+  - Test user interaction flows
+  - Add visual regression testing
+- [ ] **Integration Testing**: Test complete user journeys
+  - End-to-end testing with Playwright/Cypress
+  - Test asset inheritance across multiple scenes
+  - Validate API integrations with real services
+- [ ] **Performance Testing**: Ensure scalability
+  - Load testing for asset-heavy projects
+  - Performance benchmarks for LLM calls
+  - Memory usage optimization
+- [ ] **Error Handling**: Improve error resilience
+  - Add comprehensive error boundaries
+  - Implement graceful degradation
+  - Add user-friendly error messages
+
+**Deliverable**: Polished, reliable pipeline with improved generation quality, smooth user experience, and comprehensive testing coverage.
 
 ---
 
-## Phase 12: Export & Project Finalization
+## Phase 6: Advanced Features
 
-**Goal**: Enable users to export completed projects in professional formats for external editing.
+**Goal**: Add sophisticated features that enhance professional usage. These are nice-to-have features that significantly improve the platform's capabilities.
 
-### Feature 12.1: Video Export System
-**Purpose**: Package final video assets
-- [ ] Implement high-bitrate video export
-- [ ] Create project export API endpoint
-- [ ] Build export job queue
-- [ ] Add export format options (MP4, ProRes, etc.)
-- [ ] Implement export progress tracking
+### Feature 6.1: Full Git-Style Branching ✅ **ADVANCED VERSION CONTROL**
 
-### Feature 12.2: NLE Integration
-**Purpose**: Export for DaVinci Resolve/Premiere
-- [ ] Generate EDL/XML files from scene sequence
-- [ ] Implement standardized file naming
-- [ ] Create folder structure for NLE import
-- [ ] Add timecode generation
-- [ ] Build markers for shot boundaries
+**Purpose**: Implement complete branching system with visual diffs and conflict resolution
 
-### Feature 12.3: Asset Package Export
-**Purpose**: Export all project artifacts
-- [ ] Create ZIP archive generation
-- [ ] Include all videos, frames, scripts
-- [ ] Add project metadata file
-- [ ] Implement selective export (choose artifacts)
-- [ ] Build export history tracking
+**Core Features:**
+- [ ] **Visual Diff System**: Build comprehensive comparison tools
+  - Side-by-side comparison of script changes
+  - Visual asset difference detection
+  - Shot list comparison with highlighting
+- [ ] **Conflict Resolution**: Handle branching conflicts
+  - Merge conflict detection and resolution
+  - User choice interface for conflicting changes
+  - Automatic conflict resolution where possible
+- [ ] **Advanced Branching**: Full git-style operations
+  - Branch merging and rebasing
+  - Cherry-picking changes across branches
+  - Tag system for important versions
 
-### Feature 12.4: Audio Stems Separation
-**Purpose**: Separate audio tracks for mixing
-- [ ] Implement dialogue track extraction
-- [ ] Create SFX track separation
-- [ ] Add music track export
-- [ ] Build multi-track audio export
-- [ ] Implement audio sync validation
+### Feature 6.2: Artifact Vault ✅ **COMPREHENSIVE ASSET MANAGEMENT**
 
-### Feature 12.5: Project Archival
-**Purpose**: Long-term storage and backup
-- [ ] Create project archive format
-- [ ] Implement project backup system
-- [ ] Add cloud storage integration (S3)
-- [ ] Build project restoration from archive
-- [ ] Implement version-specific archives
+**Purpose**: Central repository for all generated content with advanced organization
 
-**Deliverable**: Users can export complete projects in professional formats, import into industry-standard editing software, and archive projects for long-term storage.
+**Core Features:**
+- [ ] **Complete Artifact Storage**: Store all generated content
+  - Videos, frames, scripts, shot lists, prompts
+  - Branch-grouped organization
+  - Advanced search and filtering
+- [ ] **Asset Promotion System**: Global asset library enhancement
+  - Promote scene instances to global assets
+  - Asset versioning and template system
+  - Asset sharing between projects
+- [ ] **Export Integration**: Professional export capabilities
+  - NLE integration (EDL/XML for DaVinci Resolve/Premiere)
+  - Asset package export (ZIP with organized files)
+  - Audio stems separation for mixing
+
+### Feature 6.3: Advanced Continuity Tools ✅ **PROFESSIONAL CONTINUITY**
+
+**Purpose**: Professional-grade continuity management and validation
+
+**Core Features:**
+- [ ] **Visual Continuity Analysis**: Advanced visual consistency
+  - Automated character appearance tracking
+  - Prop state validation across scenes
+  - Location lighting and atmosphere consistency
+- [ ] **Timeline Continuity**: Narrative timeline validation
+  - Story logic checking
+  - Character motivation consistency
+  - Plot point validation
+- [ ] **Continuity Reports**: Professional continuity documentation
+  - Generate continuity reports for review
+  - Export continuity notes for production teams
+  - Visual continuity reference sheets
+
+### Feature 6.4: Performance Optimization ✅ **SCALABILITY**
+
+**Purpose**: Optimize platform for larger projects and multiple users
+
+**Core Features:**
+- [ ] **Caching Strategy**: Implement comprehensive caching
+  - Redis integration for session data
+  - CDN for asset delivery
+  - Intelligent cache invalidation
+- [ ] **Lazy Loading**: Code splitting and performance
+  - Component-level code splitting
+  - Progressive asset loading
+  - Optimized image delivery with thumbnails
+- [ ] **Background Processing**: Advanced job queuing
+  - Distributed job processing
+  - Priority queue management
+  - Resource allocation optimization
+
+**Deliverable**: Professional-grade platform with advanced versioning, comprehensive asset management, and enterprise-level performance and reliability.
 
 ---
+
+## Implementation Notes
+
+### Development Standards
+- **Quality Standard**: "Do it as well as possible" - prioritize correct implementation over speed
+- **API Integration**: Use real services (Gemini, Veo3) from Phase 1 onward
+- **Testing**: Include comprehensive testing at each phase
+- **Documentation**: Maintain clear documentation for each feature
+
+### Database Schema Updates
+- Each phase may require database migrations
+- Maintain backward compatibility where possible
+- Plan migrations carefully to avoid data loss
+- Use JSONB fields for flexible schema evolution
+
+### Cost Management
+- Track API costs for all real integrations
+- Implement cost estimation and budgeting
+- Add cost optimization recommendations
+- Monitor and alert on excessive usage
+
+### Security Considerations
+- Implement proper input sanitization
+- Add rate limiting for API endpoints
+- Secure file upload processing
+- Maintain audit trails for user actions
+
+---
+
+## Success Metrics
+
+### Phase 1 Success Criteria
+- [ ] Complete end-to-end pipeline functional (Stage 4 → Stage 12)
+- [ ] Real API integrations working (Gemini + Veo3)
+- [ ] Cost tracking operational
+- [ ] Basic error handling implemented
+
+### Phase 2 Success Criteria
+- [ ] No blocking issues preventing progression
+- [ ] Stage 8 master asset influence working correctly
+- [ ] Generation carousel system functional
+- [ ] Users can progress through pipeline without major friction
+
+### Phase 3 Success Criteria
+- [ ] Single asset extraction implementation working
+- [ ] Transparent backgrounds automatically applied
+- [ ] Asset inheritance chain functional
+- [ ] Significant reduction in redundant AI calls
+
+### Phase 4 Success Criteria
+- [ ] End-state summaries automatically generated
+- [ ] Basic branching system prevents work loss
+- [ ] Continuity system provides meaningful warnings
+- [ ] Users feel confident about scene-to-scene consistency
+
+### Phase 5 Success Criteria
+- [ ] All critical issues from Issue-Tickets.md resolved
+- [ ] Improved generation quality across the pipeline
+- [ ] Smooth user experience with minimal friction
+- [ ] Comprehensive testing coverage
+
+### Phase 6 Success Criteria
+- [ ] Professional-grade features comparable to industry tools
+- [ ] Advanced branching and version control
+- [ ] Export capabilities for external editing
+- [ ] Platform ready for beta users and marketing
+
+---
+
+**Document Version**: 1.0
+**Created**: February 4, 2026
+**Status**: Phase 1 Ready for Implementation
+**Next Review**: After Phase 1 Completion
