@@ -134,6 +134,75 @@ class CheckoutService {
   }
 
   /**
+   * Retry a failed video job
+   */
+  async retryVideoJob(
+    projectId: string,
+    sceneId: string,
+    jobId: string
+  ): Promise<VideoGenerationJob> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/video-jobs/${jobId}/retry`,
+      {
+        method: 'POST',
+        headers,
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to retry job');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Get render status for a single scene (for Script Hub badge)
+   */
+  async getSceneRenderStatus(
+    projectId: string,
+    sceneId: string
+  ): Promise<{ sceneId: string; renderStatus: string }> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/render-status`,
+      { headers }
+    );
+
+    if (!response.ok) {
+      // Non-critical: return pending if endpoint fails
+      return { sceneId, renderStatus: 'pending' };
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Get render status for all scenes in a project (batch, for Script Hub overview)
+   */
+  async getBatchRenderStatus(
+    projectId: string
+  ): Promise<Record<string, string>> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/batch-render-status`,
+      { headers }
+    );
+
+    if (!response.ok) {
+      return {};
+    }
+
+    const data = await response.json();
+    return data.sceneStatuses || {};
+  }
+
+  /**
    * Check if all jobs are complete or failed (no active jobs)
    */
   isRenderComplete(jobs: VideoGenerationJob[]): boolean {
