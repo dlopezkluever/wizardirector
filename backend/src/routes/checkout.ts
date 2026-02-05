@@ -236,4 +236,91 @@ router.get('/:projectId/scenes/:sceneId/video-jobs/:jobId', async (req, res) => 
     }
 });
 
+/**
+ * GET /api/projects/:projectId/scenes/:sceneId/render-status
+ * Get scene-level render status (for Script Hub badge)
+ */
+router.get('/:projectId/scenes/:sceneId/render-status', async (req, res) => {
+    try {
+        const { projectId, sceneId } = req.params;
+        const userId = req.user!.id;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const status = await videoGenerationService.getSceneRenderStatus(sceneId);
+        res.json({ sceneId, renderStatus: status });
+    } catch (error: any) {
+        console.error('Error in GET render-status:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
+/**
+ * GET /api/projects/:projectId/batch-render-status
+ * Get render status for all scenes in a project (for Script Hub overview)
+ */
+router.get('/:projectId/batch-render-status', async (req, res) => {
+    try {
+        const { projectId } = req.params;
+        const userId = req.user!.id;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const statuses = await videoGenerationService.getBatchRenderStatus(projectId);
+        res.json({ projectId, sceneStatuses: statuses });
+    } catch (error: any) {
+        console.error('Error in GET batch-render-status:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/video-jobs/:jobId/retry
+ * Retry a failed video generation job
+ */
+router.post('/:projectId/scenes/:sceneId/video-jobs/:jobId/retry', async (req, res) => {
+    try {
+        const { projectId, jobId } = req.params;
+        const userId = req.user!.id;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const job = await videoGenerationService.retryJob(jobId);
+        res.json(job);
+    } catch (error: any) {
+        console.error('Error in POST retry:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
 export const checkoutRouter = router;
