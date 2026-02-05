@@ -480,16 +480,18 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
                 onBack={handleSceneStageBack}
               />
             )}
-            {sceneStage === 11 && (
-              <Stage11Confirmation 
-                sceneId={activeSceneId} 
+            {sceneStage === 11 && projectId && (
+              <Stage11Confirmation
+                projectId={projectId}
+                sceneId={activeSceneId}
                 onComplete={handleSceneStageComplete}
                 onBack={handleSceneStageBack}
               />
             )}
-            {sceneStage === 12 && (
-              <Stage12VideoGeneration 
-                sceneId={activeSceneId} 
+            {sceneStage === 12 && projectId && (
+              <Stage12VideoGeneration
+                projectId={projectId}
+                sceneId={activeSceneId}
                 onComplete={handleSceneStageComplete}
                 onBack={handleSceneStageBack}
                 onReturnToStage={handleReturnToStage}

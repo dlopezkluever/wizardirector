@@ -285,6 +285,28 @@ export class ImageGenerationService {
                 }
             }
 
+            // If this is a start_frame or end_frame job, update the frames table
+            if ((request.jobType === 'start_frame' || request.jobType === 'end_frame') && request.shotId) {
+                const frameType = request.jobType === 'start_frame' ? 'start' : 'end';
+
+                const { error: frameUpdateError } = await supabase
+                    .from('frames')
+                    .update({
+                        image_url: urlData.publicUrl,
+                        storage_path: storagePath,
+                        status: 'generated',
+                        generated_at: new Date().toISOString()
+                    })
+                    .eq('shot_id', request.shotId)
+                    .eq('frame_type', frameType);
+
+                if (frameUpdateError) {
+                    console.error(`[ImageService] Failed to update frame for shot ${request.shotId} ${frameType}:`, frameUpdateError);
+                } else {
+                    console.log(`[ImageService] Updated frame for shot ${request.shotId} ${frameType} frame with URL`);
+                }
+            }
+
             // Update job with success (after asset update to avoid race conditions)
             await this.updateJobState(jobId, 'completed', {
                 storage_path: storagePath,
