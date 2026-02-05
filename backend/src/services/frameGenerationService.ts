@@ -316,8 +316,19 @@ export class FrameGenerationService {
         prompt: string,
         visualStyleCapsuleId?: string
     ): Promise<void> {
+        // Get current frame data
+        const { data: frame, error: fetchError } = await supabase
+            .from('frames')
+            .select('frame_type, generation_count')
+            .eq('id', frameId)
+            .single();
+
+        if (fetchError || !frame) {
+            throw new Error(`Frame not found: ${fetchError?.message}`);
+        }
+
         // Update frame status to generating
-        await supabase
+        const { error: updateError } = await supabase
             .from('frames')
             .update({
                 status: 'generating',
@@ -325,40 +336,51 @@ export class FrameGenerationService {
             })
             .eq('id', frameId);
 
-        // Get frame type
-        const { data: frame } = await supabase
-            .from('frames')
-            .select('frame_type')
-            .eq('id', frameId)
-            .single();
+        if (updateError) {
+            throw new Error(`Failed to update frame status: ${updateError.message}`);
+        }
 
-        const jobType = frame?.frame_type === 'start' ? 'start_frame' : 'end_frame';
+        const jobType = frame.frame_type === 'start' ? 'start_frame' : 'end_frame';
 
-        // Create image generation job
-        const result = await this.imageService.createImageJob({
-            projectId,
-            branchId,
-            sceneId,
-            shotId,
-            jobType,
-            prompt,
-            visualStyleCapsuleId,
-            width: this.FRAME_DIMENSIONS.width,
-            height: this.FRAME_DIMENSIONS.height,
-            idempotencyKey: `frame-${frameId}-${Date.now()}`,
-        });
+        try {
+            // Create image generation job
+            const result = await this.imageService.createImageJob({
+                projectId,
+                branchId,
+                sceneId,
+                shotId,
+                jobType,
+                prompt,
+                visualStyleCapsuleId,
+                width: this.FRAME_DIMENSIONS.width,
+                height: this.FRAME_DIMENSIONS.height,
+                idempotencyKey: `frame-${frameId}-${Date.now()}`,
+            });
 
-        // Update frame with job ID
-        await supabase
-            .from('frames')
-            .update({
-                current_job_id: result.jobId,
-                generation_count: supabase.rpc('increment_generation_count', { frame_id: frameId }),
-            })
-            .eq('id', frameId);
+            // Update frame with job ID and increment generation count
+            const { error: jobUpdateError } = await supabase
+                .from('frames')
+                .update({
+                    current_job_id: result.jobId,
+                    generation_count: (frame.generation_count || 0) + 1,
+                })
+                .eq('id', frameId);
 
-        // Note: The job will update the frame status to 'generated' on completion
-        // via a separate polling mechanism or webhook
+            if (jobUpdateError) {
+                console.error(`[FrameService] Failed to update frame with job ID: ${jobUpdateError.message}`);
+            }
+
+            console.log(`[FrameService] Started generation job ${result.jobId} for frame ${frameId}`);
+
+        } catch (error: any) {
+            // Revert frame status on job creation failure
+            console.error(`[FrameService] Job creation failed for frame ${frameId}:`, error);
+            await supabase
+                .from('frames')
+                .update({ status: 'pending' })
+                .eq('id', frameId);
+            throw error;
+        }
     }
 
     /**

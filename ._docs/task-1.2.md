@@ -30,3 +30,4 @@
   - `GET /api/projects/:projectId/scenes/:sceneId/frames` - Get frames status
   - `PUT /api/projects/:projectId/scenes/:sceneId/frames/:frameId/approve` - Approve frame
   - `POST /api/projects/:projectId/scenes/:sceneId/frames/:frameId/regenerate` - Regenerate with guidance
+
