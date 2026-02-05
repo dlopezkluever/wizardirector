@@ -150,6 +150,63 @@ export interface FramePair {
   endFrameStatus: 'pending' | 'generating' | 'approved' | 'rejected';
 }
 
+// Stage 10 Frame Generation Types
+export type FrameStatus = 'pending' | 'generating' | 'generated' | 'approved' | 'rejected';
+export type FrameType = 'start' | 'end';
+export type GenerationMode = 'quick' | 'control';
+
+export interface Frame {
+  id: string;
+  shotId: string;
+  frameType: FrameType;
+  status: FrameStatus;
+  imageUrl: string | null;
+  storagePath: string | null;
+  currentJobId: string | null;
+  generationCount: number;
+  totalCostCredits: number;
+  previousFrameId: string | null;
+  promptSnapshot: string | null;
+  inpaintCount: number;
+  lastInpaintMaskPath: string | null;
+  createdAt: string;
+  updatedAt: string;
+  generatedAt: string | null;
+  approvedAt: string | null;
+}
+
+export interface ShotWithFrames {
+  id: string;
+  shotId: string;
+  shotOrder: number;
+  duration: number;
+  action: string;
+  dialogue: string;
+  setting: string;
+  camera: string;
+  requiresEndFrame: boolean;
+  framePrompt: string | null;
+  videoPrompt: string | null;
+  startFrame: Frame | null;
+  endFrame: Frame | null;
+}
+
+export interface FrameCostSummary {
+  totalCredits: number;
+  frameCount: number;
+}
+
+export interface FrameJobStatus {
+  frameId: string;
+  jobId: string;
+  status: 'queued' | 'processing' | 'generating' | 'uploading' | 'completed' | 'failed';
+  imageUrl?: string;
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+
 export interface SceneCheckout {
   sceneId: string;
   shots: {
