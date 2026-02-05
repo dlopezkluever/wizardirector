@@ -1,5 +1,6 @@
 import { supabase } from '../config/supabase.js';
 import { userCreditsService } from './userCreditsService.js';
+import type { VideoProvider } from './video-generation/VideoProviderInterface.js';
 
 // Pricing constants ($/second)
 export const VEO_31_FAST_RATE = 0.15;
@@ -389,7 +390,14 @@ export class VideoGenerationService {
             jobs.push(this.mapJobFromDb(job));
         }
 
+        // Deduct credits from user balance
+        await userCreditsService.deductCredits(userId, totalCost);
+        console.log(`[VideoGen] Deducted $${totalCost.toFixed(4)} from user ${userId}`);
+
         console.log(`[VideoGen] Created ${jobs.length} video generation jobs for scene ${sceneId}`);
+
+        // Trigger background job processing (fire-and-forget)
+        this.triggerJobProcessing();
 
         return {
             success: true,
@@ -397,6 +405,21 @@ export class VideoGenerationService {
             totalEstimatedCost: parseFloat(totalCost.toFixed(4)),
             jobs,
         };
+    }
+
+    /**
+     * Trigger background video job processing.
+     * Dynamically imports the executor to avoid circular dependency.
+     */
+    private async triggerJobProcessing(): Promise<void> {
+        try {
+            const { videoJobExecutor } = await import('./video-generation/VideoJobExecutor.js');
+            videoJobExecutor.processQueuedJobs().catch(err => {
+                console.error('[VideoGen] Background job processing error:', err);
+            });
+        } catch (err) {
+            console.error('[VideoGen] Failed to trigger job processing:', err);
+        }
     }
 
     /**
@@ -484,6 +507,130 @@ export class VideoGenerationService {
         }
 
         return this.mapJobFromDb(updated);
+    }
+
+    /**
+     * Check if all jobs for a scene are completed and update scene status accordingly.
+     * Called after each job completes or fails in the executor.
+     */
+    async checkAndUpdateSceneStatus(sceneId: string): Promise<void> {
+        try {
+            const jobs = await this.getVideoJobs(sceneId);
+            if (jobs.length === 0) return;
+
+            const allCompleted = jobs.every(j => j.status === 'completed');
+            const allDone = jobs.every(j => j.status === 'completed' || j.status === 'failed');
+
+            if (allCompleted) {
+                // All jobs completed successfully - mark scene as video_complete
+                await supabase
+                    .from('scenes')
+                    .update({ status: 'video_complete' })
+                    .eq('id', sceneId);
+                console.log(`[VideoGen] Scene ${sceneId} marked as video_complete`);
+            } else if (allDone) {
+                console.log(`[VideoGen] Scene ${sceneId}: all jobs done but some failed`);
+            }
+        } catch (err) {
+            console.error(`[VideoGen] Error checking scene status for ${sceneId}:`, err);
+        }
+    }
+
+    /**
+     * Get the render status for a scene (for Script Hub badges).
+     */
+    async getSceneRenderStatus(sceneId: string): Promise<'pending' | 'rendering' | 'complete' | 'partial' | 'failed'> {
+        const jobs = await this.getVideoJobs(sceneId);
+
+        if (jobs.length === 0) return 'pending';
+
+        const completedCount = jobs.filter(j => j.status === 'completed').length;
+        const failedCount = jobs.filter(j => j.status === 'failed').length;
+        const activeCount = jobs.filter(j =>
+            ['queued', 'processing', 'generating', 'uploading'].includes(j.status)
+        ).length;
+
+        if (completedCount === jobs.length) return 'complete';
+        if (failedCount === jobs.length) return 'failed';
+        if (activeCount > 0) return 'rendering';
+        if (completedCount > 0 && failedCount > 0) return 'partial';
+        return 'pending';
+    }
+
+    /**
+     * Retry a failed video job by resetting it to queued status.
+     */
+    async retryJob(jobId: string): Promise<VideoGenerationJob> {
+        const job = await this.getVideoJob(jobId);
+        if (!job) {
+            throw new Error(`Job ${jobId} not found`);
+        }
+        if (job.status !== 'failed') {
+            throw new Error(`Job ${jobId} is not in failed status (current: ${job.status})`);
+        }
+
+        const { data: updated, error } = await supabase
+            .from('video_generation_jobs')
+            .update({
+                status: 'queued',
+                error_code: null,
+                error_message: null,
+                video_url: null,
+                storage_path: null,
+                provider_job_id: null,
+                provider_metadata: null,
+                processing_started_at: null,
+                completed_at: null,
+            })
+            .eq('id', jobId)
+            .select()
+            .single();
+
+        if (error || !updated) {
+            throw new Error(`Failed to retry job: ${error?.message}`);
+        }
+
+        // Trigger background processing for the retried job
+        this.triggerJobProcessing();
+
+        return this.mapJobFromDb(updated);
+    }
+
+    /**
+     * Get render status for all scenes in a project (batch).
+     */
+    async getBatchRenderStatus(projectId: string): Promise<Record<string, string>> {
+        const { data: jobs, error } = await supabase
+            .from('video_generation_jobs')
+            .select('scene_id, status')
+            .eq('project_id', projectId);
+
+        if (error || !jobs) return {};
+
+        // Group by scene_id
+        const sceneJobs = new Map<string, string[]>();
+        for (const job of jobs) {
+            const existing = sceneJobs.get(job.scene_id) || [];
+            existing.push(job.status);
+            sceneJobs.set(job.scene_id, existing);
+        }
+
+        const result: Record<string, string> = {};
+        for (const [sceneId, statuses] of sceneJobs) {
+            const completedCount = statuses.filter(s => s === 'completed').length;
+            const failedCount = statuses.filter(s => s === 'failed').length;
+            const activeCount = statuses.filter(s =>
+                ['queued', 'processing', 'generating', 'uploading'].includes(s)
+            ).length;
+
+            if (completedCount === statuses.length) result[sceneId] = 'complete';
+            else if (failedCount === statuses.length) result[sceneId] = 'failed';
+            else if (activeCount > 0) result[sceneId] = 'rendering';
+            else if (completedCount > 0 && failedCount > 0) result[sceneId] = 'partial';
+            else result[sceneId] = 'pending';
+        }
+
+        return result;
     }
 
     /**
