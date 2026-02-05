@@ -1,48 +1,28 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Image as ImageIcon, 
-  RefreshCw,
-  Check,
-  X,
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { motion } from 'framer-motion';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  Image as ImageIcon,
   ArrowLeft,
+  Check,
   Zap,
   Shield,
   ChevronRight,
-  Eye,
-  Paintbrush
+  AlertCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { RearviewMirror } from './RearviewMirror';
+import { FramePanel } from './FramePanel';
+import { CostDisplay } from './CostDisplay';
+import { SliderComparison } from './SliderComparison';
+import { InpaintingModal } from './InpaintingModal';
+import { FrameGrid } from './FrameGrid';
+import { frameService } from '@/lib/services/frameService';
 import { sceneService } from '@/lib/services/sceneService';
 import { cn } from '@/lib/utils';
-import type { FramePair } from '@/types/scene';
-
-type GenerationMode = 'quick' | 'control';
-
-// Mock frame pairs
-const mockFramePairs: FramePair[] = [
-  {
-    shotId: '1A',
-    startFrame: '/placeholder.svg',
-    endFrame: '/placeholder.svg',
-    startFrameStatus: 'approved',
-    endFrameStatus: 'approved',
-  },
-  {
-    shotId: '1B',
-    startFrame: '/placeholder.svg',
-    startFrameStatus: 'approved',
-    endFrameStatus: 'pending',
-  },
-  {
-    shotId: '1C',
-    startFrameStatus: 'pending',
-    endFrameStatus: 'pending',
-  },
-];
+import type { ShotWithFrames, GenerationMode, Frame } from '@/types/scene';
 
 interface Stage10FrameGenerationProps {
   projectId: string;
@@ -51,13 +31,35 @@ interface Stage10FrameGenerationProps {
   onBack: () => void;
 }
 
-export function Stage10FrameGeneration({ projectId, sceneId, onComplete, onBack }: Stage10FrameGenerationProps) {
-  const [mode, setMode] = useState<GenerationMode>('control');
-  const [framePairs, setFramePairs] = useState<FramePair[]>(mockFramePairs);
-  const [selectedShot, setSelectedShot] = useState<string>(mockFramePairs[0].shotId);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [showInpainting, setShowInpainting] = useState(false);
+export function Stage10FrameGeneration({
+  projectId,
+  sceneId,
+  onComplete,
+  onBack,
+}: Stage10FrameGenerationProps) {
+  const queryClient = useQueryClient();
 
+  // Mode and selection state
+  const [mode, setMode] = useState<GenerationMode>('control');
+  const [selectedShotId, setSelectedShotId] = useState<string | null>(null);
+
+  // Modal state
+  const [showComparison, setShowComparison] = useState(false);
+  const [comparisonImages, setComparisonImages] = useState<{
+    left: string;
+    right: string;
+    leftLabel?: string;
+    rightLabel?: string;
+  } | null>(null);
+
+  const [showInpainting, setShowInpainting] = useState(false);
+  const [inpaintTarget, setInpaintTarget] = useState<{
+    frame: Frame;
+    shotId: string;
+    frameType: 'start' | 'end';
+  } | null>(null);
+
+  // Prior scene state
   const [priorSceneData, setPriorSceneData] = useState<{
     endState?: string;
     endFrame?: string;
@@ -65,17 +67,50 @@ export function Stage10FrameGeneration({ projectId, sceneId, onComplete, onBack 
   } | null>(null);
   const [imageError, setImageError] = useState(false);
 
+  // Fetch frames data
+  const {
+    data: framesData,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['frames', projectId, sceneId],
+    queryFn: () => frameService.fetchFrames(projectId, sceneId),
+    refetchInterval: (query) => {
+      // Poll while generating
+      const data = query.state.data;
+      if (!data) return false;
+      const progress = frameService.calculateProgress(data.shots);
+      return progress.generatingFrames > 0 ? 2000 : false;
+    },
+  });
+
+  const shots = useMemo(() => framesData?.shots || [], [framesData?.shots]);
+  const costSummary = framesData?.costSummary || { totalCredits: 0, frameCount: 0 };
+  const allFramesApproved = framesData?.allFramesApproved || false;
+
+  // Calculate progress
+  const progress = frameService.calculateProgress(shots);
+
+  // Select first shot by default
+  useEffect(() => {
+    if (shots.length > 0 && !selectedShotId) {
+      setSelectedShotId(shots[0].id);
+    }
+  }, [shots, selectedShotId]);
+
+  // Fetch prior scene data
   useEffect(() => {
     const fetchPriorScene = async () => {
       try {
         const scenes = await sceneService.fetchScenes(projectId);
-        const currentSceneIndex = scenes.findIndex(s => s.id === sceneId);
+        const currentSceneIndex = scenes.findIndex((s) => s.id === sceneId);
         if (currentSceneIndex > 0) {
           const priorScene = scenes[currentSceneIndex - 1];
           setPriorSceneData({
             endState: priorScene.priorSceneEndState,
             endFrame: priorScene.endFrameThumbnail,
-            sceneNumber: priorScene.sceneNumber
+            sceneNumber: priorScene.sceneNumber,
           });
           setImageError(false);
         }
@@ -86,47 +121,213 @@ export function Stage10FrameGeneration({ projectId, sceneId, onComplete, onBack 
     fetchPriorScene();
   }, [projectId, sceneId]);
 
-  const selectedPair = framePairs.find(fp => fp.shotId === selectedShot);
+  // Generate frames mutation
+  const generateMutation = useMutation({
+    mutationFn: ({
+      shotIds,
+      startOnly,
+    }: {
+      shotIds?: string[];
+      startOnly?: boolean;
+    }) =>
+      frameService.generateFrames(projectId, sceneId, {
+        mode,
+        shotIds,
+        startOnly: mode === 'control' ? startOnly : false,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+    },
+  });
 
-  const handleGenerateFrame = async (shotId: string, type: 'start' | 'end') => {
-    setIsGenerating(true);
-    const statusKey = type === 'start' ? 'startFrameStatus' : 'endFrameStatus';
-    const frameKey = type === 'start' ? 'startFrame' : 'endFrame';
-    
-    setFramePairs(prev => prev.map(fp => 
-      fp.shotId === shotId ? { ...fp, [statusKey]: 'generating' } : fp
-    ));
-    
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    setFramePairs(prev => prev.map(fp => 
-      fp.shotId === shotId 
-        ? { ...fp, [statusKey]: 'approved', [frameKey]: '/placeholder.svg' } 
-        : fp
-    ));
-    
-    setIsGenerating(false);
-  };
+  // Approve frame mutation
+  const approveMutation = useMutation({
+    mutationFn: (frameId: string) =>
+      frameService.approveFrame(projectId, sceneId, frameId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+    },
+  });
 
-  const handleApproveFrame = (shotId: string, type: 'start' | 'end') => {
-    const statusKey = type === 'start' ? 'startFrameStatus' : 'endFrameStatus';
-    setFramePairs(prev => prev.map(fp => 
-      fp.shotId === shotId ? { ...fp, [statusKey]: 'approved' } : fp
-    ));
-  };
+  // Reject frame mutation
+  const rejectMutation = useMutation({
+    mutationFn: (frameId: string) =>
+      frameService.rejectFrame(projectId, sceneId, frameId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+    },
+  });
 
-  const handleRejectFrame = (shotId: string, type: 'start' | 'end') => {
-    const statusKey = type === 'start' ? 'startFrameStatus' : 'endFrameStatus';
-    const frameKey = type === 'start' ? 'startFrame' : 'endFrame';
-    setFramePairs(prev => prev.map(fp => 
-      fp.shotId === shotId ? { ...fp, [statusKey]: 'pending', [frameKey]: undefined } : fp
-    ));
-  };
+  // Regenerate frame mutation
+  const regenerateMutation = useMutation({
+    mutationFn: (frameId: string) =>
+      frameService.regenerateFrame(projectId, sceneId, frameId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+    },
+  });
 
-  const allFramesApproved = framePairs.every(fp => 
-    fp.startFrameStatus === 'approved' && 
-    (fp.endFrameStatus === 'approved' || fp.endFrameStatus === 'pending')
+  // Inpaint frame mutation
+  const inpaintMutation = useMutation({
+    mutationFn: ({
+      frameId,
+      maskDataUrl,
+      prompt,
+    }: {
+      frameId: string;
+      maskDataUrl: string;
+      prompt: string;
+    }) => frameService.inpaintFrame(projectId, sceneId, frameId, { maskDataUrl, prompt }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+    },
+  });
+
+  // Get selected shot
+  const selectedShot = shots.find((s) => s.id === selectedShotId);
+
+  // Get previous shot for continuity comparison
+  const getPreviousShot = useCallback(
+    (currentShotId: string): ShotWithFrames | null => {
+      const index = shots.findIndex((s) => s.id === currentShotId);
+      return index > 0 ? shots[index - 1] : null;
+    },
+    [shots]
   );
+
+  // Handle compare click
+  const handleCompare = useCallback(
+    (shotId: string) => {
+      const currentShot = shots.find((s) => s.id === shotId);
+      const previousShot = getPreviousShot(shotId);
+
+      if (!currentShot?.startFrame?.imageUrl) return;
+
+      // Compare with previous shot's end frame or prior scene
+      if (previousShot?.endFrame?.imageUrl) {
+        setComparisonImages({
+          left: previousShot.endFrame.imageUrl,
+          right: currentShot.startFrame.imageUrl,
+          leftLabel: `Shot ${previousShot.shotId} End`,
+          rightLabel: `Shot ${currentShot.shotId} Start`,
+        });
+      } else if (priorSceneData?.endFrame) {
+        setComparisonImages({
+          left: priorSceneData.endFrame,
+          right: currentShot.startFrame.imageUrl,
+          leftLabel: `Scene ${priorSceneData.sceneNumber} End`,
+          rightLabel: `Shot ${currentShot.shotId} Start`,
+        });
+      } else {
+        return; // Nothing to compare with
+      }
+
+      setShowComparison(true);
+    },
+    [shots, getPreviousShot, priorSceneData]
+  );
+
+  // Handle inpaint click
+  const handleInpaint = useCallback(
+    (frame: Frame, shotId: string, frameType: 'start' | 'end') => {
+      if (!frame.imageUrl) return;
+      setInpaintTarget({ frame, shotId, frameType });
+      setShowInpainting(true);
+    },
+    []
+  );
+
+  // Handle inpaint submit
+  const handleInpaintSubmit = async (maskDataUrl: string, prompt: string) => {
+    if (!inpaintTarget) return;
+    await inpaintMutation.mutateAsync({
+      frameId: inpaintTarget.frame.id,
+      maskDataUrl,
+      prompt,
+    });
+    setShowInpainting(false);
+    setInpaintTarget(null);
+  };
+
+  // Handle generate for a single shot
+  const handleGenerateShot = (shotId: string, startOnly: boolean) => {
+    generateMutation.mutate({ shotIds: [shotId], startOnly });
+  };
+
+  // Handle generate all (Quick Mode)
+  const handleGenerateAll = () => {
+    generateMutation.mutate({ startOnly: false });
+  };
+
+  // Handle approve all generated frames
+  const handleApproveAllGenerated = async () => {
+    const framesToApprove = shots.flatMap((shot) => {
+      const frames: string[] = [];
+      if (shot.startFrame?.status === 'generated') {
+        frames.push(shot.startFrame.id);
+      }
+      if (shot.endFrame?.status === 'generated') {
+        frames.push(shot.endFrame.id);
+      }
+      return frames;
+    });
+
+    for (const frameId of framesToApprove) {
+      await approveMutation.mutateAsync(frameId);
+    }
+  };
+
+  // Check if there's something to compare with for current shot
+  const canCompare = useCallback(
+    (shotId: string) => {
+      const shot = shots.find((s) => s.id === shotId);
+      if (!shot?.startFrame?.imageUrl) return false;
+
+      const previousShot = getPreviousShot(shotId);
+      return !!(previousShot?.endFrame?.imageUrl || priorSceneData?.endFrame);
+    },
+    [shots, getPreviousShot, priorSceneData]
+  );
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <ImageIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4 animate-pulse" />
+          <p className="text-muted-foreground">Loading frames...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
+          <p className="text-destructive mb-4">Failed to load frames</p>
+          <Button onClick={() => refetch()}>Try Again</Button>
+        </div>
+      </div>
+    );
+  }
+
+  // No shots state
+  if (shots.length === 0) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <ImageIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <p className="text-muted-foreground mb-4">
+            No shots with prompts found. Generate prompts in Stage 9 first.
+          </p>
+          <Button onClick={onBack}>Back to Prompts</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -135,8 +336,21 @@ export function Stage10FrameGeneration({ projectId, sceneId, onComplete, onBack 
         mode={priorSceneData?.endFrame && !imageError ? 'visual' : 'text'}
         priorSceneEndState={priorSceneData?.endState}
         priorEndFrame={priorSceneData?.endFrame}
-        priorSceneName={priorSceneData?.sceneNumber ? `Scene ${priorSceneData.sceneNumber}` : undefined}
+        priorSceneName={
+          priorSceneData?.sceneNumber
+            ? `Scene ${priorSceneData.sceneNumber}`
+            : undefined
+        }
         onImageError={() => setImageError(true)}
+      />
+
+      {/* Cost Display */}
+      <CostDisplay
+        totalCredits={costSummary.totalCredits}
+        approvedFrames={progress.approvedFrames}
+        generatedFrames={progress.generatedFrames}
+        generatingFrames={progress.generatingFrames}
+        totalFrames={progress.totalFrames}
       />
 
       {/* Mode Selection */}
@@ -146,14 +360,14 @@ export function Stage10FrameGeneration({ projectId, sceneId, onComplete, onBack 
             <ImageIcon className="w-5 h-5 text-primary" />
             Frame Generation
           </h2>
-          
+
           <div className="flex items-center gap-2 bg-card/50 rounded-lg p-1">
             <button
               onClick={() => setMode('quick')}
               className={cn(
                 'px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2',
-                mode === 'quick' 
-                  ? 'bg-primary text-primary-foreground' 
+                mode === 'quick'
+                  ? 'bg-primary text-primary-foreground'
                   : 'text-muted-foreground hover:text-foreground'
               )}
             >
@@ -164,8 +378,8 @@ export function Stage10FrameGeneration({ projectId, sceneId, onComplete, onBack 
               onClick={() => setMode('control')}
               className={cn(
                 'px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2',
-                mode === 'control' 
-                  ? 'bg-primary text-primary-foreground' 
+                mode === 'control'
+                  ? 'bg-primary text-primary-foreground'
                   : 'text-muted-foreground hover:text-foreground'
               )}
             >
@@ -176,290 +390,228 @@ export function Stage10FrameGeneration({ projectId, sceneId, onComplete, onBack 
         </div>
 
         <p className="text-xs text-muted-foreground">
-          {mode === 'quick' 
-            ? 'Bulk generate all frames at once (faster)' 
-            : 'Approve each frame before proceeding (cost-efficient)'
-          }
+          {mode === 'quick'
+            ? 'Bulk generate all frames at once (faster)'
+            : 'Approve each frame before proceeding (cost-efficient)'}
         </p>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Shot List */}
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="w-64 border-r border-border/50 bg-card/30 backdrop-blur-sm"
-        >
-          <ScrollArea className="h-full">
-            <div className="p-2">
-              {framePairs.map((pair) => {
-                const isSelected = selectedShot === pair.shotId;
-                const startReady = pair.startFrameStatus === 'approved';
-                const endReady = pair.endFrameStatus === 'approved';
-                
-                return (
-                  <motion.button
-                    key={pair.shotId}
-                    onClick={() => setSelectedShot(pair.shotId)}
-                    whileHover={{ scale: 1.01 }}
-                    className={cn(
-                      'w-full p-3 rounded-lg mb-2 text-left transition-all',
-                      isSelected 
-                        ? 'bg-primary/10 border border-primary/30' 
-                        : 'bg-card/50 border border-border/30 hover:border-border'
-                    )}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <Badge variant="outline" className="font-mono">
-                        Shot {pair.shotId}
-                      </Badge>
-                      <ChevronRight className={cn(
-                        'w-4 h-4',
-                        isSelected ? 'text-primary' : 'text-muted-foreground'
-                      )} />
-                    </div>
-                    
-                    <div className="flex gap-2">
-                      <div className={cn(
-                        'flex-1 h-12 rounded border flex items-center justify-center',
-                        startReady 
-                          ? 'border-emerald-500/50 bg-emerald-500/10' 
-                          : 'border-border/30 bg-muted/20'
-                      )}>
-                        {pair.startFrame ? (
-                          <img src={pair.startFrame} alt="" className="w-full h-full object-cover rounded" />
-                        ) : (
-                          <span className="text-[10px] text-muted-foreground">Start</span>
-                        )}
-                      </div>
-                      <div className={cn(
-                        'flex-1 h-12 rounded border flex items-center justify-center',
-                        endReady 
-                          ? 'border-emerald-500/50 bg-emerald-500/10' 
-                          : 'border-border/30 bg-muted/20'
-                      )}>
-                        {pair.endFrame ? (
-                          <img src={pair.endFrame} alt="" className="w-full h-full object-cover rounded" />
-                        ) : (
-                          <span className="text-[10px] text-muted-foreground">End</span>
-                        )}
-                      </div>
-                    </div>
-                  </motion.button>
-                );
-              })}
-            </div>
-          </ScrollArea>
-        </motion.div>
+      {/* Main content - varies by mode */}
+      {mode === 'quick' ? (
+        <FrameGrid
+          shots={shots}
+          onSelectShot={setSelectedShotId}
+          onGenerateAll={handleGenerateAll}
+          onApproveAllGenerated={handleApproveAllGenerated}
+          isGenerating={generateMutation.isPending}
+          selectedShotId={selectedShotId || undefined}
+        />
+      ) : (
+        <div className="flex-1 flex overflow-hidden">
+          {/* Shot List Sidebar */}
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="w-64 border-r border-border/50 bg-card/30 backdrop-blur-sm"
+          >
+            <ScrollArea className="h-full">
+              <div className="p-2">
+                {shots.map((shot) => {
+                  const isSelected = selectedShotId === shot.id;
+                  const startReady =
+                    shot.startFrame?.status === 'approved' ||
+                    shot.startFrame?.status === 'generated';
+                  const endReady =
+                    !shot.requiresEndFrame ||
+                    shot.endFrame?.status === 'approved' ||
+                    shot.endFrame?.status === 'generated';
 
-        {/* Frame Editor */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="flex-1 flex flex-col overflow-hidden"
-        >
-          {selectedPair && (
-            <ScrollArea className="flex-1">
-              <div className="p-6">
-                <div className="grid grid-cols-2 gap-6">
-                  {/* Start Frame */}
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-medium text-foreground">Start Frame</h3>
-                      <Badge 
-                        variant="secondary"
-                        className={cn(
-                          selectedPair.startFrameStatus === 'approved' && 'bg-emerald-500/20 text-emerald-400',
-                          selectedPair.startFrameStatus === 'generating' && 'bg-blue-500/20 text-blue-400',
-                          selectedPair.startFrameStatus === 'pending' && 'bg-muted text-muted-foreground'
-                        )}
-                      >
-                        {selectedPair.startFrameStatus === 'generating' && (
-                          <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
-                        )}
-                        {selectedPair.startFrameStatus}
-                      </Badge>
-                    </div>
-                    
-                    <div className="aspect-video bg-muted/50 rounded-lg border border-border/30 overflow-hidden relative group">
-                      {selectedPair.startFrame ? (
-                        <>
-                          <img 
-                            src={selectedPair.startFrame} 
-                            alt="Start frame"
-                            className="w-full h-full object-cover"
-                          />
-                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                            <Button 
-                              variant="glass" 
-                              size="sm"
-                              onClick={() => setShowInpainting(true)}
-                            >
-                              <Paintbrush className="w-4 h-4 mr-1" />
-                              Inpaint
-                            </Button>
-                            <Button variant="glass" size="sm">
-                              <Eye className="w-4 h-4 mr-1" />
-                              Compare
-                            </Button>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center">
-                          <ImageIcon className="w-12 h-12 text-muted-foreground mb-2" />
-                          <span className="text-sm text-muted-foreground">No frame generated</span>
-                        </div>
+                  return (
+                    <motion.button
+                      key={shot.id}
+                      onClick={() => setSelectedShotId(shot.id)}
+                      whileHover={{ scale: 1.01 }}
+                      className={cn(
+                        'w-full p-3 rounded-lg mb-2 text-left transition-all',
+                        isSelected
+                          ? 'bg-primary/10 border border-primary/30'
+                          : 'bg-card/50 border border-border/30 hover:border-border'
                       )}
-                    </div>
-
-                    <div className="flex gap-2 mt-3">
-                      {selectedPair.startFrame ? (
-                        <>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="flex-1"
-                            onClick={() => handleRejectFrame(selectedPair.shotId, 'start')}
-                          >
-                            <X className="w-4 h-4 mr-1" />
-                            Reject
-                          </Button>
-                          <Button 
-                            variant="gold" 
-                            size="sm" 
-                            className="flex-1"
-                            onClick={() => handleApproveFrame(selectedPair.shotId, 'start')}
-                            disabled={selectedPair.startFrameStatus === 'approved'}
-                          >
-                            <Check className="w-4 h-4 mr-1" />
-                            {selectedPair.startFrameStatus === 'approved' ? 'Approved' : 'Approve'}
-                          </Button>
-                        </>
-                      ) : (
-                        <Button 
-                          variant="gold" 
-                          className="w-full"
-                          disabled={isGenerating}
-                          onClick={() => handleGenerateFrame(selectedPair.shotId, 'start')}
-                        >
-                          {isGenerating ? (
-                            <>
-                              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                              Generating...
-                            </>
-                          ) : (
-                            <>
-                              <ImageIcon className="w-4 h-4 mr-2" />
-                              Generate Start Frame
-                            </>
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <Badge variant="outline" className="font-mono">
+                          Shot {shot.shotId}
+                        </Badge>
+                        <ChevronRight
+                          className={cn(
+                            'w-4 h-4',
+                            isSelected ? 'text-primary' : 'text-muted-foreground'
                           )}
-                        </Button>
-                      )}
-                    </div>
+                        />
+                      </div>
+
+                      <div className="flex gap-2">
+                        <div
+                          className={cn(
+                            'flex-1 h-12 rounded border flex items-center justify-center overflow-hidden',
+                            shot.startFrame?.status === 'approved'
+                              ? 'border-emerald-500/50 bg-emerald-500/10'
+                              : shot.startFrame?.status === 'generated'
+                              ? 'border-amber-500/50 bg-amber-500/10'
+                              : 'border-border/30 bg-muted/20'
+                          )}
+                        >
+                          {shot.startFrame?.imageUrl ? (
+                            <img
+                              src={shot.startFrame.imageUrl}
+                              alt=""
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground">
+                              Start
+                            </span>
+                          )}
+                        </div>
+                        {shot.requiresEndFrame && (
+                          <div
+                            className={cn(
+                              'flex-1 h-12 rounded border flex items-center justify-center overflow-hidden',
+                              shot.endFrame?.status === 'approved'
+                                ? 'border-emerald-500/50 bg-emerald-500/10'
+                                : shot.endFrame?.status === 'generated'
+                                ? 'border-amber-500/50 bg-amber-500/10'
+                                : 'border-border/30 bg-muted/20'
+                            )}
+                          >
+                            {shot.endFrame?.imageUrl ? (
+                              <img
+                                src={shot.endFrame.imageUrl}
+                                alt=""
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground">
+                                End
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          </motion.div>
+
+          {/* Frame Editor */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex-1 flex flex-col overflow-hidden"
+          >
+            {selectedShot && (
+              <ScrollArea className="flex-1">
+                <div className="p-6">
+                  <div className="grid grid-cols-2 gap-6">
+                    {/* Start Frame */}
+                    <FramePanel
+                      frame={selectedShot.startFrame}
+                      frameType="start"
+                      shotId={selectedShot.shotId}
+                      onGenerate={() => handleGenerateShot(selectedShot.id, true)}
+                      onApprove={() =>
+                        selectedShot.startFrame &&
+                        approveMutation.mutate(selectedShot.startFrame.id)
+                      }
+                      onReject={() =>
+                        selectedShot.startFrame &&
+                        rejectMutation.mutate(selectedShot.startFrame.id)
+                      }
+                      onRegenerate={() =>
+                        selectedShot.startFrame &&
+                        regenerateMutation.mutate(selectedShot.startFrame.id)
+                      }
+                      onInpaint={() =>
+                        selectedShot.startFrame &&
+                        handleInpaint(
+                          selectedShot.startFrame,
+                          selectedShot.shotId,
+                          'start'
+                        )
+                      }
+                      onCompare={() => handleCompare(selectedShot.id)}
+                      showCompare={canCompare(selectedShot.id)}
+                    />
+
+                    {/* End Frame */}
+                    {selectedShot.requiresEndFrame && (
+                      <FramePanel
+                        frame={selectedShot.endFrame}
+                        frameType="end"
+                        shotId={selectedShot.shotId}
+                        isDisabled={selectedShot.startFrame?.status !== 'approved'}
+                        disabledReason="Approve start frame first"
+                        onGenerate={() => handleGenerateShot(selectedShot.id, false)}
+                        onApprove={() =>
+                          selectedShot.endFrame &&
+                          approveMutation.mutate(selectedShot.endFrame.id)
+                        }
+                        onReject={() =>
+                          selectedShot.endFrame &&
+                          rejectMutation.mutate(selectedShot.endFrame.id)
+                        }
+                        onRegenerate={() =>
+                          selectedShot.endFrame &&
+                          regenerateMutation.mutate(selectedShot.endFrame.id)
+                        }
+                        onInpaint={() =>
+                          selectedShot.endFrame &&
+                          handleInpaint(
+                            selectedShot.endFrame,
+                            selectedShot.shotId,
+                            'end'
+                          )
+                        }
+                      />
+                    )}
                   </div>
 
-                  {/* End Frame */}
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-medium text-foreground">End Frame</h3>
-                      <Badge 
-                        variant="secondary"
-                        className={cn(
-                          selectedPair.endFrameStatus === 'approved' && 'bg-emerald-500/20 text-emerald-400',
-                          selectedPair.endFrameStatus === 'generating' && 'bg-blue-500/20 text-blue-400',
-                          selectedPair.endFrameStatus === 'pending' && 'bg-muted text-muted-foreground'
-                        )}
-                      >
-                        {selectedPair.endFrameStatus === 'generating' && (
-                          <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
-                        )}
-                        {selectedPair.endFrameStatus}
-                      </Badge>
-                    </div>
-                    
-                    <div className="aspect-video bg-muted/50 rounded-lg border border-border/30 overflow-hidden relative group">
-                      {selectedPair.endFrame ? (
-                        <>
-                          <img 
-                            src={selectedPair.endFrame} 
-                            alt="End frame"
-                            className="w-full h-full object-cover"
-                          />
-                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                            <Button 
-                              variant="glass" 
-                              size="sm"
-                              onClick={() => setShowInpainting(true)}
-                            >
-                              <Paintbrush className="w-4 h-4 mr-1" />
-                              Inpaint
-                            </Button>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center">
-                          <ImageIcon className="w-12 h-12 text-muted-foreground mb-2" />
-                          <span className="text-sm text-muted-foreground">
-                            {selectedPair.startFrameStatus !== 'approved' 
-                              ? 'Approve start frame first' 
-                              : 'No frame generated'
-                            }
+                  {/* Shot context */}
+                  <div className="mt-6 p-4 rounded-lg bg-muted/30 border border-border/30">
+                    <h4 className="text-sm font-medium text-foreground mb-2">
+                      Shot Context
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Setting: </span>
+                        <span className="text-foreground">{selectedShot.setting}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Camera: </span>
+                        <span className="text-foreground">{selectedShot.camera}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-muted-foreground">Action: </span>
+                        <span className="text-foreground">{selectedShot.action}</span>
+                      </div>
+                      {selectedShot.framePrompt && (
+                        <div className="col-span-2">
+                          <span className="text-muted-foreground">Frame Prompt: </span>
+                          <span className="text-foreground text-xs">
+                            {selectedShot.framePrompt}
                           </span>
                         </div>
                       )}
                     </div>
-
-                    <div className="flex gap-2 mt-3">
-                      {selectedPair.endFrame ? (
-                        <>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="flex-1"
-                            onClick={() => handleRejectFrame(selectedPair.shotId, 'end')}
-                          >
-                            <X className="w-4 h-4 mr-1" />
-                            Reject
-                          </Button>
-                          <Button 
-                            variant="gold" 
-                            size="sm" 
-                            className="flex-1"
-                            onClick={() => handleApproveFrame(selectedPair.shotId, 'end')}
-                            disabled={selectedPair.endFrameStatus === 'approved'}
-                          >
-                            <Check className="w-4 h-4 mr-1" />
-                            {selectedPair.endFrameStatus === 'approved' ? 'Approved' : 'Approve'}
-                          </Button>
-                        </>
-                      ) : (
-                        <Button 
-                          variant="gold" 
-                          className="w-full"
-                          disabled={isGenerating || selectedPair.startFrameStatus !== 'approved'}
-                          onClick={() => handleGenerateFrame(selectedPair.shotId, 'end')}
-                        >
-                          {isGenerating ? (
-                            <>
-                              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                              Generating...
-                            </>
-                          ) : (
-                            <>
-                              <ImageIcon className="w-4 h-4 mr-2" />
-                              Generate End Frame
-                            </>
-                          )}
-                        </Button>
-                      )}
-                    </div>
                   </div>
                 </div>
-              </div>
-            </ScrollArea>
-          )}
-        </motion.div>
-      </div>
+              </ScrollArea>
+            )}
+          </motion.div>
+        </div>
+      )}
 
       {/* Footer */}
       <div className="p-4 border-t border-border/50 flex items-center justify-between bg-card/30">
@@ -473,48 +625,35 @@ export function Stage10FrameGeneration({ projectId, sceneId, onComplete, onBack 
         </Button>
       </div>
 
+      {/* Slider Comparison Modal */}
+      {comparisonImages && (
+        <SliderComparison
+          isOpen={showComparison}
+          onClose={() => {
+            setShowComparison(false);
+            setComparisonImages(null);
+          }}
+          leftImage={comparisonImages.left}
+          rightImage={comparisonImages.right}
+          leftLabel={comparisonImages.leftLabel}
+          rightLabel={comparisonImages.rightLabel}
+        />
+      )}
+
       {/* Inpainting Modal */}
-      <AnimatePresence>
-        {showInpainting && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
-            onClick={() => setShowInpainting(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-card border border-border rounded-xl p-6 max-w-2xl mx-4"
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <Paintbrush className="w-6 h-6 text-primary" />
-                <h3 className="font-display text-lg font-semibold text-foreground">
-                  Region Inpainting
-                </h3>
-              </div>
-              <p className="text-sm text-muted-foreground mb-4">
-                Select a region to edit with a localized prompt. 
-                This allows you to fix continuity breaks without regenerating the entire frame.
-              </p>
-              <div className="aspect-video bg-muted/50 rounded-lg border border-border/30 mb-4 flex items-center justify-center">
-                <span className="text-muted-foreground">Draw selection on image</span>
-              </div>
-              <div className="flex gap-3">
-                <Button variant="outline" className="flex-1" onClick={() => setShowInpainting(false)}>
-                  Cancel
-                </Button>
-                <Button variant="gold" className="flex-1">
-                  Apply Inpainting
-                </Button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {inpaintTarget && (
+        <InpaintingModal
+          isOpen={showInpainting}
+          onClose={() => {
+            setShowInpainting(false);
+            setInpaintTarget(null);
+          }}
+          sourceImageUrl={inpaintTarget.frame.imageUrl!}
+          shotId={inpaintTarget.shotId}
+          frameType={inpaintTarget.frameType}
+          onSubmit={handleInpaintSubmit}
+        />
+      )}
     </div>
   );
 }
