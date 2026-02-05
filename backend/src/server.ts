@@ -14,6 +14,7 @@ import { assetsRouter } from './routes/assets.js';
 import { projectAssetsRouter } from './routes/projectAssets.js';
 import { sceneAssetsRouter } from './routes/sceneAssets.js';
 import { framesRouter } from './routes/frames.js';
+import { checkoutRouter } from './routes/checkout.js';
 import { authenticateUser } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -51,6 +52,9 @@ app.use('/api/projects', authenticateUser, sceneAssetsRouter);
 
 // Frames routes (protected, nested under projects)
 app.use('/api/projects', authenticateUser, framesRouter);
+
+// Checkout routes for Stage 11/12 (protected, nested under projects)
+app.use('/api/projects', authenticateUser, checkoutRouter);
 
 // Stage states routes (protected, nested under projects)
 app.use('/api/projects', authenticateUser, stageStatesRouter);
