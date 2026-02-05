@@ -219,6 +219,107 @@ export interface SceneCheckout {
   totalCreditCost: number;
 }
 
+// Stage 11 Checkout Types (API-driven)
+export type ModelVariant = 'veo_3_1_fast' | 'veo_3_1_standard';
+
+export interface ShotCheckoutDetail {
+  shotId: string;
+  shotUuid: string;
+  shotOrder: number;
+  duration: number;
+  startFrameId: string | null;
+  endFrameId: string | null;
+  startFrameUrl: string | null;
+  endFrameUrl: string | null;
+  startFrameStatus: FrameStatus;
+  endFrameStatus: FrameStatus | null;
+  requiresEndFrame: boolean;
+  framePrompt: string | null;
+  videoPrompt: string | null;
+  imageCost: number;
+  videoCostFast: number;
+  videoCostStandard: number;
+}
+
+export interface DependencyWarnings {
+  unapprovedFrames: { shotId: string; frameType: 'start' | 'end' }[];
+  priorSceneMismatch: boolean;
+  priorSceneEndFrameUrl: string | null;
+}
+
+export interface CheckoutData {
+  sceneId: string;
+  sceneName: string;
+  sceneNumber: number;
+  shots: ShotCheckoutDetail[];
+  sceneTotalCostFast: number;
+  sceneTotalCostStandard: number;
+  projectRunningTotal: number;
+  userBalance: number;
+  lowCreditThreshold: number;
+  isLowCredit: boolean;
+  warnings: DependencyWarnings;
+}
+
+export interface UserCreditBalance {
+  balance: number;
+  lowCreditThreshold: number;
+  isLowCredit: boolean;
+}
+
+export interface ConfirmRenderResult {
+  success: boolean;
+  jobsCreated: number;
+  totalEstimatedCost: number;
+  jobs: VideoGenerationJob[];
+}
+
+// Stage 12 Video Job Types
+export type VideoJobStatus = 'queued' | 'processing' | 'generating' | 'uploading' | 'completed' | 'failed';
+
+export interface VideoGenerationJob {
+  id: string;
+  projectId: string;
+  branchId: string;
+  sceneId: string;
+  shotId: string;
+  modelVariant: ModelVariant;
+  status: VideoJobStatus;
+  startFrameId: string;
+  endFrameId: string | null;
+  startFrameUrl: string;
+  endFrameUrl: string | null;
+  videoPromptSnapshot: string;
+  framePromptSnapshot: string | null;
+  durationSeconds: number;
+  estimatedCost: number;
+  actualCost: number | null;
+  videoUrl: string | null;
+  storagePath: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  attemptCount: number;
+  maxRetries: number;
+  providerJobId: string | null;
+  providerMetadata: Record<string, unknown> | null;
+  createdAt: string;
+  queuedAt: string;
+  processingStartedAt: string | null;
+  completedAt: string | null;
+  updatedAt: string;
+}
+
+export interface VideoJobsResponse {
+  jobs: VideoGenerationJob[];
+  summary: {
+    total: number;
+    completed: number;
+    failed: number;
+    active: number;
+    progress: number;
+  };
+}
+
 export interface VideoClip {
   shotId: string;
   videoUrl?: string;
