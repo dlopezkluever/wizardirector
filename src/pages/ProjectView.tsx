@@ -52,6 +52,7 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
   const [currentBranch, setCurrentBranch] = useState('main');
   const [isLoadingProject, setIsLoadingProject] = useState(true);
   const hasRestoredStage = useRef(false);
+  const isHydrated = useRef(false);
 
   // Load all stage states for the project
   const { stageStates, isLoading: isLoadingStates, getStageState } = useProjectStageStates(projectId);
@@ -144,9 +145,10 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
     persistStage(stage, sceneId);
   };
 
-  // Reset restoration flag when projectId changes
+  // Reset restoration flags when projectId changes
   useEffect(() => {
     hasRestoredStage.current = false;
+    isHydrated.current = false;
   }, [projectId]);
 
   // Restore persisted stage on initial mount (before hydration). Stage 8 requires sceneId.
@@ -214,12 +216,12 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
           setActiveSceneId(persistedSceneId);
           setSceneStage(persistedStage as SceneStage);
         }
-        if (!stageFromUrl) hasRestoredStage.current = true;
+        hasRestoredStage.current = true;
         return;
       }
       setCurrentStage(persistedStage);
-      if (!stageFromUrl) hasRestoredStage.current = true;
-    } else if (persistedStage === currentStage && !stageFromUrl) {
+      hasRestoredStage.current = true;
+    } else if (persistedStage === currentStage) {
       hasRestoredStage.current = true;
     }
   }, [projectId, searchParams, setSearchParams]);
@@ -235,56 +237,67 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
       return;
     }
 
-    // Find the highest stage number with a locked or draft status
-    let highestStage = 1;
+    // Only hydrate once per project load to prevent re-hydration loops
+    if (isHydrated.current) return;
+
+    // Track locked and draft stages separately for correct derivation
+    let highestLockedStage = 0;
+    let highestDraftStage = 0;
+
     const updatedStages = initialPhaseAStages.map(stageProgress => {
       const stageState = stageStates.find(s => s.stage_number === stageProgress.stage);
-      
+
       if (stageState) {
-        highestStage = Math.max(highestStage, stageProgress.stage);
-        
-        // Map database status to UI status
         if (stageState.status === 'locked') {
+          highestLockedStage = Math.max(highestLockedStage, stageProgress.stage);
           return { ...stageProgress, status: 'locked' as StageStatus };
         } else if (stageState.status === 'draft') {
+          highestDraftStage = Math.max(highestDraftStage, stageProgress.stage);
           return { ...stageProgress, status: 'active' as StageStatus };
         } else if (stageState.status === 'outdated') {
           return { ...stageProgress, status: 'outdated' as StageStatus };
         }
       }
-      
+
       return stageProgress;
     });
 
-    // Check current stage - if it's 6+, keep it (already restored)
+    // Derive the correct stage: stay on draft, or advance past locked
+    const derivedStage = highestDraftStage > 0
+      ? highestDraftStage
+      : Math.min(highestLockedStage + 1, 5);
+
+    // Phase B: keep current stage, just update the stages array
     if (currentStage > 5) {
       setStages(updatedStages);
+      isHydrated.current = true;
       return;
     }
 
-    // For Stage 1-5, validate currentStage is allowed
-    // If currentStage was restored and is valid, keep it
-    const maxAllowedStage = Math.min(highestStage + 1, 5);
-    
-    if (currentStage <= maxAllowedStage && currentStage >= 1) {
-      // Current stage is valid, just update the stages array
-      const finalStages = updatedStages.map(s => 
-        s.stage === currentStage ? { ...s, status: 'active' as StageStatus } : s
-      );
-      setStages(finalStages);
-      // Ensure it's persisted
-      persistStage(currentStage);
-      return;
-    }
-
-    // Current stage is invalid or not set, use the calculated next stage
-    const nextStage = Math.min(highestStage + 1, 5);
-    const finalStages = updatedStages.map(s => 
-      s.stage === nextStage ? { ...s, status: 'active' as StageStatus } : s
+    // If stage was restored from URL/localStorage, validate and keep it
+    const maxAllowedStage = Math.min(
+      Math.max(highestLockedStage, highestDraftStage) + 1, 5
     );
 
+    if (hasRestoredStage.current && currentStage >= 1 && currentStage <= maxAllowedStage) {
+      const finalStages = updatedStages.map(s =>
+        s.stage === currentStage && s.status === 'pending'
+          ? { ...s, status: 'active' as StageStatus } : s
+      );
+      setStages(finalStages);
+      persistStage(currentStage);
+      isHydrated.current = true;
+      return;
+    }
+
+    // No valid restored stage — use derived stage
+    const finalStages = updatedStages.map(s =>
+      s.stage === derivedStage && s.status !== 'locked' && s.status !== 'outdated'
+        ? { ...s, status: 'active' as StageStatus } : s
+    );
     setStages(finalStages);
-    setCurrentStageWithPersistence(nextStage);
+    setCurrentStageWithPersistence(derivedStage);
+    isHydrated.current = true;
   }, [stageStates, isLoadingStates, projectId, currentStage]);
 
   // Navigation guard: Ensure currentStage is always valid
@@ -293,6 +306,9 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
     if (currentStage > 5) {
       return;
     }
+
+    // Wait for hydration to complete before validating navigation
+    if (!isHydrated.current) return;
 
     if (stages.length > 0) {
       const currentStageData = stages.find(s => s.stage === currentStage);
