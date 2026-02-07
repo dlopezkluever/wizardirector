@@ -50,7 +50,7 @@ async function runTest() {
         const result = await provider.generateVideo({
             startFrameUrl: testImageUrl,
             endFrameUrl: null,
-            prompt: 'A gentle slow zoom into this scene as the two characters share a passionate kiss',
+            prompt: 'A gentle slow zoom into this scene, the two characters standing together looking at each other warmly, cinematic lighting',
             durationSeconds: 4,
             modelVariant: 'veo_3_1_fast',
         });
