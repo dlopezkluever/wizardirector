@@ -16,7 +16,7 @@ This document outlines the revised development plan for Aiuteur, addressing stra
 
 **Goal**: Establish end-to-end pipeline functionality with real API integrations. Build Stages 9-12 to completion standard ("do it as well as possible") while prioritizing connectivity over perfection.
 
-### Feature 1.1: Stage 9 - Prompt Segmentation & Model Preparation ✅ **COMPLETE IMPLEMENTATION**
+### *DONE* Feature 1.1: Stage 9 - Prompt Segmentation & Model Preparation ✅ **COMPLETE IMPLEMENTATION**
 
 **Purpose**: Deterministic prompt assembly and user-editable prompt management
 
@@ -42,7 +42,7 @@ This document outlines the revised development plan for Aiuteur, addressing stra
   - `POST /api/projects/:projectId/scenes/:sceneId/generate-prompts` - Bulk prompt generation
 
 
-### Feature 1.2: Stage 10 - Frame Generation with Real Gemini Integration ✅ **COMPLETE IMPLEMENTATION**
+### *DONE* Feature 1.2: Stage 10 - Frame Generation with Real Gemini Integration ✅ **COMPLETE IMPLEMENTATION**
 
 **Purpose**: Generate start/end anchor frames using real Gemini API with continuity validation
 
@@ -75,7 +75,7 @@ This document outlines the revised development plan for Aiuteur, addressing stra
   - `PUT /api/projects/:projectId/scenes/:sceneId/frames/:frameId/approve` - Approve frame
   - `POST /api/projects/:projectId/scenes/:sceneId/frames/:frameId/regenerate` - Regenerate with guidance
 
-### Feature 1.3: Stage 11 - Comprehensive Review & Cost Gateway ✅ **COMPLETE IMPLEMENTATION**
+### *DONE* Feature 1.3: Stage 11 - Comprehensive Review & Cost Gateway ✅ **COMPLETE IMPLEMENTATION**
 
 **Purpose**: Final economic and dependency review with comprehensive scene summary
 
@@ -107,7 +107,7 @@ This document outlines the revised development plan for Aiuteur, addressing stra
   - `GET /api/projects/:projectId/credit-balance` - Get user credits
   - `POST /api/projects/:projectId/scenes/:sceneId/confirm-render` - Confirm and queue
 
-### Feature 1.4: Stage 12 - Video Generation with Real Veo3 Integration ✅ **COMPLETE IMPLEMENTATION**
+### *DONE* Feature 1.4: Stage 12 - Video Generation with Real Veo3 Integration ✅ **COMPLETE IMPLEMENTATION**
 
 **Purpose**: Generate final videos using real Veo3 API with review and iteration workflow
 
