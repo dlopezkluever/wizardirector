@@ -403,6 +403,18 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
     setCurrentStageWithPersistence(7, sceneId);
   };
 
+  const handleEnterSceneAtStage = (sceneId: string, stage: number) => {
+    if (stage >= 7 && stage <= 12) {
+      setActiveSceneId(sceneId);
+      setSceneStage(stage as SceneStage);
+      // Mark all stages before the target as completed for sidebar navigation
+      setCompletedSceneStages(
+        Array.from({ length: Math.max(0, stage - 7) }, (_, i) => (7 + i) as SceneStage)
+      );
+      setCurrentStageWithPersistence(stage, sceneId);
+    }
+  };
+
   const handleExitScene = () => {
     setActiveSceneId(null);
     setSceneStage(7);
@@ -522,8 +534,9 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
           onCreateBranch={() => toast.info('Branch creation coming soon')}
         />
         
-        <Stage6ScriptHub 
+        <Stage6ScriptHub
           onEnterScene={handleEnterScene}
+          onEnterSceneAtStage={handleEnterSceneAtStage}
           onBack={() => setCurrentStageWithPersistence(5)}
         />
       </div>

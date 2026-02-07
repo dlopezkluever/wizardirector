@@ -1,18 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Film, 
-  ChevronRight, 
-  AlertTriangle, 
-  CheckCircle2, 
-  Clock, 
+import {
+  Film,
+  ChevronRight,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
   Image as ImageIcon,
   Users,
   MapPin,
   GitBranch,
   ArrowUp,
-  Loader2
+  Loader2,
+  Play,
+  Eye,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +22,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { sceneService } from '@/lib/services/sceneService';
+import { checkoutService } from '@/lib/services/checkoutService';
 import type { Scene, SceneStatus, ContinuityRisk } from '@/types/scene';
 
 const statusConfig: Record<SceneStatus, { label: string; color: string; icon: typeof CheckCircle2 }> = {
@@ -39,16 +42,18 @@ const riskConfig: Record<ContinuityRisk, { label: string; color: string }> = {
 
 interface Stage6ScriptHubProps {
   onEnterScene: (sceneId: string) => void;
+  onEnterSceneAtStage?: (sceneId: string, stage: number) => void;
   onBack: () => void;
 }
 
-export function Stage6ScriptHub({ onEnterScene, onBack }: Stage6ScriptHubProps) {
+export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: Stage6ScriptHubProps) {
   const { projectId } = useParams<{ projectId: string }>();
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
   const [showOutdatedWarning, setShowOutdatedWarning] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [renderStatuses, setRenderStatuses] = useState<Record<string, string>>({});
 
   // Fetch scenes on mount
   useEffect(() => {
@@ -93,6 +98,32 @@ export function Stage6ScriptHub({ onEnterScene, onBack }: Stage6ScriptHubProps) 
 
     loadScenes();
   }, [projectId]);
+
+  // Fetch batch render statuses for all scenes
+  useEffect(() => {
+    const loadRenderStatuses = async () => {
+      if (!projectId || scenes.length === 0) return;
+      try {
+        const statuses = await checkoutService.getBatchRenderStatus(projectId);
+        setRenderStatuses(statuses);
+      } catch {
+        // Non-critical - silently fail
+      }
+    };
+
+    loadRenderStatuses();
+    // Poll render statuses every 10 seconds
+    const interval = setInterval(loadRenderStatuses, 10000);
+    return () => clearInterval(interval);
+  }, [projectId, scenes.length]);
+
+  const handleReviewVideo = (sceneId: string) => {
+    if (onEnterSceneAtStage) {
+      onEnterSceneAtStage(sceneId, 12);
+    } else {
+      onEnterScene(sceneId);
+    }
+  };
 
   const handleSceneClick = (scene: Scene) => {
     setSelectedScene(scene);
@@ -231,6 +262,24 @@ export function Stage6ScriptHub({ onEnterScene, onBack }: Stage6ScriptHubProps) 
                           {statusConfig[scene.status].label}
                         </Badge>
                         
+                        {renderStatuses[scene.id] === 'complete' && (
+                          <Badge
+                            variant="secondary"
+                            className="text-[10px] px-1.5 py-0 bg-blue-500/20 text-blue-400 animate-pulse"
+                          >
+                            <Eye className="w-3 h-3 mr-1" />
+                            Review Ready
+                          </Badge>
+                        )}
+                        {renderStatuses[scene.id] === 'rendering' && (
+                          <Badge
+                            variant="secondary"
+                            className="text-[10px] px-1.5 py-0 bg-amber-500/20 text-amber-400"
+                          >
+                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            Rendering
+                          </Badge>
+                        )}
                         {scene.continuityRisk && scene.continuityRisk !== 'safe' && (
                           <span className={cn('text-[10px]', riskConfig[scene.continuityRisk].color)}>
                             ⚠ {riskConfig[scene.continuityRisk].label}
@@ -284,7 +333,7 @@ export function Stage6ScriptHub({ onEnterScene, onBack }: Stage6ScriptHubProps) 
                 </div>
 
                 <div className="flex gap-2">
-                  <Button 
+                  <Button
                     variant="glass"
                     size="sm"
                     onClick={onBack}
@@ -292,6 +341,16 @@ export function Stage6ScriptHub({ onEnterScene, onBack }: Stage6ScriptHubProps) 
                     <ArrowUp className="w-4 h-4 mr-1" />
                     Phase A
                   </Button>
+                  {renderStatuses[selectedScene.id] === 'complete' && (
+                    <Button
+                      variant="outline"
+                      onClick={() => handleReviewVideo(selectedScene.id)}
+                      className="border-blue-400/30 text-blue-400 hover:bg-blue-500/10"
+                    >
+                      <Play className="w-4 h-4 mr-1" />
+                      Review Video
+                    </Button>
+                  )}
                   <Button
                     variant="gold"
                     onClick={handleEnterPipeline}
