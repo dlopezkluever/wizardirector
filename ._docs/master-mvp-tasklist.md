@@ -87,7 +87,7 @@
 
 ---
 
-#### 2A.2 — Stage Opening System Fix
+#### 2A.2 — *DONE* Stage Opening System Fix *DONE*
 **Tickets**: UI-1
 **Priority**: BLOCKING UX
 
