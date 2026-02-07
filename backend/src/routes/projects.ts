@@ -80,8 +80,12 @@ router.get('/', async (req, res) => {
     const transformedProjects = projects.map(project => {
       const stages = (projectStages.get(project.id) || []) as StageStateRow[];
       const lockedStages = stages.filter((s: StageStateRow) => s.status === 'locked');
+      const draftStages = stages.filter((s: StageStateRow) => s.status === 'draft');
       const highestLockedStage = lockedStages.length > 0 ? Math.max(...lockedStages.map((s: StageStateRow) => s.stage_number)) : 0;
-      const currentStage = Math.min(highestLockedStage + 1, 5); // Cap at 5 for Phase A
+      const highestDraftStage = draftStages.length > 0 ? Math.max(...draftStages.map((s: StageStateRow) => s.stage_number)) : 0;
+      const currentStage = highestDraftStage > 0
+        ? highestDraftStage
+        : Math.min(highestLockedStage + 1, 5);
 
       // Build stages array with status
       const stagesArray = [];
@@ -173,6 +177,22 @@ router.get('/:id', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch project' });
     }
 
+    // Query stage states to calculate currentStage
+    const { data: stageStatesData } = await supabase
+      .from('stage_states')
+      .select('stage_number, status')
+      .eq('branch_id', project.active_branch_id);
+
+    const lockedStages = (stageStatesData || []).filter(s => s.status === 'locked');
+    const draftStages = (stageStatesData || []).filter(s => s.status === 'draft');
+    const highestLockedStage = lockedStages.length > 0
+      ? Math.max(...lockedStages.map(s => s.stage_number)) : 0;
+    const highestDraftStage = draftStages.length > 0
+      ? Math.max(...draftStages.map(s => s.stage_number)) : 0;
+    const currentStage = highestDraftStage > 0
+      ? highestDraftStage
+      : Math.min(highestLockedStage + 1, 5);
+
     // Transform the data
     const transformedProject = {
       id: project.id,
@@ -180,7 +200,7 @@ router.get('/:id', async (req, res) => {
       description: project.tonal_precision || '',
       status: 'draft' as const,
       branch: project.branches?.[0]?.name || 'main',
-      currentStage: 1,
+      currentStage,
       stages: [],
       createdAt: project.created_at,
       updatedAt: project.updated_at,
@@ -403,6 +423,22 @@ router.put('/:id', async (req, res) => {
 
     console.log('✅ Project updated successfully:', updatedProject.id);
 
+    // Query stage states to calculate currentStage
+    const { data: stageStatesData } = await supabase
+      .from('stage_states')
+      .select('stage_number, status')
+      .eq('branch_id', updatedProject.active_branch_id);
+
+    const lockedStages = (stageStatesData || []).filter(s => s.status === 'locked');
+    const draftStages = (stageStatesData || []).filter(s => s.status === 'draft');
+    const highestLockedStage = lockedStages.length > 0
+      ? Math.max(...lockedStages.map(s => s.stage_number)) : 0;
+    const highestDraftStage = draftStages.length > 0
+      ? Math.max(...draftStages.map(s => s.stage_number)) : 0;
+    const currentStage = highestDraftStage > 0
+      ? highestDraftStage
+      : Math.min(highestLockedStage + 1, 5);
+
     // Transform the response
     const transformedProject = {
       id: updatedProject.id,
@@ -410,7 +446,7 @@ router.put('/:id', async (req, res) => {
       description: updatedProject.tonal_precision || '',
       status: 'draft' as const,
       branch: updatedProject.branches?.[0]?.name || 'main',
-      currentStage: 1,
+      currentStage,
       stages: [],
       createdAt: updatedProject.created_at,
       updatedAt: updatedProject.updated_at,
