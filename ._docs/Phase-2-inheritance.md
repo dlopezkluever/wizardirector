@@ -68,6 +68,9 @@
   Tasks: 2A.6 + 2A.7 — Skip option + Stage 5 lock button
   Key Files: Stage1InputMode.tsx, Stage5Assets.tsx, ProjectView.tsx, inputProcessingService.ts
   Why Independent: Both touch ProjectView.tsx so they must share, but they modify different functions (handleStageComplete routing). Isolated from everything else in Batch 1
+  
+  --
+
   2A.9 (Regeneration boxes) could arguably join Batch 1 as a 6th worktree — it touches Stage2Treatment.tsx and AssetVersionSync.tsx which no Batch 1 task touches. But it mentions "consistent behavior across stages" which could create soft conflicts with the   2B locking work. Safer as Batch 2.
 
   Batch 2 — After Batch 1 Merges

@@ -68,14 +68,20 @@ export class NanoBananaClient implements ImageProvider {
             // Build enhanced prompt with visual style context
             let prompt = options.prompt;
             if (options.visualStyleContext || (options.referenceImages && options.referenceImages.length > 0)) {
-                if (options.referenceImages && options.referenceImages.length > 0) {
-                    // Enhanced prompt when reference images are available
-                    const styleGuidance = options.visualStyleContext 
+                if (imageParts.length > 1) {
+                    // Multiple reference images: first is subject/identity, rest are style references
+                    const styleGuidance = options.visualStyleContext
                         ? `Apply these style guidelines: ${options.visualStyleContext}. `
                         : '';
-                    prompt = `Generate an image that matches the visual style, color palette, mood, and aesthetic shown in the provided reference images. ${styleGuidance}Subject: ${options.prompt}`;
+                    prompt = `Generate an image of the subject shown in the FIRST reference image. Maintain the subject's identity, key features, and overall appearance. Apply the visual style, color palette, mood, and aesthetic from the remaining reference images. ${styleGuidance}Subject: ${options.prompt}`;
+                } else if (imageParts.length === 1) {
+                    // Single reference image: treat as combined subject/style reference
+                    const styleGuidance = options.visualStyleContext
+                        ? `Apply these style guidelines: ${options.visualStyleContext}. `
+                        : '';
+                    prompt = `Generate an image that matches the visual style, color palette, mood, and aesthetic shown in the provided reference image. ${styleGuidance}Subject: ${options.prompt}`;
                 } else if (options.visualStyleContext) {
-                    // Fallback to text-only style context
+                    // No successfully loaded images, fallback to text-only style context
                     prompt = `${options.prompt}\n\nStyle: ${options.visualStyleContext}`;
                 }
             }
