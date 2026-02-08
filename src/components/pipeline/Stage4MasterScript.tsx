@@ -5,14 +5,12 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import {
   SceneHeading,
-  Character,
-  Dialogue,
   Action,
-  Parenthetical,
-  Transition
+  Transition,
+  DialogueLine,
+  DialogueLineDecorations
 } from '@/lib/tiptap-extensions';
 import {
-  Check,
   RefreshCw,
   Edit3,
   Lock,
@@ -25,7 +23,7 @@ import {
   Eye
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { plainTextToTiptap, tiptapToPlainText } from '@/lib/utils/screenplay-converter';
+import { parseScriptToTiptapJson, tiptapJsonToPlainText } from '@/lib/utils/screenplay-converter';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { ScreenplayToolbar } from './ScreenplayToolbar';
@@ -47,6 +45,7 @@ import type { Scene as SceneType } from '@/types/scene';
 
 interface Stage4Content {
   formattedScript: string;
+  tiptapDoc?: object;
   scenes: Scene[];
   syncStatus: 'synced' | 'out_of_date_with_beats';
   beatSheetSource?: {
@@ -66,10 +65,10 @@ interface Stage4MasterScriptProps {
 
 export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4MasterScriptProps) {
   // Use stage state for persistence
-  const { 
-    content: stageContent, 
-    setContent: setStageContent, 
-    isLoading, 
+  const {
+    content: stageContent,
+    setContent: setStageContent,
+    isLoading,
     isSaving,
     save // Manual save for custom debouncing
   } = useStageState<Stage4Content>({
@@ -85,7 +84,6 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
 
   // Component state
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
   const [hasSelection, setHasSelection] = useState(false);
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
   const [regenerateGuidance, setRegenerateGuidance] = useState('');
@@ -99,12 +97,14 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [showDownstreamWarning, setShowDownstreamWarning] = useState(false);
   const [downstreamDataExists, setDownstreamDataExists] = useState(false);
-  
+
   // Track if we're programmatically setting content to prevent cursor jumps
   const isProgrammaticUpdate = useRef(false);
   // Ref for debounced save timeout
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+  // Track if auto-generation has been attempted to prevent repeated triggers
+  const autoGenAttempted = useRef(false);
+
 
   // Initialize Tiptap editor
   const editor = useEditor({
@@ -116,26 +116,30 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
         placeholder: 'Start writing your screenplay...',
       }),
       SceneHeading,
-      Character,
-      Dialogue,
       Action,
-      Parenthetical,
       Transition,
+      DialogueLine,
+      DialogueLineDecorations,
     ],
-    content: stageContent.formattedScript ? plainTextToTiptap(stageContent.formattedScript) : '',
+    content: stageContent.tiptapDoc
+      ? stageContent.tiptapDoc
+      : stageContent.formattedScript
+        ? parseScriptToTiptapJson(stageContent.formattedScript)
+        : '',
     editorProps: {
       attributes: {
         class: 'prose prose-invert max-w-none p-6 focus:outline-none min-h-full',
       },
     },
     onUpdate: ({ editor }) => {
-      const html = editor.getHTML();
-      const plainText = tiptapToPlainText(html);
+      const tiptapDoc = editor.getJSON();
+      const plainText = tiptapJsonToPlainText(tiptapDoc);
 
       // Update local state immediately for UI responsiveness (functional update to preserve all fields)
       setStageContent(prev => ({
         ...prev,
         formattedScript: plainText,
+        tiptapDoc,
         scenes: scriptService.extractScenes(plainText)
       }));
 
@@ -146,12 +150,12 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
 
       // Set new timeout for 2-second debounced save
       saveTimeoutRef.current = setTimeout(async () => {
-        console.log('💾 [STAGE 4] Auto-saving after 2s of inactivity...');
+        console.log('[STAGE 4] Auto-saving after 2s of inactivity...');
         try {
           await save({ status: 'draft' });
-          console.log('✅ [STAGE 4] Auto-save successful');
+          console.log('[STAGE 4] Auto-save successful');
         } catch (error) {
-          console.error('❌ [STAGE 4] Auto-save failed:', error);
+          console.error('[STAGE 4] Auto-save failed:', error);
         }
       }, 2000);
     },
@@ -172,29 +176,33 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
   // Update editor content when stage content loads from DB
   useEffect(() => {
     if (!editor || isLoading) {
-      console.log('⏭️ [STAGE 4] Skipping editor sync:', { hasEditor: !!editor, isLoading });
+      console.log('[STAGE 4] Skipping editor sync:', { hasEditor: !!editor, isLoading });
       return;
     }
-    
-    if (stageContent.formattedScript) {
-      const currentPlainText = tiptapToPlainText(editor.getHTML());
-      
-      // Only update if content changed (avoid infinite loops)
-      if (currentPlainText !== stageContent.formattedScript) {
-        console.log('📝 [STAGE 4] Syncing loaded content to editor', {
-          contentLength: stageContent.formattedScript.length,
-          currentLength: currentPlainText.length,
-          scenesCount: stageContent.scenes?.length || 0
-        });
-        const tiptapHtml = plainTextToTiptap(stageContent.formattedScript);
-        editor.commands.setContent(tiptapHtml);
-      } else {
-        console.log('✅ [STAGE 4] Editor already has correct content');
+
+    // Prefer tiptapDoc (native JSON) over formattedScript (plain text migration)
+    if (stageContent.tiptapDoc) {
+      const currentJson = JSON.stringify(editor.getJSON());
+      const newJson = JSON.stringify(stageContent.tiptapDoc);
+
+      if (currentJson !== newJson) {
+        console.log('[STAGE 4] Syncing tiptapDoc to editor');
+        editor.commands.setContent(stageContent.tiptapDoc);
+      }
+    } else if (stageContent.formattedScript) {
+      // Migration path: convert plain text to TipTap JSON
+      const tiptapDoc = parseScriptToTiptapJson(stageContent.formattedScript);
+      const currentJson = JSON.stringify(editor.getJSON());
+      const newJson = JSON.stringify(tiptapDoc);
+
+      if (currentJson !== newJson) {
+        console.log('[STAGE 4] Migrating formattedScript to tiptapDoc');
+        editor.commands.setContent(tiptapDoc);
       }
     } else {
-      console.log('ℹ️ [STAGE 4] No formattedScript to sync');
+      console.log('[STAGE 4] No content to sync');
     }
-  }, [stageContent.formattedScript, editor, isLoading]);
+  }, [stageContent.formattedScript, stageContent.tiptapDoc, editor, isLoading]);
 
   // Cleanup save timeout on unmount
   useEffect(() => {
@@ -209,27 +217,27 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
   useEffect(() => {
     const loadDependencies = async () => {
       try {
-        console.log('📥 [STAGE 4] Loading Stage 3 beat sheet and project parameters...');
-        
+        console.log('[STAGE 4] Loading Stage 3 beat sheet and project parameters...');
+
         // Fetch Stage 3 state
         const stage3State = await stageStateService.getStageState(projectId, 3);
-        
+
         if (!stage3State || !stage3State.content.beats) {
-          console.error('❌ [STAGE 4] No beat sheet found in Stage 3');
+          console.error('[STAGE 4] No beat sheet found in Stage 3');
           toast.error('Please complete Stage 3 (Beat Sheet) first');
           return;
         }
 
-        console.log(`✅ [STAGE 4] Loaded ${stage3State.content.beats.length} beats from Stage 3`);
+        console.log(`[STAGE 4] Loaded ${stage3State.content.beats.length} beats from Stage 3`);
 
         // Also get Stage 2 state to retrieve processedInput (includes writingStyleCapsuleId)
         const stage2State = await stageStateService.getStageState(projectId, 2);
 
         // Fetch project configuration (stored in projects table, not stage_states)
         const { data: { session } } = await supabase.auth.getSession();
-        
+
         if (!session?.access_token) {
-          console.error('❌ [STAGE 4] No auth session found');
+          console.error('[STAGE 4] No auth session found');
           toast.error('Authentication required');
           return;
         }
@@ -247,8 +255,8 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
         }
 
         const project = await response.json();
-        
-        console.log('📊 [STAGE 4] Project config:', {
+
+        console.log('[STAGE 4] Project config:', {
           targetLength: project.targetLength,
           contentRating: project.contentRating,
           genres: project.genres,
@@ -278,7 +286,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
         }));
 
       } catch (error) {
-        console.error('❌ [STAGE 4] Error loading dependencies:', error);
+        console.error('[STAGE 4] Error loading dependencies:', error);
         toast.error('Failed to load dependencies');
       }
     };
@@ -294,18 +302,22 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
     }
 
     setIsGenerating(true);
-    
+
     try {
-      console.log('🎬 [STAGE 4] Generating master script...');
-      
+      console.log('[STAGE 4] Generating master script...');
+
       const result = await scriptService.generateScript({
         beatSheet: stageContent.beatSheetSource.beats,
         projectParams
       });
 
+      // Parse the generated script into TipTap JSON
+      const tiptapDoc = parseScriptToTiptapJson(result.formattedScript);
+
       // Update stage content
       const updatedContent: Stage4Content = {
         formattedScript: result.formattedScript,
+        tiptapDoc,
         scenes: result.scenes,
         syncStatus: 'synced',
         beatSheetSource: stageContent.beatSheetSource,
@@ -318,14 +330,36 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       setStageContent(updatedContent);
 
       toast.success(`Script generated with ${result.scenes.length} scenes`);
-      
+
     } catch (error: any) {
-      console.error('❌ [STAGE 4] Script generation failed:', error);
+      console.error('[STAGE 4] Script generation failed:', error);
       toast.error(error.message || 'Failed to generate script');
     } finally {
       setIsGenerating(false);
     }
   }, [stageContent.beatSheetSource, projectParams, setStageContent]);
+
+  // Auto-generation: trigger script generation on first visit when dependencies are loaded
+  useEffect(() => {
+    const autoGenerate = async () => {
+      if (
+        !stageContent.formattedScript &&
+        !stageContent.tiptapDoc &&
+        !isGenerating &&
+        !autoGenAttempted.current &&
+        stageContent.beatSheetSource?.beats &&
+        projectParams
+      ) {
+        autoGenAttempted.current = true;
+        await handleGenerateScript();
+      }
+    };
+
+    if (!isLoading) {
+      autoGenerate();
+    }
+  }, [isLoading, stageContent.formattedScript, stageContent.tiptapDoc, isGenerating,
+      stageContent.beatSheetSource, projectParams, handleGenerateScript]);
 
   // Full script regeneration
   const handleRegenerateScript = useCallback(async () => {
@@ -341,18 +375,21 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
 
     setIsGenerating(true);
     setShowRegenerateDialog(false);
-    
+
     try {
-      console.log('🔄 [STAGE 4] Regenerating master script with guidance...');
-      
+      console.log('[STAGE 4] Regenerating master script with guidance...');
+
       const result = await scriptService.regenerateScript({
         beatSheet: stageContent.beatSheetSource.beats,
         projectParams,
         guidance: regenerateGuidance
       });
 
+      const tiptapDoc = parseScriptToTiptapJson(result.formattedScript);
+
       const updatedContent: Stage4Content = {
         formattedScript: result.formattedScript,
+        tiptapDoc,
         scenes: result.scenes,
         syncStatus: 'synced',
         beatSheetSource: stageContent.beatSheetSource,
@@ -363,11 +400,11 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       isProgrammaticUpdate.current = true; // Flag programmatic update
       setStageContent(updatedContent);
       setRegenerateGuidance('');
-      
+
       toast.success('Script regenerated successfully');
-      
+
     } catch (error: any) {
-      console.error('❌ [STAGE 4] Script regeneration failed:', error);
+      console.error('[STAGE 4] Script regeneration failed:', error);
       toast.error(error.message || 'Failed to regenerate script');
     } finally {
       setIsGenerating(false);
@@ -385,7 +422,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
     setShowSectionEditDialog(false);
 
     try {
-      console.log('✏️ [STAGE 4] Regenerating selected section...');
+      console.log('[STAGE 4] Regenerating selected section...');
 
       // Get selected text from Tiptap
       const { from, to } = editor.state.selection;
@@ -416,7 +453,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       toast.success('Section regenerated successfully');
 
     } catch (error: any) {
-      console.error('❌ [STAGE 4] Section regeneration failed:', error);
+      console.error('[STAGE 4] Section regeneration failed:', error);
       toast.error(error.message || 'Failed to regenerate section');
     } finally {
       setIsGenerating(false);
@@ -429,7 +466,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
   const handlePreviewScenes = useCallback(async () => {
     if (!editor) return;
 
-    const plainText = tiptapToPlainText(editor.getHTML());
+    const plainText = tiptapJsonToPlainText(editor.getJSON());
     if (!plainText || plainText.trim().length === 0) {
       toast.error('Cannot preview scenes from an empty script');
       return;
@@ -437,7 +474,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
 
     setIsPreviewing(true);
     try {
-      console.log('👁️ [STAGE 4] Previewing scenes (in-memory only)...');
+      console.log('[STAGE 4] Previewing scenes (in-memory only)...');
 
       // Use sceneService.previewScenes for in-memory extraction
       const previewedScenes = await sceneService.previewScenes(plainText);
@@ -463,9 +500,9 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
         }))
       }));
 
-      console.log(`✅ [STAGE 4] Previewed ${previewedScenes.length} scenes`);
+      console.log(`[STAGE 4] Previewed ${previewedScenes.length} scenes`);
     } catch (error: any) {
-      console.error('❌ [STAGE 4] Failed to preview scenes:', error);
+      console.error('[STAGE 4] Failed to preview scenes:', error);
       toast.error(error.message || 'Failed to preview scenes');
     } finally {
       setIsPreviewing(false);
@@ -513,15 +550,15 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       }
 
       const { scenes } = await scenesResponse.json();
-      const hasDownstreamData = scenes?.some((scene: any) => 
-        scene.status === 'shot_list_ready' || 
-        scene.status === 'frames_locked' || 
+      const hasDownstreamData = scenes?.some((scene: any) =>
+        scene.status === 'shot_list_ready' ||
+        scene.status === 'frames_locked' ||
         scene.status === 'video_complete'
       );
 
       return hasDownstreamData || false;
     } catch (error) {
-      console.error('❌ [STAGE 4] Error checking downstream data:', error);
+      console.error('[STAGE 4] Error checking downstream data:', error);
       return false;
     }
   }, [projectId]);
@@ -532,7 +569,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       const stageState = await stageStateService.getStageState(projectId, 4);
       return stageState !== null && stageState.status === 'locked';
     } catch (error) {
-      console.error('❌ [STAGE 4] Error checking stage 4 status:', error);
+      console.error('[STAGE 4] Error checking stage 4 status:', error);
       // If stage doesn't exist, it's not locked
       return false;
     }
@@ -552,7 +589,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       // Navigate to Stage 5
       onComplete();
     } catch (error: any) {
-      console.error('❌ [STAGE 4] Failed to proceed with approval:', error);
+      console.error('[STAGE 4] Failed to proceed with approval:', error);
       toast.error(error.message || 'Failed to approve script');
     }
   }, [projectId, onComplete]);
@@ -564,7 +601,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       return;
     }
     setShowDownstreamWarning(false);
-    const plainText = tiptapToPlainText(editor.getHTML());
+    const plainText = tiptapJsonToPlainText(editor.getJSON());
     const scenes = scriptService.extractScenes(plainText);
     await proceedWithApproval(scenes);
   }, [editor, proceedWithApproval]);
@@ -573,14 +610,14 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
   const handleApproveScript = useCallback(async () => {
     if (!editor) return;
 
-    const plainText = tiptapToPlainText(editor.getHTML());
+    const plainText = tiptapJsonToPlainText(editor.getJSON());
     if (!plainText || plainText.trim().length === 0) {
       toast.error('Cannot approve an empty script');
       return;
     }
 
     try {
-      console.log('🔒 [STAGE 4] Approving master script...');
+      console.log('[STAGE 4] Approving master script...');
 
       // Extract scenes
       const scenes = scriptService.extractScenes(plainText);
@@ -613,7 +650,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       await proceedWithApproval(scenes);
 
     } catch (error: any) {
-      console.error('❌ [STAGE 4] Failed to approve script:', error);
+      console.error('[STAGE 4] Failed to approve script:', error);
       toast.error(error.message || 'Failed to approve script');
     }
   }, [editor, projectId, checkStage4Locked, checkDownstreamData, proceedWithApproval]);
@@ -626,7 +663,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
 
     // Simple approach: divide script into beat-sized chunks
     const beats = stageContent.beatSheetSource.beats;
-    const plainText = tiptapToPlainText(editor.getHTML());
+    const plainText = stageContent.formattedScript || '';
     const lines = plainText.split('\n');
     const linesPerBeat = Math.ceil(lines.length / beats.length);
     const targetLine = beatIndex * linesPerBeat;
@@ -646,7 +683,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       const lineHeight = 20; // Approximate line height
       editorElement.scrollTop = targetLine * lineHeight;
     }
-  }, [editor, stageContent.beatSheetSource]);
+  }, [editor, stageContent.beatSheetSource, stageContent.formattedScript]);
 
 
   // Loading state
@@ -661,8 +698,8 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
     );
   }
 
-  // Initial generation state
-  if (!stageContent.formattedScript) {
+  // Initial generation state — auto-gen in progress or waiting for dependencies
+  if (!stageContent.formattedScript && !stageContent.tiptapDoc) {
     return (
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
@@ -679,29 +716,32 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
 
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="text-center max-w-md">
-            <FileText className="w-16 h-16 text-primary mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Ready to Generate Your Script</h3>
-            <p className="text-muted-foreground mb-6">
-              Transform your beat sheet into a detailed, production-ready screenplay with rich visual descriptions.
-            </p>
-            <Button 
-              onClick={handleGenerateScript} 
-              disabled={isGenerating || !stageContent.beatSheetSource?.beats}
-              className="gap-2"
-              size="lg"
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                <>
+            {isGenerating ? (
+              <>
+                <Loader2 className="w-16 h-16 animate-spin text-primary mx-auto mb-4" />
+                <h3 className="text-xl font-semibold mb-2">Generating Your Master Script</h3>
+                <p className="text-muted-foreground">
+                  Transforming your beat sheet into a detailed, production-ready screenplay. This may take a moment...
+                </p>
+              </>
+            ) : (
+              <>
+                <FileText className="w-16 h-16 text-primary mx-auto mb-4" />
+                <h3 className="text-xl font-semibold mb-2">Ready to Generate Your Script</h3>
+                <p className="text-muted-foreground mb-6">
+                  Transform your beat sheet into a detailed, production-ready screenplay with rich visual descriptions.
+                </p>
+                <Button
+                  onClick={handleGenerateScript}
+                  disabled={isGenerating || !stageContent.beatSheetSource?.beats}
+                  className="gap-2"
+                  size="lg"
+                >
                   <Sparkles className="w-4 h-4" />
                   Generate Master Script
-                </>
-              )}
-            </Button>
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -724,9 +764,9 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             onClick={handlePreviewScenes}
             disabled={isGenerating || isPreviewing}
             className="gap-2"
@@ -743,9 +783,9 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
               </>
             )}
           </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setShowRegenerateDialog(true)}
             disabled={isGenerating}
             className="gap-2"
@@ -754,9 +794,9 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
             Regenerate
           </Button>
           {hasSelection && (
-            <Button 
-              variant="secondary" 
-              size="sm" 
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => setShowSectionEditDialog(true)}
               disabled={isGenerating}
               className="gap-2"
@@ -765,9 +805,9 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
               Edit Selection
             </Button>
           )}
-          <Button 
-            variant="gold" 
-            size="sm" 
+          <Button
+            variant="gold"
+            size="sm"
             onClick={handleApproveScript}
             disabled={isGenerating}
             className="gap-2"
@@ -811,7 +851,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
                   <ChevronRight className="w-4 h-4" />
                 </Button>
               </div>
-              
+
               <div className="overflow-auto h-[calc(100%-57px)] p-4 space-y-2">
                 {stageContent.beatSheetSource.beats.map((beat, index) => (
                   <button
@@ -878,14 +918,14 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
               <p className="text-sm text-muted-foreground mb-4">
                 Provide guidance for how you want the script regenerated (minimum 10 characters).
               </p>
-              
+
               <textarea
                 value={regenerateGuidance}
                 onChange={(e) => setRegenerateGuidance(e.target.value)}
                 placeholder="E.g., Make the dialogue more snappy and witty..."
                 className="w-full h-32 p-3 rounded-lg bg-secondary border border-border text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary"
               />
-              
+
               <div className="flex items-center justify-between mt-4">
                 <span className="text-sm text-muted-foreground">
                   {regenerateGuidance.length} / 10 characters
@@ -934,7 +974,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
               className="bg-card border border-border rounded-xl p-6 max-w-2xl w-full"
             >
               <h3 className="text-lg font-semibold mb-2">Edit Selected Section</h3>
-              
+
               <div className="mb-4 p-3 bg-secondary rounded-lg border border-border">
                 <p className="text-sm text-muted-foreground mb-1">Selected text:</p>
                 <p className="text-sm font-mono">
@@ -945,18 +985,18 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
                   })()}
                 </p>
               </div>
-              
+
               <p className="text-sm text-muted-foreground mb-2">
                 What would you like to change? (minimum 10 characters)
               </p>
-              
+
               <textarea
                 value={sectionEditRequest}
                 onChange={(e) => setSectionEditRequest(e.target.value)}
                 placeholder="E.g., Make this description more atmospheric and add details about the lighting..."
                 className="w-full h-32 p-3 rounded-lg bg-secondary border border-border text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary"
               />
-              
+
               <div className="flex items-center justify-between mt-4">
                 <span className="text-sm text-muted-foreground">
                   {sectionEditRequest.length} / 10 characters
@@ -993,11 +1033,11 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
           <DialogHeader>
             <DialogTitle>Scene Preview</DialogTitle>
             <DialogDescription>
-              Preview of {previewScenes.length} scene{previewScenes.length !== 1 ? 's' : ''} extracted from your script. 
+              Preview of {previewScenes.length} scene{previewScenes.length !== 1 ? 's' : ''} extracted from your script.
               This is a preview only and will not be saved to the database until you approve the script.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="flex-1 overflow-y-auto space-y-3 pr-2">
             {previewScenes.map((scene) => (
               <div
@@ -1042,7 +1082,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
               Stage 4 is already locked and Phase B production has begun. Re-extracting scenes may affect existing work.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-3 py-4">
             <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
               <p className="text-sm text-foreground">
@@ -1055,9 +1095,9 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
                 <li>Downstream work (shot lists, frames, videos) may be affected</li>
               </ul>
             </div>
-            
+
             <p className="text-sm text-muted-foreground">
-              <strong>Note:</strong> Branching functionality (to preserve existing work) will be available in Phase 10. 
+              <strong>Note:</strong> Branching functionality (to preserve existing work) will be available in Phase 10.
               For now, the system will attempt to preserve scene IDs where possible.
             </p>
           </div>
@@ -1069,8 +1109,8 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
             }}>
               Cancel
             </Button>
-            <Button 
-              variant="default" 
+            <Button
+              variant="default"
               onClick={handleProceedAfterWarning}
             >
               Proceed Anyway
