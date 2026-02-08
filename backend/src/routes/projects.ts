@@ -42,40 +42,110 @@ router.get('/', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch projects' });
     }
 
-    // Get stage states for all projects to calculate current stage and status
-    const projectIds = projects.map(p => p.id);
-    const { data: allStageStates, error: stagesError } = await supabase
-      .from('stage_states')
-      .select(`
-        id,
-        branch_id,
-        stage_number,
-        status,
-        created_at,
-        branches!inner (
-          project_id
-        )
-      `)
-      .in('branches.project_id', projectIds)
-      .eq('branches.is_main', true) // Only consider main branch stages for now
-      .order('stage_number', { ascending: false }); // Latest stage first
+    // Get stage states for all projects using active_branch_id (matches pipeline graphic source)
+    const activeBranchIds = projects
+      .map(p => p.active_branch_id)
+      .filter((id): id is string => !!id);
 
-    if (stagesError) {
-      console.error('Error fetching stage states:', stagesError);
-      return res.status(500).json({ error: 'Failed to fetch stage states' });
+    let allStageStates: Array<{ id: string; branch_id: string; stage_number: number; status: string; version: number; created_at: string }> = [];
+
+    if (activeBranchIds.length > 0) {
+      const { data, error: stagesError } = await supabase
+        .from('stage_states')
+        .select('id, branch_id, stage_number, status, version, created_at')
+        .in('branch_id', activeBranchIds)
+        .order('stage_number', { ascending: true })
+        .order('version', { ascending: false });
+
+      if (stagesError) {
+        console.error('Error fetching stage states:', stagesError);
+        return res.status(500).json({ error: 'Failed to fetch stage states' });
+      }
+      allStageStates = data || [];
     }
 
-    // Group stage states by project (branches can be object or array from Supabase join)
+    // Group stage states by project, deduplicate to latest version per stage
+    // (matches how GET /:projectId/stages works for the pipeline graphic)
+    const branchToProject = new Map<string, string>();
+    projects.forEach(p => {
+      if (p.active_branch_id) branchToProject.set(p.active_branch_id, p.id);
+    });
+
     const projectStages = new Map<string, typeof allStageStates>();
-    allStageStates.forEach((state: (typeof allStageStates)[0]) => {
-      const branch = Array.isArray(state.branches) ? state.branches[0] : state.branches;
-      const projectId = (branch as { project_id?: string } | null)?.project_id;
+    allStageStates.forEach(state => {
+      const projectId = branchToProject.get(state.branch_id);
       if (!projectId) return;
       if (!projectStages.has(projectId)) projectStages.set(projectId, []);
-      projectStages.get(projectId)!.push(state);
+
+      const bucket = projectStages.get(projectId)!;
+      // Only keep latest version per stage_number (data is ordered version DESC)
+      const alreadyHas = bucket.some(s => s.stage_number === state.stage_number);
+      if (!alreadyHas) {
+        bucket.push(state);
+      }
     });
 
     type StageStateRow = { status: string; stage_number: number };
+
+    // Batch-fetch scenes for ALL projects that have an active branch
+    // (scenes existing = project is in production, regardless of stage lock status)
+    const sceneProgressMap = new Map<string, {
+      totalScenes: number;
+      completedScenes: number;
+      currentSceneNumber: number | null;
+      currentSceneStage: number | null;
+      currentSceneStatus: string | null;
+      latestSceneUpdate: string | null;
+    }>();
+
+    if (activeBranchIds.length > 0) {
+      const { data: allScenes } = await supabase
+        .from('scenes')
+        .select('id, branch_id, scene_number, status, updated_at')
+        .in('branch_id', activeBranchIds)
+        .order('scene_number', { ascending: true });
+
+      // Group scenes by project
+      const projectScenes = new Map<string, Array<{ scene_number: number; status: string; updated_at: string }>>();
+      (allScenes || []).forEach((scene: any) => {
+        const projId = branchToProject.get(scene.branch_id);
+        if (!projId) return;
+        if (!projectScenes.has(projId)) projectScenes.set(projId, []);
+        projectScenes.get(projId)!.push({
+          scene_number: scene.scene_number,
+          status: scene.status,
+          updated_at: scene.updated_at,
+        });
+      });
+
+      // Compute summary per project
+      const statusToStage: Record<string, number> = {
+        draft: 7,
+        shot_list_ready: 8,
+        frames_locked: 11,
+        video_complete: 12,
+      };
+
+      for (const [projId, scenes] of projectScenes) {
+        const totalScenes = scenes.length;
+        const completedScenes = scenes.filter(s => s.status === 'video_complete').length;
+        const firstIncomplete = scenes.find(s => s.status !== 'video_complete');
+        // Latest scene update timestamp (for accurate "Updated Xm ago")
+        const latestSceneUpdate = scenes.reduce((latest, s) => {
+          return s.updated_at > latest ? s.updated_at : latest;
+        }, '');
+
+        sceneProgressMap.set(projId, {
+          totalScenes,
+          completedScenes,
+          currentSceneNumber: firstIncomplete?.scene_number ?? null,
+          currentSceneStage: firstIncomplete ? (statusToStage[firstIncomplete.status] ?? 7) : null,
+          currentSceneStatus: firstIncomplete?.status ?? null,
+          latestSceneUpdate: latestSceneUpdate || null,
+        });
+      }
+    }
+
     // Transform the data to match the frontend Project interface
     const transformedProjects = projects.map(project => {
       const stages = (projectStages.get(project.id) || []) as StageStateRow[];
@@ -112,6 +182,13 @@ router.get('/', async (req, res) => {
         });
       }
 
+      // Use the latest timestamp across project edits and scene edits
+      const sceneProgress = sceneProgressMap.get(project.id);
+      let updatedAt = project.updated_at;
+      if (sceneProgress?.latestSceneUpdate && sceneProgress.latestSceneUpdate > updatedAt) {
+        updatedAt = sceneProgress.latestSceneUpdate;
+      }
+
       return {
         id: project.id,
         title: project.title,
@@ -121,7 +198,7 @@ router.get('/', async (req, res) => {
         currentStage,
         stages: stagesArray,
         createdAt: project.created_at,
-        updatedAt: project.updated_at,
+        updatedAt,
         projectType: project.project_type,
         contentRating: project.content_rating,
         genres: project.genre || [],
@@ -129,7 +206,8 @@ router.get('/', async (req, res) => {
         targetLength: {
           min: project.target_length_min,
           max: project.target_length_max
-        }
+        },
+        ...(sceneProgress ? { sceneProgress } : {})
       };
     });
 
