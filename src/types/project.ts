@@ -33,6 +33,15 @@ export interface StageProgress {
   label: string;
 }
 
+export interface SceneProgress {
+  totalScenes: number;
+  completedScenes: number;
+  currentSceneNumber: number | null;
+  currentSceneStage: number | null;
+  currentSceneStatus: string | null;
+  latestSceneUpdate: string | null;
+}
+
 export interface Project {
   id: string;
   title: string;
@@ -52,6 +61,7 @@ export interface Project {
     min: number;
     max: number;
   };
+  sceneProgress?: SceneProgress;
 }
 
 export interface ProjectSettings {
