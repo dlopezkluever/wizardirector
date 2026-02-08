@@ -339,7 +339,7 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
                     onClick={onBack}
                   >
                     <ArrowUp className="w-4 h-4 mr-1" />
-                    Phase A
+                    Narrative & Style Engine
                   </Button>
                   {renderStatuses[selectedScene.id] === 'complete' && (
                     <Button
