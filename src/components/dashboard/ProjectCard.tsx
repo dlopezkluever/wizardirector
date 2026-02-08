@@ -33,8 +33,8 @@ export function ProjectCard({ project, onClick, onDelete, index }: ProjectCardPr
   const [isDeleting, setIsDeleting] = useState(false);
   const { toast } = useToast();
 
-  const progressPercentage =
-    (project.stages.filter(s => s.status === 'locked').length / project.stages.length) * 100;
+  // Project is in production if scenes exist (regardless of stage lock/outdated status)
+  const inProduction = !!project.sceneProgress && project.sceneProgress.totalScenes > 0;
 
   const handleDelete = async () => {
     try {
@@ -119,15 +119,47 @@ export function ProjectCard({ project, onClick, onDelete, index }: ProjectCardPr
 
         {/* Stage Progress */}
         <div className="mb-4">
-          <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-            <span>Stage {project.currentStage} of {project.stages.length}</span>
-            <span>{Math.round(progressPercentage)}%</span>
-          </div>
-          <div className="flex gap-1">
-            {project.stages.map((stage, i) => (
-              <StageIndicator key={i} status={stage.status} />
-            ))}
-          </div>
+          {!inProduction ? (
+            <>
+              <div className="text-xs text-muted-foreground mb-2">
+                Stage {project.currentStage} of {project.stages.length}
+              </div>
+              <div className="flex gap-1">
+                {project.stages.map((stage, i) => (
+                  <StageIndicator key={i} status={stage.status} />
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="text-xs text-muted-foreground mb-2">
+                  Narrative & Style Set
+                </div>
+                <div className="flex gap-1">
+                  {project.stages.map((stage, i) => (
+                    <StageIndicator key={i} status={stage.status} />
+                  ))}
+                </div>
+              </div>
+              <div className="text-right text-xs text-muted-foreground">
+                {project.sceneProgress!.currentSceneNumber !== null &&
+                 project.sceneProgress!.completedScenes < project.sceneProgress!.totalScenes && (
+                  <div className="mb-0.5">
+                    Scene {project.sceneProgress!.currentSceneNumber}
+                    {project.sceneProgress!.currentSceneStatus === 'outdated' || project.sceneProgress!.currentSceneStatus === 'continuity_broken'
+                      ? `: ${project.sceneProgress!.currentSceneStatus === 'outdated' ? 'Outdated' : 'Continuity Broken'}`
+                      : project.sceneProgress!.currentSceneStage !== null
+                        ? `: Stage ${project.sceneProgress!.currentSceneStage}`
+                        : ''}
+                  </div>
+                )}
+                <div>
+                  {project.sceneProgress!.completedScenes}/{project.sceneProgress!.totalScenes} Scenes Complete
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
