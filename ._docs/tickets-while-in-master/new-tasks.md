@@ -21,9 +21,9 @@ But they also attack the others, the establishment/mainstream/commonly known and
 
 --
 
+*FUTURE IMPROOOVEMENT*
 New Input mode: Video Explainers:
-Where all you want is visuals for your video essay, explainer, etc. 
- 
+Where all you want is visuals for your video essay, explainer, etc.  
 
 Maybe the way to fix this is: move "Project Type" to the top:
 
