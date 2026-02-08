@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { stageStateService } from './stageStateService';
+import { styleCapsuleService } from './styleCapsuleService';
 
 export interface Beat {
   id: string;
@@ -182,7 +183,8 @@ class BeatService {
   async brainstormBeatAlternatives(
     projectId: string,
     beat: Beat,
-    context: Beat[]
+    context: Beat[],
+    guidance?: string
   ): Promise<Beat[]> {
     const { data: { session } } = await supabase.auth.getSession();
 
@@ -190,22 +192,28 @@ class BeatService {
       throw new Error('User not authenticated');
     }
 
+    const guidanceBlock = guidance ? `\n\nUSER GUIDANCE:\n${guidance}` : '';
+
     const llmRequest = {
       systemPrompt: `You are a narrative structure analyst. Your task is to brainstorm alternative versions of a specific story beat while maintaining narrative coherence.
 
 INSTRUCTIONS:
-1. Generate 3 alternative versions of the given beat
+1. Generate exactly 3 alternative versions of the given beat
 2. Maintain consistency with the surrounding beats
 3. Each alternative should explore a different approach (tone, action, character focus, etc.)
 4. Keep the same estimated screen time
-5. Ensure alternatives still serve the same narrative function`,
+5. Ensure alternatives still serve the same narrative function
+
+OUTPUT FORMAT:
+Respond with a JSON array of objects, each with a "text" field containing the alternative beat text.
+Example: [{"text": "Alternative beat 1..."}, {"text": "Alternative beat 2..."}, {"text": "Alternative beat 3..."}]`,
       userPrompt: `CURRENT BEAT TO REIMAGINE:
 Beat ${beat.order}: ${beat.text}
 
 SURROUNDING CONTEXT:
 ${context.map(b => `Beat ${b.order}: ${b.text}`).join('\n')}
 
-Generate 3 alternative versions of Beat ${beat.order} that maintain narrative flow while exploring different approaches.`,
+Generate 3 alternative versions of Beat ${beat.order} that maintain narrative flow while exploring different approaches.${guidanceBlock}`,
       metadata: {
         projectId,
         stage: 3,
@@ -436,28 +444,68 @@ Split this beat into 2-3 more detailed beats that collectively tell the same sto
    * Parse alternatives response
    */
   private parseAlternativesResponse(content: string, originalBeat: Beat): Beat[] {
-    const lines = content.split('\n').filter(line => line.trim());
-    const alternatives: Beat[] = [];
-    let altIndex = 1;
+    const makeBeat = (text: string, index: number): Beat => ({
+      id: `${originalBeat.id}-alt-${index}`,
+      order: originalBeat.order,
+      text: text.trim(),
+      rationale: `Alternative ${index} for original beat`,
+      estimatedScreenTimeSeconds: originalBeat.estimatedScreenTimeSeconds,
+      isExpanded: false
+    });
 
-    for (const line of lines) {
-      if (line.match(/^\d+\.|Alternative \d+/i)) {
-        const text = line.replace(/^\d+\.\s*|Alternative \d+:?\s*/i, '').trim();
-        if (text) {
-          alternatives.push({
-            id: `${originalBeat.id}-alt-${altIndex}`,
-            order: originalBeat.order,
-            text,
-            rationale: `Alternative ${altIndex} for original beat`,
-            estimatedScreenTimeSeconds: originalBeat.estimatedScreenTimeSeconds,
-            isExpanded: false
-          });
-          altIndex++;
-        }
+    const extractText = (item: Record<string, string>): string =>
+      item.text || item.content || JSON.stringify(item);
+
+    const raw = typeof content === 'string' ? content : JSON.stringify(content);
+
+    // Strategy 1: Try JSON parsing (strip markdown code block if present)
+    try {
+      let cleaned = raw.trim();
+      if (cleaned.startsWith('```')) {
+        cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
       }
+      const parsed = JSON.parse(cleaned);
+      const arr: unknown[] = Array.isArray(parsed) ? parsed : parsed.alternatives || parsed.beats || [];
+      if (arr.length > 0) {
+        const beats = arr
+          .map((item, i) => makeBeat(typeof item === 'string' ? item : extractText(item as Record<string, string>), i + 1))
+          .filter((b: Beat) => b.text.length > 0);
+        if (beats.length > 0) return beats;
+      }
+    } catch {
+      // Not JSON, try text parsing
     }
 
-    return alternatives.length > 0 ? alternatives : [originalBeat];
+    // Strategy 2: Multi-line text parsing — split by numbered headers or "Alternative N"
+    const alternatives: Beat[] = [];
+    const lines = raw.split('\n');
+    let currentText = '';
+    let altIndex = 0;
+
+    for (const line of lines) {
+      const headerMatch = line.match(/^(?:\d+\.\s*|Alternative\s+\d+[:\s]*|##?\s*Alternative\s+\d+[:\s]*)/i);
+      if (headerMatch) {
+        // Save previous block if any
+        if (currentText.trim() && altIndex > 0) {
+          alternatives.push(makeBeat(currentText, altIndex));
+        }
+        altIndex++;
+        // Text after the header on the same line
+        currentText = line.replace(headerMatch[0], '').trim();
+      } else if (altIndex > 0 && line.trim()) {
+        // Continuation line for current alternative
+        currentText += (currentText ? ' ' : '') + line.trim();
+      }
+    }
+    // Flush last block
+    if (currentText.trim() && altIndex > 0) {
+      alternatives.push(makeBeat(currentText, altIndex));
+    }
+
+    if (alternatives.length > 0) return alternatives;
+
+    // Strategy 3: Fallback — return original beat unchanged
+    return [originalBeat];
   }
 
   /**
