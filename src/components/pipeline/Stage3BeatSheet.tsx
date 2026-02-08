@@ -223,25 +223,6 @@ function SortableBeatItem({
   );
 }
 
-// Mock beat data
-const mockBeats: Beat[] = [
-  { id: '1', number: 1, content: 'James Callahan, retired astronaut, receives terminal diagnosis. Six months to live.', isExpanded: false },
-  { id: '2', number: 2, content: 'James finds an unopened letter from his estranged daughter Elena, dated five years ago.', isExpanded: false },
-  { id: '3', number: 3, content: 'Flashback: The day Elena cut ties - her mother\'s funeral, James arriving late from a mission debrief.', isExpanded: false },
-  { id: '4', number: 4, content: 'James decides to find Elena. Packs a single bag, leaves his medals behind.', isExpanded: false },
-  { id: '5', number: 5, content: 'Cross-country journey begins. Each mile triggers memories of missed moments.', isExpanded: false },
-  { id: '6', number: 6, content: 'Elena in Seattle, successful but hollow. Her marriage is failing. Her son Marcus is distant.', isExpanded: false },
-  { id: '7', number: 7, content: 'James arrives at Elena\'s home. She sees him through the window but doesn\'t answer the door.', isExpanded: false },
-  { id: '8', number: 8, content: 'Marcus, curious about the stranger, sneaks out to meet his grandfather.', isExpanded: false },
-  { id: '9', number: 9, content: 'Marcus and James connect over astronomy. James sees his own patterns repeating.', isExpanded: false },
-  { id: '10', number: 10, content: 'Elena confronts her father. Years of anger pour out. James doesn\'t defend himself.', isExpanded: false },
-  { id: '11', number: 11, content: 'James reveals the truth: Maria asked him to stay away. She was protecting Elena from his radiation sickness.', isExpanded: false },
-  { id: '12', number: 12, content: 'Elena\'s walls crack. She reads her mother\'s hidden letters, finally understanding.', isExpanded: false },
-  { id: '13', number: 13, content: 'Father and daughter watch the sunset together. They don\'t speak. They don\'t need to.', isExpanded: false },
-  { id: '14', number: 14, content: 'Time jump: Three months later. James in hospice, but not alone. Elena and Marcus at his bedside.', isExpanded: false },
-  { id: '15', number: 15, content: 'Final scene: Marcus on a rooftop, telescope pointed at Mars. He whispers "Goodnight, grandpa."', isExpanded: false },
-];
-
 interface Stage3BeatSheetProps {
   projectId: string;
   onComplete: () => void;
@@ -265,6 +246,10 @@ export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatShe
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
   const [regenerateGuidance, setRegenerateGuidance] = useState('');
   const [selectedBeatForBrainstorm, setSelectedBeatForBrainstorm] = useState<string | null>(null);
+  const [showBrainstormDialog, setShowBrainstormDialog] = useState(false);
+  const [brainstormGuidance, setBrainstormGuidance] = useState('');
+  const [brainstormAlternatives, setBrainstormAlternatives] = useState<Beat[]>([]);
+  const [isBrainstorming, setIsBrainstorming] = useState(false);
   const [isOutdated, setIsOutdated] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
@@ -453,34 +438,59 @@ export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatShe
     toast.success('Beat removed');
   }, [stageContent.beats, setStageContent]);
 
-  const handleBrainstorm = useCallback(async (beatId: string) => {
-    const beat = stageContent.beats.find(b => b.id === beatId);
+  const handleBrainstorm = useCallback((beatId: string) => {
+    setSelectedBeatForBrainstorm(beatId);
+    setBrainstormGuidance('');
+    setBrainstormAlternatives([]);
+    setShowBrainstormDialog(true);
+  }, []);
+
+  const handleGenerateAlternatives = useCallback(async () => {
+    const beat = stageContent.beats.find(b => b.id === selectedBeatForBrainstorm);
     if (!beat) return;
 
     try {
-      setSelectedBeatForBrainstorm(beatId);
-      toast.info('Brainstorming alternatives...', {
-        description: 'AI is generating 3 alternative versions of this beat'
-      });
-
+      setIsBrainstorming(true);
       const alternatives = await beatService.brainstormBeatAlternatives(
         projectId,
         beat,
-        stageContent.beats
+        stageContent.beats,
+        brainstormGuidance.trim() || undefined
       );
-
-      // For now, just show the alternatives in a toast
-      // TODO: Implement proper alternative selection UI
-      toast.success(`Generated ${alternatives.length} alternatives`, {
-        description: 'Alternative versions created'
-      });
+      setBrainstormAlternatives(alternatives);
     } catch (error) {
       console.error('Failed to brainstorm alternatives:', error);
       toast.error('Failed to generate alternatives. Please try again.');
     } finally {
-      setSelectedBeatForBrainstorm(null);
+      setIsBrainstorming(false);
     }
-  }, [stageContent.beats, projectId]);
+  }, [stageContent.beats, selectedBeatForBrainstorm, projectId, brainstormGuidance]);
+
+  const handleSelectAlternative = useCallback((alternative: Beat) => {
+    if (!selectedBeatForBrainstorm) return;
+
+    setStageContent(prev => ({
+      ...prev,
+      beats: prev.beats.map(beat =>
+        beat.id === selectedBeatForBrainstorm
+          ? { ...beat, text: alternative.text }
+          : beat
+      )
+    }));
+
+    setShowBrainstormDialog(false);
+    setSelectedBeatForBrainstorm(null);
+    setBrainstormAlternatives([]);
+    setBrainstormGuidance('');
+    toast.success('Beat updated with selected alternative');
+  }, [selectedBeatForBrainstorm, setStageContent]);
+
+  const handleCloseBrainstormDialog = useCallback(() => {
+    setShowBrainstormDialog(false);
+    setSelectedBeatForBrainstorm(null);
+    setBrainstormAlternatives([]);
+    setBrainstormGuidance('');
+  }, []);
 
   const handleConfirmAndLock = useCallback(() => {
     if (stageContent.beats.some(b => b.text.length < 10)) {
@@ -781,6 +791,119 @@ export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatShe
             </motion.div>
           </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* Brainstorm Alternatives Dialog */}
+      <AnimatePresence>
+        {showBrainstormDialog && (() => {
+          const originalBeat = stageContent.beats.find(b => b.id === selectedBeatForBrainstorm);
+          return (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
+              onClick={handleCloseBrainstormDialog}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="w-full max-w-lg p-6 rounded-xl bg-card border border-border shadow-lg max-h-[80vh] overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="font-display text-xl font-semibold text-foreground mb-2">
+                  Brainstorm Alternatives
+                </h3>
+
+                {/* Original beat context */}
+                {originalBeat && (
+                  <div className="mb-4 p-3 rounded-lg bg-muted border border-border">
+                    <p className="text-xs text-muted-foreground mb-1 font-medium">Beat {originalBeat.order} — Original</p>
+                    <p className="text-sm text-foreground">{originalBeat.text}</p>
+                  </div>
+                )}
+
+                {brainstormAlternatives.length === 0 ? (
+                  /* Phase 1: Guidance input */
+                  <>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Optionally provide guidance for how you want this beat reimagined.
+                    </p>
+                    <textarea
+                      value={brainstormGuidance}
+                      onChange={(e) => setBrainstormGuidance(e.target.value)}
+                      placeholder={'e.g., "Make it more tense" or "Focus on the character\'s internal conflict"'}
+                      className="w-full h-24 px-4 py-3 rounded-lg bg-secondary border border-border text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                    <div className="flex justify-end gap-2 mt-4">
+                      <Button variant="ghost" onClick={handleCloseBrainstormDialog}>
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="gold"
+                        disabled={isBrainstorming}
+                        onClick={handleGenerateAlternatives}
+                      >
+                        {isBrainstorming ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            Generating...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4 mr-2" />
+                            Generate Alternatives
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  /* Phase 2: Alternative selection */
+                  <>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Click an alternative to replace the original beat.
+                    </p>
+                    <div className="space-y-2">
+                      {brainstormAlternatives.map((alt, index) => (
+                        <motion.button
+                          key={alt.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.1 }}
+                          onClick={() => handleSelectAlternative(alt)}
+                          className="w-full text-left p-4 rounded-lg border border-border bg-secondary hover:border-primary/50 hover:shadow-[0_0_12px_rgba(218,165,32,0.15)] transition-all duration-200 group"
+                        >
+                          <p className="text-xs text-muted-foreground mb-1 font-medium group-hover:text-primary transition-colors">
+                            Alternative {index + 1}
+                          </p>
+                          <p className="text-sm text-foreground">{alt.text}</p>
+                        </motion.button>
+                      ))}
+                    </div>
+                    <div className="flex justify-between mt-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setBrainstormAlternatives([]);
+                        }}
+                        className="gap-2"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                        Regenerate
+                      </Button>
+                      <Button variant="ghost" onClick={handleCloseBrainstormDialog}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </motion.div>
+            </motion.div>
+          );
+        })()}
       </AnimatePresence>
     </div>
   );
