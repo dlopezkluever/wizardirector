@@ -51,6 +51,7 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
   const [projectTitle, setProjectTitle] = useState('Loading...');
   const [currentBranch, setCurrentBranch] = useState('main');
   const [isLoadingProject, setIsLoadingProject] = useState(true);
+  const [hasReachedPhaseB, setHasReachedPhaseB] = useState(false);
   const hasRestoredStage = useRef(false);
   const isHydrated = useRef(false);
 
@@ -64,6 +65,10 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
 
   const getSceneIdStorageKey = (projectId: string | null | undefined) => {
     return projectId && projectId !== 'new' ? `project_${projectId}_sceneId` : null;
+  };
+
+  const getPhaseBReachedKey = (projectId: string | null | undefined) => {
+    return projectId && projectId !== 'new' ? `project_${projectId}_reachedPhaseB` : null;
   };
 
   // Helper function to persist stage to localStorage and URL (sceneId required for Stage 8)
@@ -138,6 +143,27 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
       setIsLoadingProject(false);
     }
   }, [projectId]);
+
+  // Track when user reaches Phase B (persisted across sessions)
+  useEffect(() => {
+    const key = getPhaseBReachedKey(projectId);
+    if (key) {
+      const stored = localStorage.getItem(key);
+      if (stored === 'true') {
+        setHasReachedPhaseB(true);
+      }
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    if (currentStage > 5) {
+      setHasReachedPhaseB(true);
+      const key = getPhaseBReachedKey(projectId);
+      if (key) {
+        localStorage.setItem(key, 'true');
+      }
+    }
+  }, [currentStage, projectId]);
 
   // Wrapper for setCurrentStage that also persists
   const setCurrentStageWithPersistence = (stage: number, sceneId?: string | null) => {
@@ -571,7 +597,13 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
         onCreateBranch={() => toast.info('Branch creation coming soon')}
       />
       
-      <PhaseTimeline stages={stages} currentStage={currentStage} onStageClick={handleNavigate} />
+      <PhaseTimeline
+        stages={stages}
+        currentStage={currentStage}
+        onStageClick={handleNavigate}
+        showReturnToPhaseB={hasReachedPhaseB}
+        onReturnToPhaseB={() => setCurrentStageWithPersistence(6)}
+      />
       
       {currentStage === 1 && (
         <Stage1InputMode projectId={projectId} onComplete={() => handleStageComplete(1)} />
