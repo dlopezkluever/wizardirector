@@ -97,6 +97,9 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [showDownstreamWarning, setShowDownstreamWarning] = useState(false);
   const [downstreamDataExists, setDownstreamDataExists] = useState(false);
+  const [sectionAlternatives, setSectionAlternatives] = useState<string[]>([]);
+  const [isGeneratingAlternatives, setIsGeneratingAlternatives] = useState(false);
+  const [alternativeCount, setAlternativeCount] = useState<1 | 3>(1);
 
   // Track if we're programmatically setting content to prevent cursor jumps
   const isProgrammaticUpdate = useRef(false);
@@ -418,47 +421,64 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       return;
     }
 
-    setIsGenerating(true);
-    setShowSectionEditDialog(false);
+    const { from, to } = editor.state.selection;
+    const selectedText = editor.state.doc.textBetween(from, to);
+    const beforeText = editor.state.doc.textBetween(Math.max(0, from - 500), from);
+    const afterText = editor.state.doc.textBetween(to, Math.min(editor.state.doc.content.size, to + 500));
 
     try {
-      console.log('[STAGE 4] Regenerating selected section...');
+      if (alternativeCount === 1) {
+        // Direct replacement (original behavior)
+        setIsGenerating(true);
+        setShowSectionEditDialog(false);
 
-      // Get selected text from Tiptap
-      const { from, to } = editor.state.selection;
-      const selectedText = editor.state.doc.textBetween(from, to);
+        console.log('[STAGE 4] Regenerating selected section...');
 
-      // Get context around the selection (500 chars before/after)
-      const beforeText = editor.state.doc.textBetween(Math.max(0, from - 500), from);
-      const afterText = editor.state.doc.textBetween(to, Math.min(editor.state.doc.content.size, to + 500));
+        const rewrittenSection = await scriptService.regenerateSection({
+          scriptContext: { beforeText, highlightedText: selectedText, afterText },
+          editRequest: sectionEditRequest
+        });
 
-      const rewrittenSection = await scriptService.regenerateSection({
-        scriptContext: {
-          beforeText,
-          highlightedText: selectedText,
-          afterText
-        },
-        editRequest: sectionEditRequest
-      });
+        editor.chain().focus().deleteRange({ from, to }).insertContent(rewrittenSection).run();
+        setSectionEditRequest('');
+        setSectionAlternatives([]);
+        setAlternativeCount(1);
+        toast.success('Section regenerated successfully');
+      } else {
+        // Generate 3 alternatives
+        setIsGeneratingAlternatives(true);
 
-      // Replace selection in Tiptap
-      editor.chain()
-        .focus()
-        .deleteRange({ from, to })
-        .insertContent(rewrittenSection)
-        .run();
+        console.log('[STAGE 4] Generating 3 section alternatives...');
 
-      setSectionEditRequest('');
+        const alternatives = await scriptService.regenerateSectionAlternatives({
+          scriptContext: { beforeText, highlightedText: selectedText, afterText },
+          editRequest: sectionEditRequest
+        });
 
-      toast.success('Section regenerated successfully');
-
+        setSectionAlternatives(alternatives);
+      }
     } catch (error: any) {
       console.error('[STAGE 4] Section regeneration failed:', error);
       toast.error(error.message || 'Failed to regenerate section');
     } finally {
       setIsGenerating(false);
+      setIsGeneratingAlternatives(false);
     }
-  }, [editor, sectionEditRequest]);
+  }, [editor, sectionEditRequest, alternativeCount]);
+
+  // Apply a selected alternative to the editor
+  const handleSelectSectionAlternative = useCallback((text: string) => {
+    if (!editor) return;
+
+    const { from, to } = editor.state.selection;
+    editor.chain().focus().deleteRange({ from, to }).insertContent(text).run();
+
+    setShowSectionEditDialog(false);
+    setSectionEditRequest('');
+    setSectionAlternatives([]);
+    setAlternativeCount(1);
+    toast.success('Alternative applied successfully');
+  }, [editor]);
 
 
 
@@ -964,19 +984,25 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setShowSectionEditDialog(false)}
+            onClick={() => {
+              setShowSectionEditDialog(false);
+              setSectionAlternatives([]);
+              setSectionEditRequest('');
+              setAlternativeCount(1);
+            }}
           >
             <motion.div
-              initial={{ scale: 0.95 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.95 }}
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-card border border-border rounded-xl p-6 max-w-2xl w-full"
+              className="bg-card border border-border rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
             >
-              <h3 className="text-lg font-semibold mb-2">Edit Selected Section</h3>
+              <h3 className="text-lg font-semibold mb-3">Edit Selected Section</h3>
 
+              {/* Original text preview */}
               <div className="mb-4 p-3 bg-secondary rounded-lg border border-border">
-                <p className="text-sm text-muted-foreground mb-1">Selected text:</p>
+                <p className="text-xs text-muted-foreground mb-1 font-medium">Selected Text</p>
                 <p className="text-sm font-mono">
                   {(() => {
                     const { from, to } = editor.state.selection;
@@ -986,42 +1012,131 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
                 </p>
               </div>
 
-              <p className="text-sm text-muted-foreground mb-2">
-                What would you like to change? (minimum 10 characters)
-              </p>
+              {sectionAlternatives.length === 0 ? (
+                <>
+                  {/* Phase 1: Guidance + Generate */}
+                  <p className="text-sm text-muted-foreground mb-2">
+                    What would you like to change? (minimum 10 characters)
+                  </p>
 
-              <textarea
-                value={sectionEditRequest}
-                onChange={(e) => setSectionEditRequest(e.target.value)}
-                placeholder="E.g., Make this description more atmospheric and add details about the lighting..."
-                className="w-full h-32 p-3 rounded-lg bg-secondary border border-border text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary"
-              />
+                  <textarea
+                    value={sectionEditRequest}
+                    onChange={(e) => setSectionEditRequest(e.target.value)}
+                    placeholder="E.g., Make this description more atmospheric and add details about the lighting..."
+                    className="w-full h-32 p-3 rounded-lg bg-secondary border border-border text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                    disabled={isGeneratingAlternatives}
+                  />
 
-              <div className="flex items-center justify-between mt-4">
-                <span className="text-sm text-muted-foreground">
-                  {sectionEditRequest.length} / 10 characters
-                </span>
-                <div className="flex gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setShowSectionEditDialog(false);
-                      setSectionEditRequest('');
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={handleRegenerateSection}
-                    disabled={sectionEditRequest.length < 10}
-                  >
-                    Regenerate Section
-                  </Button>
-                </div>
-              </div>
+                  {/* Alternatives toggle */}
+                  <div className="flex items-center gap-3 mt-4">
+                    <span className="text-sm text-muted-foreground">Alternatives:</span>
+                    <div className="flex rounded-lg border border-border overflow-hidden">
+                      <button
+                        onClick={() => setAlternativeCount(1)}
+                        className={cn(
+                          'px-3 py-1.5 text-sm font-medium transition-colors',
+                          alternativeCount === 1
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-secondary text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        1
+                      </button>
+                      <button
+                        onClick={() => setAlternativeCount(3)}
+                        className={cn(
+                          'px-3 py-1.5 text-sm font-medium transition-colors border-l border-border',
+                          alternativeCount === 3
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-secondary text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        3
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between mt-4">
+                    <span className="text-sm text-muted-foreground">
+                      {sectionEditRequest.length} / 10 characters
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setShowSectionEditDialog(false);
+                          setSectionEditRequest('');
+                          setAlternativeCount(1);
+                        }}
+                        disabled={isGeneratingAlternatives}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={handleRegenerateSection}
+                        disabled={sectionEditRequest.length < 10 || isGeneratingAlternatives}
+                        className="gap-2"
+                      >
+                        {isGeneratingAlternatives ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-4 h-4" />
+                        )}
+                        Generate
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Phase 2: Show alternatives */}
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Click an alternative to apply it.
+                  </p>
+                  <div className="space-y-2">
+                    {sectionAlternatives.map((alt, index) => (
+                      <motion.button
+                        key={index}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                        onClick={() => handleSelectSectionAlternative(alt)}
+                        className="w-full text-left p-4 rounded-lg border border-border bg-secondary hover:border-primary/50 hover:shadow-[0_0_12px_rgba(218,165,32,0.15)] transition-all duration-200 group"
+                      >
+                        <p className="text-xs text-muted-foreground mb-1 font-medium group-hover:text-primary transition-colors">
+                          Alternative {index + 1}
+                        </p>
+                        <p className="text-sm text-foreground whitespace-pre-wrap">{alt}</p>
+                      </motion.button>
+                    ))}
+                  </div>
+                  <div className="flex justify-between mt-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSectionAlternatives([])}
+                      className="gap-2"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      Regenerate
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setShowSectionEditDialog(false);
+                        setSectionAlternatives([]);
+                        setSectionEditRequest('');
+                        setAlternativeCount(1);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </>
+              )}
             </motion.div>
           </motion.div>
         )}
