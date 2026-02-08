@@ -277,23 +277,8 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 **Dependencies**: None.
 
----
+**Notes**: This issue is really only a major problem with the Production Cycle, im not sure it's relvant at all for stages 1-5. It's especially bad if you ever go from the script hub into stage 7. Like a user could have completed EVERYTHING for stages 7-11 of that scene, yet if they go back to the script hub, and then enter the scene's pipeline; they will have to "unlock and relock" stage 7, wait for some save to happen even though no edit was made, then do the same with stage 8, then 9, as all the graphics on the side (that are linked navigation) won't let you just click on stage 11. That is truely the source the frustration. 
 
-#### 2B.3 — Fix Sequential Locking Errors
-**Ticket**: LK-6
-**Priority**: HIGH
-
-**Purpose**: Fix the error pattern where locking fails due to upstream stage requirements.
-
-**Problem/Context**: Known error pattern: `"Cannot lock stage 2. Stage 1 must be locked first."` with `requiredStage: 1, requiredStatus: "locked", currentStatus: "draft"`. The sequential locking requirement is too rigid and creates frustrating dead-ends.
-
-**Core Features:**
-- [ ] Review and fix sequential locking validation logic
-- [ ] Allow reasonable locking order flexibility
-- [ ] Provide clear error messages with actionable guidance
-- [ ] Auto-resolve simple locking chains where possible
-
-**Dependencies**: None.
 
 ---
 
@@ -315,7 +300,26 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 ---
 
-#### 2B.5 — Deliberate Branching on Post-Lock Edits (Foundations)
+--- The *Defered 🚩* --- 
+
+#### 2B.3 — Fix Sequential Locking Errors *Defered 🚩 , as I Don't see this issue anymore* 
+**Ticket**: LK-6
+**Priority**: HIGH
+
+**Purpose**: Fix the error pattern where locking fails due to upstream stage requirements.
+
+**Problem/Context**: Known error pattern: `"Cannot lock stage 2. Stage 1 must be locked first."` with `requiredStage: 1, requiredStatus: "locked", currentStatus: "draft"`. The sequential locking requirement is too rigid and creates frustrating dead-ends.
+
+**Core Features:**
+- [ ] Review and fix sequential locking validation logic
+- [ ] Allow reasonable locking order flexibility
+- [ ] Provide clear error messages with actionable guidance
+- [ ] Auto-resolve simple locking chains where possible
+
+**Dependencies**: None.
+
+
+#### 2B.5 — Deliberate Branching on Post-Lock Edits (Foundations) *Defered, for Lazyness* 
 **Ticket**: LK-4, LK-5
 **Priority**: MEDIUM
 
