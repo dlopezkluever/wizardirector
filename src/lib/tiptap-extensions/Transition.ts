@@ -18,7 +18,6 @@ export const Transition = Node.create({
       {
         ...HTMLAttributes,
         'data-type': 'transition',
-        class: 'uppercase text-amber-400 text-right my-4' // Right-aligned, uppercase
       },
       0
     ];
