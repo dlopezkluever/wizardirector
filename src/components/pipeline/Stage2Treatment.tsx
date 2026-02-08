@@ -100,6 +100,11 @@ export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2Treatme
   const [isOutdated, setIsOutdated] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [showSectionEditDialog, setShowSectionEditDialog] = useState(false);
+  const [sectionEditGuidance, setSectionEditGuidance] = useState('');
+  const [sectionAlternatives, setSectionAlternatives] = useState<string[]>([]);
+  const [isGeneratingAlternatives, setIsGeneratingAlternatives] = useState(false);
+  const [alternativeCount, setAlternativeCount] = useState<1 | 3>(1);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Current treatment content for editing
@@ -257,42 +262,81 @@ export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2Treatme
     }
   }, [editableContent]);
 
-  const handleTargetedRegenerate = useCallback(async () => {
+  const handleOpenSectionEdit = useCallback(() => {
+    if (!selectedText) return;
+    setSectionEditGuidance('');
+    setSectionAlternatives([]);
+    setAlternativeCount(1);
+    setShowSectionEditDialog(true);
+  }, [selectedText]);
+
+  const handleGenerateSectionAlternatives = useCallback(async () => {
     if (!selectedText) return;
 
-    const guidance = prompt('How would you like to change this section?');
-    if (!guidance) return;
-
     try {
-      setIsRegenerating(true);
-      toast.info('Regenerating selected text...', {
-        description: `"${selectedText.text.substring(0, 50)}..."`
-      });
+      setIsGeneratingAlternatives(true);
 
-      const newText = await treatmentService.regenerateSection(
-        projectId,
-        editableContent,
-        selectedText.text,
-        guidance
-      );
+      if (alternativeCount === 1) {
+        // Single replacement — same as old behavior
+        toast.info('Regenerating selected text...', {
+          description: `"${selectedText.text.substring(0, 50)}..."`
+        });
 
-      // Replace the selected text with the new text
-      const newContent = editableContent.substring(0, selectedText.start) + 
-                        newText + 
-                        editableContent.substring(selectedText.end);
-      
-      setEditableContent(newContent);
-      setHasUnsavedChanges(true);
-      setSelectedText(null);
-      
-      toast.success('Section regenerated successfully');
+        const newText = await treatmentService.regenerateSection(
+          projectId,
+          editableContent,
+          selectedText.text,
+          sectionEditGuidance || 'Rewrite this section'
+        );
+
+        const newContent = editableContent.substring(0, selectedText.start) +
+          newText +
+          editableContent.substring(selectedText.end);
+
+        setEditableContent(newContent);
+        setHasUnsavedChanges(true);
+        setSelectedText(null);
+        setShowSectionEditDialog(false);
+        setSectionEditGuidance('');
+        toast.success('Section regenerated successfully');
+      } else {
+        // Generate 3 alternatives
+        toast.info('Generating alternatives...', {
+          description: `"${selectedText.text.substring(0, 50)}..."`
+        });
+
+        const alternatives = await treatmentService.regenerateSectionAlternatives(
+          projectId,
+          editableContent,
+          selectedText.text,
+          sectionEditGuidance || undefined
+        );
+
+        setSectionAlternatives(alternatives);
+      }
     } catch (error) {
-      console.error('Failed to regenerate section:', error);
-      toast.error('Failed to regenerate section. Please try again.');
+      console.error('Failed to generate alternatives:', error);
+      toast.error('Failed to generate alternatives. Please try again.');
     } finally {
-      setIsRegenerating(false);
+      setIsGeneratingAlternatives(false);
     }
-  }, [selectedText, editableContent, projectId]);
+  }, [selectedText, editableContent, projectId, sectionEditGuidance, alternativeCount]);
+
+  const handleSelectSectionAlternative = useCallback((text: string) => {
+    if (!selectedText) return;
+
+    const newContent = editableContent.substring(0, selectedText.start) +
+      text +
+      editableContent.substring(selectedText.end);
+
+    setEditableContent(newContent);
+    setHasUnsavedChanges(true);
+    setSelectedText(null);
+    setShowSectionEditDialog(false);
+    setSectionAlternatives([]);
+    setSectionEditGuidance('');
+    toast.success('Alternative applied successfully');
+  }, [selectedText, editableContent]);
 
   const handleFullRegenerate = useCallback(async () => {
     if (regenerateGuidance.length < 10) {
@@ -544,16 +588,12 @@ export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2Treatme
                     <Button
                       variant="gold"
                       size="sm"
-                      onClick={handleTargetedRegenerate}
+                      onClick={handleOpenSectionEdit}
                       disabled={isRegenerating}
                       className="gap-2"
                     >
-                      {isRegenerating ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <MessageSquare className="w-4 h-4" />
-                      )}
-                      Regenerate Selection
+                      <MessageSquare className="w-4 h-4" />
+                      Edit Selection
                     </Button>
                   )}
                 </div>
@@ -663,6 +703,159 @@ export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2Treatme
                   </Button>
                 </div>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Section Edit Dialog */}
+      <AnimatePresence>
+        {showSectionEditDialog && selectedText && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
+            onClick={() => {
+              setShowSectionEditDialog(false);
+              setSectionAlternatives([]);
+              setSectionEditGuidance('');
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-lg p-6 rounded-xl bg-card border border-border shadow-lg max-h-[80vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="font-display text-lg font-semibold text-foreground mb-3">
+                Edit Selection
+              </h3>
+
+              {/* Original text preview */}
+              <div className="mb-4 p-3 rounded-lg bg-muted border border-border">
+                <p className="text-xs text-muted-foreground mb-1 font-medium">Selected Text</p>
+                <p className="text-sm text-foreground">
+                  {selectedText.text.substring(0, 200)}{selectedText.text.length > 200 ? '...' : ''}
+                </p>
+              </div>
+
+              {sectionAlternatives.length === 0 ? (
+                <>
+                  {/* Phase 1: Guidance + Generate */}
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Optionally provide guidance for how you want this section rewritten.
+                  </p>
+                  <textarea
+                    value={sectionEditGuidance}
+                    onChange={(e) => setSectionEditGuidance(e.target.value)}
+                    placeholder='e.g., "Make it more tense" or "Focus on the emotional weight"'
+                    className="w-full h-24 px-4 py-3 rounded-lg bg-secondary border border-border text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                    disabled={isGeneratingAlternatives}
+                  />
+
+                  {/* Alternatives toggle */}
+                  <div className="flex items-center gap-3 mt-4">
+                    <span className="text-sm text-muted-foreground">Alternatives:</span>
+                    <div className="flex rounded-lg border border-border overflow-hidden">
+                      <button
+                        onClick={() => setAlternativeCount(1)}
+                        className={cn(
+                          'px-3 py-1.5 text-sm font-medium transition-colors',
+                          alternativeCount === 1
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-secondary text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        1
+                      </button>
+                      <button
+                        onClick={() => setAlternativeCount(3)}
+                        className={cn(
+                          'px-3 py-1.5 text-sm font-medium transition-colors border-l border-border',
+                          alternativeCount === 3
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-secondary text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        3
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 mt-4">
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setShowSectionEditDialog(false);
+                        setSectionEditGuidance('');
+                      }}
+                      disabled={isGeneratingAlternatives}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="gold"
+                      onClick={handleGenerateSectionAlternatives}
+                      disabled={isGeneratingAlternatives}
+                      className="gap-2"
+                    >
+                      {isGeneratingAlternatives ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-4 h-4" />
+                      )}
+                      Generate
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Phase 2: Show alternatives */}
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Click an alternative to apply it.
+                  </p>
+                  <div className="space-y-2">
+                    {sectionAlternatives.map((alt, index) => (
+                      <motion.button
+                        key={index}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                        onClick={() => handleSelectSectionAlternative(alt)}
+                        className="w-full text-left p-4 rounded-lg border border-border bg-secondary hover:border-primary/50 hover:shadow-[0_0_12px_rgba(218,165,32,0.15)] transition-all duration-200 group"
+                      >
+                        <p className="text-xs text-muted-foreground mb-1 font-medium group-hover:text-primary transition-colors">
+                          Alternative {index + 1}
+                        </p>
+                        <p className="text-sm text-foreground">{alt}</p>
+                      </motion.button>
+                    ))}
+                  </div>
+                  <div className="flex justify-between mt-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSectionAlternatives([])}
+                      className="gap-2"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      Regenerate
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setShowSectionEditDialog(false);
+                        setSectionAlternatives([]);
+                        setSectionEditGuidance('');
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </>
+              )}
             </motion.div>
           </motion.div>
         )}
