@@ -65,7 +65,7 @@
 
 ### 2A — Bug Fixes & Navigation
 
-#### 2A.1 — Stage 8 Master Asset Influence Bug Fix + Fix Default Capsule Balance
+#### 2A.1 — Stage 8 Master Asset Influence Bug Fix + Fix Default Capsule Balance  ✅ DONE
 **Tickets**: 8.2, DC-3, 5.7
 **Priority**: CRITICAL
 
@@ -87,7 +87,7 @@
 
 ---
 
-#### 2A.2 — *DONE* Stage Opening System Fix *DONE*
+#### 2A.2 — *DONE* Stage Opening System Fix *DONE* ✅ DONE
 **Tickets**: UI-1
 **Priority**: BLOCKING UX
 
@@ -107,7 +107,7 @@
 
 ---
 
-#### 2A.3 — Beat Sheet Generation Bug Fix
+#### 2A.3 — Beat Sheet Generation Bug Fix *fixed* ✅ DONE
 **Ticket**: 2.3
 **Priority**: HIGH
 
@@ -126,7 +126,7 @@
 
 ---
 
-#### 2A.4 — Stage 4 Auto-Generation Fix
+#### 2A.4 — Stage 4 Auto-Generation Fix *🚩 Untested, but implemented*
 **Ticket**: 4.3
 **Priority**: HIGH
 
@@ -144,7 +144,7 @@
 
 ---
 
-#### 2A.5 — Stage 4 Script UI Fix
+#### 2A.5 — Stage 4 Script UI Fix *fixed, but 🚩 script still not looking great* 🚩
 **Ticket**: 4.4
 **Priority**: HIGH
 
@@ -162,7 +162,7 @@
 
 ---
 
-#### 2A.6 — Skip Option Fix
+#### 2A.6 — Skip Option Fix *🚩 Defer: Consider Combining into one task with 6C.1 — Document Identification & Routing after Phase 2.*
 **Ticket**: 1.2
 **Priority**: HIGH
 
@@ -180,7 +180,7 @@
 
 ---
 
-#### 2A.7 — Stage 5 "Lock All and Proceed" Button Fix
+#### 2A.7 — Stage 5 "Lock All and Proceed" Button Fix *DONE IGNORE*
 **Ticket**: 5.10
 **Priority**: HIGH
 
@@ -198,7 +198,10 @@
 
 ---
 
-#### 2A.8 — Stage Pipeline Graphic Color Inconsistency
+#### 2A.8 — Stage Pipeline Graphic Color Inconsistency *Defer because this is not real for Phase A, but maybes B*
+Tasks: 2A.8 — Pipeline graphic colors + 2a.8b Project Dashboard Not Showing Phase B status
+Key Files: PhaseTimeline.tsx, index.css, projects.ts (status calc)
+Why Independent: Pure UI/CSS + one backend status calculation — no other task touches these
 **Ticket**: UI-5
 **Priority**: MEDIUM
 
@@ -214,6 +217,7 @@
 
 **Dependencies**: None.
 
+
 ---
 
 #### 2A.9 — Regeneration Boxes UI Improvements
@@ -222,7 +226,7 @@
 
 **Purpose**: Improve unclear regeneration box functionality.
 
-**Problem/Context**: The regeneration box UI (especially for Stage 4 and the stage pipeline graphic) needs improvement. The functionality and visual presentation are unclear and inconsistent — users don't understand what will happen when they click regenerate.
+**Problem/Context**: The regeneration box UI (especially for Stage 4 and the template stage pipeline graphic) needs improvement. The functionality and visual presentation are unclear and inconsistent — users don't understand what will happen when they click regenerate.
 
 **Core Features:**
 - [ ] Improve regeneration box visual design
@@ -889,6 +893,10 @@
 - [ ] Aspect ratio set once, applied everywhere
 
 ---
+*User Notes*: when testing during phase 2 implementation tests, I saw that for stage 8: 
+Adding assets manaully (which is an option when first arriving on stage 8) result in "invalid", thus you can't really use it. WE could probably just fix the extraction process, which should make the stage 8 process more deterministic; and then, if users choose to delete assets or need to add one, they can add them, and if still invalid then you need to figure whats good here. Maybe it was fixed by phase 3 edits but check once done.
+
+---
 
 ## Phase 4: Production Pipeline Intelligence
 
@@ -1403,6 +1411,34 @@
 - [ ] Visual indicators show invalidated stages
 - [ ] Style capsule influence slider functional in Stages 5, 8, and 10
 - [ ] Users feel confident about scene-to-scene consistency
+
+---
+## Defered Tasks to Return To:
+
+#### 2A.8b - Stage Dashboard 🚩
+
+*See: project-cards-in-dashboard-Ui-issue.md*
+
+**Purpose**: Fix cards of projects on the projects/home dashboard to showcase what stage the user is in, correctly.
+
+**Problem/Context**: Right now there is no way of knowing at what stage a project is in on if in the production cycle from the dashboard view. 
+
+**Core Features:**
+- [ ] Find way to showcase Projects that are on Phase B (Production cycle), by show how far they are along the Production cycle; for example: have all the dots green for Phase 5, the have maybe an arrow that point to text in the format: "Scene #: Stage #"
+- [ ] For Example: "Scene 3: Stage 9"
+- [ ] Ensure accurate progress representation across all stages
+
+**Dependencies**: None.
+
+--
+
+#### 2A.5 — Stage 4 Script UI Fix *fixed, but 🚩 script still not looking great* 🚩 
+(Needs better spacing + )
+
+--
+
+#### Defered-A: Make the stage 2-4 UI componenets, for items like the regernation box button, to be consistent
+
 
 ---
 
