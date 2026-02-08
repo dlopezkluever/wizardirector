@@ -18,7 +18,6 @@ export const SceneHeading = Node.create({
       {
         ...HTMLAttributes,
         'data-type': 'scene-heading',
-        class: 'font-bold uppercase text-amber-400 my-4'
       },
       0
     ];
