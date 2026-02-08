@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Check, Circle, AlertTriangle } from 'lucide-react';
+import { Check, Circle, AlertTriangle, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { StageProgress, StageStatus } from '@/types/project';
 
@@ -7,6 +7,8 @@ interface PhaseTimelineProps {
   stages: StageProgress[];
   currentStage: number;
   onStageClick?: (stageNumber: number) => void;
+  showReturnToPhaseB?: boolean;
+  onReturnToPhaseB?: () => void;
 }
 
 const stageIcons: Record<StageStatus, React.ElementType> = {
@@ -16,7 +18,7 @@ const stageIcons: Record<StageStatus, React.ElementType> = {
   outdated: AlertTriangle,
 };
 
-export function PhaseTimeline({ stages, currentStage, onStageClick }: PhaseTimelineProps) {
+export function PhaseTimeline({ stages, currentStage, onStageClick, showReturnToPhaseB, onReturnToPhaseB }: PhaseTimelineProps) {
   return (
     <div className="flex items-center gap-2 px-6 py-4 bg-card border-b border-border overflow-x-auto">
       {stages.map((stage, index) => {
@@ -83,6 +85,19 @@ export function PhaseTimeline({ stages, currentStage, onStageClick }: PhaseTimel
           </div>
         );
       })}
+
+      {showReturnToPhaseB && onReturnToPhaseB && (
+        <motion.button
+          initial={{ opacity: 0, x: 10 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.3 }}
+          onClick={onReturnToPhaseB}
+          className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/20 border border-primary text-primary text-sm font-medium hover:bg-primary/30 transition-colors whitespace-nowrap cursor-pointer"
+        >
+          Script Hub
+          <ArrowRight className="w-4 h-4" />
+        </motion.button>
+      )}
     </div>
   );
 }
