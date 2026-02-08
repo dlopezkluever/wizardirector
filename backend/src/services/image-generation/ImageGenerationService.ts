@@ -154,7 +154,7 @@ export class ImageGenerationService {
             .from('scene_asset_instances')
             .select(`
               *,
-              project_asset:project_assets(asset_type)
+              project_asset:project_assets(asset_type, image_key_url)
             `)
             .eq('id', sceneInstanceId)
             .single();
@@ -163,7 +163,7 @@ export class ImageGenerationService {
             throw new Error(`Scene asset instance ${sceneInstanceId} not found`);
         }
 
-        const projectAsset = instance.project_asset as { asset_type: 'character' | 'prop' | 'location' } | null;
+        const projectAsset = instance.project_asset as { asset_type: 'character' | 'prop' | 'location'; image_key_url?: string | null } | null;
         if (!projectAsset) {
             throw new Error(`Scene asset instance ${sceneInstanceId} has no project_asset`);
         }
@@ -182,6 +182,7 @@ export class ImageGenerationService {
             assetId: instance.project_asset_id,
             sceneId: instance.scene_id,
             idempotencyKey: `scene-asset-${sceneInstanceId}-${Date.now()}`,
+            referenceImageUrl: projectAsset?.image_key_url ?? undefined,
         });
     }
 
@@ -203,17 +204,17 @@ export class ImageGenerationService {
                 visualStyleContext = await this.getVisualStyleContext(request.visualStyleCapsuleId);
             }
 
-            // Add reference image URL if provided (for merged assets)
+            // Prepend reference image URL if provided (master asset identity reference)
             if (request.referenceImageUrl) {
                 if (!visualStyleContext) {
                     visualStyleContext = { textContext: '', referenceImages: [] };
                 }
-                // Add the reference image to the context
-                visualStyleContext.referenceImages.push({
+                // Prepend the reference image so it appears FIRST (before style capsule images)
+                visualStyleContext.referenceImages.unshift({
                     url: request.referenceImageUrl,
                     mimeType: undefined // Will be detected when downloading
                 });
-                console.log(`[ImageService] Added reference image URL to context: ${request.referenceImageUrl.substring(0, 80)}...`);
+                console.log(`[ImageService] Prepended master/reference image URL to context: ${request.referenceImageUrl.substring(0, 80)}...`);
             }
 
             // Update to generating
