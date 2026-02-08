@@ -245,6 +245,107 @@ Rewrite only the selected text portion according to the guidance, ensuring it fi
   }
 
   /**
+   * Generate 3 alternative rewrites for a selected section of a treatment
+   */
+  async regenerateSectionAlternatives(
+    projectId: string,
+    treatmentContent: string,
+    selectedText: string,
+    guidance?: string
+  ): Promise<string[]> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const llmRequest = {
+      systemPrompt: `You are a narrative editor. Your task is to generate exactly 3 alternative rewrites of a specific section of a treatment.
+
+INSTRUCTIONS:
+1. Generate exactly 3 distinct alternative rewrites of the selected text
+2. Each alternative should take a different creative approach while maintaining consistency with the surrounding text
+3. Maintain the same tone and style as the surrounding content
+4. Ensure each rewritten section flows naturally with the context
+5. If user guidance is provided, follow it for all alternatives
+
+Return your response as a JSON array of exactly 3 strings:
+["alternative 1 text", "alternative 2 text", "alternative 3 text"]
+
+Return ONLY the JSON array, no other text.`,
+      userPrompt: `FULL TREATMENT CONTEXT:
+${treatmentContent}
+
+SELECTED TEXT TO REWRITE:
+"${selectedText}"
+
+${guidance ? `USER GUIDANCE:\n${guidance}\n` : ''}
+Generate exactly 3 alternative rewrites of the selected text. Return as a JSON array of 3 strings.`,
+      metadata: {
+        projectId,
+        stage: 2,
+        operation: 'section_alternatives'
+      }
+    };
+
+    const response = await fetch('/api/llm/generate', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(llmRequest),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to generate section alternatives');
+    }
+
+    const result = await response.json();
+    return this.parseAlternatives(result.data.content);
+  }
+
+  /**
+   * Parse LLM response to extract alternatives array
+   */
+  private parseAlternatives(content: string | any): string[] {
+    if (Array.isArray(content)) {
+      return content.map(item => typeof item === 'string' ? item : JSON.stringify(item)).slice(0, 3);
+    }
+
+    if (typeof content === 'string') {
+      let cleaned = content.trim();
+      // Strip markdown code block markers
+      if (cleaned.startsWith('```')) {
+        cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '');
+        cleaned = cleaned.replace(/\n?```\s*$/, '');
+        cleaned = cleaned.trim();
+      }
+
+      try {
+        const parsed = JSON.parse(cleaned);
+        if (Array.isArray(parsed)) {
+          return parsed.map(item => typeof item === 'string' ? item : JSON.stringify(item)).slice(0, 3);
+        }
+        if (parsed.alternatives && Array.isArray(parsed.alternatives)) {
+          return parsed.alternatives.map((item: any) => typeof item === 'string' ? item : JSON.stringify(item)).slice(0, 3);
+        }
+      } catch {
+        // Fallback: split by numbered pattern
+        const parts = cleaned.split(/\n\s*(?:\d+[.)]\s*|Alternative\s*\d+[:.]\s*)/i).filter(s => s.trim());
+        if (parts.length >= 3) {
+          return parts.slice(0, 3).map(p => p.trim());
+        }
+        // Last resort: return as single alternative
+        return [cleaned];
+      }
+    }
+
+    return ['Failed to parse alternatives'];
+  }
+
+  /**
    * Parse LLM response to extract treatment variations
    */
   private parseTreatmentResponse(content: string | any): TreatmentVariation[] {
