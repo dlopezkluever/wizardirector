@@ -18,7 +18,6 @@ export const Action = Node.create({
       {
         ...HTMLAttributes,
         'data-type': 'action',
-        class: 'text-foreground my-2'
       },
       0
     ];
