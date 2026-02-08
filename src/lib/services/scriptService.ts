@@ -270,6 +270,106 @@ Rewrite only the highlighted section based on the user's request. Maintain scree
   }
 
   /**
+   * Generate 3 alternative rewrites for a selected section of the script
+   */
+  async regenerateSectionAlternatives(request: RegenerateSectionRequest): Promise<string[]> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const llmRequest = {
+      systemPrompt: `You are a screenplay editor. Your task is to generate exactly 3 alternative rewrites of a highlighted section of a screenplay.
+
+CRITICAL REQUIREMENTS:
+1. Generate exactly 3 distinct alternative rewrites
+2. Each alternative should take a different creative approach
+3. Maintain industry-standard screenplay format (INT./EXT., Character Names in CAPS, etc.)
+4. Keep the same narrative function and timing as the original
+5. Be visually verbose - include rich descriptions
+6. Ensure each rewritten section flows naturally with the surrounding context
+
+Return your response as a JSON array of exactly 3 strings:
+["alternative 1 text", "alternative 2 text", "alternative 3 text"]
+
+Return ONLY the JSON array, no other text.`,
+      userPrompt: `CONTEXT BEFORE (for reference only):
+${request.scriptContext.beforeText}
+
+SECTION TO REWRITE:
+${request.scriptContext.highlightedText}
+
+CONTEXT AFTER (for reference only):
+${request.scriptContext.afterText}
+
+USER REQUEST:
+${request.editRequest}
+
+Generate exactly 3 alternative rewrites of the highlighted section. Return as a JSON array of 3 strings. Maintain screenplay format.`,
+      metadata: {
+        stage: 4,
+        operation: 'section_alternatives'
+      }
+    };
+
+    console.log('✏️ [SCRIPT SERVICE] Generating 3 section alternatives...');
+
+    const response = await fetch('/api/llm/generate', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(llmRequest),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to generate section alternatives');
+    }
+
+    const result = await response.json();
+    return this.parseAlternatives(result.data.content);
+  }
+
+  /**
+   * Parse LLM response to extract alternatives array
+   */
+  private parseAlternatives(content: string | any): string[] {
+    if (Array.isArray(content)) {
+      return content.map(item => typeof item === 'string' ? item : JSON.stringify(item)).slice(0, 3);
+    }
+
+    if (typeof content === 'string') {
+      let cleaned = content.trim();
+      if (cleaned.startsWith('```')) {
+        cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '');
+        cleaned = cleaned.replace(/\n?```\s*$/, '');
+        cleaned = cleaned.trim();
+      }
+
+      try {
+        const parsed = JSON.parse(cleaned);
+        if (Array.isArray(parsed)) {
+          return parsed.map(item => typeof item === 'string' ? item : JSON.stringify(item)).slice(0, 3);
+        }
+        if (parsed.alternatives && Array.isArray(parsed.alternatives)) {
+          return parsed.alternatives.map((item: any) => typeof item === 'string' ? item : JSON.stringify(item)).slice(0, 3);
+        }
+      } catch {
+        const parts = cleaned.split(/\n\s*(?:\d+[.)]\s*|Alternative\s*\d+[:.]\s*)/i).filter(s => s.trim());
+        if (parts.length >= 3) {
+          return parts.slice(0, 3).map(p => p.trim());
+        }
+        return [cleaned];
+      }
+    }
+
+    return ['Failed to parse alternatives'];
+  }
+
+  /**
    * Parse a scene heading into its components
    */
   private parseSceneHeading(heading: string): ParsedHeading | null {
