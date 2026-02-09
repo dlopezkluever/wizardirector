@@ -104,3 +104,20 @@ export interface AssetMatchResult {
   matched: boolean; // true if matched with existing, false if cloned new
 }
 
+// Two-pass extraction types (3A.1)
+export interface AssetPreviewEntity {
+  name: string;
+  type: AssetType;
+  sceneNumbers: number[];
+  mentionCount: number;
+}
+
+export interface AssetPreviewResponse {
+  entities: AssetPreviewEntity[];
+  counts: { characters: number; locations: number; props: number };
+}
+
+export interface AssetConfirmRequest {
+  selectedEntities: Array<{ name: string; type: AssetType }>;
+}
+
