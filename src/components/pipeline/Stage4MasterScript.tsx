@@ -33,6 +33,8 @@ import { scriptService, type Scene } from '@/lib/services/scriptService';
 import { sceneService } from '@/lib/services/sceneService';
 import type { Beat } from '@/lib/services/beatService';
 import { supabase } from '@/lib/supabase';
+import type { StageStatus } from '@/types/project';
+import { LockedStageHeader } from './LockedStageHeader';
 import {
   Dialog,
   DialogContent,
@@ -61,9 +63,13 @@ interface Stage4MasterScriptProps {
   projectId: string;
   onComplete: () => void;
   onBack: () => void;
+  stageStatus?: StageStatus;
+  onNext?: () => void;
+  onUnlock?: () => void;
 }
 
-export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4MasterScriptProps) {
+export function Stage4MasterScript({ projectId, onComplete, onBack, stageStatus, onNext, onUnlock }: Stage4MasterScriptProps) {
+  const isStageLockedOrOutdated = stageStatus === 'locked' || stageStatus === 'outdated';
   // Use stage state for persistence
   const {
     content: stageContent,
@@ -124,6 +130,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
       DialogueLine,
       DialogueLineDecorations,
     ],
+    editable: !isStageLockedOrOutdated,
     content: stageContent.tiptapDoc
       ? stageContent.tiptapDoc
       : stageContent.formattedScript
@@ -771,79 +778,93 @@ export function Stage4MasterScript({ projectId, onComplete, onBack }: Stage4Mast
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={onBack}>
-            <ChevronLeft className="w-4 h-4 mr-1" />Back
-          </Button>
-          <div>
-            <h2 className="font-display text-xl font-semibold text-foreground">Master Script</h2>
-            <p className="text-sm text-muted-foreground">
-              {stageContent.scenes.length} scenes • {isSaving ? 'Saving...' : 'Saved'}
-            </p>
+      {isStageLockedOrOutdated ? (
+        <LockedStageHeader
+          stageNumber={4}
+          title="Master Script"
+          subtitle={`${stageContent.scenes.length} scenes`}
+          isLocked={stageStatus === 'locked'}
+          isOutdated={stageStatus === 'outdated'}
+          onBack={onBack}
+          onNext={onNext}
+          onUnlockAndEdit={onUnlock}
+          lockAndProceedLabel="Approve Script"
+        />
+      ) : (
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={onBack}>
+              <ChevronLeft className="w-4 h-4 mr-1" />Back
+            </Button>
+            <div>
+              <h2 className="font-display text-xl font-semibold text-foreground">Master Script</h2>
+              <p className="text-sm text-muted-foreground">
+                {stageContent.scenes.length} scenes • {isSaving ? 'Saving...' : 'Saved'}
+              </p>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handlePreviewScenes}
-            disabled={isGenerating || isPreviewing}
-            className="gap-2"
-          >
-            {isPreviewing ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Previewing...
-              </>
-            ) : (
-              <>
-                <Eye className="w-4 h-4" />
-                Preview Scenes
-              </>
-            )}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowRegenerateDialog(true)}
-            disabled={isGenerating}
-            className="gap-2"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Regenerate
-          </Button>
-          {hasSelection && (
+          <div className="flex items-center gap-3">
             <Button
-              variant="secondary"
+              variant="outline"
               size="sm"
-              onClick={() => setShowSectionEditDialog(true)}
+              onClick={handlePreviewScenes}
+              disabled={isGenerating || isPreviewing}
+              className="gap-2"
+            >
+              {isPreviewing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Previewing...
+                </>
+              ) : (
+                <>
+                  <Eye className="w-4 h-4" />
+                  Preview Scenes
+                </>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowRegenerateDialog(true)}
               disabled={isGenerating}
               className="gap-2"
             >
-              <Edit3 className="w-4 h-4" />
-              Edit Selection
+              <RefreshCw className="w-4 h-4" />
+              Regenerate
             </Button>
-          )}
-          <Button
-            variant="gold"
-            size="sm"
-            onClick={handleApproveScript}
-            disabled={isGenerating}
-            className="gap-2"
-          >
-            <Lock className="w-4 h-4" />
-            Approve Script
-          </Button>
+            {hasSelection && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowSectionEditDialog(true)}
+                disabled={isGenerating}
+                className="gap-2"
+              >
+                <Edit3 className="w-4 h-4" />
+                Edit Selection
+              </Button>
+            )}
+            <Button
+              variant="gold"
+              size="sm"
+              onClick={handleApproveScript}
+              disabled={isGenerating}
+              className="gap-2"
+            >
+              <Lock className="w-4 h-4" />
+              Approve Script
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Script Editor */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Screenplay Toolbar */}
-          <ScreenplayToolbar editor={editor} />
+          {/* Screenplay Toolbar - hidden when locked */}
+          {!isStageLockedOrOutdated && <ScreenplayToolbar editor={editor} />}
 
           {/* Tiptap Editor */}
           <div className="flex-1 overflow-auto bg-background">
