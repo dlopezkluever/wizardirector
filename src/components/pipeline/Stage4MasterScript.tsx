@@ -605,8 +605,11 @@ export function Stage4MasterScript({ projectId, onComplete, onBack, stageStatus,
   // Proceed with approval after warnings
   const proceedWithApproval = useCallback(async (scenes: Scene[]) => {
     try {
+      // Pass tiptapDoc for deterministic dependency extraction (zero LLM calls)
+      const tiptapDoc = editor?.getJSON();
+
       // Persist scenes to database (backend applies Scene ID Stability logic)
-      await scriptService.persistScenes(projectId, scenes);
+      await scriptService.persistScenes(projectId, scenes, tiptapDoc);
 
       // Lock the stage
       await stageStateService.lockStage(projectId, 4);
@@ -619,7 +622,7 @@ export function Stage4MasterScript({ projectId, onComplete, onBack, stageStatus,
       console.error('[STAGE 4] Failed to proceed with approval:', error);
       toast.error(error.message || 'Failed to approve script');
     }
-  }, [projectId, onComplete]);
+  }, [projectId, onComplete, editor]);
 
   // Handler for proceeding after downstream warning
   const handleProceedAfterWarning = useCallback(async () => {
