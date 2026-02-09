@@ -9,6 +9,25 @@ import { supabase } from '../config/supabase.js';
 import { AssetInheritanceService } from '../services/assetInheritanceService.js';
 import { ImageGenerationService } from '../services/image-generation/ImageGenerationService.js';
 import { SceneAssetRelevanceService } from '../services/sceneAssetRelevanceService.js';
+import { SceneAssetAttemptsService } from '../services/sceneAssetAttemptsService.js';
+import multer from 'multer';
+import path from 'path';
+
+// Configure multer for scene asset image uploads (3B.3)
+const sceneAssetStorage = multer.memoryStorage();
+const sceneAssetUpload = multer({
+  storage: sceneAssetStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (_req, file, cb) => {
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
+    if (!allowedTypes.includes(file.mimetype)) {
+      return cb(new Error('Invalid file type. Only PNG, JPEG, and WebP are allowed.'));
+    }
+    cb(null, true);
+  }
+});
 
 const router = Router();
 
@@ -621,6 +640,642 @@ router.post('/:projectId/scenes/:sceneId/assets/populate-from-dependencies', asy
     res.json({ instances: createdInstances, matched: createdInstances.length });
   } catch (err) {
     console.error('[SceneAssets] Populate from dependencies error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================================
+// GENERATION ATTEMPTS ENDPOINTS (3B.1)
+// ============================================================================
+
+/**
+ * GET /api/projects/:projectId/scenes/:sceneId/assets/:instanceId/attempts
+ * List all generation attempts for a scene asset instance (with lazy backfill)
+ */
+router.get('/:projectId/scenes/:sceneId/assets/:instanceId/attempts', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId, instanceId } = req.params;
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Verify instance belongs to scene
+    const { data: instance, error: instanceError } = await supabase
+      .from('scene_asset_instances')
+      .select('id')
+      .eq('id', instanceId)
+      .eq('scene_id', sceneId)
+      .single();
+
+    if (instanceError || !instance) {
+      return res.status(404).json({ error: 'Scene asset instance not found' });
+    }
+
+    const attemptsService = new SceneAssetAttemptsService();
+    await attemptsService.backfillAttemptIfNeeded(instanceId);
+    const attempts = await attemptsService.listAttempts(instanceId);
+
+    res.json(attempts);
+  } catch (err) {
+    console.error('[SceneAssets] List attempts error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/assets/:instanceId/attempts/:attemptId/select
+ * Select a specific attempt as the active image
+ */
+router.post('/:projectId/scenes/:sceneId/assets/:instanceId/attempts/:attemptId/select', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId, instanceId, attemptId } = req.params;
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const { data: instance, error: instanceError } = await supabase
+      .from('scene_asset_instances')
+      .select('id')
+      .eq('id', instanceId)
+      .eq('scene_id', sceneId)
+      .single();
+
+    if (instanceError || !instance) {
+      return res.status(404).json({ error: 'Scene asset instance not found' });
+    }
+
+    const attemptsService = new SceneAssetAttemptsService();
+    const attempt = await attemptsService.selectAttempt(instanceId, attemptId);
+
+    res.json(attempt);
+  } catch (err) {
+    console.error('[SceneAssets] Select attempt error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/projects/:projectId/scenes/:sceneId/assets/:instanceId/attempts/:attemptId
+ * Delete a non-selected attempt
+ */
+router.delete('/:projectId/scenes/:sceneId/assets/:instanceId/attempts/:attemptId', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId, instanceId, attemptId } = req.params;
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const { data: instance, error: instanceError } = await supabase
+      .from('scene_asset_instances')
+      .select('id')
+      .eq('id', instanceId)
+      .eq('scene_id', sceneId)
+      .single();
+
+    if (instanceError || !instance) {
+      return res.status(404).json({ error: 'Scene asset instance not found' });
+    }
+
+    const attemptsService = new SceneAssetAttemptsService();
+    await attemptsService.deleteAttempt(instanceId, attemptId);
+
+    res.status(204).send();
+  } catch (err) {
+    console.error('[SceneAssets] Delete attempt error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Internal server error' });
+  }
+});
+
+// ============================================================================
+// USE MASTER AS-IS ENDPOINTS (3B.4)
+// ============================================================================
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/assets/:instanceId/use-master-as-is
+ * Toggle "use master as-is" mode
+ */
+router.post('/:projectId/scenes/:sceneId/assets/:instanceId/use-master-as-is', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId, instanceId } = req.params;
+    const { enabled } = req.body;
+
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'enabled must be a boolean' });
+    }
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const { data: instance, error: instanceError } = await supabase
+      .from('scene_asset_instances')
+      .select('*, project_asset:project_assets(image_key_url)')
+      .eq('id', instanceId)
+      .eq('scene_id', sceneId)
+      .single();
+
+    if (instanceError || !instance) {
+      return res.status(404).json({ error: 'Scene asset instance not found' });
+    }
+
+    if (enabled) {
+      // Determine the master reference URL
+      const projectAsset = instance.project_asset as { image_key_url?: string | null } | null;
+      const masterUrl = instance.selected_master_reference_url || projectAsset?.image_key_url;
+
+      if (!masterUrl) {
+        return res.status(400).json({ error: 'No master image available to use' });
+      }
+
+      const attemptsService = new SceneAssetAttemptsService();
+
+      // Enforce cap
+      await attemptsService.enforceAttemptCap(instanceId);
+
+      // Deselect previous
+      await supabase
+        .from('scene_asset_generation_attempts')
+        .update({ is_selected: false })
+        .eq('scene_asset_instance_id', instanceId)
+        .eq('is_selected', true);
+
+      // Create master_copy attempt
+      await attemptsService.createAttempt(instanceId, {
+        image_url: masterUrl,
+        source: 'master_copy',
+        is_selected: true,
+        copied_from_url: masterUrl,
+      });
+
+      // Update instance
+      await supabase
+        .from('scene_asset_instances')
+        .update({
+          use_master_as_is: true,
+          image_key_url: masterUrl,
+        })
+        .eq('id', instanceId);
+    } else {
+      // Just toggle off — do NOT change image_key_url
+      await supabase
+        .from('scene_asset_instances')
+        .update({ use_master_as_is: false })
+        .eq('id', instanceId);
+    }
+
+    // Fetch updated instance
+    const { data: updated } = await supabase
+      .from('scene_asset_instances')
+      .select(`
+        *,
+        project_asset:project_assets(
+          id, name, asset_type, description, image_key_url
+        )
+      `)
+      .eq('id', instanceId)
+      .single();
+
+    res.json(updated);
+  } catch (err) {
+    console.error('[SceneAssets] Use master as-is error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/assets/bulk-use-master-as-is
+ * Bulk toggle "use master as-is" for multiple instances
+ */
+router.post('/:projectId/scenes/:sceneId/assets/bulk-use-master-as-is', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId } = req.params;
+    const { instanceIds, enabled } = req.body;
+
+    if (!Array.isArray(instanceIds) || typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'instanceIds must be an array and enabled must be a boolean' });
+    }
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const attemptsService = new SceneAssetAttemptsService();
+    const results: Array<{ instanceId: string; success: boolean; error?: string }> = [];
+
+    for (const instanceId of instanceIds) {
+      try {
+        const { data: instance } = await supabase
+          .from('scene_asset_instances')
+          .select('*, project_asset:project_assets(image_key_url)')
+          .eq('id', instanceId)
+          .eq('scene_id', sceneId)
+          .single();
+
+        if (!instance) {
+          results.push({ instanceId, success: false, error: 'Instance not found' });
+          continue;
+        }
+
+        if (enabled) {
+          const projectAsset = instance.project_asset as { image_key_url?: string | null } | null;
+          const masterUrl = instance.selected_master_reference_url || projectAsset?.image_key_url;
+
+          if (!masterUrl) {
+            results.push({ instanceId, success: false, error: 'No master image' });
+            continue;
+          }
+
+          await attemptsService.enforceAttemptCap(instanceId);
+
+          await supabase
+            .from('scene_asset_generation_attempts')
+            .update({ is_selected: false })
+            .eq('scene_asset_instance_id', instanceId)
+            .eq('is_selected', true);
+
+          await attemptsService.createAttempt(instanceId, {
+            image_url: masterUrl,
+            source: 'master_copy',
+            is_selected: true,
+            copied_from_url: masterUrl,
+          });
+
+          await supabase
+            .from('scene_asset_instances')
+            .update({ use_master_as_is: true, image_key_url: masterUrl })
+            .eq('id', instanceId);
+        } else {
+          await supabase
+            .from('scene_asset_instances')
+            .update({ use_master_as_is: false })
+            .eq('id', instanceId);
+        }
+
+        results.push({ instanceId, success: true });
+      } catch (e) {
+        results.push({ instanceId, success: false, error: e instanceof Error ? e.message : 'Unknown error' });
+      }
+    }
+
+    res.json({ results });
+  } catch (err) {
+    console.error('[SceneAssets] Bulk use master as-is error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================================
+// MASTER REFERENCE CHAIN ENDPOINTS (3B.2)
+// ============================================================================
+
+/**
+ * GET /api/projects/:projectId/scenes/:sceneId/assets/:instanceId/reference-chain
+ * Get Stage 5 master image + selected images from prior scenes for this asset
+ */
+router.get('/:projectId/scenes/:sceneId/assets/:instanceId/reference-chain', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId, instanceId } = req.params;
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Get the instance to find project_asset_id and current scene_number
+    const { data: instance, error: instanceError } = await supabase
+      .from('scene_asset_instances')
+      .select('id, project_asset_id, scene_id')
+      .eq('id', instanceId)
+      .eq('scene_id', sceneId)
+      .single();
+
+    if (instanceError || !instance) {
+      return res.status(404).json({ error: 'Scene asset instance not found' });
+    }
+
+    // Get current scene number
+    const { data: currentScene } = await supabase
+      .from('scenes')
+      .select('scene_number')
+      .eq('id', sceneId)
+      .single();
+
+    if (!currentScene) {
+      return res.status(404).json({ error: 'Scene not found' });
+    }
+
+    const chain: Array<{
+      source: 'stage5_master' | 'prior_scene_instance';
+      imageUrl: string;
+      sceneNumber: number | null;
+      instanceId?: string;
+    }> = [];
+
+    // 1. Get Stage 5 master image
+    const { data: projectAsset } = await supabase
+      .from('project_assets')
+      .select('image_key_url')
+      .eq('id', instance.project_asset_id)
+      .single();
+
+    if (projectAsset?.image_key_url) {
+      chain.push({
+        source: 'stage5_master',
+        imageUrl: projectAsset.image_key_url,
+        sceneNumber: null,
+      });
+    }
+
+    // 2. Get prior scene instances for this project_asset
+    const { data: priorScenes } = await supabase
+      .from('scenes')
+      .select('id, scene_number')
+      .eq('branch_id', project.active_branch_id)
+      .lt('scene_number', currentScene.scene_number)
+      .order('scene_number', { ascending: true });
+
+    if (priorScenes) {
+      for (const priorScene of priorScenes) {
+        const { data: priorInstance } = await supabase
+          .from('scene_asset_instances')
+          .select('id, image_key_url')
+          .eq('scene_id', priorScene.id)
+          .eq('project_asset_id', instance.project_asset_id)
+          .single();
+
+        if (priorInstance) {
+          // Try to get the selected attempt image, fallback to image_key_url
+          const { data: selectedAttempt } = await supabase
+            .from('scene_asset_generation_attempts')
+            .select('image_url')
+            .eq('scene_asset_instance_id', priorInstance.id)
+            .eq('is_selected', true)
+            .single();
+
+          const imageUrl = selectedAttempt?.image_url || priorInstance.image_key_url;
+          if (imageUrl) {
+            chain.push({
+              source: 'prior_scene_instance',
+              imageUrl,
+              sceneNumber: priorScene.scene_number,
+              instanceId: priorInstance.id,
+            });
+          }
+        }
+      }
+    }
+
+    res.json(chain);
+  } catch (err) {
+    console.error('[SceneAssets] Reference chain error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/assets/:instanceId/select-master-reference
+ * Select a master reference from the chain
+ */
+router.post('/:projectId/scenes/:sceneId/assets/:instanceId/select-master-reference', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId, instanceId } = req.params;
+    const { source, instanceId: refInstanceId, imageUrl } = req.body;
+
+    if (!source || !imageUrl) {
+      return res.status(400).json({ error: 'source and imageUrl are required' });
+    }
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const updatePayload: Record<string, unknown> = {
+      selected_master_reference_url: imageUrl,
+      selected_master_reference_source: source,
+      selected_master_reference_instance_id: refInstanceId || null,
+    };
+
+    // If use_master_as_is is true, also update image_key_url + create master_copy attempt
+    const { data: instance } = await supabase
+      .from('scene_asset_instances')
+      .select('use_master_as_is')
+      .eq('id', instanceId)
+      .eq('scene_id', sceneId)
+      .single();
+
+    if (instance?.use_master_as_is) {
+      updatePayload.image_key_url = imageUrl;
+
+      const attemptsService = new SceneAssetAttemptsService();
+      await attemptsService.enforceAttemptCap(instanceId);
+
+      await supabase
+        .from('scene_asset_generation_attempts')
+        .update({ is_selected: false })
+        .eq('scene_asset_instance_id', instanceId)
+        .eq('is_selected', true);
+
+      await attemptsService.createAttempt(instanceId, {
+        image_url: imageUrl,
+        source: 'master_copy',
+        is_selected: true,
+        copied_from_url: imageUrl,
+      });
+    }
+
+    await supabase
+      .from('scene_asset_instances')
+      .update(updatePayload)
+      .eq('id', instanceId);
+
+    const { data: updated } = await supabase
+      .from('scene_asset_instances')
+      .select(`
+        *,
+        project_asset:project_assets(
+          id, name, asset_type, description, image_key_url
+        )
+      `)
+      .eq('id', instanceId)
+      .single();
+
+    res.json(updated);
+  } catch (err) {
+    console.error('[SceneAssets] Select master reference error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================================
+// IMAGE UPLOAD ENDPOINT (3B.3)
+// ============================================================================
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/assets/:instanceId/upload-image
+ * Upload a custom image for a scene asset instance
+ */
+router.post('/:projectId/scenes/:sceneId/assets/:instanceId/upload-image', sceneAssetUpload.single('image'), async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId, instanceId } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const { data: instance, error: instanceError } = await supabase
+      .from('scene_asset_instances')
+      .select('id, use_master_as_is')
+      .eq('id', instanceId)
+      .eq('scene_id', sceneId)
+      .single();
+
+    if (instanceError || !instance) {
+      return res.status(404).json({ error: 'Scene asset instance not found' });
+    }
+
+    const attemptsService = new SceneAssetAttemptsService();
+
+    // Enforce 8-attempt cap
+    await attemptsService.enforceAttemptCap(instanceId);
+
+    // Upload to Supabase Storage
+    const fileExt = path.extname(req.file.originalname);
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 9);
+    const storagePath = `project_${projectId}/branch_${project.active_branch_id}/scene_${sceneId}/scene-assets/uploads/${instanceId}_${timestamp}_${random}${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('asset-images')
+      .upload(storagePath, req.file.buffer, {
+        contentType: req.file.mimetype,
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error('[SceneAssets] Upload error:', uploadError);
+      return res.status(500).json({ error: 'Failed to upload image' });
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('asset-images')
+      .getPublicUrl(storagePath);
+
+    // Deselect previous
+    await supabase
+      .from('scene_asset_generation_attempts')
+      .update({ is_selected: false })
+      .eq('scene_asset_instance_id', instanceId)
+      .eq('is_selected', true);
+
+    // Create uploaded attempt as selected
+    await attemptsService.createAttempt(instanceId, {
+      image_url: urlData.publicUrl,
+      storage_path: storagePath,
+      source: 'uploaded',
+      is_selected: true,
+      original_filename: req.file.originalname,
+      file_size_bytes: req.file.size,
+      mime_type: req.file.mimetype,
+    });
+
+    // Update instance image_key_url + turn off use_master_as_is if it was on
+    const updatePayload: Record<string, unknown> = {
+      image_key_url: urlData.publicUrl,
+    };
+    if (instance.use_master_as_is) {
+      updatePayload.use_master_as_is = false;
+    }
+
+    await supabase
+      .from('scene_asset_instances')
+      .update(updatePayload)
+      .eq('id', instanceId);
+
+    // Fetch updated instance
+    const { data: updated } = await supabase
+      .from('scene_asset_instances')
+      .select(`
+        *,
+        project_asset:project_assets(
+          id, name, asset_type, description, image_key_url
+        )
+      `)
+      .eq('id', instanceId)
+      .single();
+
+    res.json(updated);
+  } catch (err) {
+    console.error('[SceneAssets] Upload image error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

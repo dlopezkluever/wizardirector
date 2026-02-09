@@ -9,6 +9,7 @@ export interface VideoGenerationParams {
     prompt: string;
     durationSeconds: number;
     modelVariant: 'veo_3_1_fast' | 'veo_3_1_standard';
+    aspectRatio?: string;
 }
 
 export interface VideoResult {

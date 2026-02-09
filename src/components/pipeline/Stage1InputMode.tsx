@@ -11,7 +11,7 @@ import {
   Save
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { InputMode, ProjectType, ContentRating, StageStatus } from '@/types/project';
+import type { InputMode, ProjectType, ContentRating, StageStatus, AspectRatio } from '@/types/project';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { FileStagingArea, type UploadedFile } from './FileStagingArea';
@@ -98,6 +98,7 @@ interface Stage1Content {
   selectedProjectType: ProjectType | null;
   selectedRating: ContentRating;
   selectedGenres: string[];
+  selectedAspectRatio: AspectRatio;
   targetLength: [number, number];
   tonalPrecision: string;
   writingStyleCapsuleId?: string;
@@ -119,6 +120,7 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
       selectedProjectType: null,
       selectedRating: 'PG-13',
       selectedGenres: [],
+      selectedAspectRatio: '16:9',
       targetLength: [3, 5],
       tonalPrecision: '',
       writingStyleCapsuleId: undefined,
@@ -189,7 +191,8 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
           genre: content.selectedGenres,
           tonal_precision: content.tonalPrecision,
           target_length_min: content.targetLength[0] * 60, // Convert minutes to seconds
-          target_length_max: content.targetLength[1] * 60
+          target_length_max: content.targetLength[1] * 60,
+          aspect_ratio: content.selectedAspectRatio
         });
       } else {
         // Update existing project configuration
@@ -199,7 +202,8 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
           genre: content.selectedGenres,
           tonal_precision: content.tonalPrecision,
           target_length_min: content.targetLength[0] * 60,
-          target_length_max: content.targetLength[1] * 60
+          target_length_max: content.targetLength[1] * 60,
+          aspect_ratio: content.selectedAspectRatio
         });
       }
 
@@ -438,6 +442,61 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
                 <span className="text-xs opacity-70">{type.description}</span>
               </Button>
             ))}
+          </div>
+        </section>
+
+        {/* Aspect Ratio */}
+        <section className="space-y-4">
+          <h3 className="font-display text-xl font-semibold text-foreground">
+            Aspect Ratio
+          </h3>
+          <div className="flex gap-3">
+            <button
+              onClick={() => updateField('selectedAspectRatio', '16:9')}
+              className={cn(
+                'relative flex items-center gap-3 px-5 py-4 rounded-xl border-2 transition-all duration-200',
+                content.selectedAspectRatio === '16:9'
+                  ? 'border-primary bg-primary/10 shadow-gold'
+                  : 'border-border bg-card hover:border-primary/30'
+              )}
+            >
+              <div className={cn(
+                'w-10 h-6 rounded border-2',
+                content.selectedAspectRatio === '16:9' ? 'border-primary bg-primary/20' : 'border-muted-foreground/40'
+              )} />
+              <div className="text-left">
+                <span className="font-medium text-foreground">16:9</span>
+                <span className="text-sm text-muted-foreground ml-2">Landscape</span>
+              </div>
+              {content.selectedAspectRatio === '16:9' && (
+                <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                  <Check className="w-3 h-3 text-primary-foreground" />
+                </div>
+              )}
+            </button>
+            <button
+              onClick={() => updateField('selectedAspectRatio', '9:16')}
+              className={cn(
+                'relative flex items-center gap-3 px-5 py-4 rounded-xl border-2 transition-all duration-200',
+                content.selectedAspectRatio === '9:16'
+                  ? 'border-primary bg-primary/10 shadow-gold'
+                  : 'border-border bg-card hover:border-primary/30'
+              )}
+            >
+              <div className={cn(
+                'w-6 h-10 rounded border-2',
+                content.selectedAspectRatio === '9:16' ? 'border-primary bg-primary/20' : 'border-muted-foreground/40'
+              )} />
+              <div className="text-left">
+                <span className="font-medium text-foreground">9:16</span>
+                <span className="text-sm text-muted-foreground ml-2">Portrait</span>
+              </div>
+              {content.selectedAspectRatio === '9:16' && (
+                <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                  <Check className="w-3 h-3 text-primary-foreground" />
+                </div>
+              )}
+            </button>
           </div>
         </section>
 

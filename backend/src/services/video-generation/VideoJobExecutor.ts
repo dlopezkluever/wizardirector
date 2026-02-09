@@ -95,6 +95,17 @@ class VideoJobExecutor {
             // 2. Update status → generating
             await videoGenerationService.updateJobStatus(jobId, 'generating');
 
+            // 2b. Fetch project aspect ratio
+            let aspectRatio = '16:9';
+            const { data: projectData } = await supabase
+                .from('projects')
+                .select('aspect_ratio')
+                .eq('id', job.project_id)
+                .single();
+            if (projectData?.aspect_ratio) {
+                aspectRatio = projectData.aspect_ratio;
+            }
+
             // 3. Call video provider
             const result = await this.provider.generateVideo({
                 startFrameUrl: job.start_frame_url,
@@ -102,6 +113,7 @@ class VideoJobExecutor {
                 prompt: job.video_prompt_snapshot || '',
                 durationSeconds: job.duration_seconds,
                 modelVariant: job.model_variant,
+                aspectRatio,
             });
 
             // 4. Update status → uploading

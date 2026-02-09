@@ -70,10 +70,10 @@ router.post('/:projectId/scenes/:sceneId/generate-frames', async (req, res) => {
 
         console.log(`[Stage10] Generating frames for scene ${sceneId}, mode: ${mode}`);
 
-        // Verify project ownership
+        // Verify project ownership and get aspect_ratio
         const { data: project, error: projectError } = await supabase
             .from('projects')
-            .select('id, active_branch_id')
+            .select('id, active_branch_id, aspect_ratio')
             .eq('id', projectId)
             .eq('user_id', userId)
             .single();
@@ -104,13 +104,14 @@ router.post('/:projectId/scenes/:sceneId/generate-frames', async (req, res) => {
 
         const visualStyleCapsuleId = stageState?.state_data?.visualStyleCapsuleId;
 
-        // Generate frames
+        // Generate frames with project aspect ratio
         const result = await frameGenerationService.generateFrames(
             projectId,
             project.active_branch_id,
             sceneId,
             { mode, shotIds, startOnly },
-            visualStyleCapsuleId
+            visualStyleCapsuleId,
+            project.aspect_ratio || '16:9'
         );
 
         // Fetch updated frames
@@ -204,10 +205,10 @@ router.post('/:projectId/scenes/:sceneId/frames/:frameId/regenerate', async (req
         const { projectId, sceneId, frameId } = req.params;
         const userId = req.user!.id;
 
-        // Verify project ownership
+        // Verify project ownership and get aspect_ratio
         const { data: project, error: projectError } = await supabase
             .from('projects')
-            .select('id, active_branch_id')
+            .select('id, active_branch_id, aspect_ratio')
             .eq('id', projectId)
             .eq('user_id', userId)
             .single();
@@ -232,7 +233,8 @@ router.post('/:projectId/scenes/:sceneId/frames/:frameId/regenerate', async (req
             projectId,
             project.active_branch_id,
             sceneId,
-            visualStyleCapsuleId
+            visualStyleCapsuleId,
+            project.aspect_ratio || '16:9'
         );
 
         res.json({
@@ -259,10 +261,10 @@ router.post('/:projectId/scenes/:sceneId/frames/:frameId/inpaint', async (req, r
             return res.status(400).json({ error: 'maskDataUrl and prompt are required' });
         }
 
-        // Verify project ownership
+        // Verify project ownership and get aspect_ratio
         const { data: project, error: projectError } = await supabase
             .from('projects')
-            .select('id, active_branch_id')
+            .select('id, active_branch_id, aspect_ratio')
             .eq('id', projectId)
             .eq('user_id', userId)
             .single();
@@ -288,7 +290,8 @@ router.post('/:projectId/scenes/:sceneId/frames/:frameId/inpaint', async (req, r
             project.active_branch_id,
             sceneId,
             { maskDataUrl, prompt },
-            visualStyleCapsuleId
+            visualStyleCapsuleId,
+            project.aspect_ratio || '16:9'
         );
 
         res.json({

@@ -691,6 +691,8 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           onInherit={() => inheritMutation.mutate()}
           isInheriting={inheritMutation.isPending}
           onFilterChange={setAssetFilters}
+          projectId={projectId}
+          sceneId={sceneId}
         />
 
         <VisualStateEditorPanel
