@@ -186,3 +186,54 @@ Ready to code?
      · The task doc mentions 'Stage 11 video generation' but in the codebase, video generation happens at Stage 12
      (Stage12VideoGeneration.tsx) with Veo3. Stage 11 doesn't appear to exist as a separate video stage. Should I treat this as Stage     
      12, or is there a Stage 11 component I'm missing? → It's Stage 12
+
+
+# *Dev Summary*:
+
+  Summary of Changes
+
+  Files Created
+  File: backend/migrations/022_add_aspect_ratio.sql
+  Purpose: Adds aspect_ratio TEXT NOT NULL DEFAULT '16:9' with CHECK constraint to projects table
+  Files Modified (12 files)
+  File: src/types/project.ts
+  Change: Added AspectRatio type, aspectRatio field to Project & ProjectSettings
+  ────────────────────────────────────────
+  File: backend/src/routes/projects.ts
+  Change: Added aspect_ratio to all SELECT queries, validation in PUT handler, all 4 response mappers
+  ────────────────────────────────────────
+  File: src/lib/services/projectService.ts
+  Change: Added aspect_ratio to UpdateProjectRequest
+  ────────────────────────────────────────
+  File: src/components/pipeline/Stage1InputMode.tsx
+  Change: Added selectedAspectRatio to state, visual 16:9/9:16 selector buttons, saves to backend on complete      
+  ────────────────────────────────────────
+  File: src/components/pipeline/ProjectHeader.tsx
+  Change: Added aspectRatio prop, renders badge next to branch indicator
+  ────────────────────────────────────────
+  File: src/pages/ProjectView.tsx
+  Change: Added projectAspectRatio state, loads from project data, passes to all 3 ProjectHeader instances
+  ────────────────────────────────────────
+  File: backend/src/services/frameGenerationService.ts
+  Change: Dynamic FRAME_DIMENSIONS lookup by aspect ratio (16:9→1280x720, 9:16→720x1280)
+  ────────────────────────────────────────
+  File: backend/src/routes/frames.ts
+  Change: Fetches aspect_ratio from project, passes to frame generation/regeneration/inpaint
+  ────────────────────────────────────────
+  File: backend/src/services/video-generation/VideoProviderInterface.ts
+  Change: Added aspectRatio? to VideoGenerationParams
+  ────────────────────────────────────────
+  File: backend/src/services/video-generation/Veo3Provider.ts
+  Change: Uses params.aspectRatio instead of hardcoded '16:9'
+  ────────────────────────────────────────
+  File: backend/src/services/video-generation/VideoJobExecutor.ts
+  Change: Fetches project aspect_ratio before calling provider
+  ────────────────────────────────────────
+  File: src/lib/services/imageService.ts
+  Change: generateFrameAnchor() and inpaintImage() accept aspectRatio param with dynamic dimensions
+  Verification
+
+  - tsc --noEmit — zero new errors (frontend passes clean)
+  - npm run build — production build succeeds
+  - npm run lint — all errors are pre-existing; no new lint issues introduced
+  - Backward compatible — default '16:9' everywhere, existing projects unaffected
