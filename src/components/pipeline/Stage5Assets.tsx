@@ -37,8 +37,9 @@ import { stageStateService } from '@/lib/services/stageStateService';
 import { projectAssetService } from '@/lib/services/projectAssetService';
 import { StyleCapsuleSelector } from '@/components/styleCapsules/StyleCapsuleSelector';
 import { AssetDrawer } from './AssetDrawer';
+import { AssetFilterModal } from './AssetFilterModal';
 import { AssetVersionSync } from './AssetVersionSync';
-import type { ProjectAsset } from '@/types/asset';
+import type { ProjectAsset, AssetPreviewEntity, AssetType } from '@/types/asset';
 import type { StageStatus } from '@/types/project';
 import { LockedStageHeader } from './LockedStageHeader';
 
@@ -86,6 +87,11 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
   const [uploadingAssetId, setUploadingAssetId] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
+  // Two-pass extraction state
+  const [previewEntities, setPreviewEntities] = useState<AssetPreviewEntity[]>([]);
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+
   // Initialize from saved state
   useEffect(() => {
     if (content?.locked_visual_style_capsule_id) {
@@ -125,6 +131,7 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
     toast.success('Visual style locked! You can now extract assets.');
   };
 
+  // Step 1: Instant preview scan — no LLM, opens filter modal
   const handleExtractAssets = async () => {
     if (!lockedStyleId) {
       toast.error('Please select a visual style first');
@@ -133,39 +140,55 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
 
     try {
       setIsExtracting(true);
-      toast.info('Extracting assets from script... This may take 30-60 seconds.');
 
-      const extractedAssets = await projectAssetService.extractAssets(projectId);
-      
-      if (!extractedAssets || extractedAssets.length === 0) {
+      const preview = await projectAssetService.extractPreview(projectId);
+
+      if (!preview.entities || preview.entities.length === 0) {
         toast.warning('No assets found in script. You can manually add assets below.');
         setHasExtracted(true);
         return;
       }
 
-      setAssets(extractedAssets);
-      setHasExtracted(true);
-
-      toast.success(`Extracted ${extractedAssets.length} assets!`);
+      setPreviewEntities(preview.entities);
+      setShowFilterModal(true);
     } catch (error) {
-      console.error('Failed to extract assets:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to extract assets';
-      
-      // Provide helpful error messages based on error type
+      console.error('Failed to preview assets:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to scan assets';
+
       if (errorMessage.includes('Stage 4 must be completed')) {
         toast.error('Please complete Stage 4 (Script) before extracting assets.');
-      } else if (errorMessage.includes('Visual Style Capsule must be selected')) {
-        toast.error('Please select a visual style capsule first.');
-      } else if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
-        toast.error('Extraction timed out. The script may be too long. Please try again or contact support.');
       } else {
-        toast.error(`Extraction failed: ${errorMessage}. You can manually add assets.`);
+        toast.error(`Scan failed: ${errorMessage}. You can manually add assets.`);
       }
-      
-      // Still allow manual asset creation even if extraction fails
       setHasExtracted(true);
     } finally {
       setIsExtracting(false);
+    }
+  };
+
+  // Step 2: Confirm selection — LLM Pass 2 only for selected entities
+  const handleConfirmSelection = async (selected: Array<{ name: string; type: AssetType }>) => {
+    try {
+      setIsConfirming(true);
+      toast.info(`Generating visual descriptions for ${selected.length} assets...`);
+
+      const confirmedAssets = await projectAssetService.extractConfirm(projectId, selected);
+
+      if (!confirmedAssets || confirmedAssets.length === 0) {
+        toast.warning('No assets were created. You can manually add assets below.');
+      } else {
+        setAssets(confirmedAssets);
+        toast.success(`Created ${confirmedAssets.length} assets with visual descriptions!`);
+      }
+
+      setHasExtracted(true);
+      setShowFilterModal(false);
+    } catch (error) {
+      console.error('Failed to confirm extraction:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Extraction failed';
+      toast.error(`Extraction failed: ${errorMessage}`);
+    } finally {
+      setIsConfirming(false);
     }
   };
 
@@ -512,12 +535,12 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                 {isExtracting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    Analyzing Script...
+                    Scanning Script...
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4 mr-2" />
-                    Extract Characters, Props & Locations
+                    Scan Script for Assets
                   </>
                 )}
               </Button>
@@ -853,6 +876,15 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
 
         </div>
       </div>
+
+      {/* Asset Filter Modal (two-pass extraction) */}
+      <AssetFilterModal
+        isOpen={showFilterModal}
+        onClose={() => setShowFilterModal(false)}
+        entities={previewEntities}
+        onConfirm={handleConfirmSelection}
+        isConfirming={isConfirming}
+      />
 
       {/* Asset Drawer */}
       <AssetDrawer
