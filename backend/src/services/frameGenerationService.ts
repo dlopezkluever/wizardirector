@@ -69,10 +69,10 @@ export interface FrameJobStatus {
 export class FrameGenerationService {
     private imageService: ImageGenerationService;
 
-    // Frame dimensions (16:9 cinematic)
-    private readonly FRAME_DIMENSIONS = {
-        width: 1280,
-        height: 720
+    // Frame dimensions by aspect ratio
+    private readonly FRAME_DIMENSIONS: Record<string, { width: number; height: number }> = {
+        '16:9': { width: 1280, height: 720 },
+        '9:16': { width: 720, height: 1280 }
     };
 
     constructor() {
@@ -191,7 +191,8 @@ export class FrameGenerationService {
         branchId: string,
         sceneId: string,
         request: GenerateFramesRequest,
-        visualStyleCapsuleId?: string
+        visualStyleCapsuleId?: string,
+        aspectRatio: string = '16:9'
     ): Promise<{ jobsCreated: number; frames: Frame[] }> {
         // Fetch shots
         let shotsQuery = supabase
@@ -233,7 +234,8 @@ export class FrameGenerationService {
                     sceneId,
                     shot.id,
                     shot.frame_prompt,
-                    visualStyleCapsuleId
+                    visualStyleCapsuleId,
+                    aspectRatio
                 );
                 jobsCreated++;
             }
@@ -257,7 +259,8 @@ export class FrameGenerationService {
                         sceneId,
                         shot.id,
                         shot.frame_prompt + ' [End of shot - showing action completion]',
-                        visualStyleCapsuleId
+                        visualStyleCapsuleId,
+                        aspectRatio
                     );
                     jobsCreated++;
                 }
@@ -314,7 +317,8 @@ export class FrameGenerationService {
         sceneId: string,
         shotId: string,
         prompt: string,
-        visualStyleCapsuleId?: string
+        visualStyleCapsuleId?: string,
+        aspectRatio: string = '16:9'
     ): Promise<void> {
         // Get current frame data
         const { data: frame, error: fetchError } = await supabase
@@ -352,8 +356,8 @@ export class FrameGenerationService {
                 jobType,
                 prompt,
                 visualStyleCapsuleId,
-                width: this.FRAME_DIMENSIONS.width,
-                height: this.FRAME_DIMENSIONS.height,
+                width: (this.FRAME_DIMENSIONS[aspectRatio] || this.FRAME_DIMENSIONS['16:9']).width,
+                height: (this.FRAME_DIMENSIONS[aspectRatio] || this.FRAME_DIMENSIONS['16:9']).height,
                 idempotencyKey: `frame-${frameId}-${Date.now()}`,
             });
 
@@ -434,7 +438,8 @@ export class FrameGenerationService {
         projectId: string,
         branchId: string,
         sceneId: string,
-        visualStyleCapsuleId?: string
+        visualStyleCapsuleId?: string,
+        aspectRatio: string = '16:9'
     ): Promise<Frame> {
         // Get frame and shot info
         const { data: frame, error: frameError } = await supabase
@@ -472,7 +477,8 @@ export class FrameGenerationService {
             sceneId,
             shot.id,
             prompt,
-            visualStyleCapsuleId
+            visualStyleCapsuleId,
+            aspectRatio
         );
 
         // Return updated frame
@@ -494,7 +500,8 @@ export class FrameGenerationService {
         branchId: string,
         sceneId: string,
         request: InpaintRequest,
-        visualStyleCapsuleId?: string
+        visualStyleCapsuleId?: string,
+        aspectRatio: string = '16:9'
     ): Promise<Frame> {
         // Get frame info
         const { data: frame, error: frameError } = await supabase
@@ -538,8 +545,8 @@ export class FrameGenerationService {
             jobType,
             prompt: inpaintPrompt,
             visualStyleCapsuleId,
-            width: this.FRAME_DIMENSIONS.width,
-            height: this.FRAME_DIMENSIONS.height,
+            width: (this.FRAME_DIMENSIONS[aspectRatio] || this.FRAME_DIMENSIONS['16:9']).width,
+            height: (this.FRAME_DIMENSIONS[aspectRatio] || this.FRAME_DIMENSIONS['16:9']).height,
             idempotencyKey: `inpaint-${frameId}-${Date.now()}`,
             referenceImageUrl: frame.image_url, // Pass current image as reference
         });
