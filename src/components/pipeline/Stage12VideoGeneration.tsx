@@ -32,6 +32,8 @@ import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { checkoutService } from '@/lib/services/checkoutService';
 import type { VideoGenerationJob, VideoJobStatus, IssueType } from '@/types/scene';
+import { LockedStageHeader } from './LockedStageHeader';
+import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 
 const issueTypes: { type: IssueType; label: string; icon: typeof AlertTriangle; returnStage: number; description: string }[] = [
   { type: 'visual-continuity', label: 'Visual Continuity', icon: ImageIcon, returnStage: 8, description: 'Character appearance, set dressing, or visual style issues' },
@@ -55,6 +57,8 @@ export function Stage12VideoGeneration({
   onBack,
   onReturnToStage
 }: Stage12VideoGenerationProps) {
+  const { isLocked: isStageLocked, lockStage } = useSceneStageLock({ projectId, sceneId });
+  const stage12Locked = isStageLocked(12);
   const [selectedIssue, setSelectedIssue] = useState<IssueType | null>(null);
   const [issueDescription, setIssueDescription] = useState('');
   const [showIssueConfirm, setShowIssueConfirm] = useState(false);
@@ -297,6 +301,20 @@ export function Stage12VideoGeneration({
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      {stage12Locked && (
+        <LockedStageHeader
+          stageNumber={12}
+          title="Video Generation"
+          isLocked={true}
+          onBack={onBack}
+          lockAndProceedLabel="Complete Scene"
+          onLockAndProceed={async () => {
+            try { await lockStage(12); } catch { /* best-effort */ }
+            onComplete();
+          }}
+        />
+      )}
+
       {/* Header */}
       <div className="p-4 border-b border-border/50 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -636,13 +654,15 @@ export function Stage12VideoGeneration({
         </motion.div>
       </div>
 
-      {/* Footer */}
-      <div className="p-4 border-t border-border/50 bg-card/30">
-        <Button variant="ghost" onClick={onBack}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Confirmation
-        </Button>
-      </div>
+      {/* Footer — hidden when locked */}
+      {!stage12Locked && (
+        <div className="p-4 border-t border-border/50 bg-card/30">
+          <Button variant="ghost" onClick={onBack}>
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Confirmation
+          </Button>
+        </div>
+      )}
 
       {/* Issue Confirmation Dialog */}
       <AnimatePresence>
