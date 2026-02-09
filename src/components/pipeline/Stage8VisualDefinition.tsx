@@ -41,6 +41,10 @@ import { sceneAssetService } from '@/lib/services/sceneAssetService';
 import { sceneService } from '@/lib/services/sceneService';
 import { cn } from '@/lib/utils';
 import type { SceneAssetInstance, SceneAssetRelevanceResult } from '@/types/scene';
+import { LockedStageHeader } from './LockedStageHeader';
+import { UnlockWarningDialog } from './UnlockWarningDialog';
+import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
+import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
 
 const typeIcons = {
   character: Users,
@@ -244,9 +248,48 @@ interface Stage8VisualDefinitionProps {
   sceneId: string;
   onComplete: () => void;
   onBack: () => void;
+  onNext?: () => void;
 }
 
-export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack }: Stage8VisualDefinitionProps) {
+export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack, onNext }: Stage8VisualDefinitionProps) {
+  const {
+    isLocked: isStageLocked,
+    isOutdated: isStageOutdated,
+    lockStage,
+    unlockStage,
+    confirmUnlock,
+    relockStage,
+  } = useSceneStageLock({ projectId, sceneId });
+
+  const [showUnlockWarning, setShowUnlockWarning] = useState(false);
+  const [unlockImpact, setUnlockImpact] = useState<UnlockImpact | null>(null);
+  const [isConfirmingUnlock, setIsConfirmingUnlock] = useState(false);
+
+  const stage8Locked = isStageLocked(8);
+  const stage8Outdated = isStageOutdated(8);
+
+  const handleUnlockAndEdit = async () => {
+    try {
+      const impact = await unlockStage(8);
+      if (impact) { setUnlockImpact(impact); setShowUnlockWarning(true); }
+    } catch { /* handled by dialog */ }
+  };
+
+  const handleConfirmUnlock = async () => {
+    try {
+      setIsConfirmingUnlock(true);
+      await confirmUnlock(8);
+      setShowUnlockWarning(false);
+      setUnlockImpact(null);
+    } catch { /* handled */ } finally { setIsConfirmingUnlock(false); }
+  };
+
+  const handleLockAndProceed = async () => {
+    try {
+      await lockStage(8);
+      onComplete();
+    } catch { /* handled */ }
+  };
   const queryClient = useQueryClient();
   // Keep URL in sync so refresh stays on Stage 8 with this scene
   useEffect(() => {
@@ -582,6 +625,20 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      {(stage8Locked || stage8Outdated) && (
+        <LockedStageHeader
+          stageNumber={8}
+          title="Visual Definition"
+          isLocked={stage8Locked}
+          isOutdated={stage8Outdated}
+          onBack={onBack}
+          onNext={onNext}
+          onUnlockAndEdit={handleUnlockAndEdit}
+          onRelock={stage8Outdated ? () => relockStage(8) : undefined}
+          onLockAndProceed={!stage8Locked && !stage8Outdated ? handleLockAndProceed : undefined}
+          lockAndProceedLabel="Lock & Proceed"
+        />
+      )}
       {currentScene && (
         <div className="px-6 py-3 border-b border-border/50 bg-card/30 backdrop-blur-sm">
           <div className="flex items-center justify-between">
@@ -672,6 +729,16 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack 
         currentSceneNumber={currentSceneNumber}
         priorInstances={priorInstancesWithTags}
         onConfirm={handleTagCarryForwardConfirm}
+      />
+
+      <UnlockWarningDialog
+        open={showUnlockWarning}
+        onOpenChange={setShowUnlockWarning}
+        impact={unlockImpact}
+        stageNumber={8}
+        stageTitle="Visual Definition"
+        onConfirm={handleConfirmUnlock}
+        isConfirming={isConfirmingUnlock}
       />
     </div>
   );
