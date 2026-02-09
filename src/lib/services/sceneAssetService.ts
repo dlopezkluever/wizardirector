@@ -38,6 +38,38 @@ export interface ImageJobStatusResponse {
 
 class SceneAssetService {
   /**
+   * Deterministic pre-population from scene expected_* dependencies.
+   * Instant, no LLM — matches scene deps against project_assets by name.
+   */
+  async populateFromDependencies(
+    projectId: string,
+    sceneId: string
+  ): Promise<{ instances: SceneAssetInstance[]; matched: number }> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/assets/populate-from-dependencies`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to populate from dependencies');
+    }
+
+    return response.json();
+  }
+
+  /**
    * List all asset instances for a scene
    */
   async listSceneAssets(projectId: string, sceneId: string): Promise<SceneAssetInstance[]> {
