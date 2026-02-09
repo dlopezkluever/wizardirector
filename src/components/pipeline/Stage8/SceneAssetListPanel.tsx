@@ -6,7 +6,9 @@
 
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { User, MapPin, Package, Lock, RefreshCw, Sparkles, Plus, X, Link2, Search, Filter } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { User, MapPin, Package, Lock, RefreshCw, Sparkles, Plus, X, Link2, Search, Filter, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -22,6 +24,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { getTagColors } from '@/lib/constants/statusTags';
+import { sceneAssetService } from '@/lib/services/sceneAssetService';
 import type { SceneAssetInstance, SceneAssetRelevanceResult } from '@/types/scene';
 
 type AssetTypeKey = 'character' | 'location' | 'prop';
@@ -82,6 +85,9 @@ export interface SceneAssetListPanelProps {
   isInheriting?: boolean;
   /** Task 4: notify parent when filters change */
   onFilterChange?: (filters: AssetFilters) => void;
+  /** 3B.4: Project and scene IDs for bulk master-as-is */
+  projectId?: string;
+  sceneId?: string;
 }
 
 function AssetTypeGroup({
@@ -134,10 +140,18 @@ function AssetTypeGroup({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-1">
                   <span className="text-sm font-medium text-foreground truncate">{name}</span>
-                  <Badge variant="secondary" className={cn('text-[10px] shrink-0', statusColors[status])}>
-                    {status === 'locked' && <Lock className="w-2 h-2 mr-1" />}
-                    {status}
-                  </Badge>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {instance.use_master_as_is && (
+                      <Badge variant="secondary" className="text-[10px] bg-blue-500/20 text-blue-400 border-blue-500/30">
+                        <Copy className="w-2 h-2 mr-0.5" />
+                        Master
+                      </Badge>
+                    )}
+                    <Badge variant="secondary" className={cn('text-[10px]', statusColors[status])}>
+                      {status === 'locked' && <Lock className="w-2 h-2 mr-1" />}
+                      {status}
+                    </Badge>
+                  </div>
                 </div>
                 <span className="text-xs text-muted-foreground">{source}</span>
                 {/* Status Tags */}
@@ -208,8 +222,28 @@ export function SceneAssetListPanel({
   onInherit,
   isInheriting,
   onFilterChange,
+  projectId,
+  sceneId,
 }: SceneAssetListPanelProps) {
   const [filters, setFilters] = useState<AssetFilters>(defaultFilters);
+  const queryClient = useQueryClient();
+
+  const bulkMasterMutation = useMutation({
+    mutationFn: () => {
+      if (!projectId || !sceneId) throw new Error('Missing projectId or sceneId');
+      return sceneAssetService.bulkUseMasterAsIs(projectId, sceneId, selectedForGeneration, true);
+    },
+    onSuccess: (data) => {
+      const succeeded = data.results.filter(r => r.success).length;
+      const failed = data.results.filter(r => !r.success).length;
+      if (succeeded > 0) toast.success(`${succeeded} asset(s) set to master as-is`);
+      if (failed > 0) toast.error(`${failed} asset(s) failed`);
+      queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
 
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
@@ -475,7 +509,7 @@ export function SceneAssetListPanel({
         </div>
       </ScrollArea>
 
-      <div className="p-4 border-t border-border/50">
+      <div className="p-4 border-t border-border/50 space-y-2">
         <Button
           variant="gold"
           className="w-full"
@@ -496,6 +530,19 @@ export function SceneAssetListPanel({
             </>
           )}
         </Button>
+        {projectId && sceneId && selectedForGeneration.length > 0 && (
+          <Button
+            variant="outline"
+            className="w-full"
+            disabled={bulkMasterMutation.isPending || isGenerating}
+            onClick={() => bulkMasterMutation.mutate()}
+          >
+            <Copy className="w-4 h-4 mr-2" />
+            {bulkMasterMutation.isPending
+              ? 'Applying...'
+              : `Use Master As-Is (${selectedForGeneration.length})`}
+          </Button>
+        )}
       </div>
     </motion.div>
   );
