@@ -27,12 +27,17 @@ import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { promptService } from '@/lib/services/promptService';
 import type { PromptSet } from '@/types/scene';
+import { LockedStageHeader } from './LockedStageHeader';
+import { UnlockWarningDialog } from './UnlockWarningDialog';
+import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
+import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
 
 interface Stage9PromptSegmentationProps {
   projectId: string;
   sceneId: string;
   onComplete: () => void;
   onBack: () => void;
+  onNext?: () => void;
 }
 
 // Debounce hook
@@ -56,7 +61,14 @@ const FRAME_PROMPT_WARN = 500;
 const VIDEO_PROMPT_MAX = 800;
 const VIDEO_PROMPT_WARN = 400;
 
-export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBack }: Stage9PromptSegmentationProps) {
+export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBack, onNext }: Stage9PromptSegmentationProps) {
+  const { isLocked: isStageLocked, isOutdated: isStageOutdated, lockStage, unlockStage, confirmUnlock, relockStage } = useSceneStageLock({ projectId, sceneId });
+  const [showUnlockWarning, setShowUnlockWarning] = useState(false);
+  const [unlockImpact, setUnlockImpact] = useState<UnlockImpact | null>(null);
+  const [isConfirmingUnlock, setIsConfirmingUnlock] = useState(false);
+  const stage9Locked = isStageLocked(9);
+  const stage9Outdated = isStageOutdated(9);
+
   // State
   const [promptSets, setPromptSets] = useState<PromptSet[]>([]);
   const [sceneNumber, setSceneNumber] = useState<number>(1);
@@ -305,6 +317,25 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      {(stage9Locked || stage9Outdated) && (
+        <LockedStageHeader
+          stageNumber={9}
+          title="Prompt Segmentation"
+          isLocked={stage9Locked}
+          isOutdated={stage9Outdated}
+          onBack={onBack}
+          onNext={onNext}
+          onUnlockAndEdit={async () => {
+            try {
+              const impact = await unlockStage(9);
+              if (impact) { setUnlockImpact(impact); setShowUnlockWarning(true); }
+            } catch { /* handled */ }
+          }}
+          onRelock={stage9Outdated ? () => relockStage(9) : undefined}
+          lockAndProceedLabel="Lock & Proceed"
+        />
+      )}
+
       {/* Header */}
       <div className="p-4 border-b border-border/50 flex items-center justify-between">
         <div>
@@ -636,30 +667,52 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
         </div>
       </ScrollArea>
 
-      {/* Footer */}
-      <div className="p-4 border-t border-border/50 flex items-center justify-between bg-card/30">
-        <Button variant="ghost" onClick={onBack}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Visuals
-        </Button>
-
-        <div className="flex items-center gap-3">
-          {!hasAllPrompts && (
-            <span className="text-xs text-amber-400 flex items-center gap-1">
-              <AlertTriangle className="w-4 h-4" />
-              Some shots are missing prompts
-            </span>
-          )}
-          <Button
-            variant="gold"
-            onClick={onComplete}
-            disabled={!hasAllPrompts || pendingUpdates.size > 0}
-          >
-            <Check className="w-4 h-4 mr-2" />
-            Proceed to Frame Generation
+      {/* Footer — hidden when locked */}
+      {!stage9Locked && !stage9Outdated && (
+        <div className="p-4 border-t border-border/50 flex items-center justify-between bg-card/30">
+          <Button variant="ghost" onClick={onBack}>
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Visuals
           </Button>
+
+          <div className="flex items-center gap-3">
+            {!hasAllPrompts && (
+              <span className="text-xs text-amber-400 flex items-center gap-1">
+                <AlertTriangle className="w-4 h-4" />
+                Some shots are missing prompts
+              </span>
+            )}
+            <Button
+              variant="gold"
+              onClick={async () => {
+                try { await lockStage(9); } catch { /* best-effort */ }
+                onComplete();
+              }}
+              disabled={!hasAllPrompts || pendingUpdates.size > 0}
+            >
+              <Check className="w-4 h-4 mr-2" />
+              Lock & Proceed
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
+
+      <UnlockWarningDialog
+        open={showUnlockWarning}
+        onOpenChange={setShowUnlockWarning}
+        impact={unlockImpact}
+        stageNumber={9}
+        stageTitle="Prompt Segmentation"
+        onConfirm={async () => {
+          try {
+            setIsConfirmingUnlock(true);
+            await confirmUnlock(9);
+            setShowUnlockWarning(false);
+            setUnlockImpact(null);
+          } catch { /* handled */ } finally { setIsConfirmingUnlock(false); }
+        }}
+        isConfirming={isConfirmingUnlock}
+      />
     </div>
   );
 }

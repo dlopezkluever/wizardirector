@@ -19,6 +19,8 @@ import { useStageState } from '@/lib/hooks/useStageState';
 import { treatmentService, type TreatmentVariation } from '@/lib/services/treatmentService';
 import { stageStateService } from '@/lib/services/stageStateService';
 import { inputProcessingService, type ProcessedInput } from '@/lib/services/inputProcessingService';
+import type { StageStatus } from '@/types/project';
+import { LockedStageHeader } from './LockedStageHeader';
 
 interface Stage2Content {
   variations: TreatmentVariation[];
@@ -78,9 +80,13 @@ interface Stage2TreatmentProps {
   projectId: string;
   onComplete: () => void;
   onBack: () => void;
+  stageStatus?: StageStatus;
+  onNext?: () => void;
+  onUnlock?: () => void;
 }
 
-export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2TreatmentProps) {
+export function Stage2Treatment({ projectId, onComplete, onBack, stageStatus, onNext, onUnlock }: Stage2TreatmentProps) {
+  const isStageLockedOrOutdated = stageStatus === 'locked' || stageStatus === 'outdated';
   // Use stage state for persistence
   const { content: stageContent, setContent: setStageContent, isLoading, isSaving } = useStageState<Stage2Content>({
     projectId,
@@ -427,71 +433,85 @@ export function Stage2Treatment({ projectId, onComplete, onBack }: Stage2Treatme
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={onBack} className="gap-2">
-            <ChevronLeft className="w-4 h-4" />
-            Back
-          </Button>
-          <div>
-            <h2 className="font-display text-xl font-semibold text-foreground">
-              Treatment Generation
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              High-level prose story treatment
-            </p>
+      {isStageLockedOrOutdated ? (
+        <LockedStageHeader
+          stageNumber={2}
+          title="Treatment"
+          subtitle="High-level prose story treatment"
+          isLocked={stageStatus === 'locked'}
+          isOutdated={stageStatus === 'outdated'}
+          onBack={onBack}
+          onNext={onNext}
+          onUnlockAndEdit={onUnlock}
+          lockAndProceedLabel="Approve & Continue"
+        />
+      ) : (
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={onBack} className="gap-2">
+              <ChevronLeft className="w-4 h-4" />
+              Back
+            </Button>
+            <div>
+              <h2 className="font-display text-xl font-semibold text-foreground">
+                Treatment Generation
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                High-level prose story treatment
+              </p>
+            </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-3">
-          {isOutdated && (
+          <div className="flex items-center gap-3">
+            {isOutdated && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRetroactiveRevise}
+                className="gap-2 text-warning border-warning/50"
+              >
+                <AlertTriangle className="w-4 h-4" />
+                Sync with Beat Sheet
+              </Button>
+            )}
+
             <Button
               variant="outline"
               size="sm"
-              onClick={handleRetroactiveRevise}
-              className="gap-2 text-warning border-warning/50"
+              onClick={() => setShowRegenerateDialog(true)}
+              disabled={isRegenerating || isGenerating}
+              className="gap-2"
             >
-              <AlertTriangle className="w-4 h-4" />
-              Sync with Beat Sheet
+              {isRegenerating ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              Full Regenerate
             </Button>
-          )}
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowRegenerateDialog(true)}
-            disabled={isRegenerating || isGenerating}
-            className="gap-2"
-          >
-            {isRegenerating ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4" />
+
+            {hasUnsavedChanges && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleSaveChanges}
+              >
+                Save Changes
+              </Button>
             )}
-            Full Regenerate
-          </Button>
 
-          {hasUnsavedChanges && (
             <Button
-              variant="secondary"
+              variant="gold"
               size="sm"
-              onClick={handleSaveChanges}
+              onClick={onComplete}
+              className="gap-2"
             >
-              Save Changes
+              <Check className="w-4 h-4" />
+              Approve & Continue
             </Button>
-          )}
-
-          <Button
-            variant="gold"
-            size="sm"
-            onClick={onComplete}
-            className="gap-2"
-          >
-            <Check className="w-4 h-4" />
-            Approve & Continue
-          </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Variation Gallery */}
       {stageContent.variations.length > 0 && (

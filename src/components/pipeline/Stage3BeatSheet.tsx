@@ -39,6 +39,8 @@ import { CSS } from '@dnd-kit/utilities';
 import { useStageState } from '@/lib/hooks/useStageState';
 import { beatService, type Beat } from '@/lib/services/beatService';
 import { stageStateService } from '@/lib/services/stageStateService';
+import type { StageStatus } from '@/types/project';
+import { LockedStageHeader } from './LockedStageHeader';
 
 interface Stage3Content {
   beats: Beat[];
@@ -227,9 +229,13 @@ interface Stage3BeatSheetProps {
   projectId: string;
   onComplete: () => void;
   onBack: () => void;
+  stageStatus?: StageStatus;
+  onNext?: () => void;
+  onUnlock?: () => void;
 }
 
-export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatSheetProps) {
+export function Stage3BeatSheet({ projectId, onComplete, onBack, stageStatus, onNext, onUnlock }: Stage3BeatSheetProps) {
+  const isStageLockedOrOutdated = stageStatus === 'locked' || stageStatus === 'outdated';
   // Use stage state for persistence
   const { content: stageContent, setContent: setStageContent, isLoading, isSaving } = useStageState<Stage3Content>({
     projectId,
@@ -579,62 +585,76 @@ export function Stage3BeatSheet({ projectId, onComplete, onBack }: Stage3BeatShe
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={onBack} className="gap-2">
-            ← Back
-          </Button>
-          <div>
-            <h2 className="font-display text-xl font-semibold text-foreground">
-              Beat Sheet
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Structural anchor for your narrative • {stageContent.beats.length} beats
-              {stageContent.totalEstimatedRuntime > 0 && (
-                <span> • {Math.round(stageContent.totalEstimatedRuntime / 60)}m estimated</span>
-              )}
-            </p>
+      {isStageLockedOrOutdated ? (
+        <LockedStageHeader
+          stageNumber={3}
+          title="Beat Sheet"
+          subtitle={`${stageContent.beats.length} beats${stageContent.totalEstimatedRuntime > 0 ? ` • ${Math.round(stageContent.totalEstimatedRuntime / 60)}m estimated` : ''}`}
+          isLocked={stageStatus === 'locked'}
+          isOutdated={stageStatus === 'outdated'}
+          onBack={onBack}
+          onNext={onNext}
+          onUnlockAndEdit={onUnlock}
+          lockAndProceedLabel="Confirm & Lock"
+        />
+      ) : (
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={onBack} className="gap-2">
+              ← Back
+            </Button>
+            <div>
+              <h2 className="font-display text-xl font-semibold text-foreground">
+                Beat Sheet
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Structural anchor for your narrative • {stageContent.beats.length} beats
+                {stageContent.totalEstimatedRuntime > 0 && (
+                  <span> • {Math.round(stageContent.totalEstimatedRuntime / 60)}m estimated</span>
+                )}
+              </p>
+            </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-3">
-          {isOutdated && (
+          <div className="flex items-center gap-3">
+            {isOutdated && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 text-warning border-warning/50"
+              >
+                <AlertTriangle className="w-4 h-4" />
+                Sync with Script
+              </Button>
+            )}
+
             <Button
               variant="outline"
               size="sm"
-              className="gap-2 text-warning border-warning/50"
+              onClick={() => setShowRegenerateDialog(true)}
+              disabled={isRegenerating || isGenerating}
+              className="gap-2"
             >
-              <AlertTriangle className="w-4 h-4" />
-              Sync with Script
+              {isRegenerating ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              Regenerate All
             </Button>
-          )}
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowRegenerateDialog(true)}
-            disabled={isRegenerating || isGenerating}
-            className="gap-2"
-          >
-            {isRegenerating ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4" />
-            )}
-            Regenerate All
-          </Button>
 
-          <Button
-            variant="gold"
-            size="sm"
-            onClick={handleConfirmAndLock}
-            className="gap-2"
-          >
-            <Lock className="w-4 h-4" />
-            Confirm & Lock
-          </Button>
+            <Button
+              variant="gold"
+              size="sm"
+              onClick={handleConfirmAndLock}
+              className="gap-2"
+            >
+              <Lock className="w-4 h-4" />
+              Confirm & Lock
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Instructions */}
       <div className="px-6 py-3 border-b border-border bg-muted/30">

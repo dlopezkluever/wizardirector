@@ -1,17 +1,17 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  FileText, 
-  Wand2, 
-  Layers, 
-  ScrollText, 
+import {
+  FileText,
+  Wand2,
+  Layers,
+  ScrollText,
   Check,
   ChevronDown,
   ChevronUp,
   Save
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { InputMode, ProjectType, ContentRating } from '@/types/project';
+import type { InputMode, ProjectType, ContentRating, StageStatus } from '@/types/project';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { FileStagingArea, type UploadedFile } from './FileStagingArea';
@@ -26,6 +26,7 @@ import { stageStateService } from '@/lib/services/stageStateService';
 import { inputProcessingService, type ProcessedInput } from '@/lib/services/inputProcessingService';
 import type { Project } from '@/types/project';
 import { StyleCapsuleSelector } from '@/components/styleCapsules/StyleCapsuleSelector';
+import { LockedStageHeader } from './LockedStageHeader';
 
 interface InputModeOption {
   id: InputMode;
@@ -87,6 +88,9 @@ const genres = [
 interface Stage1InputModeProps {
   projectId: string;
   onComplete: () => void;
+  stageStatus?: StageStatus;
+  onNext?: () => void;
+  onUnlock?: () => void;
 }
 
 interface Stage1Content {
@@ -102,7 +106,8 @@ interface Stage1Content {
   processedInput?: ProcessedInput;
 }
 
-export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps) {
+export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, onUnlock }: Stage1InputModeProps) {
+  const isStageLockedOrOutdated = stageStatus === 'locked' || stageStatus === 'outdated';
   
   // Use the stage state hook for persistence (auto-save disabled since we manually manage saving/locking)
   const { content, setContent, isLoading, isSaving } = useStageState<Stage1Content>({
@@ -274,21 +279,36 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
   }
 
   return (
-    <div className="flex-1 overflow-auto p-8">
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {isStageLockedOrOutdated && (
+        <LockedStageHeader
+          stageNumber={1}
+          title="Input"
+          subtitle="Initialize Your Narrative"
+          isLocked={stageStatus === 'locked'}
+          isOutdated={stageStatus === 'outdated'}
+          onNext={onNext}
+          onUnlockAndEdit={onUnlock}
+          lockAndProceedLabel="Confirm & Proceed"
+        />
+      )}
+      <div className="flex-1 overflow-auto p-8">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="max-w-4xl mx-auto space-y-10"
       >
         {/* Header */}
-        <div className="text-center">
-          <h2 className="font-display text-3xl font-bold text-foreground mb-2">
-            Initialize Your Narrative
-          </h2>
-          <p className="text-muted-foreground">
-            Configure the global parameters that will define your film's foundation
-          </p>
-        </div>
+        {!isStageLockedOrOutdated && (
+          <div className="text-center">
+            <h2 className="font-display text-3xl font-bold text-foreground mb-2">
+              Initialize Your Narrative
+            </h2>
+            <p className="text-muted-foreground">
+              Configure the global parameters that will define your film's foundation
+            </p>
+          </div>
+        )}
 
         {/* Input Mode Selection */}
         <section className="space-y-4">
@@ -519,32 +539,35 @@ export function Stage1InputMode({ projectId, onComplete }: Stage1InputModeProps)
         </section>
 
         {/* Proceed Button */}
-        <div className="flex justify-between items-center pt-6 border-t border-border">
-          {projectId === 'new' ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>💡 Create a project first to enable auto-save</span>
-            </div>
-          ) : isSaving ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Save className="w-4 h-4 animate-pulse" />
-              <span>Saving...</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>All changes saved</span>
-            </div>
-          )}
-          <Button
-            variant="gold"
-            size="lg"
-            disabled={!canProceed || isCreatingProject}
-            onClick={handleComplete}
-            className="min-w-[200px]"
-          >
-            {isCreatingProject ? 'Creating Project...' : 'Continue to Treatment'}
-          </Button>
-        </div>
+        {!isStageLockedOrOutdated && (
+          <div className="flex justify-between items-center pt-6 border-t border-border">
+            {projectId === 'new' ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>💡 Create a project first to enable auto-save</span>
+              </div>
+            ) : isSaving ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Save className="w-4 h-4 animate-pulse" />
+                <span>Saving...</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>All changes saved</span>
+              </div>
+            )}
+            <Button
+              variant="gold"
+              size="lg"
+              disabled={!canProceed || isCreatingProject}
+              onClick={handleComplete}
+              className="min-w-[200px]"
+            >
+              {isCreatingProject ? 'Creating Project...' : 'Continue to Treatment'}
+            </Button>
+          </div>
+        )}
       </motion.div>
+      </div>
     </div>
   );
 }

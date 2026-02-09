@@ -35,6 +35,10 @@ import { sceneService } from '@/lib/services/sceneService';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import type { Shot } from '@/types/scene';
+import { LockedStageHeader } from './LockedStageHeader';
+import { UnlockWarningDialog } from './UnlockWarningDialog';
+import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
+import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
 
 export interface ValidationError {
   shotId: string;
@@ -50,6 +54,7 @@ interface Stage7ShotListProps {
   sceneId: string;
   onComplete: () => void;
   onBack: () => void;
+  onNext?: () => void;
 }
 
 // Debounce hook
@@ -67,8 +72,26 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage7ShotListProps) {
-  
+export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext }: Stage7ShotListProps) {
+
+  // Scene stage lock hook
+  const {
+    isLocked: isStageLocked,
+    isOutdated: isStageOutdated,
+    lockStage: lockStageViaHook,
+    unlockStage: unlockStageViaHook,
+    confirmUnlock: confirmUnlockViaHook,
+    relockStage: relockStageViaHook,
+  } = useSceneStageLock({ projectId, sceneId });
+
+  // Unlock warning dialog state
+  const [showUnlockWarning, setShowUnlockWarning] = useState(false);
+  const [unlockImpact, setUnlockImpact] = useState<UnlockImpact | null>(null);
+  const [isConfirmingUnlock, setIsConfirmingUnlock] = useState(false);
+
+  const stage7Locked = isStageLocked(7);
+  const stage7Outdated = isStageOutdated(7);
+
   // Main state
   const [shots, setShots] = useState<Shot[]>([]);
   const [selectedShot, setSelectedShot] = useState<Shot | null>(null);
@@ -107,10 +130,13 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
   const [showValidationModal, setShowValidationModal] = useState(false);
   const [isLocking, setIsLocking] = useState(false);
   const [isEditable, setIsEditable] = useState(true);
-  // Unlock confirmation when downstream frames exist
-  const [showUnlockConfirmModal, setShowUnlockConfirmModal] = useState(false);
-  const [unlockConfirmDetails, setUnlockConfirmDetails] = useState<{ framesAffected: number; videosAffected: number; estimatedCost: string } | null>(null);
-  const [isUnlocking, setIsUnlocking] = useState(false);
+
+  // Sync isSceneLocked with stage lock hook
+  useEffect(() => {
+    if (stage7Locked || stage7Outdated) {
+      setIsSceneLocked(true);
+    }
+  }, [stage7Locked, stage7Outdated]);
 
   // Initial data fetch
   useEffect(() => {
@@ -441,6 +467,8 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
   const lockShotList = async (force: boolean) => {
     try {
       await shotService.lockShotList(projectId, sceneId, force);
+      // Also lock via new stage_locks system
+      try { await lockStageViaHook(7); } catch { /* best-effort */ }
       setIsSceneLocked(true);
       toast({
         title: 'Shot list locked',
@@ -532,47 +560,38 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
     }
   };
 
-  const handleUnlock = async () => {
+  const handleUnlockAndEdit = async () => {
     try {
-      setIsUnlocking(true);
-      await shotService.unlockShotList(projectId, sceneId, { confirm: false });
-      setIsSceneLocked(false);
-      toast({
-        title: 'Shot list unlocked',
-        description: 'You can edit the shot list again',
-      });
-    } catch (error: unknown) {
-      const err = error as { status?: number; data?: { requiresConfirmation?: boolean; details?: { framesAffected?: number; videosAffected?: number; estimatedCost?: string } } };
-      if (err.status === 409 && err.data?.requiresConfirmation && err.data?.details) {
-        const d = err.data.details;
-        setUnlockConfirmDetails({
-          framesAffected: d.framesAffected ?? 0,
-          videosAffected: d.videosAffected ?? 0,
-          estimatedCost: d.estimatedCost ?? '0',
-        });
-        setShowUnlockConfirmModal(true);
-      } else {
-        toast({
-          title: 'Failed to unlock',
-          description: error instanceof Error ? error.message : 'Could not unlock shot list',
-          variant: 'destructive',
-        });
+      const impact = await unlockStageViaHook(7);
+      if (impact) {
+        setUnlockImpact(impact);
+        setShowUnlockWarning(true);
       }
-    } finally {
-      setIsUnlocking(false);
+    } catch (error) {
+      toast({
+        title: 'Failed to unlock',
+        description: error instanceof Error ? error.message : 'Could not unlock shot list',
+        variant: 'destructive',
+      });
     }
   };
 
-  const confirmUnlockWithInvalidation = async () => {
+  const handleConfirmUnlock = async () => {
     try {
-      setIsUnlocking(true);
-      await shotService.unlockShotList(projectId, sceneId, { confirm: true });
+      setIsConfirmingUnlock(true);
+      await confirmUnlockViaHook(7);
+      // Also unlock via old system for backward compat
+      try {
+        await shotService.unlockShotList(projectId, sceneId, { confirm: true });
+      } catch {
+        // Old system unlock is best-effort
+      }
       setIsSceneLocked(false);
-      setShowUnlockConfirmModal(false);
-      setUnlockConfirmDetails(null);
+      setShowUnlockWarning(false);
+      setUnlockImpact(null);
       toast({
         title: 'Shot list unlocked',
-        description: 'Downstream frames/videos have been marked invalid. You can edit the shot list again.',
+        description: 'You can edit the shot list again.',
       });
     } catch (error) {
       toast({
@@ -581,7 +600,20 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
         variant: 'destructive',
       });
     } finally {
-      setIsUnlocking(false);
+      setIsConfirmingUnlock(false);
+    }
+  };
+
+  const handleRelock = async () => {
+    try {
+      await relockStageViaHook(7);
+      toast({ title: 'Shot list re-locked' });
+    } catch (error) {
+      toast({
+        title: 'Failed to re-lock',
+        description: error instanceof Error ? error.message : 'Could not re-lock shot list',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -638,6 +670,22 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Locked/Outdated Stage Header */}
+      {(stage7Locked || stage7Outdated) && (
+        <LockedStageHeader
+          stageNumber={7}
+          title="Shot List"
+          subtitle={`${shots.length} shots • ${totalDuration}s total`}
+          isLocked={stage7Locked}
+          isOutdated={stage7Outdated}
+          onBack={onBack}
+          onNext={onNext}
+          onUnlockAndEdit={handleUnlockAndEdit}
+          onRelock={stage7Outdated ? handleRelock : undefined}
+          lockAndProceedLabel="Lock Shot List & Proceed"
+        />
+      )}
+
       {/* Rearview Mirror */}
       <RearviewMirror
         mode={priorSceneData?.endFrame && !imageError ? 'visual' : 'text'}
@@ -758,29 +806,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
         >
           {selectedShot ? (
             <>
-              {/* Lock banner */}
-              {isSceneLocked && (
-                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg mx-4 mt-4 mb-0 p-3">
-                  <div className="flex items-center gap-2">
-                    <Lock className="w-4 h-4 text-blue-500 shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-blue-500">Shot List Locked</p>
-                      <p className="text-xs text-muted-foreground">
-                        This shot list has been approved. Unlock to make changes.
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleUnlock}
-                      disabled={isUnlocking}
-                      className="ml-auto shrink-0"
-                    >
-                      {isUnlocking ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Unlock'}
-                    </Button>
-                  </div>
-                </div>
-              )}
+              {/* Lock banner removed — replaced by LockedStageHeader */}
               {/* Inspector Header */}
               <div className="p-4 border-b border-border/50 bg-card/20">
                 <div className="flex items-center justify-between">
@@ -1028,45 +1054,42 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
         </motion.div>
       </div>
 
-      {/* Footer Actions */}
-      <div className="p-4 border-t border-border/50 flex items-center justify-between bg-card/30 backdrop-blur-sm">
-        <Button variant="ghost" onClick={onBack}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Script Hub
-        </Button>
-        
-        <div className="flex items-center gap-3">
-          {pendingUpdates.size > 0 && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
-              <Save className="w-3 h-3" />
-              Unsaved changes
-            </span>
-          )}
-          <Button
-            variant="default"
-            onClick={handleLockShotList}
-            disabled={isSceneLocked || !canEdit || isSaving || shots.length === 0 || isLocking}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground"
-          >
-            {isLocking ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Locking...
-              </>
-            ) : isSceneLocked ? (
-              <>
-                <Lock className="w-4 h-4 mr-2" />
-                Shot List Locked
-              </>
-            ) : (
-              <>
-                <Check className="w-4 h-4 mr-2" />
-                Lock Shot List & Proceed
-              </>
-            )}
+      {/* Footer Actions — only shown when not locked */}
+      {!stage7Locked && !stage7Outdated && (
+        <div className="p-4 border-t border-border/50 flex items-center justify-between bg-card/30 backdrop-blur-sm">
+          <Button variant="ghost" onClick={onBack}>
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Script Hub
           </Button>
+
+          <div className="flex items-center gap-3">
+            {pendingUpdates.size > 0 && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <Save className="w-3 h-3" />
+                Unsaved changes
+              </span>
+            )}
+            <Button
+              variant="default"
+              onClick={handleLockShotList}
+              disabled={isSceneLocked || !canEdit || isSaving || shots.length === 0 || isLocking}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+            >
+              {isLocking ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Locking...
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4 mr-2" />
+                  Lock Shot List & Proceed
+                </>
+              )}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Validation Modal */}
       <Dialog open={showValidationModal} onOpenChange={setShowValidationModal}>
@@ -1183,42 +1206,16 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack }: Stage
         </DialogContent>
       </Dialog>
 
-      {/* Unlock confirmation (downstream frames/videos will be invalidated) */}
-      <Dialog open={showUnlockConfirmModal} onOpenChange={setShowUnlockConfirmModal}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-yellow-500" />
-              Unlock shot list?
-            </DialogTitle>
-            <DialogDescription>
-              {unlockConfirmDetails && (
-                <>
-                  This scene has downstream work. Unlocking will invalidate{' '}
-                  <strong>{unlockConfirmDetails.framesAffected} frame(s)</strong> and{' '}
-                  <strong>{unlockConfirmDetails.videosAffected} video(s)</strong>.
-                  {unlockConfirmDetails.estimatedCost !== '0' && (
-                    <> Estimated regeneration cost: ${unlockConfirmDetails.estimatedCost}</>
-                  )}
-                </>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => { setShowUnlockConfirmModal(false); setUnlockConfirmDetails(null); }}>
-              Cancel
-            </Button>
-            <Button
-              variant="default"
-              onClick={confirmUnlockWithInvalidation}
-              disabled={isUnlocking}
-              className="bg-primary hover:bg-primary/90"
-            >
-              {isUnlocking ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Unlock & Invalidate'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Unlock Warning Dialog (single dialog replacing 3-dialog cascade) */}
+      <UnlockWarningDialog
+        open={showUnlockWarning}
+        onOpenChange={setShowUnlockWarning}
+        impact={unlockImpact}
+        stageNumber={7}
+        stageTitle="Shot List"
+        onConfirm={handleConfirmUnlock}
+        isConfirming={isConfirmingUnlock}
+      />
 
       {/* Split Shot Dialog */}
       <Dialog open={showSplitDialog} onOpenChange={setShowSplitDialog}>

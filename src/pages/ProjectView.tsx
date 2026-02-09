@@ -20,6 +20,9 @@ import type { StageProgress, StageStatus } from '@/types/project';
 import { useProjectStageStates } from '@/lib/hooks/useStageState';
 import { projectService } from '@/lib/services/projectService';
 import { stageStateService } from '@/lib/services/stageStateService';
+import { sceneStageLockService, type StageLocks, type StageLockStatus } from '@/lib/services/sceneStageLockService';
+import { UnlockWarningDialog } from '@/components/pipeline/UnlockWarningDialog';
+import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
 
 const initialPhaseAStages: StageProgress[] = [
   { stage: 1, status: 'active' as StageStatus, label: 'Input' },
@@ -48,6 +51,13 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
   const [sceneStage, setSceneStage] = useState<SceneStage>(7);
   const [completedSceneStages, setCompletedSceneStages] = useState<SceneStage[]>([]);
+  const [sceneStageLocks, setSceneStageLocks] = useState<StageLocks>({});
+
+  // Phase A unlock dialog state
+  const [phaseAUnlockStage, setPhaseAUnlockStage] = useState<number | null>(null);
+  const [phaseAUnlockImpact, setPhaseAUnlockImpact] = useState<UnlockImpact | null>(null);
+  const [isConfirmingPhaseAUnlock, setIsConfirmingPhaseAUnlock] = useState(false);
+
   const [projectTitle, setProjectTitle] = useState('Loading...');
   const [currentBranch, setCurrentBranch] = useState('main');
   const [isLoadingProject, setIsLoadingProject] = useState(true);
@@ -357,6 +367,25 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
     const sceneIdFromUrl = searchParams.get('sceneId');
     const stageFromUrl = searchParams.get('stage');
 
+    const fetchSceneLocks = async (scnId: string) => {
+      if (!projectId) return;
+      try {
+        const locks = await sceneStageLockService.getStageLocks(projectId, scnId);
+        setSceneStageLocks(locks);
+        // Build completed stages from DB locks
+        const completed: SceneStage[] = [];
+        for (let s = 7; s <= 12; s++) {
+          const entry = locks[s.toString()];
+          if (entry && (entry.status === 'locked' || entry.status === 'outdated')) {
+            completed.push(s as SceneStage);
+          }
+        }
+        setCompletedSceneStages(completed);
+      } catch (error) {
+        console.error('Failed to fetch scene locks on restore:', error);
+      }
+    };
+
     if (stageFromUrl) {
       const stage = parseInt(stageFromUrl, 10);
       if (!isNaN(stage) && stage >= 7) {
@@ -365,10 +394,8 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
           setActiveSceneId(sceneId);
           setSceneStage(stage as SceneStage);
           setCurrentStage(stage);
-          // Restore completedSceneStages so sidebar allows navigating back to Stage 8 after viewing Stage 7
-          setCompletedSceneStages(
-            Array.from({ length: Math.max(0, stage - 7) }, (_, i) => (7 + i) as SceneStage)
-          );
+          // Fetch real lock state from DB instead of assuming linear completion
+          fetchSceneLocks(sceneId);
           if (stage === 8 && !sceneIdFromUrl) {
             const newParams = new URLSearchParams(searchParams);
             newParams.set('stage', '8');
@@ -386,9 +413,7 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
     } else if (sceneIdFromUrl && currentStage >= 7) {
       setActiveSceneId(sceneIdFromUrl);
       setSceneStage(currentStage as SceneStage);
-      setCompletedSceneStages(
-        Array.from({ length: Math.max(0, currentStage - 7) }, (_, i) => (7 + i) as SceneStage)
-      );
+      fetchSceneLocks(sceneIdFromUrl);
     }
   }, [searchParams, projectId]);
 
@@ -438,21 +463,70 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
     }
   };
 
-  const handleEnterScene = (sceneId: string) => {
+  const handleEnterScene = async (sceneId: string) => {
     setActiveSceneId(sceneId);
-    setSceneStage(7);
-    setCompletedSceneStages([]);
-    setCurrentStageWithPersistence(7, sceneId);
+
+    try {
+      // Fetch scene's stage_locks from DB
+      const locks = await sceneStageLockService.getStageLocks(projectId!, sceneId);
+      setSceneStageLocks(locks);
+
+      // Find first stage where status !== 'locked' (resume target)
+      let resumeTarget: SceneStage = 7;
+      const completed: SceneStage[] = [];
+
+      for (let s = 7; s <= 12; s++) {
+        const entry = locks[s.toString()];
+        if (entry && (entry.status === 'locked' || entry.status === 'outdated')) {
+          completed.push(s as SceneStage);
+        } else {
+          resumeTarget = s as SceneStage;
+          break;
+        }
+        // If all stages are locked/outdated, resume at last one
+        if (s === 12) {
+          resumeTarget = 12;
+        }
+      }
+
+      setSceneStage(resumeTarget);
+      setCompletedSceneStages(completed);
+      setCurrentStageWithPersistence(resumeTarget, sceneId);
+    } catch (error) {
+      console.error('Failed to fetch scene stage locks:', error);
+      // Fallback: start at Stage 7
+      setSceneStage(7);
+      setCompletedSceneStages([]);
+      setCurrentStageWithPersistence(7, sceneId);
+    }
   };
 
-  const handleEnterSceneAtStage = (sceneId: string, stage: number) => {
+  const handleEnterSceneAtStage = async (sceneId: string, stage: number) => {
     if (stage >= 7 && stage <= 12) {
       setActiveSceneId(sceneId);
       setSceneStage(stage as SceneStage);
-      // Mark all stages before the target as completed for sidebar navigation
-      setCompletedSceneStages(
-        Array.from({ length: Math.max(0, stage - 7) }, (_, i) => (7 + i) as SceneStage)
-      );
+
+      try {
+        const locks = await sceneStageLockService.getStageLocks(projectId!, sceneId);
+        setSceneStageLocks(locks);
+
+        // Build completed stages from DB
+        const completed: SceneStage[] = [];
+        for (let s = 7; s <= 12; s++) {
+          const entry = locks[s.toString()];
+          if (entry && (entry.status === 'locked' || entry.status === 'outdated')) {
+            completed.push(s as SceneStage);
+          }
+        }
+        setCompletedSceneStages(completed);
+      } catch (error) {
+        console.error('Failed to fetch scene stage locks:', error);
+        // Fallback: assume stages before target are completed
+        setCompletedSceneStages(
+          Array.from({ length: Math.max(0, stage - 7) }, (_, i) => (7 + i) as SceneStage)
+        );
+      }
+
       setCurrentStageWithPersistence(stage, sceneId);
     }
   };
@@ -463,13 +537,39 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
     setCurrentStageWithPersistence(6);
   };
 
-  const handleSceneStageComplete = () => {
-    setCompletedSceneStages(prev => [...prev, sceneStage]);
+  const handleSceneStageComplete = async () => {
+    // Lock the current stage via new system (best-effort — Stage 7 already locks via its own hook)
+    if (projectId && activeSceneId) {
+      try {
+        const result = await sceneStageLockService.lockStage(projectId, activeSceneId, sceneStage);
+        if (result.stageLocks) {
+          setSceneStageLocks(result.stageLocks);
+        }
+      } catch (error) {
+        console.error('Failed to lock scene stage:', error);
+      }
+    }
+
+    setCompletedSceneStages(prev => {
+      if (prev.includes(sceneStage)) return prev;
+      return [...prev, sceneStage];
+    });
+
     if (sceneStage < 12) {
-      setSceneStage((sceneStage + 1) as SceneStage);
+      const nextStage = (sceneStage + 1) as SceneStage;
+      setSceneStage(nextStage);
+      persistStage(nextStage, activeSceneId);
     } else {
       toast.success('Scene completed!');
       handleExitScene();
+    }
+  };
+
+  const handleSceneStageNext = () => {
+    if (sceneStage < 12) {
+      const nextStage = (sceneStage + 1) as SceneStage;
+      setSceneStage(nextStage);
+      persistStage(nextStage, activeSceneId);
     }
   };
 
@@ -478,6 +578,90 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
       setSceneStage((sceneStage - 1) as SceneStage);
     } else {
       handleExitScene();
+    }
+  };
+
+  // Derive stage lock statuses for SceneWorkflowSidebar from sceneStageLocks
+  const deriveSidebarLockStatuses = (): Record<number, StageLockStatus> => {
+    const statuses: Record<number, StageLockStatus> = {};
+    for (let s = 7; s <= 12; s++) {
+      const entry = sceneStageLocks[s.toString()];
+      statuses[s] = entry?.status ?? 'draft';
+    }
+    return statuses;
+  };
+
+  // Get the StageStatus for a Phase A stage (for passing to components)
+  const getPhaseAStageStatus = (stageNumber: number): StageStatus | undefined => {
+    const stageData = stages.find(s => s.stage === stageNumber);
+    return stageData?.status;
+  };
+
+  // Phase A unlock flow
+  const handlePhaseAUnlock = async (stageNumber: number) => {
+    if (!projectId) return;
+    try {
+      const result = await stageStateService.unlockStage(projectId, stageNumber, false);
+      if (result.downstreamStages) {
+        // Got impact assessment — show warning dialog
+        setPhaseAUnlockStage(stageNumber);
+        setPhaseAUnlockImpact({
+          stage: stageNumber,
+          downstreamStages: result.downstreamStages,
+          framesAffected: 0,
+          videosAffected: 0,
+          estimatedCost: 'N/A',
+          message: result.message || `Unlocking Stage ${stageNumber} will mark downstream stages as outdated.`,
+        });
+      } else {
+        // No downstream impact, just unlock directly
+        setPhaseAUnlockStage(stageNumber);
+        setPhaseAUnlockImpact(null);
+        await handleConfirmPhaseAUnlock(stageNumber);
+      }
+    } catch (error) {
+      console.error('Failed to unlock Phase A stage:', error);
+      toast.error('Failed to unlock stage');
+    }
+  };
+
+  const handleConfirmPhaseAUnlock = async (stageOverride?: number) => {
+    const stageNumber = stageOverride ?? phaseAUnlockStage;
+    if (!projectId || !stageNumber) return;
+
+    setIsConfirmingPhaseAUnlock(true);
+    try {
+      await stageStateService.unlockStage(projectId, stageNumber, true);
+
+      // Update local stages state: set stage to active, downstream to outdated
+      setStages(prev => prev.map(s => {
+        if (s.stage === stageNumber) return { ...s, status: 'active' as StageStatus };
+        if (s.stage > stageNumber) {
+          const wasLocked = s.status === 'locked';
+          return wasLocked ? { ...s, status: 'outdated' as StageStatus } : s;
+        }
+        return s;
+      }));
+
+      // Navigate to the unlocked stage
+      setCurrentStageWithPersistence(stageNumber);
+      setPhaseAUnlockStage(null);
+      setPhaseAUnlockImpact(null);
+      toast.success(`Stage ${stageNumber} unlocked for editing`);
+    } catch (error) {
+      console.error('Failed to confirm Phase A unlock:', error);
+      toast.error('Failed to unlock stage');
+    } finally {
+      setIsConfirmingPhaseAUnlock(false);
+    }
+  };
+
+  // Phase A navigation: navigate to next stage without locking (for browsing locked stages)
+  const handlePhaseANext = (fromStage: number) => {
+    if (fromStage < 5) {
+      setCurrentStageWithPersistence(fromStage + 1);
+    } else if (fromStage === 5) {
+      setCurrentStageWithPersistence(6);
     }
   };
 
@@ -503,19 +687,21 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 flex flex-col overflow-hidden">
             {sceneStage === 7 && projectId && (
-              <Stage7ShotList 
+              <Stage7ShotList
                 projectId={projectId}
-                sceneId={activeSceneId} 
+                sceneId={activeSceneId}
                 onComplete={handleSceneStageComplete}
                 onBack={handleSceneStageBack}
+                onNext={handleSceneStageNext}
               />
             )}
             {sceneStage === 8 && projectId && activeSceneId && (
-              <Stage8VisualDefinition 
+              <Stage8VisualDefinition
                 projectId={projectId}
-                sceneId={activeSceneId} 
+                sceneId={activeSceneId}
                 onComplete={handleSceneStageComplete}
                 onBack={handleSceneStageBack}
+                onNext={handleSceneStageNext}
               />
             )}
             {sceneStage === 9 && projectId && activeSceneId && (
@@ -524,14 +710,16 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
                 sceneId={activeSceneId}
                 onComplete={handleSceneStageComplete}
                 onBack={handleSceneStageBack}
+                onNext={handleSceneStageNext}
               />
             )}
             {sceneStage === 10 && projectId && (
-              <Stage10FrameGeneration 
+              <Stage10FrameGeneration
                 projectId={projectId}
-                sceneId={activeSceneId} 
+                sceneId={activeSceneId}
                 onComplete={handleSceneStageComplete}
                 onBack={handleSceneStageBack}
+                onNext={handleSceneStageNext}
               />
             )}
             {sceneStage === 11 && projectId && (
@@ -540,6 +728,7 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
                 sceneId={activeSceneId}
                 onComplete={handleSceneStageComplete}
                 onBack={handleSceneStageBack}
+                onNext={handleSceneStageNext}
               />
             )}
             {sceneStage === 12 && projectId && (
@@ -552,11 +741,12 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
               />
             )}
           </div>
-          
+
           <SceneWorkflowSidebar
             currentStage={sceneStage}
             completedStages={completedSceneStages}
             onStageSelect={setSceneStage}
+            stageLockStatuses={deriveSidebarLockStatuses()}
           />
         </div>
       </div>
@@ -606,12 +796,70 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
       />
       
       {currentStage === 1 && (
-        <Stage1InputMode projectId={projectId} onComplete={() => handleStageComplete(1)} />
+        <Stage1InputMode
+          projectId={projectId}
+          onComplete={() => handleStageComplete(1)}
+          stageStatus={getPhaseAStageStatus(1)}
+          onNext={() => handlePhaseANext(1)}
+          onUnlock={() => handlePhaseAUnlock(1)}
+        />
       )}
-      {currentStage === 2 && <Stage2Treatment projectId={projectId} onComplete={() => handleStageComplete(2)} onBack={() => handleGoBack(1)} />}
-      {currentStage === 3 && <Stage3BeatSheet projectId={projectId} onComplete={() => handleStageComplete(3)} onBack={() => handleGoBack(2)} />}
-      {currentStage === 4 && <Stage4MasterScript projectId={projectId} onComplete={() => handleStageComplete(4)} onBack={() => handleGoBack(3)} />}
-      {currentStage === 5 && <Stage5Assets projectId={projectId} onComplete={() => handleStageComplete(5)} onBack={() => handleGoBack(4)} />}
+      {currentStage === 2 && (
+        <Stage2Treatment
+          projectId={projectId}
+          onComplete={() => handleStageComplete(2)}
+          onBack={() => handleGoBack(1)}
+          stageStatus={getPhaseAStageStatus(2)}
+          onNext={() => handlePhaseANext(2)}
+          onUnlock={() => handlePhaseAUnlock(2)}
+        />
+      )}
+      {currentStage === 3 && (
+        <Stage3BeatSheet
+          projectId={projectId}
+          onComplete={() => handleStageComplete(3)}
+          onBack={() => handleGoBack(2)}
+          stageStatus={getPhaseAStageStatus(3)}
+          onNext={() => handlePhaseANext(3)}
+          onUnlock={() => handlePhaseAUnlock(3)}
+        />
+      )}
+      {currentStage === 4 && (
+        <Stage4MasterScript
+          projectId={projectId}
+          onComplete={() => handleStageComplete(4)}
+          onBack={() => handleGoBack(3)}
+          stageStatus={getPhaseAStageStatus(4)}
+          onNext={() => handlePhaseANext(4)}
+          onUnlock={() => handlePhaseAUnlock(4)}
+        />
+      )}
+      {currentStage === 5 && (
+        <Stage5Assets
+          projectId={projectId}
+          onComplete={() => handleStageComplete(5)}
+          onBack={() => handleGoBack(4)}
+          stageStatus={getPhaseAStageStatus(5)}
+          onNext={() => handlePhaseANext(5)}
+          onUnlock={() => handlePhaseAUnlock(5)}
+        />
+      )}
+
+      {/* Phase A Unlock Warning Dialog */}
+      <UnlockWarningDialog
+        open={phaseAUnlockStage !== null && phaseAUnlockImpact !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPhaseAUnlockStage(null);
+            setPhaseAUnlockImpact(null);
+          }
+        }}
+        impact={phaseAUnlockImpact}
+        stageNumber={phaseAUnlockStage ?? 0}
+        stageTitle={`Stage ${phaseAUnlockStage}`}
+        onConfirm={() => handleConfirmPhaseAUnlock()}
+        isConfirming={isConfirmingPhaseAUnlock}
+      />
     </div>
   );
 }

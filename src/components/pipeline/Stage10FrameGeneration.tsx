@@ -23,12 +23,17 @@ import { frameService } from '@/lib/services/frameService';
 import { sceneService } from '@/lib/services/sceneService';
 import { cn } from '@/lib/utils';
 import type { ShotWithFrames, GenerationMode, Frame } from '@/types/scene';
+import { LockedStageHeader } from './LockedStageHeader';
+import { UnlockWarningDialog } from './UnlockWarningDialog';
+import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
+import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
 
 interface Stage10FrameGenerationProps {
   projectId: string;
   sceneId: string;
   onComplete: () => void;
   onBack: () => void;
+  onNext?: () => void;
 }
 
 export function Stage10FrameGeneration({
@@ -36,7 +41,14 @@ export function Stage10FrameGeneration({
   sceneId,
   onComplete,
   onBack,
+  onNext,
 }: Stage10FrameGenerationProps) {
+  const { isLocked: isStageLocked, isOutdated: isStageOutdated, lockStage, unlockStage, confirmUnlock, relockStage } = useSceneStageLock({ projectId, sceneId });
+  const [showUnlockWarning, setShowUnlockWarning] = useState(false);
+  const [unlockImpact, setUnlockImpact] = useState<UnlockImpact | null>(null);
+  const [isConfirmingUnlock, setIsConfirmingUnlock] = useState(false);
+  const stage10Locked = isStageLocked(10);
+  const stage10Outdated = isStageOutdated(10);
   const queryClient = useQueryClient();
 
   // Mode and selection state
@@ -331,6 +343,26 @@ export function Stage10FrameGeneration({
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      {(stage10Locked || stage10Outdated) && (
+        <LockedStageHeader
+          stageNumber={10}
+          title="Frame Generation"
+          isLocked={stage10Locked}
+          isOutdated={stage10Outdated}
+          onBack={onBack}
+          onNext={onNext}
+          onUnlockAndEdit={async () => {
+            try {
+              const impact = await unlockStage(10);
+              if (impact) { setUnlockImpact(impact); setShowUnlockWarning(true); }
+            } catch { /* handled */ }
+          }}
+          onRelock={stage10Outdated ? () => relockStage(10) : undefined}
+          lockAndProceedLabel="Lock & Proceed"
+          lockAndProceedDisabled={!allFramesApproved}
+        />
+      )}
+
       {/* Rearview Mirror */}
       <RearviewMirror
         mode={priorSceneData?.endFrame && !imageError ? 'visual' : 'text'}
@@ -613,17 +645,22 @@ export function Stage10FrameGeneration({
         </div>
       )}
 
-      {/* Footer */}
-      <div className="p-4 border-t border-border/50 flex items-center justify-between bg-card/30">
-        <Button variant="ghost" onClick={onBack}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Prompts
-        </Button>
-        <Button variant="gold" onClick={onComplete} disabled={!allFramesApproved}>
-          <Check className="w-4 h-4 mr-2" />
-          Proceed to Confirmation
-        </Button>
-      </div>
+      {/* Footer — hidden when locked */}
+      {!stage10Locked && !stage10Outdated && (
+        <div className="p-4 border-t border-border/50 flex items-center justify-between bg-card/30">
+          <Button variant="ghost" onClick={onBack}>
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Prompts
+          </Button>
+          <Button variant="gold" onClick={async () => {
+            try { await lockStage(10); } catch { /* best-effort */ }
+            onComplete();
+          }} disabled={!allFramesApproved}>
+            <Check className="w-4 h-4 mr-2" />
+            Lock & Proceed
+          </Button>
+        </div>
+      )}
 
       {/* Slider Comparison Modal */}
       {comparisonImages && (
@@ -654,6 +691,23 @@ export function Stage10FrameGeneration({
           onSubmit={handleInpaintSubmit}
         />
       )}
+
+      <UnlockWarningDialog
+        open={showUnlockWarning}
+        onOpenChange={setShowUnlockWarning}
+        impact={unlockImpact}
+        stageNumber={10}
+        stageTitle="Frame Generation"
+        onConfirm={async () => {
+          try {
+            setIsConfirmingUnlock(true);
+            await confirmUnlock(10);
+            setShowUnlockWarning(false);
+            setUnlockImpact(null);
+          } catch { /* handled */ } finally { setIsConfirmingUnlock(false); }
+        }}
+        isConfirming={isConfirmingUnlock}
+      />
     </div>
   );
 }

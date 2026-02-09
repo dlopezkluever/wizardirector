@@ -39,11 +39,16 @@ import { StyleCapsuleSelector } from '@/components/styleCapsules/StyleCapsuleSel
 import { AssetDrawer } from './AssetDrawer';
 import { AssetVersionSync } from './AssetVersionSync';
 import type { ProjectAsset } from '@/types/asset';
+import type { StageStatus } from '@/types/project';
+import { LockedStageHeader } from './LockedStageHeader';
 
 interface Stage5AssetsProps {
   projectId: string;
   onComplete: () => void;
   onBack: () => void;
+  stageStatus?: StageStatus;
+  onNext?: () => void;
+  onUnlock?: () => void;
 }
 
 const ASPECT_RATIOS = {
@@ -52,7 +57,8 @@ const ASPECT_RATIOS = {
   prop: { width: 512, height: 512, label: '1:1 square' }
 };
 
-export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProps) {
+export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNext, onUnlock }: Stage5AssetsProps) {
+  const isStageLockedOrOutdated = stageStatus === 'locked' || stageStatus === 'outdated';
   const { content, setContent, stageState, isLoading } = useStageState({
     projectId,
     stageNumber: 5,
@@ -416,15 +422,29 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={onBack}>← Back</Button>
-          <div>
-            <h2 className="font-display text-xl font-semibold text-foreground">Stage 5: Global Assets & Style Lock</h2>
-            <p className="text-sm text-muted-foreground">Define visual keys for all characters, locations, and props</p>
+      {isStageLockedOrOutdated ? (
+        <LockedStageHeader
+          stageNumber={5}
+          title="Assets"
+          subtitle="Global Assets & Style Lock"
+          isLocked={stageStatus === 'locked'}
+          isOutdated={stageStatus === 'outdated'}
+          onBack={onBack}
+          onNext={onNext}
+          onUnlockAndEdit={onUnlock}
+          lockAndProceedLabel="Lock All Assets"
+        />
+      ) : (
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={onBack}>← Back</Button>
+            <div>
+              <h2 className="font-display text-xl font-semibold text-foreground">Stage 5: Global Assets & Style Lock</h2>
+              <p className="text-sm text-muted-foreground">Define visual keys for all characters, locations, and props</p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="flex-1 overflow-auto p-6 pb-24">
         <div className="max-w-4xl mx-auto space-y-8">
@@ -865,7 +885,7 @@ export function Stage5Assets({ projectId, onComplete, onBack }: Stage5AssetsProp
       </AlertDialog>
 
       {/* Floating Gatekeeper Bar - Fixed to bottom, respecting sidebar */}
-      {hasExtracted && (
+      {hasExtracted && !isStageLockedOrOutdated && (
         <div className="fixed bottom-0 left-[280px] right-0 bg-card border-t border-border p-4 shadow-lg z-50">
           <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
             <div className="text-sm">

@@ -15,6 +15,7 @@ import { projectAssetsRouter } from './routes/projectAssets.js';
 import { sceneAssetsRouter } from './routes/sceneAssets.js';
 import { framesRouter } from './routes/frames.js';
 import { checkoutRouter } from './routes/checkout.js';
+import { sceneStageLockRouter } from './routes/sceneStageLocks.js';
 import { authenticateUser } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -58,6 +59,9 @@ app.use('/api/projects', authenticateUser, checkoutRouter);
 
 // Stage states routes (protected, nested under projects)
 app.use('/api/projects', authenticateUser, stageStatesRouter);
+
+// Scene stage locks routes (protected, nested under projects)
+app.use('/api/projects', authenticateUser, sceneStageLockRouter);
 
 // LLM routes (protected)
 app.use('/api/llm', authenticateUser, llmRouter);
