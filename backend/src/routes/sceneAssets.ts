@@ -483,4 +483,146 @@ router.delete('/:projectId/scenes/:sceneId/assets/:instanceId', async (req, res)
   }
 });
 
+// ============================================================================
+// DETERMINISTIC PRE-POPULATION
+// ============================================================================
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/assets/populate-from-dependencies
+ * Pre-populate scene asset instances from scene expected_* fields matched
+ * against locked project_assets. Instant, no LLM.
+ */
+router.post('/:projectId/scenes/:sceneId/assets/populate-from-dependencies', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId } = req.params;
+
+    // Verify project ownership
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Fetch scene dependencies
+    const { data: scene, error: sceneError } = await supabase
+      .from('scenes')
+      .select('id, expected_characters, expected_location, expected_props')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+
+    if (sceneError || !scene) {
+      return res.status(404).json({ error: 'Scene not found' });
+    }
+
+    const expectedChars: string[] = scene.expected_characters || [];
+    const expectedLocation: string = scene.expected_location || '';
+    const expectedProps: string[] = scene.expected_props || [];
+
+    // If no dependencies at all, return empty
+    if (expectedChars.length === 0 && !expectedLocation && expectedProps.length === 0) {
+      return res.json({ instances: [], matched: 0 });
+    }
+
+    // Fetch all project_assets for this branch
+    const { data: projectAssets, error: assetsError } = await supabase
+      .from('project_assets')
+      .select('id, name, asset_type')
+      .eq('branch_id', project.active_branch_id);
+
+    if (assetsError || !projectAssets) {
+      return res.status(500).json({ error: 'Failed to fetch project assets' });
+    }
+
+    // Check for existing scene asset instances to avoid duplicates
+    const { data: existingInstances } = await supabase
+      .from('scene_asset_instances')
+      .select('project_asset_id')
+      .eq('scene_id', sceneId);
+
+    const existingAssetIds = new Set(
+      (existingInstances || []).map((i: { project_asset_id: string }) => i.project_asset_id)
+    );
+
+    // Build a case-insensitive lookup map
+    const assetsByNameLower = new Map<string, typeof projectAssets[0]>();
+    for (const asset of projectAssets) {
+      assetsByNameLower.set(asset.name.toLowerCase(), asset);
+    }
+
+    // Match expected dependencies to project assets
+    const instancesToCreate: Array<{
+      scene_id: string;
+      project_asset_id: string;
+      carry_forward: boolean;
+      status_tags: string[];
+    }> = [];
+
+    for (const charName of expectedChars) {
+      const asset = assetsByNameLower.get(charName.toLowerCase());
+      if (asset && !existingAssetIds.has(asset.id)) {
+        instancesToCreate.push({
+          scene_id: sceneId,
+          project_asset_id: asset.id,
+          carry_forward: true,
+          status_tags: [],
+        });
+        existingAssetIds.add(asset.id);
+      }
+    }
+
+    if (expectedLocation) {
+      const asset = assetsByNameLower.get(expectedLocation.toLowerCase());
+      if (asset && !existingAssetIds.has(asset.id)) {
+        instancesToCreate.push({
+          scene_id: sceneId,
+          project_asset_id: asset.id,
+          carry_forward: true,
+          status_tags: [],
+        });
+        existingAssetIds.add(asset.id);
+      }
+    }
+
+    for (const propName of expectedProps) {
+      const asset = assetsByNameLower.get(propName.toLowerCase());
+      if (asset && !existingAssetIds.has(asset.id)) {
+        instancesToCreate.push({
+          scene_id: sceneId,
+          project_asset_id: asset.id,
+          carry_forward: true,
+          status_tags: [],
+        });
+        existingAssetIds.add(asset.id);
+      }
+    }
+
+    if (instancesToCreate.length === 0) {
+      return res.json({ instances: [], matched: 0 });
+    }
+
+    const { data: createdInstances, error: insertError } = await supabase
+      .from('scene_asset_instances')
+      .insert(instancesToCreate)
+      .select('*, project_assets(*)');
+
+    if (insertError) {
+      console.error('[SceneAssets] Populate from deps insert error:', insertError);
+      return res.status(500).json({ error: 'Failed to create scene asset instances' });
+    }
+
+    console.log(`[SceneAssets] Pre-populated ${createdInstances.length} assets from dependencies for scene ${sceneId}`);
+    res.json({ instances: createdInstances, matched: createdInstances.length });
+  } catch (err) {
+    console.error('[SceneAssets] Populate from dependencies error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export const sceneAssetsRouter = router;
