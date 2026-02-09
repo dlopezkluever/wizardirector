@@ -9,6 +9,7 @@ import { AssetExtractionService } from '../services/assetExtractionService.js';
 import { ImageGenerationService } from '../services/image-generation/ImageGenerationService.js';
 import { localizeAssetImage } from '../services/assetImageLocalizer.js';
 import { mergeDescriptions } from '../services/assetDescriptionMerger.js';
+import { extractManifest } from '../utils/scriptManifest.js';
 import multer from 'multer';
 import path from 'path';
 
@@ -149,6 +150,197 @@ router.post('/:projectId/assets/extract', async (req, res) => {
         res.status(500).json({
             error: 'Asset extraction failed',
             message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/assets/extract-preview
+ * Instant preview of entities aggregated from scene dependencies (no LLM).
+ * Falls back to tiptapDoc from stage_states if scenes have empty dependencies.
+ */
+router.post('/:projectId/assets/extract-preview', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId } = req.params;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Try aggregation from scenes table first
+        const entities = await extractionService.aggregatePreview(project.active_branch_id);
+
+        // Fallback: if scenes have empty dependencies, try tiptapDoc from stage_states
+        const hasPopulatedDeps = entities.length > 0;
+        if (!hasPopulatedDeps) {
+            console.log('[ProjectAssets] No scene dependencies found, trying tiptapDoc fallback');
+
+            const { data: stage4States } = await supabase
+                .from('stage_states')
+                .select('content')
+                .eq('branch_id', project.active_branch_id)
+                .eq('stage_number', 4)
+                .order('version', { ascending: false })
+                .limit(1);
+
+            const tiptapDoc = stage4States?.[0]?.content?.tiptapDoc;
+            if (tiptapDoc) {
+                const manifest = extractManifest(tiptapDoc);
+                // Convert manifest to preview entities
+                const entityMap = new Map<string, { name: string; type: string; sceneNumbers: number[]; mentionCount: number }>();
+
+                for (const [, char] of manifest.globalCharacters) {
+                    entityMap.set(`character:${char.name.toLowerCase()}`, {
+                        name: char.name,
+                        type: 'character',
+                        sceneNumbers: char.sceneNumbers,
+                        mentionCount: char.dialogueCount,
+                    });
+                }
+
+                for (const loc of manifest.globalLocations) {
+                    const sceneNums = manifest.scenes
+                        .filter(s => s.location === loc)
+                        .map(s => s.sceneNumber);
+                    entityMap.set(`location:${loc.toLowerCase()}`, {
+                        name: loc,
+                        type: 'location',
+                        sceneNumbers: sceneNums,
+                        mentionCount: sceneNums.length,
+                    });
+                }
+
+                for (const [, prop] of manifest.globalProps) {
+                    entityMap.set(`prop:${prop.name.toLowerCase()}`, {
+                        name: prop.name,
+                        type: 'prop',
+                        sceneNumbers: prop.sceneNumbers,
+                        mentionCount: prop.contexts.length,
+                    });
+                }
+
+                const previewEntities = Array.from(entityMap.values());
+                const counts = {
+                    characters: previewEntities.filter(e => e.type === 'character').length,
+                    locations: previewEntities.filter(e => e.type === 'location').length,
+                    props: previewEntities.filter(e => e.type === 'prop').length,
+                };
+
+                return res.json({ entities: previewEntities, counts });
+            }
+        }
+
+        // Convert RawEntity[] to preview format
+        const previewEntities = entities.map(e => ({
+            name: e.name,
+            type: e.type,
+            sceneNumbers: [...new Set(e.mentions.map(m => m.sceneNumber))],
+            mentionCount: e.mentions.length,
+        }));
+
+        const counts = {
+            characters: previewEntities.filter(e => e.type === 'character').length,
+            locations: previewEntities.filter(e => e.type === 'location').length,
+            props: previewEntities.filter(e => e.type === 'prop').length,
+        };
+
+        res.json({ entities: previewEntities, counts });
+    } catch (error) {
+        console.error('[ProjectAssets] Extract preview error:', error);
+        res.status(500).json({
+            error: 'Preview extraction failed',
+            message: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/assets/extract-confirm
+ * Run LLM Pass 2 (visual distillation) only for user-selected entities.
+ */
+router.post('/:projectId/assets/extract-confirm', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId } = req.params;
+        const { selectedEntities } = req.body;
+
+        if (!selectedEntities || !Array.isArray(selectedEntities) || selectedEntities.length === 0) {
+            return res.status(400).json({ error: 'selectedEntities array is required and must not be empty' });
+        }
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Get visual style from Stage 5
+        const { data: stage5States } = await supabase
+            .from('stage_states')
+            .select('content')
+            .eq('branch_id', project.active_branch_id)
+            .eq('stage_number', 5)
+            .order('version', { ascending: false })
+            .limit(1);
+
+        const visualStyleId = stage5States?.[0]?.content?.locked_visual_style_capsule_id;
+        if (!visualStyleId) {
+            return res.status(400).json({
+                error: 'Visual Style Capsule must be selected before extraction',
+            });
+        }
+
+        console.log(`[ProjectAssets] Confirming extraction of ${selectedEntities.length} entities`);
+
+        const extractedAssets = await extractionService.extractSelectedAssets(
+            project.active_branch_id,
+            selectedEntities,
+            visualStyleId
+        );
+
+        // Save to database (same insert logic as existing extract)
+        const assetsToInsert = extractedAssets.map(asset => ({
+            project_id: projectId,
+            branch_id: project.active_branch_id,
+            name: asset.name,
+            asset_type: asset.type,
+            description: asset.description,
+            visual_style_capsule_id: visualStyleId,
+            locked: false,
+        }));
+
+        const { data: savedAssets, error: insertError } = await supabase
+            .from('project_assets')
+            .insert(assetsToInsert)
+            .select();
+
+        if (insertError) {
+            console.error('[ProjectAssets] Insert error:', insertError);
+            return res.status(500).json({ error: 'Failed to save extracted assets' });
+        }
+
+        console.log(`[ProjectAssets] Confirmed and saved ${savedAssets.length} assets`);
+        res.json(savedAssets);
+    } catch (error) {
+        console.error('[ProjectAssets] Extract confirm error:', error);
+        res.status(500).json({
+            error: 'Asset extraction confirmation failed',
+            message: error instanceof Error ? error.message : 'Unknown error',
         });
     }
 });
