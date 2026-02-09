@@ -32,3 +32,11 @@ The desired functionality
 **Dependencies**: None.
 
 --
+What would be mos delicious:
+User presses "Streamline"
+
+[ Enter file ]  [Identify doc *dropdown*] [if script: "Skip to Script (toggle Y/N)] 
+           [    +  Add More  +   ]
+ 
+now, if the user uploads a bunch, including a script, and then  
+THe selected docs (if they enter, )
