@@ -1438,7 +1438,7 @@ router.post('/:id/scenes/:sceneId/shots/lock', async (req, res) => {
 
     const { data: scene, error: sceneError } = await supabase
       .from('scenes')
-      .select('id, scene_number, status, shot_list_locked_at, expected_characters')
+      .select('id, scene_number, status, shot_list_locked_at, expected_characters, stage_locks')
       .eq('id', sceneId)
       .eq('branch_id', project.active_branch_id)
       .single();
@@ -1518,9 +1518,19 @@ router.post('/:id/scenes/:sceneId/shots/lock', async (req, res) => {
     // 7. Lock the shot list
     // Note: The database trigger will automatically set status to 'shot_list_ready'
     // when shot_list_locked_at is set (defense-in-depth)
+    const now = new Date().toISOString();
+
+    // Also sync stage_locks JSONB for the new locking system
+    const existingLocks = (scene as any).stage_locks || {};
+    const updatedStageLocks = {
+      ...existingLocks,
+      '7': { status: 'locked', locked_at: now }
+    };
+
     const updateData: any = {
-      shot_list_locked_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      shot_list_locked_at: now,
+      updated_at: now,
+      stage_locks: updatedStageLocks
     };
 
     // Store forced lock metadata for audit trail (only if scenes.metadata column exists)
@@ -1583,7 +1593,7 @@ router.post('/:id/scenes/:sceneId/shots/unlock', async (req, res) => {
     // 2. Fetch scene
     const { data: scene, error: sceneError } = await supabase
       .from('scenes')
-      .select('id, status, shot_list_locked_at, dependencies_extracted_at')
+      .select('id, status, shot_list_locked_at, dependencies_extracted_at, stage_locks')
       .eq('id', sceneId)
       .eq('branch_id', project.active_branch_id)
       .single();
@@ -1684,11 +1694,22 @@ router.post('/:id/scenes/:sceneId/shots/unlock', async (req, res) => {
     // Note: The database trigger will automatically revert status to 'draft' if currently
     // at 'shot_list_ready'. If status is 'frames_locked' or 'video_complete', the trigger
     // leaves it unchanged (those require explicit handling via invalidation).
+    // Also sync stage_locks JSONB: set stage 7 to draft, downstream to outdated
+    const existingLocks = (scene as any).stage_locks || {};
+    const updatedStageLocks = { ...existingLocks, '7': { status: 'draft' } };
+    for (let s = 8; s <= 12; s++) {
+      const lock = updatedStageLocks[String(s)];
+      if (lock && (lock.status === 'locked' || lock.status === 'outdated')) {
+        updatedStageLocks[String(s)] = { status: 'outdated' };
+      }
+    }
+
     const { data: unlockedScene, error: updateError } = await supabase
       .from('scenes')
       .update({
         shot_list_locked_at: null,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        stage_locks: updatedStageLocks
       })
       .eq('id', sceneId)
       .select('*')
