@@ -449,6 +449,16 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
   const handleDetectAndPopulateAssets = useCallback(async () => {
     setIsDetecting(true);
     try {
+      // Try deterministic pre-population first (instant, no LLM)
+      const depResult = await sceneAssetService.populateFromDependencies(projectId, sceneId);
+
+      if (depResult.matched > 0) {
+        queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
+        toast.success(`Pre-populated ${depResult.matched} assets from script dependencies`);
+        return; // Success — skip AI detection
+      }
+
+      // Fallback: AI relevance detection if no dependencies matched
       const relevance = await sceneAssetService.detectRelevantAssets(projectId, sceneId);
       const createPromises = relevance.relevant_assets.map(ra =>
         sceneAssetService.createSceneAsset(projectId, {
