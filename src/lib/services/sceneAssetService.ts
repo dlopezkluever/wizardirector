@@ -10,6 +10,8 @@ import type {
   CreateSceneAssetInstanceRequest,
   UpdateSceneAssetInstanceRequest,
   SceneAssetRelevanceResult,
+  SceneAssetGenerationAttempt,
+  MasterReferenceItem,
 } from '@/types/scene';
 
 export interface BulkImageGenerationRequest {
@@ -357,6 +359,285 @@ class SceneAssetService {
       await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
       attempt++;
     }
+  }
+  // ===========================================================================
+  // GENERATION ATTEMPTS (3B.1)
+  // ===========================================================================
+
+  /**
+   * List all generation attempts for a scene asset instance
+   */
+  async listAttempts(
+    projectId: string,
+    sceneId: string,
+    instanceId: string
+  ): Promise<SceneAssetGenerationAttempt[]> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/assets/${instanceId}/attempts`,
+      {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch attempts');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Select an attempt as the active image
+   */
+  async selectAttempt(
+    projectId: string,
+    sceneId: string,
+    instanceId: string,
+    attemptId: string
+  ): Promise<SceneAssetGenerationAttempt> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/assets/${instanceId}/attempts/${attemptId}/select`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to select attempt');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Delete a non-selected attempt
+   */
+  async deleteAttempt(
+    projectId: string,
+    sceneId: string,
+    instanceId: string,
+    attemptId: string
+  ): Promise<void> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/assets/${instanceId}/attempts/${attemptId}`,
+      {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to delete attempt');
+    }
+  }
+
+  // ===========================================================================
+  // USE MASTER AS-IS (3B.4)
+  // ===========================================================================
+
+  /**
+   * Toggle "use master as-is" for a single instance
+   */
+  async setUseMasterAsIs(
+    projectId: string,
+    sceneId: string,
+    instanceId: string,
+    enabled: boolean
+  ): Promise<SceneAssetInstance> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/assets/${instanceId}/use-master-as-is`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ enabled }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to set use master as-is');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Bulk toggle "use master as-is" for multiple instances
+   */
+  async bulkUseMasterAsIs(
+    projectId: string,
+    sceneId: string,
+    instanceIds: string[],
+    enabled: boolean
+  ): Promise<{ results: Array<{ instanceId: string; success: boolean; error?: string }> }> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/assets/bulk-use-master-as-is`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ instanceIds, enabled }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to bulk set use master as-is');
+    }
+
+    return response.json();
+  }
+
+  // ===========================================================================
+  // MASTER REFERENCE CHAIN (3B.2)
+  // ===========================================================================
+
+  /**
+   * Get the master reference chain for a scene asset instance
+   */
+  async getReferenceChain(
+    projectId: string,
+    sceneId: string,
+    instanceId: string
+  ): Promise<MasterReferenceItem[]> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/assets/${instanceId}/reference-chain`,
+      {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch reference chain');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Select a master reference from the chain
+   */
+  async selectMasterReference(
+    projectId: string,
+    sceneId: string,
+    instanceId: string,
+    item: MasterReferenceItem
+  ): Promise<SceneAssetInstance> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/assets/${instanceId}/select-master-reference`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          source: item.source,
+          instanceId: item.instanceId,
+          imageUrl: item.imageUrl,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to select master reference');
+    }
+
+    return response.json();
+  }
+
+  // ===========================================================================
+  // IMAGE UPLOAD (3B.3)
+  // ===========================================================================
+
+  /**
+   * Upload a custom image for a scene asset instance
+   */
+  async uploadSceneAssetImage(
+    projectId: string,
+    sceneId: string,
+    instanceId: string,
+    file: File
+  ): Promise<SceneAssetInstance> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const formData = new FormData();
+    formData.append('image', file);
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/assets/${instanceId}/upload-image`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: formData,
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to upload image');
+    }
+
+    return response.json();
   }
 }
 

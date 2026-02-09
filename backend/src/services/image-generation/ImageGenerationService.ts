@@ -2,6 +2,7 @@ import { supabase } from '../../config/supabase.js';
 import { NanoBananaClient } from './NanoBananaClient.js';
 import { ImageProvider, ImageGenerationOptions, ImageArtifact, ReferenceImage } from './ImageProviderInterface.js';
 import { v4 as uuidv4 } from 'uuid';
+import { SceneAssetAttemptsService } from '../sceneAssetAttemptsService.js';
 
 interface VisualStyleContext {
     textContext: string;
@@ -271,8 +272,48 @@ export class ImageGenerationService {
                 }
             }
 
-            // If this is a scene_asset job, update the scene_asset_instances table
+            // If this is a scene_asset job, update the scene_asset_instances table + create attempt
             if (request.jobType === 'scene_asset' && request.sceneId && request.assetId) {
+                // Find the instance ID for this scene/asset pair
+                const { data: sceneInstance } = await supabase
+                    .from('scene_asset_instances')
+                    .select('id')
+                    .eq('scene_id', request.sceneId)
+                    .eq('project_asset_id', request.assetId)
+                    .single();
+
+                if (sceneInstance) {
+                    const attemptsService = new SceneAssetAttemptsService();
+
+                    // Enforce 8-attempt cap before creating new one
+                    await attemptsService.enforceAttemptCap(sceneInstance.id);
+
+                    // Deselect any previously selected attempt
+                    await supabase
+                        .from('scene_asset_generation_attempts')
+                        .update({ is_selected: false })
+                        .eq('scene_asset_instance_id', sceneInstance.id)
+                        .eq('is_selected', true);
+
+                    // Create new attempt as selected
+                    await attemptsService.createAttempt(sceneInstance.id, {
+                        image_url: urlData.publicUrl,
+                        storage_path: storagePath,
+                        source: 'generated',
+                        is_selected: true,
+                        image_generation_job_id: jobId,
+                        prompt_snapshot: request.prompt,
+                        cost_credits: this.provider.estimateCost({
+                            prompt: request.prompt,
+                            width: request.width,
+                            height: request.height
+                        }),
+                    });
+
+                    console.log(`[ImageService] Created generation attempt for instance ${sceneInstance.id}`);
+                }
+
+                // Keep existing image_key_url update
                 const { error: sceneUpdateError } = await supabase
                     .from('scene_asset_instances')
                     .update({ image_key_url: urlData.publicUrl })

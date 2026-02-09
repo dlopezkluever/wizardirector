@@ -62,7 +62,7 @@ export interface SceneAsset {
   masterAssetId?: string;
 }
 
-/** Aligned with database schema (migration 015 + 017 scene_asset_instances). */
+/** Aligned with database schema (migration 015 + 017 + 022 scene_asset_instances). */
 export interface SceneAssetInstance {
   id: string;
   scene_id: string;
@@ -80,8 +80,44 @@ export interface SceneAssetInstance {
   last_modified_field?: string | null;
   /** Audit trail: optional user-provided reason for change (migration 017). */
   modification_reason?: string | null;
+  /** 3B.4: Use master asset image directly without generating (migration 022). */
+  use_master_as_is?: boolean;
+  /** 3B.2: URL of the selected master reference image (migration 022). */
+  selected_master_reference_url?: string | null;
+  /** 3B.2: Source of master reference (migration 022). */
+  selected_master_reference_source?: 'stage5_master' | 'prior_scene_instance' | null;
+  /** 3B.2: Instance ID if reference is from a prior scene instance (migration 022). */
+  selected_master_reference_instance_id?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** A single generation attempt for a scene asset instance (migration 022). */
+export interface SceneAssetGenerationAttempt {
+  id: string;
+  scene_asset_instance_id: string;
+  image_url: string;
+  storage_path?: string | null;
+  source: 'generated' | 'uploaded' | 'master_copy';
+  is_selected: boolean;
+  image_generation_job_id?: string | null;
+  prompt_snapshot?: string | null;
+  cost_credits?: number | null;
+  original_filename?: string | null;
+  file_size_bytes?: number | null;
+  mime_type?: string | null;
+  copied_from_url?: string | null;
+  attempt_number: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A single item in the master reference chain (3B.2). */
+export interface MasterReferenceItem {
+  source: 'stage5_master' | 'prior_scene_instance';
+  imageUrl: string;
+  sceneNumber: number | null;
+  instanceId?: string;
 }
 
 export interface CreateSceneAssetInstanceRequest {
