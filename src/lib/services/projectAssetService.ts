@@ -4,7 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
-import type { ProjectAsset, CloneAssetRequest, AssetVersionStatus } from '@/types/asset';
+import type { ProjectAsset, CloneAssetRequest, AssetVersionStatus, AssetPreviewResponse, AssetType } from '@/types/asset';
 
 export interface ExtractAssetsResponse {
   assets: ProjectAsset[];
@@ -42,6 +42,63 @@ export interface ImageGenerationJobResponse {
 
 class ProjectAssetService {
   /**
+   * Instant preview of entities extracted from scene dependencies (no LLM).
+   */
+  async extractPreview(projectId: string): Promise<AssetPreviewResponse> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/extract-preview`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to preview assets');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Confirm extraction: run LLM Pass 2 only for user-selected entities.
+   */
+  async extractConfirm(
+    projectId: string,
+    selectedEntities: Array<{ name: string; type: AssetType }>
+  ): Promise<ProjectAsset[]> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/extract-confirm`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ selectedEntities }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to confirm asset extraction');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * @deprecated Use extractPreview() + extractConfirm() for two-pass flow.
    * Extract assets from Stage 4 script using two-pass LLM
    */
   async extractAssets(projectId: string): Promise<ProjectAsset[]> {
