@@ -161,6 +161,38 @@ class StageStateService {
   }
 
   /**
+   * Unlock a Phase A stage (1-5). Two-phase: without confirm returns impact, with confirm executes.
+   */
+  async unlockStage(projectId: string, stageNumber: number, confirm = false): Promise<{ downstreamStages?: number[]; message?: string; success?: boolean }> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/stages/${stageNumber}/unlock`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ confirm }),
+    });
+
+    // 409 = impact assessment (not yet confirmed)
+    if (response.status === 409) {
+      return response.json();
+    }
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to unlock stage');
+    }
+
+    return response.json();
+  }
+
+  /**
    * Auto-save with debouncing to prevent excessive API calls
    */
   autoSave(
