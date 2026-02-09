@@ -1,9 +1,14 @@
 /**
  * Scene Dependency Extraction Service
- * 
+ *
+ * @deprecated Prefer deterministic extraction via extractManifest() in
+ * backend/src/utils/scriptManifest.ts. This LLM-based service is kept as a
+ * legacy fallback for projects that were approved before tiptapDoc was
+ * available. New code should NOT call this service directly.
+ *
  * Extracts raw character names, location, and props from scene script excerpts
  * Called during Stage 4 scene parsing (not Stage 6 scene fetching)
- * 
+ *
  * CRITICAL: No fuzzy matching at this stage - raw extraction only
  * Fuzzy matching happens in Stage 5 when assets are created
  */
@@ -22,21 +27,23 @@ interface ExtractionResult {
   props: string[];
 }
 
+/**
+ * @deprecated Use extractManifest() from backend/src/utils/scriptManifest.ts instead.
+ */
 export class SceneDependencyExtractionService {
   /**
+   * @deprecated Use extractManifest() for deterministic extraction from tiptapDoc.
+   * This LLM-based method is kept as a legacy fallback only.
+   *
    * Extract raw dependencies from a single scene
    * Called during Stage 4 scene parsing (scriptService.extractScenes)
    * No fuzzy matching - that happens in Stage 5 asset aggregation
-   * 
-   * Includes error handling for:
-   * - LLM extraction failures → Fallback to empty arrays/strings, log warning
-   * - Timeout (15 seconds) → Return partial results with regex-based location
-   * - Rate limiting → Return empty values (cached values not yet implemented)
    */
   async extractDependencies(
-    sceneHeading: string, 
+    sceneHeading: string,
     scriptExcerpt: string
   ): Promise<SceneDependencies> {
+    console.warn(`⚠️ [SceneDependency] Legacy LLM path invoked for scene: ${sceneHeading}. Consider migrating to extractManifest().`);
     console.log(`🔍 [SceneDependency] Extracting dependencies for scene: ${sceneHeading}`);
 
     // First, try regex-based location extraction from heading (always available as fallback)
