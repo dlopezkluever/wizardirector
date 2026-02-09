@@ -25,20 +25,32 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { checkoutService } from '@/lib/services/checkoutService';
 import type { ModelVariant, ShotCheckoutDetail } from '@/types/scene';
+import { LockedStageHeader } from './LockedStageHeader';
+import { UnlockWarningDialog } from './UnlockWarningDialog';
+import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
+import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
 
 interface Stage11ConfirmationProps {
   projectId: string;
   sceneId: string;
   onComplete: () => void;
   onBack: () => void;
+  onNext?: () => void;
 }
 
 export function Stage11Confirmation({
   projectId,
   sceneId,
   onComplete,
-  onBack
+  onBack,
+  onNext,
 }: Stage11ConfirmationProps) {
+  const { isLocked: isStageLocked, isOutdated: isStageOutdated, lockStage, unlockStage, confirmUnlock, relockStage } = useSceneStageLock({ projectId, sceneId });
+  const [showUnlockWarning, setShowUnlockWarning] = useState(false);
+  const [unlockImpact, setUnlockImpact] = useState<UnlockImpact | null>(null);
+  const [isConfirmingUnlock, setIsConfirmingUnlock] = useState(false);
+  const stage11Locked = isStageLocked(11);
+  const stage11Outdated = isStageOutdated(11);
   const queryClient = useQueryClient();
   const [expandedShots, setExpandedShots] = useState<string[]>([]);
   const [modelVariant, setModelVariant] = useState<ModelVariant>('veo_3_1_fast');
@@ -124,6 +136,25 @@ export function Stage11Confirmation({
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      {(stage11Locked || stage11Outdated) && (
+        <LockedStageHeader
+          stageNumber={11}
+          title="Confirmation"
+          isLocked={stage11Locked}
+          isOutdated={stage11Outdated}
+          onBack={onBack}
+          onNext={onNext}
+          onUnlockAndEdit={async () => {
+            try {
+              const impact = await unlockStage(11);
+              if (impact) { setUnlockImpact(impact); setShowUnlockWarning(true); }
+            } catch { /* handled */ }
+          }}
+          onRelock={stage11Outdated ? () => relockStage(11) : undefined}
+          lockAndProceedLabel="Confirm & Render"
+        />
+      )}
+
       {/* Header */}
       <div className="p-6 border-b border-border/50">
         <div className="flex items-center gap-3 mb-2">
@@ -348,13 +379,32 @@ export function Stage11Confirmation({
         </motion.div>
       </div>
 
-      {/* Footer */}
-      <div className="p-4 border-t border-border/50 bg-card/30">
-        <Button variant="ghost" onClick={onBack}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Frames
-        </Button>
-      </div>
+      {/* Footer — hidden when locked */}
+      {!stage11Locked && !stage11Outdated && (
+        <div className="p-4 border-t border-border/50 bg-card/30">
+          <Button variant="ghost" onClick={onBack}>
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Frames
+          </Button>
+        </div>
+      )}
+
+      <UnlockWarningDialog
+        open={showUnlockWarning}
+        onOpenChange={setShowUnlockWarning}
+        impact={unlockImpact}
+        stageNumber={11}
+        stageTitle="Confirmation"
+        onConfirm={async () => {
+          try {
+            setIsConfirmingUnlock(true);
+            await confirmUnlock(11);
+            setShowUnlockWarning(false);
+            setUnlockImpact(null);
+          } catch { /* handled */ } finally { setIsConfirmingUnlock(false); }
+        }}
+        isConfirming={isConfirmingUnlock}
+      />
     </div>
   );
 }
