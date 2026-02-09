@@ -97,7 +97,7 @@ export class Veo3Provider implements VideoProvider {
                 durationSeconds: duration,
                 sampleCount: 1,
                 generateAudio: true,
-                aspectRatio: '16:9',
+                aspectRatio: params.aspectRatio || '16:9',
                 personGeneration: 'allow_adult',
                 resizeMode: 'pad',
             },

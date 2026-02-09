@@ -13,6 +13,7 @@ export interface UpdateProjectRequest {
   tonal_precision?: string;
   target_length_min?: number;
   target_length_max?: number;
+  aspect_ratio?: '16:9' | '9:16';
 }
 
 class ProjectService {

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 interface ProjectHeaderProps {
   projectTitle: string;
   currentBranch: string;
+  aspectRatio?: string;
   onBack: () => void;
   onOpenVault: () => void;
   onOpenVersionHistory: () => void;
@@ -14,6 +15,7 @@ interface ProjectHeaderProps {
 export function ProjectHeader({
   projectTitle,
   currentBranch,
+  aspectRatio,
   onBack,
   onOpenVault,
   onOpenVersionHistory,
@@ -44,6 +46,11 @@ export function ProjectHeader({
             <GitBranch className="w-3.5 h-3.5" />
             <span>{currentBranch}</span>
           </div>
+          {aspectRatio && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-sm text-secondary-foreground">
+              <span>{aspectRatio}</span>
+            </div>
+          )}
         </div>
       </div>
 

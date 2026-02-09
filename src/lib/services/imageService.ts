@@ -184,18 +184,24 @@ class ImageService {
     projectId: string,
     prompt: string,
     visualStyleCapsuleId: string,
-    isStartFrame: boolean = true
+    isStartFrame: boolean = true,
+    aspectRatio: string = '16:9'
   ): Promise<ImageGenerationResponse> {
     const frameType = isStartFrame ? 'start' : 'end';
     const enhancedPrompt = `${prompt}\n\nThis is the ${frameType} frame of an 8-second video shot. Ensure the composition and lighting are consistent with the visual style.`;
+
+    // Map aspect ratio to frame anchor dimensions
+    const dimensions = aspectRatio === '9:16'
+      ? { width: 576, height: 1024 }
+      : { width: 1024, height: 576 };
 
     const request: ImageGenerationRequest = {
       prompt: enhancedPrompt,
       visualStyleCapsuleId,
       projectId,
       stageNumber: 10,
-      width: 1024,
-      height: 576 // 16:9 aspect ratio
+      width: dimensions.width,
+      height: dimensions.height
     };
 
     return this.generateImage(request);
@@ -208,20 +214,26 @@ class ImageService {
     imageUrl: string,
     maskDescription: string,
     newContent: string,
-    visualStyleCapsuleId?: string
+    visualStyleCapsuleId?: string,
+    aspectRatio: string = '16:9'
   ): Promise<ImageGenerationResponse> {
     // TODO: Implement inpainting functionality
     // This would use Nano Banana's inpainting capabilities
 
     const prompt = `Inpaint the following area: ${maskDescription}. Replace with: ${newContent}. Maintain the overall composition and visual style.`;
 
+    // Map aspect ratio to frame dimensions
+    const dimensions = aspectRatio === '9:16'
+      ? { width: 576, height: 1024 }
+      : { width: 1024, height: 576 };
+
     const request: ImageGenerationRequest = {
       prompt,
       visualStyleCapsuleId,
       projectId: 'unknown', // Would need to be passed in
       stageNumber: 10,
-      width: 1024,
-      height: 576
+      width: dimensions.width,
+      height: dimensions.height
     };
 
     return this.generateImage(request);

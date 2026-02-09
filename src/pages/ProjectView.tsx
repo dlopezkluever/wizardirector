@@ -60,6 +60,7 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
 
   const [projectTitle, setProjectTitle] = useState('Loading...');
   const [currentBranch, setCurrentBranch] = useState('main');
+  const [projectAspectRatio, setProjectAspectRatio] = useState<string>('16:9');
   const [isLoadingProject, setIsLoadingProject] = useState(true);
   const [hasReachedPhaseB, setHasReachedPhaseB] = useState(false);
   const hasRestoredStage = useRef(false);
@@ -138,6 +139,7 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
         const project = await projectService.getProject(projectId);
         setProjectTitle(project.title);
         setCurrentBranch(project.branch);
+        setProjectAspectRatio(project.aspectRatio || '16:9');
       } catch (error) {
         console.error('Failed to load project:', error);
         toast.error('Failed to load project');
@@ -678,6 +680,7 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
         <ProjectHeader
           projectTitle={projectTitle}
           currentBranch={currentBranch}
+          aspectRatio={projectAspectRatio}
           onBack={handleExitScene}
           onOpenVault={() => toast.info('Artifact Vault coming soon')}
           onOpenVersionHistory={() => toast.info('Story Timelines coming soon')}
@@ -760,12 +763,13 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
         <ProjectHeader
           projectTitle={projectTitle}
           currentBranch={currentBranch}
+          aspectRatio={projectAspectRatio}
           onBack={onBack || (() => window.history.back())}
           onOpenVault={() => toast.info('Artifact Vault coming soon')}
           onOpenVersionHistory={() => toast.info('Story Timelines coming soon')}
           onCreateBranch={() => toast.info('Branch creation coming soon')}
         />
-        
+
         <Stage6ScriptHub
           onEnterScene={handleEnterScene}
           onEnterSceneAtStage={handleEnterSceneAtStage}
@@ -781,12 +785,13 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
       <ProjectHeader
         projectTitle={projectTitle}
         currentBranch={currentBranch}
+        aspectRatio={projectAspectRatio}
         onBack={onBack || (() => window.history.back())}
         onOpenVault={() => toast.info('Artifact Vault coming soon')}
         onOpenVersionHistory={() => toast.info('Story Timelines coming soon')}
         onCreateBranch={() => toast.info('Branch creation coming soon')}
       />
-      
+
       <PhaseTimeline
         stages={stages}
         currentStage={currentStage}

@@ -26,6 +26,7 @@ router.get('/', async (req, res) => {
         tonal_precision,
         target_length_min,
         target_length_max,
+        aspect_ratio,
         created_at,
         updated_at,
         active_branch_id,
@@ -203,6 +204,7 @@ router.get('/', async (req, res) => {
         contentRating: project.content_rating,
         genres: project.genre || [],
         tonalPrecision: project.tonal_precision || '',
+        aspectRatio: project.aspect_ratio || '16:9',
         targetLength: {
           min: project.target_length_min,
           max: project.target_length_max
@@ -235,6 +237,7 @@ router.get('/:id', async (req, res) => {
         tonal_precision,
         target_length_min,
         target_length_max,
+        aspect_ratio,
         created_at,
         updated_at,
         active_branch_id,
@@ -286,6 +289,7 @@ router.get('/:id', async (req, res) => {
       contentRating: project.content_rating,
       genres: project.genre || [],
       tonalPrecision: project.tonal_precision || '',
+      aspectRatio: project.aspect_ratio || '16:9',
       targetLength: {
         min: project.target_length_min,
         max: project.target_length_max
@@ -340,6 +344,7 @@ router.post('/', async (req, res) => {
         tonal_precision,
         target_length_min,
         target_length_max,
+        aspect_ratio,
         created_at,
         updated_at,
         active_branch_id,
@@ -371,6 +376,7 @@ router.post('/', async (req, res) => {
       projectType: project.project_type,
       contentRating: project.content_rating,
       genres: project.genre || [],
+      aspectRatio: project.aspect_ratio || '16:9',
       targetLength: {
         min: project.target_length_min,
         max: project.target_length_max
@@ -389,14 +395,15 @@ router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user!.id;
-    const { 
+    const {
       title,
       project_type,
       content_rating,
       genre,
       tonal_precision,
       target_length_min,
-      target_length_max
+      target_length_max,
+      aspect_ratio
     } = req.body;
 
     console.log('🔄 Updating project configuration:', { id, userId, title, project_type });
@@ -469,6 +476,13 @@ router.put('/:id', async (req, res) => {
       updateData.target_length_max = target_length_max;
     }
 
+    if (aspect_ratio !== undefined) {
+      if (!['16:9', '9:16'].includes(aspect_ratio)) {
+        return res.status(400).json({ error: 'Invalid aspect ratio. Must be 16:9 or 9:16' });
+      }
+      updateData.aspect_ratio = aspect_ratio;
+    }
+
     // Update the project
     const { data: updatedProject, error: updateError } = await supabase
       .from('projects')
@@ -484,6 +498,7 @@ router.put('/:id', async (req, res) => {
         tonal_precision,
         target_length_min,
         target_length_max,
+        aspect_ratio,
         created_at,
         updated_at,
         active_branch_id,
@@ -531,6 +546,7 @@ router.put('/:id', async (req, res) => {
       projectType: updatedProject.project_type,
       contentRating: updatedProject.content_rating,
       genres: updatedProject.genre || [],
+      aspectRatio: updatedProject.aspect_ratio || '16:9',
       targetLength: {
         min: updatedProject.target_length_min,
         max: updatedProject.target_length_max
