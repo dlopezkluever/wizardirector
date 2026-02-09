@@ -180,7 +180,7 @@
 
 ---
 
-#### 2A.7 — Stage 5 "Lock All and Proceed" Button Fix *DONE IGNORE*
+#### 2A.7 — Stage 5 "Lock All and Proceed" Button Fix *DONE IGNORE* ✅ DONE
 **Ticket**: 5.10
 **Priority**: HIGH
 
@@ -220,7 +220,7 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 ---
 
-#### 2A.9 — Regeneration Boxes UI Improvements
+#### 2A.9 — Regeneration Boxes UI Improvements *DONE* ✅ DONE 
 **Ticket**: UI-7
 **Priority**: MEDIUM
 
@@ -300,7 +300,7 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 ---
 
---- The *Defered 🚩* --- 
+--- *The Defered 🚩* --- 
 
 #### 2B.3 — Fix Sequential Locking Errors *Defered 🚩 , as I Don't see this issue anymore* 
 **Ticket**: LK-6
@@ -358,7 +358,7 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 ---
 
-### 3A — Stage 5 Extraction Revolution
+### 3A — Stage 5 Extraction Revolution 
 
 #### 3A.1 — Two-Pass Asset Extraction with Filter Modal
 **Tickets**: 5.3, multi-stage extraction optimization
@@ -1218,7 +1218,7 @@ Adding assets manaully (which is an option when first arriving on stage 8) resul
 - [ ] User can review and edit adaptive descriptions
 
 **Dependencies**: 3A.1 (extraction), 3C.4 (context manager).
-
+ ( **visual descriptions for assets must be adaptive/context-aware per scene**: e.g., if "the hero" starts in a workout outfit but Scene 4 is a wedding, the visual description should automatically describe them in a suit. The agentic tooling should infer the correct context from the script/scene/shot list. (Example: Persephone switching from blonde nature-princess to goth alt-girl in the underworld — the LLM should catch that and apply the correct description per scene.) from tickets: ## Asset Extraction & Continuity Optimization (Stages 5, 8, 10))
 ---
 
 ### Phase 4 Success Criteria
