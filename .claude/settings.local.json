@@ -7,5 +7,6 @@
       "Bash(npm run lint:*)",
       "Bash(npm run build:*)"
     ]
-  }
+  },
+  "outputStyle": "default"
 }
