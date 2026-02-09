@@ -618,21 +618,26 @@ Estimated screen time: ${beat.estimatedScreenTimeSeconds} seconds
 
   /**
    * Persist scenes to database
+   * @param tiptapDoc - Optional TipTap JSON doc for deterministic dependency extraction
    */
-  async persistScenes(projectId: string, scenes: Scene[]): Promise<void> {
+  async persistScenes(projectId: string, scenes: Scene[], tiptapDoc?: object): Promise<void> {
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session?.access_token) {
       throw new Error('User not authenticated');
     }
 
-    const requestBody = {
+    const requestBody: Record<string, unknown> = {
       scenes: scenes.map(scene => ({
         sceneNumber: scene.sceneNumber,
         slug: scene.slug,
         scriptExcerpt: scene.content
-      }))
+      })),
     };
+
+    if (tiptapDoc) {
+      requestBody.tiptapDoc = tiptapDoc;
+    }
 
     console.log(`💾 [SCRIPT SERVICE] Persisting ${scenes.length} scenes to database...`);
 
