@@ -1,32 +1,26 @@
 /**
- * Stage 8 – Visual State Editor Panel (Center) – Task 5
+ * Stage 8 – Visual State Editor Panel (Center) – Task 5 + 3B.1/3B.2/3B.3/3B.4
  * Display and edit the selected scene asset instance's visual description:
  * master details, editable effective_description, inheritance, audit trail,
- * status tags + carry forward, single-asset image generation, lock asset.
+ * status tags + carry forward, single-asset image generation, lock asset,
+ * generation attempt carousel, master reference carousel, image upload,
+ * and "use master as-is" toggle.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import {
-  User,
-  MapPin,
-  Package,
-  Edit3,
-  Image as ImageIcon,
-  Lock,
-  Sparkles,
-  Loader2,
-  History,
-} from 'lucide-react';
+import { User, MapPin, Package, Edit3, Lock, Sparkles, Loader2, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
 import { StatusTagsEditor } from '@/components/pipeline/Stage8/StatusTagsEditor';
-import { cn } from '@/lib/utils';
+import { GenerationAttemptCarousel } from '@/components/pipeline/Stage8/GenerationAttemptCarousel';
+import { MasterReferenceCarousel } from '@/components/pipeline/Stage8/MasterReferenceCarousel';
+import { SceneAssetImageUpload } from '@/components/pipeline/Stage8/SceneAssetImageUpload';
+import { UseMasterAsIsCheckbox } from '@/components/pipeline/Stage8/UseMasterAsIsCheckbox';
 import type { SceneAssetInstance } from '@/types/scene';
-import type { ProjectAsset } from '@/types/asset';
 
 type AssetTypeKey = 'character' | 'location' | 'prop';
 
@@ -53,36 +47,6 @@ export interface VisualStateEditorPanelProps {
   isUpdating?: boolean;
   isGeneratingImage?: boolean;
   inheritedFromSceneNumber?: number | null;
-}
-
-// ---------------------------------------------------------------------------
-// Master Asset Reference – base description + master image
-// ---------------------------------------------------------------------------
-function MasterAssetReference({ asset }: { asset: ProjectAsset | undefined }) {
-  if (!asset) return null;
-  const name = asset.name ?? 'Unknown';
-  return (
-    <div className="space-y-2">
-      <Label className="text-sm font-medium flex items-center gap-2">
-        <ImageIcon className="w-4 h-4 text-primary" />
-        Master reference
-      </Label>
-      {asset.image_key_url && (
-        <div className="aspect-video max-w-xs rounded-lg border border-border/30 overflow-hidden bg-muted/50">
-          <img
-            src={asset.image_key_url}
-            alt={name}
-            className="w-full h-full object-cover"
-          />
-        </div>
-      )}
-      {asset.description && (
-        <p className="text-sm text-muted-foreground border border-border/30 rounded-lg p-3 bg-muted/30">
-          {asset.description}
-        </p>
-      )}
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -198,6 +162,7 @@ export function VisualStateEditorPanel({
   const name = selectedAsset.project_asset?.name ?? 'Unknown';
   const isLocked = statusTags.includes('locked');
   const showAudit = (selectedAsset.modification_count ?? 0) > 0;
+  const useMasterAsIs = selectedAsset.use_master_as_is ?? false;
 
   return (
     <motion.div
@@ -219,7 +184,14 @@ export function VisualStateEditorPanel({
             </p>
           </div>
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
+          <UseMasterAsIsCheckbox
+            projectId={projectId}
+            sceneId={sceneId}
+            instanceId={selectedAsset.id}
+            checked={useMasterAsIs}
+            disabled={isLocked}
+          />
           {!isLocked && (
             <Button
               variant="outline"
@@ -235,7 +207,7 @@ export function VisualStateEditorPanel({
             variant="gold"
             size="sm"
             onClick={() => onGenerateImage(selectedAsset.id)}
-            disabled={isGeneratingImage}
+            disabled={isGeneratingImage || useMasterAsIs}
           >
             {isGeneratingImage ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -251,7 +223,20 @@ export function VisualStateEditorPanel({
 
       <ScrollArea className="flex-1">
         <div className="p-6 space-y-6">
-          <MasterAssetReference asset={selectedAsset.project_asset} />
+          {/* Master Reference Carousel (3B.2) — replaces old static MasterAssetReference */}
+          <MasterReferenceCarousel
+            projectId={projectId}
+            sceneId={sceneId}
+            instanceId={selectedAsset.id}
+            selectedMasterReferenceUrl={selectedAsset.selected_master_reference_url}
+          />
+
+          {/* Master asset description */}
+          {selectedAsset.project_asset?.description && (
+            <p className="text-sm text-muted-foreground border border-border/30 rounded-lg p-3 bg-muted/30">
+              {selectedAsset.project_asset.description}
+            </p>
+          )}
 
           <div className="space-y-2">
             <Label className="text-sm font-medium flex items-center gap-2">
@@ -264,7 +249,7 @@ export function VisualStateEditorPanel({
               onBlur={handleSaveDescription}
               placeholder="Starting look for this asset in this scene…"
               rows={6}
-              disabled={isLocked}
+              disabled={isLocked || useMasterAsIs}
               className="resize-y"
             />
             <p className="text-xs text-muted-foreground">
@@ -280,25 +265,20 @@ export function VisualStateEditorPanel({
             disabled={isLocked || isUpdating}
           />
 
-          <div className="space-y-2">
-            <Label className="text-sm font-medium flex items-center gap-2">
-              <ImageIcon className="w-4 h-4 text-primary" />
-              Scene instance image
-            </Label>
-            {selectedAsset.image_key_url ? (
-              <div className="aspect-video max-w-xs rounded-lg border border-border/30 overflow-hidden bg-muted/50">
-                <img
-                  src={selectedAsset.image_key_url}
-                  alt={`${name} in scene`}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            ) : (
-              <div className="aspect-video max-w-xs rounded-lg border border-dashed border-border/50 bg-muted/30 flex items-center justify-center">
-                <p className="text-xs text-muted-foreground">No image yet. Generate above.</p>
-              </div>
-            )}
-          </div>
+          {/* Generation Attempt Carousel (3B.1) — replaces old static image */}
+          <GenerationAttemptCarousel
+            projectId={projectId}
+            sceneId={sceneId}
+            instanceId={selectedAsset.id}
+          />
+
+          {/* Image Upload Zone (3B.3) */}
+          <SceneAssetImageUpload
+            projectId={projectId}
+            sceneId={sceneId}
+            instanceId={selectedAsset.id}
+            disabled={useMasterAsIs}
+          />
 
           {showAudit && (
             <AuditTrail
