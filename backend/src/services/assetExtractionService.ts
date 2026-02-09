@@ -48,13 +48,50 @@ interface StyleContext {
 
 export class AssetExtractionService {
   /**
+   * Return a preview of entities aggregated from scene dependencies.
+   * Instant — no LLM calls. Used by extract-preview endpoint.
+   */
+  async aggregatePreview(branchId: string): Promise<RawEntity[]> {
+    return this.aggregateSceneDependencies(branchId);
+  }
+
+  /**
+   * Run Pass 2 (LLM visual distillation) only for the selected entities.
+   * Used by extract-confirm endpoint so users only pay for what they want.
+   */
+  async extractSelectedAssets(
+    branchId: string,
+    selectedEntities: Array<{ name: string; type: string }>,
+    visualStyleId: string
+  ): Promise<ExtractedAsset[]> {
+    const rawEntities = await this.aggregateSceneDependencies(branchId);
+
+    // Build a set of selected keys for fast lookup
+    const selectedKeys = new Set(
+      selectedEntities.map(e => `${e.type}:${e.name.toLowerCase()}`)
+    );
+
+    const filtered = rawEntities.filter(
+      (e) => selectedKeys.has(`${e.type}:${e.name.toLowerCase()}`)
+    );
+
+    console.log(`[AssetExtraction] Running Pass 2 for ${filtered.length} of ${rawEntities.length} entities`);
+
+    const distilledAssets: ExtractedAsset[] = [];
+    for (const entity of filtered) {
+      const asset = await this.distillVisualSummary(entity, visualStyleId);
+      distilledAssets.push(asset);
+    }
+
+    return distilledAssets.sort((a, b) =>
+      (b.isPriority ? 1 : 0) - (a.isPriority ? 1 : 0)
+    );
+  }
+
+  /**
+   * @deprecated Use aggregatePreview() + extractSelectedAssets() for two-pass flow.
    * Main orchestrator: Aggregation-based extraction (Pass 0 + Pass 2)
-   * 
-   * NEW APPROACH (Task 3B):
-   * - Pass 0: Aggregate dependencies from scenes (replaces full script parsing)
-   * - Pass 1: Deduplication happens during aggregation
-   * - Pass 2: Distill each entity into visual summary (unchanged)
-   * 
+   *
    * @param masterScript - DEPRECATED: No longer used, kept for backwards compatibility
    * @param branchId - Branch ID to aggregate scenes from
    * @param visualStyleId - Visual style capsule ID for distillation
