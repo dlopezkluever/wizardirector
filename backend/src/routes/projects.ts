@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabase } from '../config/supabase.js';
 import { sceneDependencyExtractionService } from '../services/sceneDependencyExtraction.js';
+import { extractManifest } from '../utils/scriptManifest.js';
 import { ShotExtractionService } from '../services/shotExtractionService.js';
 import { ShotSplitService } from '../services/shotSplitService.js';
 import { ShotMergeService } from '../services/shotMergeService.js';
@@ -670,7 +671,7 @@ router.put('/:id/scenes', async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user!.id;
-    const { scenes } = req.body;
+    const { scenes, tiptapDoc } = req.body;
 
     if (!scenes || !Array.isArray(scenes)) {
       return res.status(400).json({ error: 'Scenes array is required' });
@@ -747,30 +748,68 @@ router.put('/:id/scenes', async (req, res) => {
       expectedProps: string[];
     }>();
 
-    for (const scene of scenes) {
+    if (tiptapDoc) {
+      // Deterministic extraction from TipTap JSON — zero LLM calls, instant
+      console.log(`⚡ [SCENES] Using deterministic TipTap extraction (no LLM)`);
       try {
-        // Parse scene heading from script excerpt (first line)
-        const lines = scene.scriptExcerpt.split('\n');
-        const sceneHeading = lines[0]?.trim() || '';
-        
-        // Extract dependencies
-        const dependencies = await sceneDependencyExtractionService.extractDependencies(
-          sceneHeading,
-          scene.scriptExcerpt
-        );
-        
-        const key = `${scene.slug}:${scene.sceneNumber}`;
-        dependenciesMap.set(key, dependencies);
-        console.log(`✅ [SCENES] Extracted dependencies for scene ${scene.sceneNumber}: ${dependencies.expectedCharacters.length} chars, ${dependencies.expectedProps.length} props`);
-      } catch (error) {
-        console.warn(`⚠️ [SCENES] Failed to extract dependencies for scene ${scene.sceneNumber}:`, error);
-        // Continue with empty dependencies rather than blocking
-        const key = `${scene.slug}:${scene.sceneNumber}`;
-        dependenciesMap.set(key, {
-          expectedCharacters: [],
-          expectedLocation: '',
-          expectedProps: []
-        });
+        const manifest = extractManifest(tiptapDoc);
+
+        for (const mScene of manifest.scenes) {
+          // Match by scene number — find the corresponding input scene
+          const inputScene = scenes.find((s: any) => s.sceneNumber === mScene.sceneNumber);
+          if (!inputScene) continue;
+
+          const key = `${inputScene.slug}:${inputScene.sceneNumber}`;
+          dependenciesMap.set(key, {
+            expectedCharacters: mScene.characters,
+            expectedLocation: mScene.location,
+            expectedProps: mScene.props,
+          });
+          console.log(`✅ [SCENES] Extracted dependencies for scene ${mScene.sceneNumber}: ${mScene.characters.length} chars, ${mScene.props.length} props`);
+        }
+
+        // Fill in any scenes not found in manifest with empty deps
+        for (const scene of scenes) {
+          const key = `${scene.slug}:${scene.sceneNumber}`;
+          if (!dependenciesMap.has(key)) {
+            dependenciesMap.set(key, {
+              expectedCharacters: [],
+              expectedLocation: '',
+              expectedProps: [],
+            });
+          }
+        }
+      } catch (manifestError) {
+        console.warn(`⚠️ [SCENES] Manifest extraction failed, falling back to LLM:`, manifestError);
+        // Fall through to LLM fallback below
+      }
+    }
+
+    // Legacy fallback: LLM extraction for projects without tiptapDoc
+    if (dependenciesMap.size === 0) {
+      console.log(`🤖 [SCENES] Using LLM extraction (legacy fallback)`);
+      for (const scene of scenes) {
+        try {
+          const lines = scene.scriptExcerpt.split('\n');
+          const sceneHeading = lines[0]?.trim() || '';
+
+          const dependencies = await sceneDependencyExtractionService.extractDependencies(
+            sceneHeading,
+            scene.scriptExcerpt
+          );
+
+          const key = `${scene.slug}:${scene.sceneNumber}`;
+          dependenciesMap.set(key, dependencies);
+          console.log(`✅ [SCENES] Extracted dependencies for scene ${scene.sceneNumber}: ${dependencies.expectedCharacters.length} chars, ${dependencies.expectedProps.length} props`);
+        } catch (error) {
+          console.warn(`⚠️ [SCENES] Failed to extract dependencies for scene ${scene.sceneNumber}:`, error);
+          const key = `${scene.slug}:${scene.sceneNumber}`;
+          dependenciesMap.set(key, {
+            expectedCharacters: [],
+            expectedLocation: '',
+            expectedProps: [],
+          });
+        }
       }
     }
 
