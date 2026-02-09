@@ -403,5 +403,158 @@ router.post('/:projectId/stages/:stageNumber/lock', async (req, res) => {
   }
 });
 
+// POST /api/projects/:projectId/stages/:stageNumber/unlock - Unlock a Phase A stage (1-5)
+// Two-phase: without confirm returns impact; with confirm=true creates draft version + cascades outdated
+router.post('/:projectId/stages/:stageNumber/unlock', async (req, res) => {
+  try {
+    const { projectId, stageNumber } = req.params;
+    const { confirm = false } = req.body;
+    const userId = req.user!.id;
+
+    const stage = parseInt(stageNumber);
+    if (isNaN(stage) || stage < 1 || stage > 5) {
+      return res.status(400).json({ error: 'Invalid stage number. Must be between 1 and 5' });
+    }
+
+    // Get the project and its active branch
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    if (!project.active_branch_id) {
+      return res.status(400).json({ error: 'Project has no active branch' });
+    }
+
+    // Get current stage state
+    const { data: currentState, error: stateError } = await supabase
+      .from('stage_states')
+      .select('*')
+      .eq('branch_id', project.active_branch_id)
+      .eq('stage_number', stage)
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (stateError || !currentState) {
+      return res.status(404).json({ error: 'Stage state not found' });
+    }
+
+    if (currentState.status !== 'locked') {
+      return res.status(400).json({ error: 'Stage is not locked' });
+    }
+
+    // Find downstream locked stages
+    const { data: allStates, error: allError } = await supabase
+      .from('stage_states')
+      .select('stage_number, status, version')
+      .eq('branch_id', project.active_branch_id)
+      .gt('stage_number', stage)
+      .lte('stage_number', 5)
+      .order('stage_number', { ascending: true })
+      .order('version', { ascending: false });
+
+    if (allError) {
+      return res.status(500).json({ error: 'Failed to check downstream stages' });
+    }
+
+    // Deduplicate to latest version per stage
+    const downstreamStages: number[] = [];
+    const seen = new Set<number>();
+    for (const s of (allStates || [])) {
+      if (!seen.has(s.stage_number)) {
+        seen.add(s.stage_number);
+        if (s.status === 'locked' || s.status === 'outdated') {
+          downstreamStages.push(s.stage_number);
+        }
+      }
+    }
+
+    // Phase 1: Impact assessment
+    if (!confirm) {
+      return res.status(409).json({
+        error: 'Unlocking will affect downstream stages',
+        details: {
+          stage,
+          downstreamStages,
+          message: downstreamStages.length > 0
+            ? `Stages ${downstreamStages.join(', ')} will be marked as outdated.`
+            : 'No downstream stages affected.'
+        },
+        requiresConfirmation: true
+      });
+    }
+
+    // Phase 2: Create new draft version for this stage
+    const { data: draftState, error: draftError } = await supabase
+      .from('stage_states')
+      .insert({
+        branch_id: project.active_branch_id,
+        stage_number: stage,
+        version: currentState.version + 1,
+        status: 'draft',
+        content: currentState.content,
+        regeneration_guidance: currentState.regeneration_guidance,
+        created_by: userId,
+        inherited_from_stage_id: currentState.id
+      })
+      .select('*')
+      .single();
+
+    if (draftError) {
+      console.error('Failed to create draft version:', draftError);
+      return res.status(500).json({ error: 'Failed to unlock stage' });
+    }
+
+    // Mark downstream stages as outdated
+    for (const ds of downstreamStages) {
+      const { data: dsState } = await supabase
+        .from('stage_states')
+        .select('*')
+        .eq('branch_id', project.active_branch_id)
+        .eq('stage_number', ds)
+        .order('version', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (dsState) {
+        await supabase
+          .from('stage_states')
+          .insert({
+            branch_id: project.active_branch_id,
+            stage_number: ds,
+            version: dsState.version + 1,
+            status: 'outdated',
+            content: dsState.content,
+            regeneration_guidance: dsState.regeneration_guidance,
+            created_by: userId,
+            inherited_from_stage_id: dsState.id
+          });
+      }
+    }
+
+    // Update project timestamp
+    await supabase
+      .from('projects')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', projectId);
+
+    res.json({
+      success: true,
+      stageState: draftState,
+      outdatedStages: downstreamStages
+    });
+  } catch (error) {
+    console.error('Error in POST /api/projects/:projectId/stages/:stageNumber/unlock:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export { router as stageStatesRouter };
 
