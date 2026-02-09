@@ -21,11 +21,13 @@ export type ProjectType =
   | 'commercial' 
   | 'audio-visual';
 
-export type ContentRating = 
-  | 'G' 
-  | 'PG' 
-  | 'PG-13' 
+export type ContentRating =
+  | 'G'
+  | 'PG'
+  | 'PG-13'
   | 'M';
+
+export type AspectRatio = '16:9' | '9:16';
 
 export interface StageProgress {
   stage: number;
@@ -61,6 +63,7 @@ export interface Project {
     min: number;
     max: number;
   };
+  aspectRatio?: AspectRatio;
   sceneProgress?: SceneProgress;
 }
 
@@ -76,4 +79,5 @@ export interface ProjectSettings {
     max: number;
   };
   writingStyleCapsuleId?: string;
+  aspectRatio?: AspectRatio;
 }
