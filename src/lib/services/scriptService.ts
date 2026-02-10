@@ -501,7 +501,7 @@ Generate exactly 3 alternative rewrites of the highlighted section. Return as a 
       } catch (error) {
         // If not JSON, treat the entire content as the script
         console.log('ℹ️ [SCRIPT PARSE] Content is not JSON, treating as plain script');
-        const formattedScript = cleanedContent;
+        const formattedScript = stripHtmlTags(cleanedContent);
         const scenes = this.extractScenes(formattedScript);
         
         return {

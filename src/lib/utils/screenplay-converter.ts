@@ -17,7 +17,7 @@ interface TipTapDoc {
 type ParserState = 'IDLE' | 'ACTION' | 'CHARACTER' | 'DIALOGUE';
 
 const SCENE_HEADING_RE = /^(INT\.|EXT\.)/i;
-const TRANSITION_RE = /^(FADE\s+(IN|OUT)|.*TO:)\s*$/i;
+const TRANSITION_RE = /^(FADE\s+(IN|OUT)\.?|.*TO:)\s*$/i;
 const CHARACTER_RE = /^[A-Z][A-Z\s.'''_-]+(?:\s*\((?:O\.S\.|V\.O\.|CONT'D|CONTINUED|O\.C\.)\))?$/;
 const PARENTHETICAL_RE = /^\(.*\)$/;
 
@@ -64,7 +64,13 @@ function buildDialogueLineNode(
  * Parse a plain-text screenplay into a TipTap JSON document using a state machine.
  */
 export function parseScriptToTiptapJson(plainText: string): TipTapDoc {
-  const lines = plainText.split('\n');
+  // Resilience: strip any residual HTML tags (e.g. <center>) and blockquote markers (>)
+  const sanitized = stripHtmlTags(plainText)
+    .split('\n')
+    .map(line => line.replace(/^>\s?/, ''))  // remove leading > blockquote markers
+    .join('\n');
+
+  const lines = sanitized.split('\n');
   const nodes: TipTapNode[] = [];
 
   let state: ParserState = 'IDLE';
