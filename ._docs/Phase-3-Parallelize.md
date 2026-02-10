@@ -140,6 +140,7 @@
   Files: Stage 5 extraction core
   Rationale: THE critical path — 14 other tasks depend on this
   ────────────────────────────────────────
+
   Worktree: WT-2
   Tasks (sequential within): 3B.1 → 3B.4
   Files: Stage 8 carousel + editor panel
@@ -150,13 +151,15 @@
   Files: Stage 1, frame/video services
   Rationale: 100% independent — touches zero files that overlap with WT-1 or WT-2
   Merge order: WT-3 first (lowest risk), then WT-2, then WT-1
-
+  ---
+  Tweener: Add the tv icon before the 16:9 
   ---
   Round 2 — Core Features (3 parallel worktrees)
   Worktree: WT-4
   Tasks (sequential within): 3A.2 → 3A.3 → 3A.4 → 3A.6
   Files: Stage 5 files
-  Rationale: Natural chain: sidelined → manual add → optional images → delete image. All modify Stage5Assets.tsx + projectAssets.ts  ────────────────────────────────────────
+  Rationale: Natural chain: sidelined → manual add → optional images → delete image. All modify Stage5Assets.tsx + projectAssets.ts
+  ────────────────────────────────────────
   Worktree: WT-5
   Tasks (sequential within): 3B.2 → 3B.3 → 3B.5
   Files: Stage 8 editor panel + gatekeeper
@@ -195,15 +198,15 @@
   ROUND 1 (parallel)          ROUND 2 (parallel)           ROUND 3 (parallel)         ROUND 4
   ─────────────────           ──────────────────           ──────────────────         ─────────
 
-  WT-1: [3A.1] ──────────┬── WT-4: [3A.2→3A.3→3A.4→3A.6] ── WT-7: [3A.5→3A.7→3A.8→3A.9]
+  WT-1: [3A.1] ───────────┬── WT-4: [3A.2→3A.3→3A.4→3A.6] ── WT-7: [3A.5→3A.7→3A.8→3A.9]
                           │
                           ├── WT-6: [3C.3→3C.4]
                           │
-  WT-2: [3B.1→3B.4] ─────┼── WT-5: [3B.2→3B.3→3B.5]      ── WT-8: [3B.6→3B.7→3B.8→3B.9]
+  WT-2: [3B.1→3B.4] ──────┼── WT-5: [3B.2→3B.3→3B.5]      ── WT-8: [3B.6→3B.7→3B.8→3B.9]
                           │
                           │                                ── WT-9: [3B.10→3B.11]  ── WT-10: [3C.1→3C.2]
                           │
-  WT-3: [3C.5] ──────────┘
+  WT-3: [3C.5] ───────────┘
 
   Summary Stats
   ┌───────────────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────┐     
