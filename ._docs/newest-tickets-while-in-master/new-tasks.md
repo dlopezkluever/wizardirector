@@ -31,11 +31,3 @@ Then you
 #### Defered-A: Make the stage 2-4 UI componenets, for items like the regernation box button, to be consistent
 
 *On top of this all I would like to fix the hard locking that is rather unnneccesary and annoying, present in stage 5 & 8, users make mistakes, they shouldn't be forcedibly stuck with decsision made if they quickly change thier minds; instead, make it a soft lock, like that of the frame prompts in stage 9. ## Note, the asset style guide isn't forever inmutably locked, like the user can come back and chose to unlcok and change it, it should just be noted, especially for branching reasons, that it should trigger a branch. ## For asset: Make sure allowing for just writing in plain english that style tone maybe good. YOU DONT HAVE TO CHOOSE A STYLE GUIDE.*
-
-The Superbowl is basically an encapsulation of our politcal situation in america
-
-You've got the libfag seahawks from seatle, that are just broing ungly freaks, rooted on by the resentful masses who really only participate out of hatred for the system
-
-THen you've got the patriots, who look on the outside like, well patriots, they've got the aestetic you like, but at the end of the day, they are ran by israeli loyal jews who profit and harvest your energy for thier intresets, while colluding ot make sure your REAL team intresets are never fufilled. 
-
-And of course, the who establishment is pushign gay brown foriegn aids down you and your childrens throught, while the right wing losers try to make an alternative but only to offer talentless, out of touch, and hella cringe "music"

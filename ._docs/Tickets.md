@@ -70,6 +70,23 @@ If the extraction misses something key, users should be able to add assets.
 ### 5.6 — Allow Assets to Not Require Images
 Don't make it mandatory for the user to generate/upload an image for each asset. Only require it for the ones they care about.
 
+#### *3A.4 — Prop Assets Don't Require Images in STAGE 5*
+**Ticket**: 5.6
+**Priority**: MEDIUM
+
+**Purpose**: Remove mandatory image generation for all prop assets.
+
+**Problem/Context**: Currently every prop asset must have a generated/uploaded image, which is slow, expensive, and unnecessary for assets the user doesn't visually care about (e.g., minor props).
+
+**Core Features:**
+- [ ] Make image generation optional per asset
+- [ ] Allow progression past Stage 5 with imageless prop assets
+- [ ] Visual indicator for assets without images (placeholder/icon)
+- [ ] Assets without images still carry descriptions for production use
+
+**Dependencies**: 3A.1.
+
+
 ### 5.7 — Visual Capsules Don't Seem to Influence Image Generation
 Needs investigation — visual style capsules appear to have no effect on asset image generation in Stage 5.
 
@@ -117,8 +134,8 @@ The next/previous toggle for merging shots is not obvious enough. The merge moda
 ### 7.3 — Warning When Deleting Final Shot
 When a user tries to delete the last remaining shot in a scene, show a warning message and offer to defer/sideline the scene and return to the Script Hub instead.
 
-### 7.4 — Consider "Extend Shot" Feature
-Worth considering compatibility with Veo 3 and Sora's "extend" capabilities for shots.
+*### 7.4 — Consider "Extend Shot" Feature*
+**Worth considering compatibility with Veo 3 and Sora's "extend" capabilities for shots.**
 
 ---
 

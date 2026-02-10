@@ -360,7 +360,7 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 ### 3A — Stage 5 Extraction Revolution 
 
-#### 3A.1 — Two-Pass Asset Extraction with Filter Modal
+#### 3A.1 — Two-Pass Asset Extraction with Filter Modal *DONE* 
 **Tickets**: 5.3, multi-stage extraction optimization
 **Priority**: ARCHITECTURE CHANGE
 
@@ -548,7 +548,7 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 ### 3B — Stage 8 UX Overhaul
 
-#### 3B.1 — Asset Generation Carousel
+#### 3B.1 — Asset Generation Carousel  ✅ DONE 
 **Tickets**: 8.5, MVP v1.1 Feature 2.2
 **Priority**: CRITICAL UX
 
@@ -575,7 +575,7 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 ---
 
-#### 3B.2 — Master Reference Historical Carousel
+#### 3B.2 — Master Reference Historical Carousel  ✅ DONE 
 **Tickets**: 8.6, MVP v1.1 Feature 2.3
 **Priority**: CRITICAL UX
 
@@ -598,7 +598,7 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 ---
 
-#### 3B.3 — Manual Image Upload for Scene Instances
+#### 3B.3 — Manual Image Upload for Scene Instances  ✅ DONE 
 **Tickets**: 8.11, MVP v1.1 Feature 2.4
 **Priority**: HIGH
 
@@ -619,7 +619,7 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 ---
 
-#### 3B.4 — "Use Master As-Is" Option
+#### 3B.4 — "Use Master As-Is" Option  *DONE, but uglyness*
 **Tickets**: 8.4, MVP v1.1 Feature 2.1
 **Priority**: HIGH
 
@@ -637,22 +637,30 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 ---
 
-#### 3B.5 — Asset Generation Requirement Fix
+#### 3B.5 — Asset Generation Requirement Fix *🚩 DEFERED*
+
+*Actually lets just do this, if user presses "proceed" without making decisions about some assets, he gets a pop up modal that says "let all undetermined assets default to thier latest Scene Instase or Master Asset reference (all defered assets still undetermined will be auto generated)"*
+
 **Tickets**: 8.7, MVP v1.1 Feature 2.6
 **Priority**: HIGH
 
 **Purpose**: Allow progression without generating every single asset.
 
-**Problem/Context**: Stage 8 currently requires scene instance generation for every asset before proceeding. "The point of Stage 8 is to add final polish to the assets you care about. If there's stuff you don't care about, you should be able to proceed."
+**Problem/Context**: Stage 5 & 8 currently requires scene instance generation for every asset before proceeding. "The point of Stage 8 is to add final polish to the assets you care about. If there's stuff you don't care about, you should be able to proceed."
 
-**Core Features:**
+**Possible Features:**
 - [ ] Modify Stage 8 gatekeeper logic to not require all assets
 - [ ] Allow progression with master reference fallback for ungenerated assets
 - [ ] Mark primary characters as required, secondary props/locations as optional
-- [ ] "Generate Later" option for non-critical assets
+- [ ] If user doesn't edit, then the defoult for an asset is that they should
+     1. Use the most recent previous Scene Instance Image
+     2. THe Master Asset reference
+     3. If neither exists
+- [ ] "Generate Later" option for non-critical assets *like-props*
 - [ ] User override capability for forcing/skipping generation
 
 **Dependencies**: 3B.4 ("Use Master As-Is" provides the fallback mechanism).
+
 
 ---
 
@@ -862,7 +870,7 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 ---
 
-#### 3C.5 — Aspect Ratio System
+#### 3C.5 — Aspect Ratio System  *DONE, BUT UNTESTED*  
 **Ticket**: Multi-stage aspect ratio concern
 **Priority**: MEDIUM
 
@@ -1566,7 +1574,7 @@ Adding assets manaully (which is an option when first arriving on stage 8) resul
 
 ---
 
-#### 6B.6 — Custom Revision UI for Treatment
+#### 6B.6 — Custom Revision UI for Treatment *DONE*  ✅ DONE 
 **Ticket**: 2.1
 **Priority**: MEDIUM
 
@@ -1585,7 +1593,7 @@ Adding assets manaully (which is an option when first arriving on stage 8) resul
 
 ---
 
-#### 6B.7 — Contextual Regeneration Button
+#### 6B.7 — Contextual Regeneration Button  ✅ DONE 
 **Ticket**: 2.2, DC-1
 **Priority**: MEDIUM
 
