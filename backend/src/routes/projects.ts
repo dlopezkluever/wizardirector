@@ -724,19 +724,22 @@ router.put('/:id/scenes', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch existing scenes' });
     }
 
-    // Create a map of existing scenes by slug + scene_number for matching
+    // Create maps of existing scenes for matching (primary: slug+number, fallback: number-only)
     const existingSceneMap = new Map<string, { id: string; status: string }>();
+    const existingByNumber = new Map<number, { id: string; slug: string; status: string }>();
     (existingScenes || []).forEach((scene) => {
       const key = `${scene.slug}:${scene.scene_number}`;
       existingSceneMap.set(key, { id: scene.id, status: scene.status });
+      existingByNumber.set(scene.scene_number, { id: scene.id, slug: scene.slug, status: scene.status });
     });
 
     // Track which existing scenes are matched (to identify deleted scenes)
     const matchedExistingIds = new Set<string>();
 
     // Process each extracted scene: match or create
-    const scenesToUpdate: Array<{ 
-      id: string; 
+    const scenesToUpdate: Array<{
+      id: string;
+      slug: string;
       script_excerpt: string;
       expected_characters?: string[];
       expected_location?: string;
@@ -832,7 +835,6 @@ router.put('/:id/scenes', async (req, res) => {
     // Now process each scene with dependencies
     for (const scene of scenes) {
       const key = `${scene.slug}:${scene.sceneNumber}`;
-      const existing = existingSceneMap.get(key);
       const dependencies = dependenciesMap.get(key);
 
       const dependencyFields = dependencies ? {
@@ -842,11 +844,24 @@ router.put('/:id/scenes', async (req, res) => {
         dependencies_extracted_at: new Date().toISOString()
       } : {};
 
+      // Primary match: slug + scene_number
+      let existing = existingSceneMap.get(key);
+
+      // Fallback match: scene_number only (handles slug variations between extractions)
+      if (!existing) {
+        const byNumber = existingByNumber.get(scene.sceneNumber);
+        if (byNumber) {
+          console.log(`🔄 [SCENES] Slug mismatch for scene ${scene.sceneNumber}: "${byNumber.slug}" → "${scene.slug}", matching by scene_number`);
+          existing = { id: byNumber.id, status: byNumber.status };
+        }
+      }
+
       if (existing) {
         // Match found: preserve the existing scene ID and update script_excerpt + dependencies
         matchedExistingIds.add(existing.id);
         scenesToUpdate.push({
           id: existing.id,
+          slug: scene.slug,
           script_excerpt: scene.scriptExcerpt,
           ...dependencyFields
         });
@@ -876,28 +891,30 @@ router.put('/:id/scenes', async (req, res) => {
     );
 
     if (deletedScenes.length > 0) {
-      console.warn(`⚠️ [SCENES] ${deletedScenes.length} scenes were removed from script:`, 
+      console.warn(`⚠️ [SCENES] ${deletedScenes.length} scenes were removed from script:`,
         deletedScenes.map(s => `Scene ${s.scene_number} (${s.slug})`).join(', '));
-      
-      // Mark deleted scenes as continuity_broken to warn about downstream impact
+
+      // Delete removed scenes so the UNIQUE(branch_id, scene_number) constraint
+      // is freed up for new inserts with the same scene_number
       const deletedIds = deletedScenes.map(s => s.id);
-      const { error: markError } = await supabase
+      const { error: deleteError } = await supabase
         .from('scenes')
-        .update({ status: 'continuity_broken' })
+        .delete()
         .in('id', deletedIds);
 
-      if (markError) {
-        console.error('❌ Error marking deleted scenes:', markError);
+      if (deleteError) {
+        console.error('❌ Error deleting removed scenes:', deleteError);
         // Continue anyway - this is a warning, not a blocker
       } else {
-        console.log(`⚠️ [SCENES] Marked ${deletedScenes.length} deleted scenes as continuity_broken`);
+        console.log(`🗑️ [SCENES] Deleted ${deletedScenes.length} removed scenes to free constraint space`);
       }
     }
 
     // Update matched scenes
     for (const sceneUpdate of scenesToUpdate) {
-      const updateData: any = { 
-        script_excerpt: sceneUpdate.script_excerpt 
+      const updateData: any = {
+        slug: sceneUpdate.slug,
+        script_excerpt: sceneUpdate.script_excerpt
       };
       
       // Include dependency fields if available

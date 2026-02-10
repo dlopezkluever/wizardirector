@@ -201,6 +201,7 @@ function enrichCharacterScenePresence(
 const CAPS_IGNORE_SET = new Set([
   'INT', 'EXT', 'DAY', 'NIGHT', 'CONTINUOUS', 'LATER',
   'CUT', 'FADE', 'DISSOLVE', 'SMASH', 'MATCH',
+  'FADE IN', 'FADE OUT', 'FADE TO', 'CUT TO', 'SMASH CUT',
   'POV', 'OS', 'VO', 'SFX', 'VFX', 'BG', 'FG',
   'MOMENTS', 'MORNING', 'AFTERNOON', 'EVENING', 'DAWN', 'DUSK',
   'THE', 'AND', 'BUT', 'FOR', 'NOT', 'ALL', 'HIS', 'HER',
