@@ -66,8 +66,6 @@ These defered assets should appear in stage 8, but if it's the first time scene,
 - [ ] Revert asset to description-only state
 - [ ] Clean up storage for removed images
 
-**Dependencies**: 3A.4 (assets should be able to exist without images first).
-
 *Note*: if a user uploads an image to an asset, they can choose to delete it is all im saying, for any and all of the images uploaded (if we do the carousel, which we should- So
 We also need to be able to replicate the same carousel functionality for assets as stage 8. Users Can generate and upload images, and they stored. Users get up to say 4. (obviously they are to be encouraged to delete any image geenerated that doesn't sit riht with them; is totally off the mark) (This could be especially key for characters / assets that undergo massive change throughout the story. )
 
@@ -75,3 +73,10 @@ We also need to be able to replicate the same carousel functionality for assets 
 ## Let's Also Do this: 
 
 Additionally, get rid of such the permenant locking of stage 5 assets, in that, there's no need to have them be locked and then it's totally impossible to edit them. 
+
+
+Task: 3A.2  Primary Files: projectAssets.ts, Stage5Assets.tsx, asset.ts, DB migration
+
+Task: 3A.3 Primary Files: projectAssets.ts, Stage5Assets.tsx, projectAssetService.ts
+
+Task: 3A.6:  Primary Files: projectAssets.ts, Stage5Assets.tsx, projectAssetService.ts
