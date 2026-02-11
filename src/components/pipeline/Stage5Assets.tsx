@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { 
-  User, MapPin, Package, Sparkles, Check, Lock, Loader2, 
+import {
+  User, MapPin, Package, Sparkles, Check, Lock, Loader2,
   AlertTriangle, Info, MoreVertical, Trash2, Edit, Upload,
-  RefreshCw, Plus, Merge as MergeIcon, Save
+  RefreshCw, PauseCircle, Play, ChevronDown, Plus
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -12,7 +11,6 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,16 +28,23 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { useStageState } from '@/lib/hooks/useStageState';
-import { useDebounce } from '@/lib/hooks/useDebounce';
 import { stageStateService } from '@/lib/services/stageStateService';
 import { projectAssetService } from '@/lib/services/projectAssetService';
 import { StyleCapsuleSelector } from '@/components/styleCapsules/StyleCapsuleSelector';
 import { AssetDrawer } from './AssetDrawer';
 import { AssetFilterModal } from './AssetFilterModal';
 import { AssetVersionSync } from './AssetVersionSync';
-import type { ProjectAsset, AssetPreviewEntity, AssetType } from '@/types/asset';
+import { AddAssetModal } from './AddAssetModal';
+import { ProjectAssetCarousel } from './ProjectAssetCarousel';
+import type { ProjectAsset, AssetPreviewEntity, AssetType, AssetDecision } from '@/types/asset';
 import type { StageStatus } from '@/types/project';
 import { LockedStageHeader } from './LockedStageHeader';
 
@@ -60,7 +65,8 @@ const ASPECT_RATIOS = {
 
 export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNext, onUnlock }: Stage5AssetsProps) {
   const isStageLockedOrOutdated = stageStatus === 'locked' || stageStatus === 'outdated';
-  const { content, setContent, stageState, isLoading } = useStageState({
+  const queryClient = useQueryClient();
+  const { content, setContent } = useStageState({
     projectId,
     stageNumber: 5,
     initialContent: {
@@ -76,7 +82,6 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
   const [hasExtracted, setHasExtracted] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [isLocking, setIsLocking] = useState(false);
-  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [expandedAssetId, setExpandedAssetId] = useState<string | null>(null);
   const [editingDescriptions, setEditingDescriptions] = useState<Record<string, string>>({});
   const [savingAssets, setSavingAssets] = useState<Set<string>>(new Set());
@@ -91,6 +96,12 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
   const [previewEntities, setPreviewEntities] = useState<AssetPreviewEntity[]>([]);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
+
+  // Add Asset modal state
+  const [showAddAssetModal, setShowAddAssetModal] = useState(false);
+
+  // Deferred section state
+  const [deferredOpen, setDeferredOpen] = useState(false);
 
   // Initialize from saved state
   useEffect(() => {
@@ -118,6 +129,19 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
       console.error('Failed to load assets:', error);
     }
   };
+
+  // Split assets into active and deferred
+  const activeAssets = assets.filter(a => !a.deferred);
+  const deferredAssets = assets.filter(a => a.deferred);
+
+  const groupedAssets = {
+    characters: activeAssets.filter(a => a.asset_type === 'character'),
+    locations: activeAssets.filter(a => a.asset_type === 'location'),
+    props: activeAssets.filter(a => a.asset_type === 'prop')
+  };
+
+  const allActiveHaveImages = activeAssets.every(a => a.image_key_url);
+  const canProceed = isStyleLocked && allActiveHaveImages && activeAssets.length > 0;
 
   const handleStyleLock = async (styleId: string) => {
     setLockedStyleId(styleId);
@@ -166,8 +190,8 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
     }
   };
 
-  // Step 2: Confirm selection — LLM Pass 2 only for selected entities
-  const handleConfirmSelection = async (selected: Array<{ name: string; type: AssetType }>) => {
+  // Step 2: Confirm selection — LLM Pass 2 only for selected entities (with decisions)
+  const handleConfirmSelection = async (selected: Array<{ name: string; type: AssetType; decision: AssetDecision; sceneNumbers: number[] }>) => {
     try {
       setIsConfirming(true);
       toast.info(`Generating visual descriptions for ${selected.length} assets...`);
@@ -199,7 +223,7 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
     try {
       toast.info(`Generating ${asset.asset_type} image...`);
 
-      const result = await projectAssetService.generateImage(projectId, assetId);
+      await projectAssetService.generateImage(projectId, assetId);
 
       // Refresh asset from database to ensure image_key_url is saved
       const refreshedAsset = await projectAssetService.getAsset(projectId, assetId);
@@ -209,12 +233,14 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
         a.id === assetId ? refreshedAsset : a
       ));
 
+      // Invalidate carousel query
+      queryClient.invalidateQueries({ queryKey: ['project-asset-attempts', projectId, assetId] });
+
       toast.success(`Image generated for ${asset.name}!`);
     } catch (error) {
       console.error('Failed to generate image:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to generate image';
-      
-      // Provide helpful error messages
+
       if (errorMessage.includes('Visual Style Capsule is required')) {
         toast.error('Visual style is required for image generation.');
       } else if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
@@ -237,16 +263,18 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
 
       const updatedAsset = await projectAssetService.uploadImage(projectId, assetId, file);
 
-      // Update asset with refreshed data
       setAssets(prev => prev.map(a =>
         a.id === assetId ? updatedAsset : a
       ));
+
+      // Invalidate carousel query
+      queryClient.invalidateQueries({ queryKey: ['project-asset-attempts', projectId, assetId] });
 
       toast.success(`Image uploaded for ${asset.name}!`);
     } catch (error) {
       console.error('Failed to upload image:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to upload image';
-      
+
       if (errorMessage.includes('Invalid file type')) {
         toast.error('Invalid file type. Only PNG, JPEG, and WebP are allowed.');
       } else if (errorMessage.includes('file size')) {
@@ -264,7 +292,6 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
     if (file) {
       handleUploadImage(assetId, file);
     }
-    // Reset input
     if (fileInputRefs.current[assetId]) {
       fileInputRefs.current[assetId]!.value = '';
     }
@@ -281,7 +308,6 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
       setAssets(prev => prev.map(a =>
         a.id === assetId ? { ...a, description } : a
       ));
-      // Silent save - no toast
     } catch (error) {
       console.error('Failed to update description:', error);
       toast.error('Failed to save description');
@@ -295,18 +321,15 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
   }, [projectId]);
 
   const handleDescriptionChange = useCallback((assetId: string, newDescription: string) => {
-    // Update local state immediately
     setEditingDescriptions(prev => ({
       ...prev,
       [assetId]: newDescription
     }));
 
-    // Clear existing timeout for this asset
     if (saveTimeouts[assetId]) {
       clearTimeout(saveTimeouts[assetId]);
     }
 
-    // Set new timeout for auto-save (1 second debounce)
     const timeoutId = setTimeout(() => {
       const asset = assets.find(a => a.id === assetId);
       if (asset && newDescription !== asset.description && newDescription.length > 0) {
@@ -340,16 +363,29 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
     }
   };
 
-  const handleLockAsset = async (assetId: string) => {
+  const handleDeferAsset = async (assetId: string) => {
     try {
-      const lockedAsset = await projectAssetService.lockAsset(projectId, assetId);
+      await projectAssetService.deferAsset(projectId, assetId);
       setAssets(prev => prev.map(a =>
-        a.id === assetId ? lockedAsset : a
+        a.id === assetId ? { ...a, deferred: true } : a
       ));
-      toast.success('Asset locked');
+      toast.success('Asset deferred');
     } catch (error) {
-      console.error('Failed to lock asset:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to lock asset');
+      console.error('Failed to defer asset:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to defer asset');
+    }
+  };
+
+  const handleRestoreAsset = async (assetId: string) => {
+    try {
+      await projectAssetService.restoreAsset(projectId, assetId);
+      setAssets(prev => prev.map(a =>
+        a.id === assetId ? { ...a, deferred: false } : a
+      ));
+      toast.success('Asset restored to active');
+    } catch (error) {
+      console.error('Failed to restore asset:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to restore asset');
     }
   };
 
@@ -362,17 +398,16 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
     if (!promotingAssetId) return;
 
     try {
-      const globalAsset = await projectAssetService.promoteToGlobal(projectId, promotingAssetId);
+      await projectAssetService.promoteToGlobal(projectId, promotingAssetId);
       toast.success(`"${assets.find(a => a.id === promotingAssetId)?.name}" promoted to Global Library!`, {
         description: 'You can now use this asset in other projects.',
       });
-      
-      // Refresh assets to show updated state if needed
+
       await loadAssets();
     } catch (error) {
       console.error('Failed to promote asset:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to promote asset';
-      
+
       if (errorMessage.includes('must have a generated image')) {
         toast.error('Asset must have a generated image before promotion');
       } else {
@@ -385,27 +420,24 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
   };
 
   const handleAssetCloned = async (clonedAsset: ProjectAsset) => {
-    // Refresh assets list to include the newly cloned asset
     await loadAssets();
     toast.success(`"${clonedAsset.name}" cloned to project`);
   };
 
   const handleLockAllAssets = async () => {
-    // Validate prerequisites
     if (!isStyleLocked) {
       toast.error('Visual style must be selected');
       return;
     }
 
-    const unlockedAssets = assets.filter(a => !a.locked);
-    if (unlockedAssets.length > 0) {
-      toast.error(`${unlockedAssets.length} assets still need to be locked`);
+    if (activeAssets.length === 0) {
+      toast.error('At least one active asset is required');
       return;
     }
 
-    const assetsWithoutImages = assets.filter(a => !a.image_key_url);
-    if (assetsWithoutImages.length > 0) {
-      toast.error(`${assetsWithoutImages.length} assets need image keys`);
+    const activeWithoutImages = activeAssets.filter(a => !a.image_key_url);
+    if (activeWithoutImages.length > 0) {
+      toast.error(`${activeWithoutImages.length} active assets need image keys`);
       return;
     }
 
@@ -432,15 +464,6 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
       case 'prop': return Package;
     }
   };
-
-  const groupedAssets = {
-    characters: assets.filter(a => a.asset_type === 'character'),
-    locations: assets.filter(a => a.asset_type === 'location'),
-    props: assets.filter(a => a.asset_type === 'prop')
-  };
-
-  const allAssetsLocked = assets.every(a => a.locked && a.image_key_url);
-  const canProceed = isStyleLocked && allAssetsLocked && assets.length > 0;
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -470,7 +493,7 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
       )}
 
       <div className="flex-1 overflow-auto p-6 pb-24">
-        <div className="max-w-4xl mx-auto space-y-8">
+        <div className="max-w-6xl mx-auto space-y-8">
 
           {/* STEP 0: Visual Style Selection (MANDATORY FIRST STEP) */}
           <section className="space-y-4">
@@ -493,7 +516,7 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
               <AlertDescription>
                 {isStyleLocked
                   ? "Visual style is locked. All assets will use this style."
-                  : "⚠️ You must select a visual style before extracting assets. This ensures all generated images are consistent."}
+                  : "You must select a visual style before extracting assets. This ensures all generated images are consistent."}
               </AlertDescription>
             </Alert>
 
@@ -550,7 +573,7 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
               <Alert variant="default" className="border-success">
                 <Check className="w-4 h-4" />
                 <AlertDescription>
-                  {assets.length} assets extracted successfully
+                  {activeAssets.length} active assets{deferredAssets.length > 0 ? `, ${deferredAssets.length} deferred` : ''}
                 </AlertDescription>
               </Alert>
             )}
@@ -570,15 +593,15 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                 </div>
 
                 <div className="text-sm text-muted-foreground">
-                  {assets.filter(a => a.image_key_url).length}/{assets.length} images generated •{' '}
-                  {assets.filter(a => a.locked).length}/{assets.length} locked
+                  {activeAssets.filter(a => a.image_key_url).length}/{activeAssets.length} active assets have images
+                  {deferredAssets.length > 0 && ` | ${deferredAssets.length} deferred`}
                 </div>
               </div>
 
               {/* Batch Actions */}
-              <div className="flex gap-2 justify-end items-center">
-                <AssetVersionSync 
-                  projectId={projectId} 
+              <div className="flex gap-2 justify-end items-center flex-wrap">
+                <AssetVersionSync
+                  projectId={projectId}
                   onSyncComplete={loadAssets}
                 />
                 <Button
@@ -592,15 +615,24 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={() => setShowAddAssetModal(true)}
+                  disabled={isStageLockedOrOutdated}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Asset
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={async () => {
-                    const assetsWithoutImages = assets.filter(a => !a.image_key_url && !a.locked);
+                    const assetsWithoutImages = activeAssets.filter(a => !a.image_key_url);
                     if (assetsWithoutImages.length === 0) {
-                      toast.info('All assets already have images');
+                      toast.info('All active assets already have images');
                       return;
                     }
-                    
+
                     toast.info(`Generating ${assetsWithoutImages.length} images...`);
-                    
+
                     for (const asset of assetsWithoutImages) {
                       try {
                         await handleGenerateImage(asset.id);
@@ -609,14 +641,14 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                       }
                     }
                   }}
-                  disabled={assets.filter(a => !a.image_key_url && !a.locked).length === 0}
+                  disabled={activeAssets.filter(a => !a.image_key_url).length === 0}
                 >
                   <Sparkles className="w-4 h-4 mr-2" />
-                  Generate All Images ({assets.filter(a => !a.image_key_url && !a.locked).length})
+                  Generate All Images ({activeAssets.filter(a => !a.image_key_url).length})
                 </Button>
               </div>
 
-              {/* Asset Type Groups */}
+              {/* Asset Type Groups — Grid Layout */}
               {Object.entries(groupedAssets).map(([type, typeAssets]) => {
                 if (typeAssets.length === 0) return null;
 
@@ -629,7 +661,7 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                       {type} ({typeAssets.length})
                     </h4>
 
-                    <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                       {typeAssets.map(asset => {
                         const AspectIcon = getAssetIcon(asset.asset_type);
                         const aspectInfo = ASPECT_RATIOS[asset.asset_type];
@@ -638,37 +670,22 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                         const isSaving = savingAssets.has(asset.id);
 
                         return (
-                          <Card key={asset.id} className={cn(
-                            'transition-all',
-                            asset.locked && 'border-success bg-success/5'
-                          )}>
-                            <CardHeader>
+                          <Card key={asset.id} className="transition-all">
+                            <CardHeader className="p-4 pb-2">
                               <div className="flex items-start justify-between">
-                                <div className="flex items-start gap-3 flex-1">
+                                <div className="flex items-start gap-2 flex-1 min-w-0">
                                   <div className={cn(
-                                    'flex items-center justify-center w-10 h-10 rounded-lg shrink-0',
+                                    'flex items-center justify-center w-8 h-8 rounded-lg shrink-0',
                                     asset.image_key_url ? 'bg-success/20 text-success' : 'bg-secondary text-muted-foreground'
                                   )}>
-                                    <AspectIcon className="w-5 h-5" />
+                                    <AspectIcon className="w-4 h-4" />
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <CardTitle className="text-lg">{asset.name}</CardTitle>
-                                      <Badge variant="outline">{asset.asset_type}</Badge>
-                                      {asset.metadata?.is_priority && (
-                                        <Badge variant="default">Priority</Badge>
-                                      )}
-                                      {asset.metadata?.has_conflicts && (
-                                        <Badge variant="destructive">
-                                          <AlertTriangle className="w-3 h-3 mr-1" />
-                                          Conflicts
-                                        </Badge>
-                                      )}
-                                      {asset.locked && (
-                                        <Badge variant="default" className="bg-success">
-                                          <Lock className="w-3 h-3 mr-1" />
-                                          Locked
-                                        </Badge>
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <CardTitle className="text-base truncate">{asset.name}</CardTitle>
+                                      <Badge variant="outline" className="text-[10px] px-1">{asset.asset_type}</Badge>
+                                      {asset.source === 'manual' && (
+                                        <Badge variant="secondary" className="text-[10px] px-1">Manual</Badge>
                                       )}
                                     </div>
                                   </div>
@@ -676,7 +693,7 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
 
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon">
+                                    <Button variant="ghost" size="icon" className="h-7 w-7">
                                       <MoreVertical className="w-4 h-4" />
                                     </Button>
                                   </DropdownMenuTrigger>
@@ -685,6 +702,12 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                                       <Edit className="w-4 h-4 mr-2" />
                                       {isExpanded ? 'Collapse' : 'Edit Details'}
                                     </DropdownMenuItem>
+                                    {!isStageLockedOrOutdated && (
+                                      <DropdownMenuItem onClick={() => handleDeferAsset(asset.id)}>
+                                        <PauseCircle className="w-4 h-4 mr-2" />
+                                        Defer Asset
+                                      </DropdownMenuItem>
+                                    )}
                                     {asset.image_key_url && (
                                       <DropdownMenuItem onClick={() => handlePromoteToGlobal(asset.id)}>
                                         <Upload className="w-4 h-4 mr-2" />
@@ -695,7 +718,7 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                                     <DropdownMenuItem
                                       onClick={() => handleDeleteAsset(asset.id)}
                                       className="text-destructive"
-                                      disabled={asset.locked}
+                                      disabled={isStageLockedOrOutdated}
                                     >
                                       <Trash2 className="w-4 h-4 mr-2" />
                                       Remove Asset
@@ -705,46 +728,29 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                               </div>
                             </CardHeader>
 
-                            <CardContent className="space-y-4">
+                            <CardContent className="p-4 pt-2 space-y-3">
                               {/* Conflict Warning */}
                               {asset.metadata?.has_conflicts && asset.metadata?.conflict_details && (
-                                <Alert variant="destructive">
-                                  <AlertTriangle className="w-4 h-4" />
-                                  <AlertDescription>
-                                    <strong>Visual Conflict Detected:</strong> {asset.metadata.conflict_details}
-                                    <br />
-                                    <span className="text-xs">Please review and edit the description to resolve inconsistencies.</span>
+                                <Alert variant="destructive" className="py-2">
+                                  <AlertTriangle className="w-3 h-3" />
+                                  <AlertDescription className="text-xs">
+                                    <strong>Visual Conflict:</strong> {asset.metadata.conflict_details}
                                   </AlertDescription>
                                 </Alert>
                               )}
 
-                              {/* Image Preview */}
-                              {asset.image_key_url ? (
-                                <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
-                                  <img
-                                    src={asset.image_key_url}
-                                    alt={asset.name}
-                                    className="w-full h-full object-cover"
-                                  />
-                                  <Badge className="absolute top-2 right-2 bg-success">
-                                    <Check className="w-3 h-3 mr-1" />
-                                    Generated
-                                  </Badge>
-                                </div>
-                              ) : (
-                                <div className="aspect-video bg-muted rounded-lg flex items-center justify-center">
-                                  <div className="text-center text-muted-foreground">
-                                    <AspectIcon className="w-12 h-12 mx-auto mb-2" />
-                                    <p className="text-sm">No image generated yet</p>
-                                  </div>
-                                </div>
-                              )}
+                              {/* Image Carousel */}
+                              <ProjectAssetCarousel
+                                projectId={projectId}
+                                assetId={asset.id}
+                                disabled={isStageLockedOrOutdated}
+                              />
 
-                              {/* Description (always visible) */}
+                              {/* Description */}
                               {isExpanded ? (
-                                <div className="space-y-2">
+                                <div className="space-y-1">
                                   <div className="flex items-center justify-between">
-                                    <Label>Visual Description</Label>
+                                    <Label className="text-xs">Visual Description</Label>
                                     {isSaving && (
                                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                         <Loader2 className="w-3 h-3 animate-spin" />
@@ -755,114 +761,69 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                                   <Textarea
                                     value={editingDescription}
                                     onChange={(e) => handleDescriptionChange(asset.id, e.target.value)}
-                                    rows={4}
-                                    className="resize-none"
-                                    disabled={asset.locked}
+                                    rows={3}
+                                    className="resize-none text-xs"
+                                    disabled={isStageLockedOrOutdated}
                                     placeholder="Describe the visual appearance..."
                                   />
-                                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                                     <Info className="w-3 h-3" />
-                                    Auto-sizing: {aspectInfo.width}x{aspectInfo.height} ({aspectInfo.label})
-                                    {!isSaving && editingDescription !== asset.description && (
-                                      <span className="text-success">• Changes saved</span>
-                                    )}
+                                    {aspectInfo.width}x{aspectInfo.height} ({aspectInfo.label})
                                   </div>
                                 </div>
                               ) : (
-                                <p className="text-sm text-muted-foreground line-clamp-2">
+                                <p className="text-xs text-muted-foreground line-clamp-3">
                                   {asset.description}
                                 </p>
                               )}
 
                               {/* Actions */}
-                              <div className="flex gap-2">
-                                {!asset.image_key_url ? (
-                                  <>
-                                    <input
-                                      type="file"
-                                      accept="image/png,image/jpeg,image/webp"
-                                      className="hidden"
-                                      ref={(el) => {
-                                        if (el) fileInputRefs.current[asset.id] = el;
-                                      }}
-                                      onChange={(e) => handleFileInputChange(asset.id, e)}
-                                    />
-                                    <Button
-                                      onClick={() => triggerFileInput(asset.id)}
-                                      disabled={asset.locked || uploadingAssetId === asset.id}
-                                      variant="outline"
-                                      className="flex-1"
-                                    >
-                                      {uploadingAssetId === asset.id ? (
-                                        <>
-                                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                          Uploading...
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Upload className="w-4 h-4 mr-2" />
-                                          Upload Image
-                                        </>
-                                      )}
-                                    </Button>
-                                    <Button
-                                      onClick={() => handleGenerateImage(asset.id)}
-                                      disabled={asset.locked}
-                                      className="flex-1"
-                                    >
-                                      <Sparkles className="w-4 h-4 mr-2" />
-                                      Generate Image Key
-                                    </Button>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Button
-                                      variant="outline"
-                                      onClick={() => handleGenerateImage(asset.id)}
-                                      disabled={asset.locked}
-                                      className="flex-1"
-                                    >
-                                      <RefreshCw className="w-4 h-4 mr-2" />
-                                      Regenerate
-                                    </Button>
-                                    {!asset.locked && (
+                              {!isStageLockedOrOutdated && (
+                                <div className="flex gap-2">
+                                  <input
+                                    type="file"
+                                    accept="image/png,image/jpeg,image/webp"
+                                    className="hidden"
+                                    ref={(el) => {
+                                      if (el) fileInputRefs.current[asset.id] = el;
+                                    }}
+                                    onChange={(e) => handleFileInputChange(asset.id, e)}
+                                  />
+                                  <Button
+                                    onClick={() => triggerFileInput(asset.id)}
+                                    disabled={uploadingAssetId === asset.id}
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-1"
+                                  >
+                                    {uploadingAssetId === asset.id ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : (
                                       <>
-                                        <input
-                                          type="file"
-                                          accept="image/png,image/jpeg,image/webp"
-                                          className="hidden"
-                                          ref={(el) => {
-                                            if (el) fileInputRefs.current[asset.id] = el;
-                                          }}
-                                          onChange={(e) => handleFileInputChange(asset.id, e)}
-                                        />
-                                        <Button
-                                          onClick={() => triggerFileInput(asset.id)}
-                                          disabled={uploadingAssetId === asset.id}
-                                          variant="outline"
-                                        >
-                                          {uploadingAssetId === asset.id ? (
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                          ) : (
-                                            <Upload className="w-4 h-4" />
-                                          )}
-                                        </Button>
+                                        <Upload className="w-3 h-3 mr-1" />
+                                        Upload
                                       </>
                                     )}
-                                  </>
-                                )}
-
-                                {asset.image_key_url && !asset.locked && (
-                                  <Button
-                                    variant="default"
-                                    onClick={() => handleLockAsset(asset.id)}
-                                    className="bg-success hover:bg-success/90"
-                                  >
-                                    <Check className="w-4 h-4 mr-2" />
-                                    Lock Asset
                                   </Button>
-                                )}
-                              </div>
+                                  <Button
+                                    onClick={() => handleGenerateImage(asset.id)}
+                                    size="sm"
+                                    className="flex-1"
+                                  >
+                                    {asset.image_key_url ? (
+                                      <>
+                                        <RefreshCw className="w-3 h-3 mr-1" />
+                                        Regenerate
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Sparkles className="w-3 h-3 mr-1" />
+                                        Generate
+                                      </>
+                                    )}
+                                  </Button>
+                                </div>
+                              )}
                             </CardContent>
                           </Card>
                         );
@@ -871,6 +832,74 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                   </div>
                 );
               })}
+
+              {/* Deferred Assets Section */}
+              {deferredAssets.length > 0 && (
+                <Collapsible open={deferredOpen} onOpenChange={setDeferredOpen}>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" className="w-full justify-between px-3 py-2 h-auto">
+                      <span className="font-semibold text-sm text-muted-foreground flex items-center gap-2">
+                        <PauseCircle className="w-4 h-4" />
+                        Deferred Assets ({deferredAssets.length})
+                      </span>
+                      <ChevronDown className={cn(
+                        "w-4 h-4 transition-transform text-muted-foreground",
+                        deferredOpen && "rotate-180"
+                      )} />
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mt-3">
+                      {deferredAssets.map(asset => {
+                        const Icon = getAssetIcon(asset.asset_type);
+                        return (
+                          <Card key={asset.id} className="border-dashed border-amber-500/30 bg-amber-500/5">
+                            <CardContent className="p-3 flex items-center gap-3">
+                              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-500/10 text-amber-500 shrink-0">
+                                <Icon className="w-4 h-4" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">{asset.name}</p>
+                                <div className="flex gap-1 mt-0.5 flex-wrap">
+                                  <Badge variant="outline" className="text-[10px] px-1">{asset.asset_type}</Badge>
+                                  {asset.scene_numbers && asset.scene_numbers.length > 0 && (
+                                    asset.scene_numbers.map(n => (
+                                      <Badge key={n} variant="secondary" className="text-[10px] px-1">Sc.{n}</Badge>
+                                    ))
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex gap-1 shrink-0">
+                                {!isStageLockedOrOutdated && (
+                                  <>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 text-xs"
+                                      onClick={() => handleRestoreAsset(asset.id)}
+                                    >
+                                      <Play className="w-3 h-3 mr-1" />
+                                      Restore
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 text-xs text-destructive"
+                                      onClick={() => handleDeleteAsset(asset.id)}
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
             </section>
           )}
 
@@ -884,6 +913,14 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
         entities={previewEntities}
         onConfirm={handleConfirmSelection}
         isConfirming={isConfirming}
+      />
+
+      {/* Add Asset Modal */}
+      <AddAssetModal
+        isOpen={showAddAssetModal}
+        onClose={() => setShowAddAssetModal(false)}
+        projectId={projectId}
+        onAssetCreated={loadAssets}
       />
 
       {/* Asset Drawer */}
@@ -919,7 +956,7 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
       {/* Floating Gatekeeper Bar - Fixed to bottom, respecting sidebar */}
       {hasExtracted && !isStageLockedOrOutdated && (
         <div className="fixed bottom-0 left-[280px] right-0 bg-card border-t border-border p-4 shadow-lg z-50">
-          <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
+          <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
             <div className="text-sm">
               <div className="font-medium text-foreground flex items-center gap-2">
                 Stage 5 Progress
@@ -931,9 +968,9 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                 )}
               </div>
               <div className="text-muted-foreground">
-                {assets.filter(a => a.locked).length}/{assets.length} assets locked
-                {!isStyleLocked && ' • Style not locked'}
-                {assets.filter(a => !a.image_key_url).length > 0 && ` • ${assets.filter(a => !a.image_key_url).length} need images`}
+                {activeAssets.filter(a => a.image_key_url).length}/{activeAssets.length} active assets have images
+                {deferredAssets.length > 0 && ` | ${deferredAssets.length} deferred`}
+                {!isStyleLocked && ' | Style not locked'}
               </div>
             </div>
 
@@ -944,7 +981,7 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
               variant="default"
               className={cn(
                 "font-semibold shadow-md transition-all",
-                canProceed 
+                canProceed
                   ? "bg-amber-500 hover:bg-amber-600 text-white"
                   : "bg-muted text-muted-foreground cursor-not-allowed",
                 "disabled:opacity-50"
