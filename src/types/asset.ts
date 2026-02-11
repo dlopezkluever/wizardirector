@@ -29,6 +29,9 @@ export interface ProjectAsset {
   image_key_url?: string;
   visual_style_capsule_id?: string;
   locked: boolean;
+  deferred?: boolean;
+  scene_numbers?: number[];
+  source?: 'extracted' | 'manual' | 'cloned';
   overridden_fields?: string[]; // Fields that have been manually edited and should not be overwritten during sync
   last_synced_at?: string; // Timestamp of last sync from global asset
   metadata?: {
@@ -38,6 +41,23 @@ export interface ProjectAsset {
     conflict_details?: string;
     source_mentions?: string[];
   };
+  created_at: string;
+  updated_at: string;
+}
+
+export type AssetDecision = 'keep' | 'defer' | 'delete';
+
+export interface ProjectAssetGenerationAttempt {
+  id: string;
+  project_asset_id: string;
+  image_url: string;
+  storage_path?: string;
+  source: 'generated' | 'uploaded';
+  is_selected: boolean;
+  original_filename?: string;
+  file_size_bytes?: number;
+  mime_type?: string;
+  attempt_number: number;
   created_at: string;
   updated_at: string;
 }
@@ -118,6 +138,11 @@ export interface AssetPreviewResponse {
 }
 
 export interface AssetConfirmRequest {
-  selectedEntities: Array<{ name: string; type: AssetType }>;
+  selectedEntities: Array<{
+    name: string;
+    type: AssetType;
+    decision?: AssetDecision;
+    sceneNumbers?: number[];
+  }>;
 }
 
