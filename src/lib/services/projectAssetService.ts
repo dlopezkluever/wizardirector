@@ -4,7 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
-import type { ProjectAsset, CloneAssetRequest, AssetVersionStatus, AssetPreviewResponse, AssetType } from '@/types/asset';
+import type { ProjectAsset, CloneAssetRequest, AssetVersionStatus, AssetPreviewResponse, AssetType, AssetDecision, ProjectAssetGenerationAttempt } from '@/types/asset';
 
 export interface ExtractAssetsResponse {
   assets: ProjectAsset[];
@@ -28,6 +28,7 @@ export interface UpdateProjectAssetRequest {
   name?: string;
   description?: string;
   image_prompt?: string;
+  deferred?: boolean;
 }
 
 export interface ImageGenerationJobResponse {
@@ -72,7 +73,7 @@ class ProjectAssetService {
    */
   async extractConfirm(
     projectId: string,
-    selectedEntities: Array<{ name: string; type: AssetType }>
+    selectedEntities: Array<{ name: string; type: AssetType; decision?: AssetDecision; sceneNumbers?: number[] }>
   ): Promise<ProjectAsset[]> {
     const { data: { session } } = await supabase.auth.getSession();
 
@@ -554,6 +555,94 @@ class ProjectAssetService {
     }
 
     return response.json();
+  }
+
+  /**
+   * Defer an asset (mark as not required for Stage 5 completion)
+   */
+  async deferAsset(projectId: string, assetId: string): Promise<ProjectAsset> {
+    return this.updateAsset(projectId, assetId, { deferred: true });
+  }
+
+  /**
+   * Restore a deferred asset back to active
+   */
+  async restoreAsset(projectId: string, assetId: string): Promise<ProjectAsset> {
+    return this.updateAsset(projectId, assetId, { deferred: false });
+  }
+
+  /**
+   * List generation attempts for a project asset
+   */
+  async listAttempts(projectId: string, assetId: string): Promise<ProjectAssetGenerationAttempt[]> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/attempts`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to list attempts');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Select a specific generation attempt as the active image
+   */
+  async selectAttempt(projectId: string, assetId: string, attemptId: string): Promise<ProjectAssetGenerationAttempt> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/attempts/${attemptId}/select`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to select attempt');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Delete a generation attempt
+   */
+  async deleteAttempt(projectId: string, assetId: string, attemptId: string): Promise<void> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/attempts/${attemptId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to delete attempt');
+    }
   }
 
   /**
