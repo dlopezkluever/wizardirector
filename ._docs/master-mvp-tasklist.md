@@ -242,7 +242,7 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 **Context**: The current locking implementation is "extremely tedious, especially in the production cycle." Users shouldn't have to unlock → relock → get another warning just to navigate across stages. The locking system needs a complete overhaul, but full branching integration is deferred to Phase 5.
 
-#### 2B.1 — Universal Lock/Unlock Button
+#### 2B.1 — Universal Lock/Unlock Button *DONE* ✅ DONE 
 **Ticket**: LK-2
 **Priority**: HIGH
 
@@ -261,7 +261,7 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 ---
 
-#### 2B.2 — State Persistence for Completed Scenes
+#### 2B.2 — State Persistence for Completed Scenes *DONE* ✅ DONE 
 **Ticket**: LK-3
 **Priority**: HIGH
 
@@ -282,7 +282,7 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 ---
 
-#### 2B.4 — Reduce Tedium in Production Cycle
+#### 2B.4 — Reduce Tedium in Production Cycle *DONE* ✅ DONE 
 **Ticket**: LK-1
 **Priority**: HIGH
 
@@ -360,7 +360,7 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 ### 3A — Stage 5 Extraction Revolution 
 
-#### 3A.1 — Two-Pass Asset Extraction with Filter Modal *DONE* 
+#### 3A.1 — Two-Pass Asset Extraction with Filter Modal  *DONE* ✅ DONE 
 **Tickets**: 5.3, multi-stage extraction optimization
 **Priority**: ARCHITECTURE CHANGE
 
@@ -399,26 +399,36 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 ---
 
-#### 3A.2 — Sidelined Assets System
+#### 3A.2 — Sidelined Assets System  *DONE* ✅ DONE 
 **Ticket**: 5.4
 **Priority**: HIGH
 
-**Purpose**: Make asset removal non-destructive — "sidelined" not deleted.
+**Purpose**: Make asset removal have the option for non-destructive deferal; — "defer" not deleted.
 
-**Problem/Context**: Removing an asset in Stage 5 currently deletes it, which is dangerous. Sidelined assets should be hidden from the Stage 5 workflow but maintained in the database with their scene info preserved. They remain available for use in later stages (Stage 8, 10) where the LLM generates them on-the-fly from script context. Users should be able to retrieve sidelined assets if they change their mind.
+**Problem/Context**: Removing an asset in Stage 5 currently deletes it, which is dangerous for items . Sidelined assets should be hidden from the Stage 5 workflow but maintained in the database with their scene info preserved. They remain available for use in later stages (Stage 8, 10) where the LLM generates them on-the-fly from script context. Users should be able to retrieve sidelined assets if they change their mind.
 
 **Core Features:**
-- [ ] Add `sidelined` boolean flag to assets (or status field)
-- [ ] Hide sidelined assets from Stage 5 active workflow
-- [ ] Preserve all scene info and metadata for sidelined assets
+- [ ] Add `defer` boolean flag to assets (or status field)
+- [ ] Hide defered assets from Stage 5 active workflow
+- [ ] Preserve all scene info and metadata for defer assets
 - [ ] "Restore" action to bring sidelined assets back
 - [ ] Allow Stage 8/10 to access sidelined asset data for context
 
 **Dependencies**: 3A.1 (filter modal provides the primary UI for sidelining).
 
+Possible Deferal method: Maybe in the Pop up asset extraction modal (that appears in stage 5 after pressing extract assets), we could have 3 options (think like there columns):
+1. Keep/select
+2. DEFER (meaning, the asset is real, but I don't want to worry about it yet)
+3. DELETE (meaning, this asset is incorrect, something in the extraction process went wrong OR it's such a minor detail,)
+
+All assets should start defaulted as Keep; and the user needs to move to either defer or delete an asset.
+(maybe add a little section in the ui that lists the "Defered" assets (with thier scenes next to it as well))
+
+These defered assets should appear in stage 8, but if it's the first time scene, then they will obviously have no master reference (the scenes afterwhich should show the scene instance images generated/uploaded from the past scenes it was in)
+
 ---
 
-#### 3A.3 — Manual Asset Addition
+#### 3A.3 — Manual Asset Addition *DONE* ✅ DONE 
 **Ticket**: 5.5
 **Priority**: HIGH
 
@@ -437,7 +447,7 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 ---
 
-#### 3A.4 — Assets Don't Require Images
+#### 3A.4 — Assets Don't Require Images *🚩 Defer:
 **Ticket**: 5.6
 **Priority**: MEDIUM
 
@@ -474,8 +484,8 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 ---
 
-#### 3A.6 — Delete Uploaded Image for an Asset
-**Ticket**: 5.12
+#### 3A.6 — Delete Uploaded Image for an Asset *DONE* ✅ DONE 
+**Ticket**: 5.12 
 **Priority**: LOW
 
 **Purpose**: Allow users to remove a predetermined uploaded image.
@@ -488,6 +498,15 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 - [ ] Clean up storage for removed images
 
 **Dependencies**: 3A.4 (assets should be able to exist without images first).
+
+*Note*: if a user uploads an image to an asset, they can choose to delete it is all im saying, for any and all of the images uploaded (if we do the carousel, which we should- So
+We also need to be able to replicate the same carousel functionality for assets as stage 8. Users Can generate and upload images, and they stored. Users get up to say 4. (obviously they are to be encouraged to delete any image geenerated that doesn't sit riht with them; is totally off the mark) (This could be especially key for characters / assets that undergo massive change throughout the story. )
+
+
+## Let's Also Do this: 
+
+Additionally, get rid of such the permenant locking of stage 5 assets, in that, there's no need to have them be locked and then it's totally impossible to edit them. 
+
 
 ---
 
@@ -775,7 +794,7 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 ---
 
-### 3C — Asset Architecture & Data Flow
+### 3C — Asset Architecture & Data Flow 
 
 #### 3C.1 — Transparent Background Auto-Injection
 **Ticket**: MVP v1.1 Feature 3.2, 5.9
@@ -823,13 +842,13 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 
 ---
 
-#### 3C.3 — Asset Inheritance Chain Enhancement
+#### 3C.3 — Asset Inheritance Chain Enhancement *DONE* ✅ DONE 
 **Ticket**: MVP v1.1 Feature 3.3, DC-3
 **Priority**: HIGH
 
 **Purpose**: Build comprehensive asset state tracking from Stage 5 through Stage 12.
 
-**Problem/Context**: The context/inheritance chain from Stage 5 → Stage 8 → Stage 9 → Stage 10 is broken somewhere (DC-3). Final generations don't reflect master asset influence — "just generic slop." Need strong inheritance tracking.
+**Problem/Context**: The context/inheritance chain from Stage 5 → Stage 8 → Stage 9 → Stage 10 is broken OR just really poorly designed somewhere (DC-3). Final generations don't reflect master asset influence or the shot list angle; i.e its just looks totally generic." Need strong inheritance tracking. Need to also make sure the shot list camera angle & movement data is influencing how the frame is structured..
 
 **Core Features:**
 - [ ] Strengthen `inherited_from_instance_id` chain tracking
@@ -841,10 +860,13 @@ Why Independent: Pure UI/CSS + one backend status calculation — no other task 
 - [ ] Implement asset state caching for quick retrieval
 
 **Dependencies**: 3B.1 (carousel system provides generation history).
+**User Comments**: TO get more at the issue, we neeed to really just be able to make sure we are getting the proper generations to occur from the inputs. Like in stage 8, we should desire the ability 
+(Asset Inheritance Failure in Production Pipeline:
+Final generations (Stage 10) do not reflect the influence of master assets. The context/inheritance chain from Stage 5 → Stage 8 → Stage 9 → Stage 10 is broken somewhere. Visual style capsule seems to override everything.)
 
 ---
 
-#### 3C.4 — Context Manager Enhancement
+#### 3C.4 — Context Manager Enhancement *DONE* ✅ DONE 
 **Ticket**: MVP v1.1 Feature 3.4
 **Priority**: HIGH
 
@@ -1000,11 +1022,11 @@ Adding assets manaully (which is an option when first arriving on stage 8) resul
 
 ---
 
-#### 4B.4 — Shot List Action Descriptions Enhancement
+#### 4B.4 — Shot List Action Descriptions Enhancement *DONE KINDA* ✅ DONE 
 **Ticket**: 7.1
 **Priority**: HIGH
 
-**Purpose**: Make shot list action descriptions much more descriptive.
+**Purpose**: Make shot list information much more descriptieve, regarding camera angle, camaera motion, lighting, and describe the frameing of the misc-en scene more, like it just needs to be much more descritive, to help with the rest of the process later (espeically the frame & video prompts) 
 
 **Problem/Context**: Currently the extracted action is often only a line of dialogue with vague buzzwords. Shot list entries need camera directions, crew notes, and detailed action descriptions. This is the preamble to the two key prompts made in Stage 9 — quality here directly impacts prompt quality.
 
@@ -1016,7 +1038,8 @@ Adding assets manaully (which is an option when first arriving on stage 8) resul
 - [ ] Crew-note style descriptions
 
 **Dependencies**: None.
-
+Ticket info: ### 7.1 — Shot List Extracted Action Too Concise
+The extracted action and information going into the shot list needs to be much more descriptive. Currently often only a line of dialogue with vague buzzwords. Needs camera directions, crew notes, and detailed action descriptions. This is the preamble to the two key prompts made in Stage 9.
 ---
 
 #### 4B.5 — Edit Merge Toggle Improvement

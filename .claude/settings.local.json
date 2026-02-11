@@ -5,7 +5,8 @@
       "Bash(npx eslint:*)",
       "Bash(npx tsc:*)",
       "Bash(npm run lint:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(wc:*)"
     ]
   },
   "outputStyle": "default"
