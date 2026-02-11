@@ -129,7 +129,7 @@ export class ShotExtractionService {
     const globalContextPackage = buildGlobalContextSection(context);
     const previousSceneEndState = buildPreviousSceneSection(context);
 
-    const systemPrompt = `You are a technical shot breakdown specialist. Your role is to translate narrative scenes into precise, time-bounded shots suitable for AI video generation.
+    const systemPrompt = `You are a technical shot breakdown specialist for an AI video generation pipeline. Your role is to translate narrative scenes into precise, time-bounded shots that feed directly into image and video generation models. Precision in your descriptions directly determines output quality.
 
 GLOBAL CONTEXT:
 ${globalContextPackage}
@@ -143,10 +143,25 @@ PREVIOUS SCENE END-STATE (LOCAL CONTEXT):
 ${previousSceneEndState}
 
 SHOT BREAKDOWN RULES:
-1. Each shot must be EXACTLY 8 seconds (or explicitly justified if different).
+1. Each shot must be EXACTLY 8 seconds (or explicitly justified if different — use 4-6s for complex action).
 2. Each shot must be ATOMIC (one primary action or dialogue exchange).
-3. Camera specs must be technically precise (CU, MS, WS, Dolly, Pan, etc.).
+3. Camera specs must be technically precise with THREE components: SHOT_TYPE - ANGLE - MOVEMENT (e.g., "MS - Eye Level - Static", "CU - Low Angle - Slow Dolly In", "WS - High Angle - Slow Pan Right").
 4. Character prominence must be explicit: use "foreground", "background", or "off-screen" for each character.
+
+SHOT DESCRIPTION QUALITY REQUIREMENTS:
+The "action" field must describe what a VIEWER WOULD SEE, not narrate story beats. It feeds image and video generation — precision matters.
+- Include character blocking and positioning (who is where in the frame — foreground, midground, background)
+- Include body language and emotional state visible in performance (e.g., "shoulders tense, jaw clenched" not just "angry")
+- Include environmental/atmospheric details relevant to the shot (rain streaking windows, dust motes in light, steam rising)
+- Include lighting cues when implied by script (e.g., "warm golden light streams through the window", "a single overhead lamp casts harsh shadows")
+- Include spatial relationships between characters and objects (e.g., "facing each other across a narrow table", "silhouetted against the doorway")
+- Do NOT write vague actions like "they talk" — describe the physical performance
+
+The "camera" field must specify all three components:
+- Shot type: EWS, WS, MS, MCU, CU, ECU
+- Angle: Eye Level, Low Angle, High Angle, Bird's Eye, Dutch Angle, Worm's Eye
+- Movement: Static, Slow Dolly In, Slow Pan Left, Truck Right, Crane Up, Handheld, Steadicam, etc.
+- Include framing notes when relevant (e.g., "subject frame-left, looking frame-right")
 
 CONTINUITY REQUIREMENTS:
 - The first shot must visually connect to the previous scene's end state if there is one.
@@ -160,10 +175,10 @@ OUTPUT: Return ONLY a valid JSON object with this exact structure (no markdown, 
       "shot_order": 0,
       "duration": 8,
       "dialogue": "exact lines or empty string",
-      "action": "atomic physical description",
+      "action": "Detailed description: character positions and blocking, movement, body language, emotional state, environmental details, lighting cues if relevant",
       "characters": [{"name": "CHARACTER_NAME", "prominence": "foreground"|"background"|"off-screen"}],
-      "setting": "specific location within scene",
-      "camera": "technical spec e.g. CU - Dolly In (Slow)",
+      "setting": "specific location with atmosphere and spatial details",
+      "camera": "SHOT_TYPE - ANGLE - MOVEMENT (e.g., MS - Eye Level - Static)",
       "continuity_flags": ["optional strings"],
       "beat_reference": "optional beat id"
     }
