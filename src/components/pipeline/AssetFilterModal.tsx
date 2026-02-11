@@ -10,15 +10,14 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import type { AssetPreviewEntity, AssetType } from '@/types/asset';
+import type { AssetPreviewEntity, AssetType, AssetDecision } from '@/types/asset';
 
 interface AssetFilterModalProps {
   isOpen: boolean;
   onClose: () => void;
   entities: AssetPreviewEntity[];
-  onConfirm: (selected: Array<{ name: string; type: AssetType }>) => void;
+  onConfirm: (selected: Array<{ name: string; type: AssetType; decision: AssetDecision; sceneNumbers: number[] }>) => void;
   isConfirming: boolean;
 }
 
@@ -32,6 +31,12 @@ function entityKey(entity: { type: string; name: string }): string {
   return `${entity.type}:${entity.name.toLowerCase()}`;
 }
 
+const DECISION_STYLES: Record<AssetDecision, { label: string; className: string; activeClassName: string }> = {
+  keep: { label: 'Keep', className: 'text-xs px-2 py-0.5', activeClassName: 'bg-green-600 text-white hover:bg-green-700' },
+  defer: { label: 'Defer', className: 'text-xs px-2 py-0.5', activeClassName: 'bg-amber-500 text-white hover:bg-amber-600' },
+  delete: { label: 'Delete', className: 'text-xs px-2 py-0.5', activeClassName: 'bg-red-600 text-white hover:bg-red-700' },
+};
+
 export function AssetFilterModal({
   isOpen,
   onClose,
@@ -39,14 +44,14 @@ export function AssetFilterModal({
   onConfirm,
   isConfirming,
 }: AssetFilterModalProps) {
-  // All selected by default
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() =>
-    new Set(entities.map(entityKey))
+  // All set to 'keep' by default
+  const [decisions, setDecisions] = useState<Map<string, AssetDecision>>(() =>
+    new Map(entities.map(e => [entityKey(e), 'keep']))
   );
 
-  // Reset selection when entities change
+  // Reset decisions when entities change
   useState(() => {
-    setSelectedKeys(new Set(entities.map(entityKey)));
+    setDecisions(new Map(entities.map(e => [entityKey(e), 'keep'])));
   });
 
   const grouped = useMemo(() => {
@@ -61,45 +66,44 @@ export function AssetFilterModal({
     return groups;
   }, [entities]);
 
-  const toggleEntity = useCallback((key: string) => {
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
+  const setDecision = useCallback((key: string, decision: AssetDecision) => {
+    setDecisions(prev => {
+      const next = new Map(prev);
+      next.set(key, decision);
       return next;
     });
   }, []);
 
-  const selectAllOfType = useCallback((type: AssetType) => {
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
+  const setAllOfType = useCallback((type: AssetType, decision: AssetDecision) => {
+    setDecisions(prev => {
+      const next = new Map(prev);
       for (const e of entities) {
-        if (e.type === type) next.add(entityKey(e));
+        if (e.type === type) next.set(entityKey(e), decision);
       }
       return next;
     });
   }, [entities]);
 
-  const selectNoneOfType = useCallback((type: AssetType) => {
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      for (const e of entities) {
-        if (e.type === type) next.delete(entityKey(e));
-      }
-      return next;
-    });
-  }, [entities]);
-
-  const selectedCount = selectedKeys.size;
+  const counts = useMemo(() => {
+    let keep = 0, defer = 0, del = 0;
+    for (const d of decisions.values()) {
+      if (d === 'keep') keep++;
+      else if (d === 'defer') defer++;
+      else del++;
+    }
+    return { keep, defer, delete: del };
+  }, [decisions]);
 
   const handleConfirm = () => {
-    const selected = entities
-      .filter((e) => selectedKeys.has(entityKey(e)))
-      .map((e) => ({ name: e.name, type: e.type }));
-    onConfirm(selected);
+    const result = entities
+      .filter(e => decisions.get(entityKey(e)) !== 'delete')
+      .map(e => ({
+        name: e.name,
+        type: e.type,
+        decision: decisions.get(entityKey(e)) || 'keep' as AssetDecision,
+        sceneNumbers: e.sceneNumbers,
+      }));
+    onConfirm(result);
   };
 
   return (
@@ -108,7 +112,7 @@ export function AssetFilterModal({
         <DialogHeader>
           <DialogTitle>Review Extracted Assets</DialogTitle>
           <DialogDescription>
-            {entities.length} entities found in your script. Deselect any you don't need
+            {entities.length} entities found in your script. Choose to keep, defer, or delete each
             before generating visual descriptions.
           </DialogDescription>
         </DialogHeader>
@@ -121,12 +125,6 @@ export function AssetFilterModal({
 
                 const config = TYPE_CONFIG[type];
                 const Icon = config.icon;
-                const allSelected = typeEntities.every((e) =>
-                  selectedKeys.has(entityKey(e))
-                );
-                const noneSelected = typeEntities.every(
-                  (e) => !selectedKeys.has(entityKey(e))
-                );
 
                 return (
                   <div key={type} className="space-y-2">
@@ -138,24 +136,22 @@ export function AssetFilterModal({
                           {config.label} ({typeEntities.length})
                         </span>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-1">
                         <Button
                           variant="ghost"
                           size="sm"
                           className="h-6 text-xs px-2"
-                          disabled={allSelected}
-                          onClick={() => selectAllOfType(type)}
+                          onClick={() => setAllOfType(type, 'keep')}
                         >
-                          Select All
+                          Keep All
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
                           className="h-6 text-xs px-2"
-                          disabled={noneSelected}
-                          onClick={() => selectNoneOfType(type)}
+                          onClick={() => setAllOfType(type, 'defer')}
                         >
-                          None
+                          Defer All
                         </Button>
                       </div>
                     </div>
@@ -164,17 +160,30 @@ export function AssetFilterModal({
                     <div className="space-y-1">
                       {typeEntities.map((entity) => {
                         const key = entityKey(entity);
-                        const checked = selectedKeys.has(key);
+                        const currentDecision = decisions.get(key) || 'keep';
 
                         return (
-                          <label
+                          <div
                             key={key}
-                            className="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-accent cursor-pointer"
+                            className="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-accent"
                           >
-                            <Checkbox
-                              checked={checked}
-                              onCheckedChange={() => toggleEntity(key)}
-                            />
+                            {/* Decision toggle buttons */}
+                            <div className="flex gap-0.5 shrink-0">
+                              {(Object.entries(DECISION_STYLES) as [AssetDecision, typeof DECISION_STYLES.keep][]).map(
+                                ([decision, style]) => (
+                                  <Button
+                                    key={decision}
+                                    variant="outline"
+                                    size="sm"
+                                    className={`${style.className} h-6 ${currentDecision === decision ? style.activeClassName : ''}`}
+                                    onClick={() => setDecision(key, decision)}
+                                  >
+                                    {style.label}
+                                  </Button>
+                                )
+                              )}
+                            </div>
+
                             <span className="flex-1 text-sm font-medium">
                               {entity.name}
                             </span>
@@ -189,7 +198,7 @@ export function AssetFilterModal({
                                 </Badge>
                               ))}
                             </div>
-                          </label>
+                          </div>
                         );
                       })}
                     </div>
@@ -201,12 +210,15 @@ export function AssetFilterModal({
         </ScrollArea>
 
         <DialogFooter className="gap-2 sm:gap-0">
+          <div className="flex-1 text-xs text-muted-foreground">
+            Keep {counts.keep} | Defer {counts.defer} | Delete {counts.delete}
+          </div>
           <Button variant="outline" onClick={onClose} disabled={isConfirming}>
             Cancel
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={selectedCount === 0 || isConfirming}
+            disabled={(counts.keep + counts.defer) === 0 || isConfirming}
           >
             {isConfirming ? (
               <>
@@ -214,7 +226,7 @@ export function AssetFilterModal({
                 Generating Descriptions...
               </>
             ) : (
-              `Confirm Selection (${selectedCount} assets)`
+              `Confirm Selection (${counts.keep + counts.defer} assets)`
             )}
           </Button>
         </DialogFooter>
