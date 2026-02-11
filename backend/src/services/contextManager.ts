@@ -45,6 +45,9 @@ export interface LocalContextSceneAsset {
   description: string;
   statusTags: string[];
   imageKeyUrl?: string;
+  masterImageUrl?: string;
+  carryForward?: boolean;
+  inheritedFromInstanceId?: string;
 }
 
 export interface LocalContext {
@@ -213,19 +216,25 @@ export class ContextManager {
     const projectAssetRow = (row: { project_asset?: { name: string; asset_type: string; description: string; image_key_url?: string | null } | null; effective_description?: string; status_tags?: string[]; image_key_url?: string | null }) =>
       row.project_asset as { name: string; asset_type: string; description: string; image_key_url?: string | null } | null;
 
-    const formattedAssets: LocalContextSceneAsset[] = (sceneAssets || []).map((instance) => {
+    const formattedAssets: LocalContextSceneAsset[] = (sceneAssets || []).map((instance: any) => {
       const pa = projectAssetRow(instance);
       const name = pa?.name ?? '';
       const assetType = (pa?.asset_type ?? 'prop') as 'character' | 'prop' | 'location';
       const description = instance.effective_description ?? pa?.description ?? '';
       const statusTags = instance.status_tags ?? [];
       const imageKeyUrl = instance.image_key_url ?? pa?.image_key_url ?? undefined;
+      const masterImageUrl = instance.selected_master_reference_url ?? pa?.image_key_url ?? undefined;
+      const carryForward = instance.carry_forward ?? false;
+      const inheritedFromInstanceId = instance.inherited_from_instance_id ?? undefined;
       return {
         name,
         type: assetType,
         description,
         statusTags,
         ...(imageKeyUrl && { imageKeyUrl }),
+        ...(masterImageUrl && { masterImageUrl }),
+        ...(carryForward && { carryForward }),
+        ...(inheritedFromInstanceId && { inheritedFromInstanceId }),
       };
     });
 
@@ -284,6 +293,64 @@ export class ContextManager {
       localContext,
       formattedContext
     };
+  }
+
+  /**
+   * Formats context specifically for Stage 9 prompt generation.
+   * Assembles visual style capsule + scene assets (rich) + prior scene end-state
+   * into SceneAssetInstanceData[] compatible with promptGenerationService.
+   * Includes context size monitoring with truncation for oversized contexts.
+   */
+  formatPromptGenerationContext(
+    globalContext: GlobalContext,
+    localContext: LocalContext
+  ): {
+    sceneAssets: import('./promptGenerationService.js').SceneAssetInstanceData[];
+    styleCapsule: StyleCapsule | null;
+  } {
+    const styleCapsule = globalContext.visualStyleCapsule ?? null;
+
+    // Convert LocalContextSceneAsset[] → SceneAssetInstanceData[] for prompt generation
+    const sceneAssets = (localContext.sceneAssets || []).map((la) => ({
+      id: '',
+      project_asset: {
+        id: '',
+        name: la.name,
+        asset_type: la.type as 'character' | 'prop' | 'location',
+        description: la.description,
+        image_key_url: la.masterImageUrl,
+      },
+      effective_description: la.description,
+      status_tags: la.statusTags,
+      image_key_url: la.imageKeyUrl,
+      master_image_url: la.masterImageUrl,
+      carry_forward: la.carryForward ?? false,
+      inherited_from_instance_id: la.inheritedFromInstanceId,
+    }));
+
+    // Context size monitoring — warn if combined asset context is very large
+    const CONTEXT_TOKEN_WARNING_THRESHOLD = 4000;
+    const assetContextStr = sceneAssets.map(a => a.effective_description).join(' ');
+    const estimatedTokens = this.estimateContextSize(assetContextStr);
+    if (estimatedTokens > CONTEXT_TOKEN_WARNING_THRESHOLD) {
+      console.warn(
+        `[ContextManager] Prompt generation context is large (~${estimatedTokens} tokens). ` +
+        `Truncating lowest-priority asset descriptions. Priority: characters > locations > props.`
+      );
+      // Truncate props first, then locations, then characters
+      const priorityOrder: Array<'character' | 'location' | 'prop'> = ['prop', 'location', 'character'];
+      for (const type of priorityOrder) {
+        if (this.estimateContextSize(sceneAssets.map(a => a.effective_description).join(' ')) <= CONTEXT_TOKEN_WARNING_THRESHOLD) break;
+        const assetsOfType = sceneAssets.filter(a => a.project_asset?.asset_type === type);
+        for (const asset of assetsOfType) {
+          if (asset.effective_description.length > 200) {
+            asset.effective_description = asset.effective_description.substring(0, 197) + '...';
+          }
+        }
+      }
+    }
+
+    return { sceneAssets, styleCapsule };
   }
 
   /**
