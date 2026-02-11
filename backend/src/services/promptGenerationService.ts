@@ -30,10 +30,15 @@ export interface SceneAssetInstanceData {
     name: string;
     asset_type: 'character' | 'prop' | 'location';
     description?: string;
+    image_key_url?: string;
   };
   description_override?: string | null;
   effective_description: string;
   status_tags: string[];
+  image_key_url?: string;
+  master_image_url?: string;
+  carry_forward?: boolean;
+  inherited_from_instance_id?: string;
 }
 
 export interface GeneratedPromptSet {
@@ -57,7 +62,9 @@ const PROMPT_GENERATION_TIMEOUT_MS = 30000;
 const DEFAULT_COMPATIBLE_MODELS = ['Veo3'];
 
 /**
- * Build asset context for frame prompt generation
+ * Build rich asset context for frame prompt generation.
+ * Groups by type, includes inheritance chain info, image reference indicators,
+ * effective descriptions, and status tags for guide-compliant prompts.
  */
 function buildAssetContext(assets: SceneAssetInstanceData[]): string {
   if (!assets.length) return 'No scene assets available.';
@@ -68,26 +75,39 @@ function buildAssetContext(assets: SceneAssetInstanceData[]): string {
 
   const parts: string[] = [];
 
+  const formatAssetEntry = (a: SceneAssetInstanceData): string => {
+    const name = a.project_asset?.name ?? 'Unknown';
+    const tags = a.status_tags.length ? ` [${a.status_tags.join(', ')}]` : '';
+
+    // Inheritance indicators
+    const inheritanceNotes: string[] = [];
+    if (a.inherited_from_instance_id) inheritanceNotes.push('inherited');
+    if (a.carry_forward) inheritanceNotes.push('carry_forward');
+    const inheritanceStr = inheritanceNotes.length ? ` [${inheritanceNotes.join(', ')}]` : '';
+
+    // Image reference indicators
+    const hasSceneRef = !!a.image_key_url;
+    const hasMasterRef = !!a.master_image_url;
+    let refNote = '';
+    if (hasSceneRef) refNote = ' Scene reference image available.';
+    else if (hasMasterRef) refNote = ' Master reference image available.';
+
+    return `- ${name}${inheritanceStr}${tags}: ${a.effective_description}${refNote}`;
+  };
+
   if (characterAssets.length) {
     parts.push('CHARACTERS:');
-    characterAssets.forEach(a => {
-      const tags = a.status_tags.length ? ` [${a.status_tags.join(', ')}]` : '';
-      parts.push(`- ${a.project_asset?.name}${tags}: ${a.effective_description}`);
-    });
+    characterAssets.forEach(a => parts.push(formatAssetEntry(a)));
   }
 
   if (locationAssets.length) {
     parts.push('\nLOCATIONS:');
-    locationAssets.forEach(a => {
-      parts.push(`- ${a.project_asset?.name}: ${a.effective_description}`);
-    });
+    locationAssets.forEach(a => parts.push(formatAssetEntry(a)));
   }
 
   if (propAssets.length) {
     parts.push('\nPROPS:');
-    propAssets.forEach(a => {
-      parts.push(`- ${a.project_asset?.name}: ${a.effective_description}`);
-    });
+    propAssets.forEach(a => parts.push(formatAssetEntry(a)));
   }
 
   return parts.join('\n');
@@ -253,79 +273,100 @@ export class PromptGenerationService {
 
   /**
    * Generate frame prompt (visual, asset-heavy, spatially explicit)
+   * Follows the Veo 3.1 Frame Prompt 5-part formula:
+   * [Camera Position & Framing] + [Subject Appearance] + [Spatial Placement & Pose] + [Environment & Props] + [Lighting, Color & Style]
    */
   private async generateFramePrompt(
     shot: ShotData,
     assetContext: string,
     styleContext: string
   ): Promise<string> {
-    const systemPrompt = `You are a visual prompt engineer for AI image generation. Generate detailed, visually descriptive prompts that:
-- Reference specific character appearances from provided asset descriptions
-- Include precise camera specifications (shot type, angle, movement)
-- Describe spatial composition and blocking
-- Incorporate style capsule aesthetic directives
-- Focus on the START frame moment (frozen visual snapshot)
+    const systemPrompt = `You are a visual prompt engineer for AI image generation (starting frames for Veo 3.1 video pipeline).
 
-Your output must be a single paragraph of prose, max 800 characters. No JSON, no headers.
+YOUR TASK: Generate a single dense paragraph describing a FROZEN VISUAL SNAPSHOT — the starting frame of a shot. This is a PHOTOGRAPH, not a video. There is NO action, NO dialogue, NO sound, NO movement.
+
+STRUCTURE your output following this 5-part formula IN ORDER:
+1. CAMERA POSITION & FRAMING: Shot type (EWS/WS/MS/MCU/CU/ECU), camera angle (eye-level/low-angle/high-angle/Dutch/bird's-eye), lens characteristics (depth of field, focal plane). Do NOT include camera movement (no pan, dolly, track — those go in the video prompt).
+2. SUBJECT APPEARANCE: Full physical description of each visible character using the asset descriptions below. Include face, hair, build, clothing, accessories, posture. Copy-paste character details verbatim from assets — consistency is critical.
+3. SPATIAL PLACEMENT & POSE: Where each subject/object sits in frame (frame-left, center, foreground, background). Body orientation relative to camera, hand positions, eye-line direction, weight distribution. Static poses only.
+4. ENVIRONMENT & PROPS: Location details, architecture, furniture, surfaces, props with positions, depth layers (foreground/midground/background), atmospheric visuals (dust, fog, rain on glass), time-of-day cues.
+5. LIGHTING, COLOR & STYLE: Key light direction and quality, fill/rim light, practical lights, color palette, contrast, film stock/aesthetic, overall visual mood.
+
+RULES:
+- NO action verbs, NO dialogue, NO sound, NO movement — this is a still image
+- Reference character appearances EXACTLY from the asset descriptions
+- If a character has a reference image noted, describe them with extra precision
+- Output ONLY the prompt text as a single paragraph, max 1200 characters
+- No JSON, no headers, no formatting
 
 ASSET DESCRIPTIONS:
 ${assetContext}
 
 ${styleContext}`;
 
-    const userPrompt = `Generate a frame prompt for this shot:
+    // Extract static camera info (shot type + angle) vs movement for routing guidance
+    const userPrompt = `Generate a STARTING FRAME prompt for this shot:
 
-Shot ID: ${shot.shot_id}
-Duration: ${shot.duration} seconds
-Action: ${shot.action}
+Shot: ${shot.shot_id} | Duration: ${shot.duration}s
+Action context (for understanding the moment, NOT for inclusion): ${shot.action}
 Setting: ${shot.setting}
-Camera: ${shot.camera}
-Characters in foreground: ${shot.characters_foreground.join(', ') || 'None'}
-Characters in background: ${shot.characters_background.join(', ') || 'None'}
-Dialogue: ${shot.dialogue || 'None'}
+Camera (extract STATIC position — shot type, angle, lens — ignore any movement): ${shot.camera}
+Foreground characters: ${shot.characters_foreground.join(', ') || 'None'}
+Background characters: ${shot.characters_background.join(', ') || 'None'}
 Continuity notes: ${shot.continuity_flags?.join(', ') || 'None'}
 
-Write a detailed visual description for the START frame of this shot. Reference character appearances from the asset descriptions above. Include camera specs, lighting, and spatial composition. Output ONLY the prompt text, no formatting.`;
+Camera split guidance: Camera POSITION (shot type, angle, lens) goes here in the frame prompt. Camera MOVEMENT (pan, dolly, track) belongs in the video prompt only.
+
+Write the frame prompt as a single dense paragraph. Describe ONLY what a viewer would see in a freeze-frame. Output ONLY the prompt text.`;
 
     const response = await this.callLLM(systemPrompt, userPrompt, 'frame_prompt');
-    return this.cleanPromptOutput(response, 1000);
+    return this.cleanPromptOutput(response, 1200);
   }
 
   /**
-   * Generate video prompt (action/audio focused, minimal visual description)
+   * Generate video prompt (action/audio focused, NO visual description)
+   * Follows the Veo 3.1 Video Prompt formula:
+   * [Camera Movement] + [Action/Performance] + [Dialogue] + [Sound Design]
    */
   private async generateVideoPrompt(
     shot: ShotData,
     framePrompt: string
   ): Promise<string> {
-    const systemPrompt = `You are a video prompt engineer for AI video generation (Veo3). Generate prompts that:
-- Focus on ACTION and MOTION, not static visual description
-- Include precise dialogue with delivery instructions (whispered, shouted, etc.)
-- Specify sound effects and ambient audio
-- Describe character movements and interactions
-- Assume anchor frames encode visual truth - DO NOT repeat visual descriptions
+    const systemPrompt = `You are a video prompt engineer for Veo 3.1 frame-to-video generation.
 
-Follow Veo3 format: [Camera]. [Character] [Action]. Audio: [SFX]. "[Dialogue]"
+THE STARTING FRAME ALREADY ENCODES ALL VISUAL TRUTH. Do NOT describe what anyone looks like, what the environment looks like, what the lighting is, or what colors are present. The frame image handles all of that.
 
-Your output must be a single paragraph, max 600 characters. No JSON, no headers.`;
+YOUR TASK: Generate a lean prompt describing ONLY what HAPPENS when you press play.
 
-    const userPrompt = `Generate a video prompt for this shot. The visual appearance is already encoded in the frame prompt.
+STRUCTURE your output following this 4-part formula:
+1. CAMERA MOVEMENT: How the camera moves (static, pan, dolly in/out, truck, crane, handheld, steadicam, arc, rack focus). If no movement, state "Static camera." Do NOT repeat shot type or angle — that's in the frame.
+2. ACTION / PERFORMANCE: What subjects DO — physical movement, facial performance shifts, gestures, body language, interactions. Use verbs and behaviors, not appearances. One major action per shot.
+3. DIALOGUE: Exact words in quotes with speaker ID. Include voice direction: accent, tone, pitch, pace, emotion, delivery style (whispered, shouted, deadpan, trembling). If no dialogue, omit.
+4. SOUND DESIGN: SFX tied to actions (door slam, footsteps on gravel). Ambient audio (rain, traffic, wind). Musical cues if relevant. Note silence explicitly if the beat should be quiet.
 
-Shot ID: ${shot.shot_id}
-Duration: ${shot.duration} seconds
+RULES:
+- NO character appearance descriptions (face, hair, clothing, build)
+- NO environment descriptions (room, furniture, architecture)
+- NO lighting or color palette mentions
+- NO film stock or aesthetic mentions
+- Keep it lean — max 500 characters
+- Output a single paragraph, no JSON, no headers`;
+
+    const userPrompt = `Generate a VIDEO prompt for this shot. Visual truth is locked in the starting frame.
+
+Shot: ${shot.shot_id} | Duration: ${shot.duration}s
 Action: ${shot.action}
-Camera: ${shot.camera}
+Camera (extract MOVEMENT only — ignore shot type/angle): ${shot.camera}
 Dialogue: ${shot.dialogue || 'None'}
-Characters in foreground: ${shot.characters_foreground.join(', ') || 'None'}
-Characters in background: ${shot.characters_background.join(', ') || 'None'}
+Foreground characters: ${shot.characters_foreground.join(', ') || 'None'}
+Background characters: ${shot.characters_background.join(', ') || 'None'}
 
-Reference frame prompt (for context, don't repeat visuals):
-"${framePrompt.substring(0, 200)}..."
+Camera split guidance: Camera MOVEMENT (pan, dolly, track, crane) goes here. Camera POSITION (shot type, angle, lens) is already in the frame.
 
-Write a video generation prompt focusing on ACTION, MOTION, AUDIO, and DIALOGUE. The visual elements are already established. Output ONLY the prompt text, no formatting.`;
+Write the video prompt. Focus on action, movement, dialogue delivery, and sound. Output ONLY the prompt text.`;
 
     const response = await this.callLLM(systemPrompt, userPrompt, 'video_prompt');
-    return this.cleanPromptOutput(response, 800);
+    return this.cleanPromptOutput(response, 500);
   }
 
   /**

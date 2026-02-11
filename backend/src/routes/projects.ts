@@ -7,6 +7,8 @@ import { ShotSplitService } from '../services/shotSplitService.js';
 import { ShotMergeService } from '../services/shotMergeService.js';
 import { shotValidationService } from '../services/shotValidationService.js';
 import { promptGenerationService, type ShotData, type SceneAssetInstanceData } from '../services/promptGenerationService.js';
+import { StyleCapsuleService } from '../services/styleCapsuleService.js';
+import { ContextManager } from '../services/contextManager.js';
 
 const router = Router();
 
@@ -2008,7 +2010,7 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
     // Verify project ownership
     const { data: project, error: projectError } = await supabase
       .from('projects')
-      .select('id, active_branch_id')
+      .select('id, active_branch_id, visual_style_capsule_id')
       .eq('id', projectId)
       .eq('user_id', userId)
       .single();
@@ -2046,23 +2048,30 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
       return res.status(400).json({ error: 'No shots found for this scene' });
     }
 
-    // Fetch scene asset instances for context
+    // Fetch scene asset instances with enriched data for context
     const { data: assetInstances } = await supabase
       .from('scene_asset_instances')
       .select(`
         id,
         description_override,
+        effective_description,
         status_tags,
+        image_key_url,
+        carry_forward,
+        inherited_from_instance_id,
+        use_master_as_is,
+        selected_master_reference_url,
         project_assets!inner (
           id,
           name,
           asset_type,
-          description
+          description,
+          image_key_url
         )
       `)
       .eq('scene_id', sceneId);
 
-    // Transform asset instances to service format
+    // Transform asset instances to service format with enriched data
     const sceneAssets: SceneAssetInstanceData[] = (assetInstances || []).map((instance: any) => ({
       id: instance.id,
       project_asset: instance.project_assets ? {
@@ -2070,15 +2079,39 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
         name: instance.project_assets.name,
         asset_type: instance.project_assets.asset_type,
         description: instance.project_assets.description,
+        image_key_url: instance.project_assets.image_key_url || undefined,
       } : undefined,
       description_override: instance.description_override,
-      effective_description: instance.description_override || instance.project_assets?.description || '',
+      effective_description: instance.effective_description || instance.description_override || instance.project_assets?.description || '',
       status_tags: instance.status_tags || [],
+      image_key_url: instance.image_key_url || undefined,
+      master_image_url: instance.selected_master_reference_url || instance.project_assets?.image_key_url || undefined,
+      carry_forward: instance.carry_forward ?? false,
+      inherited_from_instance_id: instance.inherited_from_instance_id || undefined,
     }));
 
     // Fetch visual style capsule if applied to the project
-    // For now, we'll skip style capsule - can be added later via stage_state lookups
-    const styleCapsule = null;
+    let styleCapsule = null;
+    if (project.visual_style_capsule_id) {
+      try {
+        const styleCapsuleService = new StyleCapsuleService();
+        styleCapsule = await styleCapsuleService.getCapsuleById(project.visual_style_capsule_id, userId);
+        if (styleCapsule) {
+          console.log(`[Stage9] Loaded visual style capsule: ${styleCapsule.name}`);
+        }
+      } catch (err) {
+        console.warn('[Stage9] Failed to load visual style capsule, continuing without it:', err);
+      }
+    }
+
+    // Context size monitoring
+    const contextManager = new ContextManager();
+    const assetContextStr = sceneAssets.map(a => a.effective_description).join(' ');
+    const estimatedTokens = contextManager.estimateContextSize(assetContextStr);
+    console.log(`[Stage9] Asset context size: ~${estimatedTokens} tokens for ${sceneAssets.length} assets`);
+    if (estimatedTokens > 4000) {
+      console.warn(`[Stage9] Large asset context (~${estimatedTokens} tokens) — prompt quality may be affected`);
+    }
 
     // Transform shots to service format
     const shotDataList: ShotData[] = shots.map((shot: any) => ({
