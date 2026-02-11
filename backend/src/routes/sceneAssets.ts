@@ -195,7 +195,7 @@ router.post('/:projectId/scenes/:sceneId/assets', async (req, res) => {
 
     const { data: scene, error: sceneError } = await supabase
       .from('scenes')
-      .select('id, branch_id')
+      .select('id, branch_id, scene_number')
       .eq('id', sceneId)
       .eq('branch_id', project.active_branch_id)
       .single();
@@ -244,6 +244,26 @@ router.post('/:projectId/scenes/:sceneId/assets', async (req, res) => {
       }
       console.error('[SceneAssets] Insert error:', insertError);
       return res.status(500).json({ error: 'Failed to create scene asset instance' });
+    }
+
+    // Update project_asset.scene_numbers to include this scene's number
+    if (scene.scene_number) {
+      try {
+        const { data: pa } = await supabase
+          .from('project_assets')
+          .select('scene_numbers')
+          .eq('id', projectAssetId)
+          .single();
+        const current: number[] = pa?.scene_numbers || [];
+        if (!current.includes(scene.scene_number)) {
+          await supabase
+            .from('project_assets')
+            .update({ scene_numbers: [...current, scene.scene_number] })
+            .eq('id', projectAssetId);
+        }
+      } catch (sceneNumErr) {
+        console.warn('[SceneAssets] Failed to update scene_numbers:', sceneNumErr);
+      }
     }
 
     console.log(

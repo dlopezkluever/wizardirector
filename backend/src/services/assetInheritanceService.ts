@@ -154,11 +154,12 @@ export class AssetInheritanceService {
       throw new Error(`Bootstrap only allowed for Scene 1. Current scene number: ${scene.scene_number}`);
     }
 
+    // Include both locked and deferred assets; deferred assets get instances with null image
     const { data: projectAssets, error: assetsError } = await supabase
       .from('project_assets')
-      .select('id, description, image_key_url')
+      .select('id, description, image_key_url, deferred')
       .eq('branch_id', branchId)
-      .eq('locked', true);
+      .or('locked.eq.true,deferred.eq.true');
 
     if (assetsError) {
       throw new Error(`Failed to fetch project assets: ${assetsError.message}`);
@@ -169,11 +170,11 @@ export class AssetInheritanceService {
       return 0;
     }
 
-    const instancesToCreate = projectAssets.map((asset) => ({
+    const instancesToCreate = projectAssets.map((asset: { id: string; description: string; image_key_url: string | null; deferred?: boolean }) => ({
       scene_id: sceneId,
       project_asset_id: asset.id,
       description_override: null,
-      image_key_url: asset.image_key_url ?? null,
+      image_key_url: asset.deferred ? null : (asset.image_key_url ?? null),
       status_tags: [] as string[],
       carry_forward: true,
       inherited_from_instance_id: null,

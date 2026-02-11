@@ -7,6 +7,7 @@ import { Router } from 'express';
 import { supabase } from '../config/supabase.js';
 import { AssetExtractionService } from '../services/assetExtractionService.js';
 import { ImageGenerationService } from '../services/image-generation/ImageGenerationService.js';
+import { ProjectAssetAttemptsService } from '../services/projectAssetAttemptsService.js';
 import { localizeAssetImage } from '../services/assetImageLocalizer.js';
 import { mergeDescriptions } from '../services/assetDescriptionMerger.js';
 import { extractManifest } from '../utils/scriptManifest.js';
@@ -16,6 +17,7 @@ import path from 'path';
 const router = Router();
 const extractionService = new AssetExtractionService();
 const imageService = new ImageGenerationService();
+const projectAssetAttemptsService = new ProjectAssetAttemptsService();
 
 // Configure multer for image uploads
 const storage = multer.memoryStorage();
@@ -305,24 +307,49 @@ router.post('/:projectId/assets/extract-confirm', async (req, res) => {
             });
         }
 
-        console.log(`[ProjectAssets] Confirming extraction of ${selectedEntities.length} entities`);
+        // Filter out deleted entities, separate keep vs defer
+        interface ConfirmEntity { name: string; type: string; decision?: string; sceneNumbers?: number[] }
+        const keptEntities = selectedEntities.filter((e: ConfirmEntity) => !e.decision || e.decision === 'keep');
+        const deferredEntities = selectedEntities.filter((e: ConfirmEntity) => e.decision === 'defer');
+        const entitiesToProcess = [...keptEntities, ...deferredEntities];
+
+        console.log(`[ProjectAssets] Confirming extraction: ${keptEntities.length} keep, ${deferredEntities.length} defer, ${selectedEntities.length - entitiesToProcess.length} deleted`);
+
+        if (entitiesToProcess.length === 0) {
+            return res.status(400).json({ error: 'No entities to process after filtering' });
+        }
 
         const extractedAssets = await extractionService.extractSelectedAssets(
             project.active_branch_id,
-            selectedEntities,
+            entitiesToProcess.map((e: ConfirmEntity) => ({ name: e.name, type: e.type })),
             visualStyleId
         );
 
-        // Save to database (same insert logic as existing extract)
-        const assetsToInsert = extractedAssets.map(asset => ({
-            project_id: projectId,
-            branch_id: project.active_branch_id,
-            name: asset.name,
-            asset_type: asset.type,
-            description: asset.description,
-            visual_style_capsule_id: visualStyleId,
-            locked: false,
-        }));
+        // Build a lookup from entity name+type to decision and sceneNumbers
+        const entityLookup = new Map(
+            selectedEntities.map((e: ConfirmEntity) => [
+                `${e.type}:${e.name.toLowerCase()}`,
+                { decision: e.decision || 'keep', sceneNumbers: e.sceneNumbers || [] }
+            ])
+        );
+
+        // Save to database with deferred flag and scene_numbers
+        const assetsToInsert = extractedAssets.map(asset => {
+            const key = `${asset.type}:${asset.name.toLowerCase()}`;
+            const entityInfo = entityLookup.get(key) || { decision: 'keep', sceneNumbers: [] };
+            return {
+                project_id: projectId,
+                branch_id: project.active_branch_id,
+                name: asset.name,
+                asset_type: asset.type,
+                description: asset.description,
+                visual_style_capsule_id: visualStyleId,
+                locked: false,
+                deferred: entityInfo.decision === 'defer',
+                scene_numbers: entityInfo.sceneNumbers,
+                source: 'extracted',
+            };
+        });
 
         const { data: savedAssets, error: insertError } = await supabase
             .from('project_assets')
@@ -523,7 +550,7 @@ router.put('/:projectId/assets/:assetId', async (req, res) => {
     try {
         const userId = req.user!.id;
         const { projectId, assetId } = req.params;
-        const { name, description, image_prompt } = req.body;
+        const { name, description, image_prompt, deferred } = req.body;
 
         // Verify project ownership
         const { data: project, error: projectError } = await supabase
@@ -537,7 +564,7 @@ router.put('/:projectId/assets/:assetId', async (req, res) => {
             return res.status(404).json({ error: 'Project not found' });
         }
 
-        // Verify asset exists and is not locked
+        // Verify asset exists
         const { data: existingAsset, error: fetchError } = await supabase
             .from('project_assets')
             .select('id, locked, global_asset_id, overridden_fields')
@@ -549,7 +576,10 @@ router.put('/:projectId/assets/:assetId', async (req, res) => {
             return res.status(404).json({ error: 'Asset not found' });
         }
 
-        if (existingAsset.locked) {
+        // Allow deferred toggling regardless of lock state
+        // For other fields, check locked status
+        const isOnlyDeferredUpdate = deferred !== undefined && name === undefined && description === undefined && image_prompt === undefined;
+        if (existingAsset.locked && !isOnlyDeferredUpdate) {
             return res.status(400).json({
                 error: 'Cannot modify locked asset'
             });
@@ -558,7 +588,10 @@ router.put('/:projectId/assets/:assetId', async (req, res) => {
         // Build update object
         const updates: any = {};
         const fieldsToTrack: string[] = [];
-        
+
+        if (deferred !== undefined) {
+            updates.deferred = deferred;
+        }
         if (name !== undefined) {
             updates.name = name;
             // Only track override if asset is linked to global (has inheritance)
@@ -752,7 +785,7 @@ router.post('/:projectId/assets', async (req, res) => {
     try {
         const userId = req.user!.id;
         const { projectId } = req.params;
-        const { name, asset_type, description, visual_style_capsule_id } = req.body;
+        const { name, asset_type, description, visual_style_capsule_id, scene_numbers, source } = req.body;
 
         if (!name || !asset_type || !description) {
             return res.status(400).json({
@@ -804,7 +837,9 @@ router.post('/:projectId/assets', async (req, res) => {
                 asset_type,
                 description,
                 visual_style_capsule_id: styleId || null,
-                locked: false
+                locked: false,
+                source: source || 'manual',
+                scene_numbers: scene_numbers || [],
             })
             .select()
             .single();
@@ -939,20 +974,29 @@ router.post('/:projectId/assets/:assetId/upload-image', upload.single('image'), 
             .from('asset-images')
             .getPublicUrl(fileName);
 
-        // Update asset with image URL
+        // Create generation attempt (enforce cap first)
+        await projectAssetAttemptsService.enforceAttemptCap(assetId);
+        await projectAssetAttemptsService.createAttempt(assetId, {
+            image_url: urlData.publicUrl,
+            storage_path: fileName,
+            source: 'uploaded',
+            is_selected: true,
+            original_filename: req.file.originalname,
+            file_size_bytes: req.file.size,
+            mime_type: req.file.mimetype,
+        });
+
+        // Fetch updated asset (image_key_url is set by createAttempt)
         const { data: updatedAsset, error: updateError } = await supabase
             .from('project_assets')
-            .update({
-                image_key_url: urlData.publicUrl
-            })
+            .select('*')
             .eq('id', assetId)
             .eq('project_id', projectId)
-            .select()
             .single();
 
         if (updateError) {
-            console.error('[ProjectAssets] Error updating asset with image URL:', updateError);
-            return res.status(500).json({ error: 'Failed to update asset with image URL' });
+            console.error('[ProjectAssets] Error fetching updated asset:', updateError);
+            return res.status(500).json({ error: 'Failed to fetch updated asset' });
         }
 
         console.log(`[ProjectAssets] Successfully uploaded image for asset ${assetId}`);
@@ -1047,7 +1091,7 @@ router.post('/:projectId/assets/lock-all', async (req, res) => {
         // Get all assets for the project
         const { data: assets, error: assetsError } = await supabase
             .from('project_assets')
-            .select('id, locked, image_key_url')
+            .select('id, locked, image_key_url, deferred')
             .eq('branch_id', project.active_branch_id);
 
         if (assetsError) {
@@ -1055,22 +1099,31 @@ router.post('/:projectId/assets/lock-all', async (req, res) => {
             return res.status(500).json({ error: 'Failed to fetch assets' });
         }
 
-        // Validate all assets have image keys
-        const assetsWithoutImages = assets.filter(a => !a.image_key_url);
-        if (assetsWithoutImages.length > 0) {
+        // Only validate active (non-deferred) assets
+        const activeAssets = assets.filter(a => !a.deferred);
+
+        if (activeAssets.length === 0) {
             return res.status(400).json({
-                error: `${assetsWithoutImages.length} asset(s) missing image keys`
+                error: 'No active assets to lock. At least one non-deferred asset is required.'
             });
         }
 
-        // Lock all unlocked assets
-        const unlockedAssetIds = assets.filter(a => !a.locked).map(a => a.id);
+        // Validate all active assets have image keys
+        const activeWithoutImages = activeAssets.filter(a => !a.image_key_url);
+        if (activeWithoutImages.length > 0) {
+            return res.status(400).json({
+                error: `${activeWithoutImages.length} active asset(s) missing image keys`
+            });
+        }
 
-        if (unlockedAssetIds.length > 0) {
+        // Lock all active unlocked assets (skip deferred)
+        const unlockedActiveIds = activeAssets.filter(a => !a.locked).map(a => a.id);
+
+        if (unlockedActiveIds.length > 0) {
             const { error: lockError } = await supabase
                 .from('project_assets')
                 .update({ locked: true })
-                .in('id', unlockedAssetIds);
+                .in('id', unlockedActiveIds);
 
             if (lockError) {
                 console.error('[ProjectAssets] Lock all error:', lockError);
@@ -1078,12 +1131,13 @@ router.post('/:projectId/assets/lock-all', async (req, res) => {
             }
         }
 
-        console.log(`[ProjectAssets] Locked ${unlockedAssetIds.length} assets for project ${projectId}`);
+        console.log(`[ProjectAssets] Locked ${unlockedActiveIds.length} active assets for project ${projectId} (${assets.length - activeAssets.length} deferred)`);
 
         res.json({
-            message: 'All assets locked successfully',
-            lockedCount: unlockedAssetIds.length,
-            totalCount: assets.length
+            message: 'All active assets locked successfully',
+            lockedCount: unlockedActiveIds.length,
+            totalCount: activeAssets.length,
+            deferredCount: assets.length - activeAssets.length,
         });
     } catch (error) {
         console.error('[ProjectAssets] Lock all error:', error);
@@ -1688,6 +1742,114 @@ router.post('/:projectId/assets/:assetId/promote', async (req, res) => {
     } catch (error) {
         console.error('[ProjectAssets] Promote error:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============================================================================
+// PROJECT ASSET GENERATION ATTEMPTS (3A.6)
+// ============================================================================
+
+/**
+ * GET /api/projects/:projectId/assets/:assetId/attempts
+ * List all generation attempts for a project asset
+ */
+router.get('/:projectId/assets/:assetId/attempts', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, assetId } = req.params;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Verify asset belongs to project
+        const { data: asset, error: assetError } = await supabase
+            .from('project_assets')
+            .select('id')
+            .eq('id', assetId)
+            .eq('project_id', projectId)
+            .single();
+
+        if (assetError || !asset) {
+            return res.status(404).json({ error: 'Asset not found' });
+        }
+
+        // Lazy backfill: if asset has image but no attempts, create one
+        await projectAssetAttemptsService.backfillAttemptIfNeeded(assetId);
+
+        const attempts = await projectAssetAttemptsService.listAttempts(assetId);
+        res.json(attempts);
+    } catch (error) {
+        console.error('[ProjectAssets] List attempts error:', error);
+        res.status(500).json({ error: 'Failed to list attempts' });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/assets/:assetId/attempts/:attemptId/select
+ * Select a generation attempt as the active image
+ */
+router.post('/:projectId/assets/:assetId/attempts/:attemptId/select', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, assetId, attemptId } = req.params;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const attempt = await projectAssetAttemptsService.selectAttempt(assetId, attemptId);
+        res.json(attempt);
+    } catch (error) {
+        console.error('[ProjectAssets] Select attempt error:', error);
+        const message = error instanceof Error ? error.message : 'Failed to select attempt';
+        res.status(500).json({ error: message });
+    }
+});
+
+/**
+ * DELETE /api/projects/:projectId/assets/:assetId/attempts/:attemptId
+ * Delete a generation attempt
+ */
+router.delete('/:projectId/assets/:assetId/attempts/:attemptId', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, assetId, attemptId } = req.params;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        await projectAssetAttemptsService.deleteAttempt(assetId, attemptId);
+        res.status(204).send();
+    } catch (error) {
+        console.error('[ProjectAssets] Delete attempt error:', error);
+        const message = error instanceof Error ? error.message : 'Failed to delete attempt';
+        res.status(400).json({ error: message });
     }
 });
 

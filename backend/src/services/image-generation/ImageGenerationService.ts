@@ -3,6 +3,7 @@ import { NanoBananaClient } from './NanoBananaClient.js';
 import { ImageProvider, ImageGenerationOptions, ImageArtifact, ReferenceImage } from './ImageProviderInterface.js';
 import { v4 as uuidv4 } from 'uuid';
 import { SceneAssetAttemptsService } from '../sceneAssetAttemptsService.js';
+import { ProjectAssetAttemptsService } from '../projectAssetAttemptsService.js';
 
 interface VisualStyleContext {
     textContext: string;
@@ -258,17 +259,31 @@ export class ImageGenerationService {
                 .from('asset-images')
                 .getPublicUrl(storagePath);
 
-            // If this is a master_asset job, update the project_assets table FIRST
+            // If this is a master_asset job, create attempt + update project_assets
             if (request.jobType === 'master_asset' && request.assetId) {
-                const { error: updateError } = await supabase
-                    .from('project_assets')
-                    .update({ image_key_url: urlData.publicUrl })
-                    .eq('id', request.assetId);
+                try {
+                    const projectAttemptsService = new ProjectAssetAttemptsService();
+                    await projectAttemptsService.enforceAttemptCap(request.assetId);
+                    await projectAttemptsService.createAttempt(request.assetId, {
+                        image_url: urlData.publicUrl,
+                        storage_path: storagePath,
+                        source: 'generated',
+                        is_selected: true,
+                    });
+                    console.log(`[ImageService] Created generation attempt for project asset ${request.assetId}`);
+                } catch (attemptError) {
+                    console.error(`[ImageService] Failed to create attempt for asset ${request.assetId}:`, attemptError);
+                    // Fallback: directly update image_key_url
+                    const { error: updateError } = await supabase
+                        .from('project_assets')
+                        .update({ image_key_url: urlData.publicUrl })
+                        .eq('id', request.assetId);
 
-                if (updateError) {
-                    console.error(`[ImageService] Failed to update project_assets.image_key_url for asset ${request.assetId}:`, updateError);
-                } else {
-                    console.log(`[ImageService] Updated project_assets.image_key_url for asset ${request.assetId}`);
+                    if (updateError) {
+                        console.error(`[ImageService] Fallback update also failed for asset ${request.assetId}:`, updateError);
+                    } else {
+                        console.log(`[ImageService] Fallback: Updated project_assets.image_key_url for asset ${request.assetId}`);
+                    }
                 }
             }
 
