@@ -29,6 +29,7 @@ import { LockedStageHeader } from './LockedStageHeader';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
+import { ContentAccessCarousel } from './ContentAccessCarousel';
 
 interface Stage11ConfirmationProps {
   projectId: string;
@@ -154,6 +155,13 @@ export function Stage11Confirmation({
           lockAndProceedLabel="Confirm & Render"
         />
       )}
+
+      {/* Content Access Carousel */}
+      <ContentAccessCarousel
+        projectId={projectId}
+        sceneId={sceneId}
+        stageNumber={11}
+      />
 
       {/* Header */}
       <div className="p-6 border-b border-border/50">
