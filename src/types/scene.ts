@@ -120,6 +120,21 @@ export interface MasterReferenceItem {
   instanceId?: string;
 }
 
+/** 3B.8: A persisted AI suggestion for a new asset in a scene. */
+export interface SceneAssetSuggestion {
+  id: string;
+  scene_id: string;
+  asset_id?: string | null;
+  name: string;
+  asset_type: string;
+  description?: string;
+  justification?: string;
+  suggested_by: string;
+  accepted: boolean;
+  dismissed: boolean;
+  created_at: string;
+}
+
 export interface CreateSceneAssetInstanceRequest {
   sceneId: string;
   projectAssetId: string;

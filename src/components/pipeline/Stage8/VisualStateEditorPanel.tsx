@@ -10,7 +10,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { User, MapPin, Package, Edit3, Lock, Sparkles, Loader2, History } from 'lucide-react';
+import { User, MapPin, Package, Edit3, Lock, Sparkles, Loader2, History, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -42,6 +42,7 @@ export interface VisualStateEditorPanelProps {
     }
   ) => void;
   onGenerateImage: (instanceId: string) => void;
+  onRemoveFromScene?: (instanceId: string) => void;
   projectId: string;
   sceneId: string;
   isUpdating?: boolean;
@@ -82,6 +83,7 @@ export function VisualStateEditorPanel({
   selectedAsset,
   onUpdateAsset,
   onGenerateImage,
+  onRemoveFromScene,
   projectId,
   sceneId,
   isUpdating,
@@ -192,6 +194,17 @@ export function VisualStateEditorPanel({
             checked={useMasterAsIs}
             disabled={isLocked}
           />
+          {onRemoveFromScene && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onRemoveFromScene(selectedAsset.id)}
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="w-4 h-4 mr-1" />
+              Remove
+            </Button>
+          )}
           {!isLocked && (
             <Button
               variant="outline"

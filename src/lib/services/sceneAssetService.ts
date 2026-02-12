@@ -12,6 +12,7 @@ import type {
   SceneAssetRelevanceResult,
   SceneAssetGenerationAttempt,
   MasterReferenceItem,
+  SceneAssetSuggestion,
 } from '@/types/scene';
 
 export interface BulkImageGenerationRequest {
@@ -66,6 +67,39 @@ class SceneAssetService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to populate from dependencies');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Create a brand-new project_asset + scene_asset_instance atomically (3B.6)
+   */
+  async createSceneAssetWithProjectAsset(
+    projectId: string,
+    sceneId: string,
+    data: { name: string; assetType: 'character' | 'location' | 'prop'; description: string }
+  ): Promise<SceneAssetInstance> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/assets/create-with-project-asset`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create scene asset');
     }
 
     return response.json();
@@ -667,6 +701,105 @@ class SceneAssetService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to upload image');
+    }
+
+    return response.json();
+  }
+  // ===========================================================================
+  // SUGGESTIONS (3B.8)
+  // ===========================================================================
+
+  /**
+   * List non-dismissed suggestions for a scene
+   */
+  async listSuggestions(
+    projectId: string,
+    sceneId: string
+  ): Promise<SceneAssetSuggestion[]> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/suggestions`,
+      {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch suggestions');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Bulk-create suggestions (from AI detection)
+   */
+  async saveSuggestions(
+    projectId: string,
+    sceneId: string,
+    suggestions: Array<{ name: string; assetType: string; description: string; justification: string }>
+  ): Promise<SceneAssetSuggestion[]> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/suggestions`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ suggestions }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to save suggestions');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Update a single suggestion (accept or dismiss)
+   */
+  async updateSuggestion(
+    projectId: string,
+    sceneId: string,
+    suggestionId: string,
+    updates: { accepted?: boolean; dismissed?: boolean }
+  ): Promise<SceneAssetSuggestion> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/suggestions/${suggestionId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updates),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to update suggestion');
     }
 
     return response.json();

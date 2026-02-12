@@ -88,6 +88,10 @@ export interface SceneAssetListPanelProps {
   /** 3B.4: Project and scene IDs for bulk master-as-is */
   projectId?: string;
   sceneId?: string;
+  /** 3B.7: Remove asset from scene callback */
+  onRemoveAsset?: (instanceId: string) => void;
+  /** 3B.9: Map of project_asset_id → shot IDs where asset appears */
+  shotPresenceMap?: Map<string, string[]>;
 }
 
 function AssetTypeGroup({
@@ -97,6 +101,8 @@ function AssetTypeGroup({
   selectedForGeneration,
   onSelectAsset,
   onToggleSelection,
+  onRemoveAsset,
+  shotPresenceMap,
 }: {
   type: AssetTypeKey;
   assets: SceneAssetInstance[];
@@ -104,6 +110,8 @@ function AssetTypeGroup({
   selectedForGeneration: string[];
   onSelectAsset: (asset: SceneAssetInstance | null) => void;
   onToggleSelection: (instanceId: string) => void;
+  onRemoveAsset?: (instanceId: string) => void;
+  shotPresenceMap?: Map<string, string[]>;
 }) {
   const Icon = typeIcons[type];
   if (assets.length === 0) return null;
@@ -119,18 +127,30 @@ function AssetTypeGroup({
         const status = getReviewStatus(instance);
         const source = sourceBadge(instance);
         const name = instance.project_asset?.name ?? 'Unknown';
+        const shotIds = shotPresenceMap?.get(instance.project_asset_id) ?? [];
         return (
           <motion.div
             key={instance.id}
             whileHover={{ scale: 1.01 }}
             className={cn(
-              'p-3 rounded-lg mb-1 cursor-pointer transition-all',
+              'group relative p-3 rounded-lg mb-1 cursor-pointer transition-all',
               selectedAssetId === instance.id
                 ? 'bg-primary/10 border border-primary/30'
                 : 'bg-card/50 border border-border/30 hover:border-border'
             )}
             onClick={() => onSelectAsset(instance)}
           >
+            {/* 3B.7: Remove icon on hover */}
+            {onRemoveAsset && (
+              <button
+                type="button"
+                className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive"
+                onClick={e => { e.stopPropagation(); onRemoveAsset(instance.id); }}
+                aria-label={`Remove ${name} from scene`}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
             <div className="flex items-center gap-2">
               <Checkbox
                 checked={selectedForGeneration.includes(instance.id)}
@@ -184,6 +204,20 @@ function AssetTypeGroup({
                     )}
                   </div>
                 )}
+                {/* 3B.9: Shot Presence Badges */}
+                {shotIds.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {shotIds.map((shotId, idx) => (
+                      <Badge
+                        key={shotId}
+                        variant="secondary"
+                        className="text-[10px] px-1 py-0 h-4 bg-muted/60 text-muted-foreground"
+                      >
+                        S{idx + 1}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
                 {/* Carry Forward Indicator (only if tags exist and carry_forward is true) */}
                 {instance.status_tags && instance.status_tags.length > 0 && instance.carry_forward && (
                   <div className="flex items-center gap-1 mt-1 text-[10px] text-muted-foreground">
@@ -224,6 +258,8 @@ export function SceneAssetListPanel({
   onFilterChange,
   projectId,
   sceneId,
+  onRemoveAsset,
+  shotPresenceMap,
 }: SceneAssetListPanelProps) {
   const [filters, setFilters] = useState<AssetFilters>(defaultFilters);
   const queryClient = useQueryClient();
@@ -453,6 +489,8 @@ export function SceneAssetListPanel({
               selectedForGeneration={selectedForGeneration}
               onSelectAsset={onSelectAsset}
               onToggleSelection={onToggleSelection}
+              onRemoveAsset={onRemoveAsset}
+              shotPresenceMap={shotPresenceMap}
             />
           ))}
 
