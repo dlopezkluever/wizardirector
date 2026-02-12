@@ -29,7 +29,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { RearviewMirror } from './RearviewMirror';
+import { ContentAccessCarousel } from './ContentAccessCarousel';
 import { shotService } from '@/lib/services/shotService';
 import { sceneService } from '@/lib/services/sceneService';
 import { toast } from '@/hooks/use-toast';
@@ -98,15 +98,6 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
   const [isLoading, setIsLoading] = useState(true);
   const [isExtracting, setIsExtracting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  // Prior scene data for rearview mirror
-  const [priorSceneData, setPriorSceneData] = useState<{
-    endState?: string;
-    endFrame?: string;
-    scriptExcerpt?: string;
-    sceneNumber?: number;
-  } | null>(null);
-  const [imageError, setImageError] = useState(false);
   
   // Auto-save state
   const [pendingUpdates, setPendingUpdates] = useState<Map<string, Partial<Shot>>>(new Map());
@@ -190,31 +181,19 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
     fetchOrExtractShots();
   }, [projectId, sceneId]);
 
-  // Fetch prior scene data for rearview mirror and current scene lock status
+  // Fetch current scene lock status
   useEffect(() => {
-    const fetchPriorSceneAndLockStatus = async () => {
+    const fetchLockStatus = async () => {
       try {
         const scenes = await sceneService.fetchScenes(projectId);
-        const currentSceneIndex = scenes.findIndex(s => s.id === sceneId);
-        const currentScene = currentSceneIndex >= 0 ? scenes[currentSceneIndex] : null;
+        const currentScene = scenes.find(s => s.id === sceneId);
         setIsSceneLocked(!!currentScene?.shotListLockedAt);
-
-        if (currentSceneIndex > 0) {
-          const priorScene = scenes[currentSceneIndex - 1];
-          setPriorSceneData({
-            endState: priorScene.priorSceneEndState,
-            endFrame: priorScene.endFrameThumbnail,
-            scriptExcerpt: priorScene.scriptExcerpt,
-            sceneNumber: priorScene.sceneNumber
-          });
-          setImageError(false);
-        }
       } catch (error) {
-        console.error('Failed to fetch prior scene / lock status:', error);
+        console.error('Failed to fetch lock status:', error);
       }
     };
 
-    fetchPriorSceneAndLockStatus();
+    fetchLockStatus();
   }, [projectId, sceneId]);
 
   // Auto-save effect
@@ -686,18 +665,11 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
         />
       )}
 
-      {/* Rearview Mirror */}
-      <RearviewMirror
-        mode={priorSceneData?.endFrame && !imageError ? 'visual' : 'text'}
-        priorSceneEndState={
-          priorSceneData?.endState ||
-          (priorSceneData?.scriptExcerpt
-            ? priorSceneData.scriptExcerpt.split('\n').slice(-3).join('\n')
-            : undefined)
-        }
-        priorEndFrame={priorSceneData?.endFrame}
-        priorSceneName={priorSceneData?.sceneNumber ? `Scene ${priorSceneData.sceneNumber}` : undefined}
-        onImageError={() => setImageError(true)}
+      {/* Content Access Carousel */}
+      <ContentAccessCarousel
+        projectId={projectId}
+        sceneId={sceneId}
+        stageNumber={7}
       />
 
       <div className="flex-1 flex overflow-hidden">
