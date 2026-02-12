@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { RearviewMirror } from './RearviewMirror';
+import { ContentAccessCarousel } from './ContentAccessCarousel';
 import { FramePanel } from './FramePanel';
 import { CostDisplay } from './CostDisplay';
 import { SliderComparison } from './SliderComparison';
@@ -71,13 +71,20 @@ export function Stage10FrameGeneration({
     frameType: 'start' | 'end';
   } | null>(null);
 
-  // Prior scene state
-  const [priorSceneData, setPriorSceneData] = useState<{
-    endState?: string;
-    endFrame?: string;
-    sceneNumber?: number;
-  } | null>(null);
-  const [imageError, setImageError] = useState(false);
+  // Prior scene data (for comparison feature — display handled by ContentAccessCarousel)
+  const { data: allScenes } = useQuery({
+    queryKey: ['scenes', projectId],
+    queryFn: () => sceneService.fetchScenes(projectId),
+    enabled: !!projectId,
+    staleTime: 60_000,
+  });
+  const priorSceneData = useMemo(() => {
+    if (!allScenes) return null;
+    const idx = allScenes.findIndex(s => s.id === sceneId);
+    if (idx <= 0) return null;
+    const prior = allScenes[idx - 1];
+    return { endFrame: prior.endFrameThumbnail, sceneNumber: prior.sceneNumber };
+  }, [allScenes, sceneId]);
 
   // Fetch frames data
   const {
@@ -111,27 +118,6 @@ export function Stage10FrameGeneration({
     }
   }, [shots, selectedShotId]);
 
-  // Fetch prior scene data
-  useEffect(() => {
-    const fetchPriorScene = async () => {
-      try {
-        const scenes = await sceneService.fetchScenes(projectId);
-        const currentSceneIndex = scenes.findIndex((s) => s.id === sceneId);
-        if (currentSceneIndex > 0) {
-          const priorScene = scenes[currentSceneIndex - 1];
-          setPriorSceneData({
-            endState: priorScene.priorSceneEndState,
-            endFrame: priorScene.endFrameThumbnail,
-            sceneNumber: priorScene.sceneNumber,
-          });
-          setImageError(false);
-        }
-      } catch (error) {
-        console.error('Failed to fetch prior scene:', error);
-      }
-    };
-    fetchPriorScene();
-  }, [projectId, sceneId]);
 
   // Generate frames mutation
   const generateMutation = useMutation({
@@ -363,17 +349,11 @@ export function Stage10FrameGeneration({
         />
       )}
 
-      {/* Rearview Mirror */}
-      <RearviewMirror
-        mode={priorSceneData?.endFrame && !imageError ? 'visual' : 'text'}
-        priorSceneEndState={priorSceneData?.endState}
-        priorEndFrame={priorSceneData?.endFrame}
-        priorSceneName={
-          priorSceneData?.sceneNumber
-            ? `Scene ${priorSceneData.sceneNumber}`
-            : undefined
-        }
-        onImageError={() => setImageError(true)}
+      {/* Content Access Carousel */}
+      <ContentAccessCarousel
+        projectId={projectId}
+        sceneId={sceneId}
+        stageNumber={10}
       />
 
       {/* Cost Display */}
