@@ -21,9 +21,7 @@
 **Dependencies**: Phase 3 asset system (for rearview data quality).
 
 
-**From Ticket.md**:
-
-User raw ideas: 
+# User raw ideas: 
 ## Regarding Issues that cover Multiple Stages
 
 ### (For Stages 7-12) Enhance the Rearview Mirror to be a multiple function Content Acees space,
