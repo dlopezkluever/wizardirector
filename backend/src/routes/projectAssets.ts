@@ -7,6 +7,7 @@ import { Router } from 'express';
 import { supabase } from '../config/supabase.js';
 import { AssetExtractionService } from '../services/assetExtractionService.js';
 import { ImageGenerationService } from '../services/image-generation/ImageGenerationService.js';
+import { ImageAnalysisService } from '../services/imageAnalysisService.js';
 import { ProjectAssetAttemptsService } from '../services/projectAssetAttemptsService.js';
 import { localizeAssetImage } from '../services/assetImageLocalizer.js';
 import { mergeDescriptions } from '../services/assetDescriptionMerger.js';
@@ -794,7 +795,7 @@ router.post('/:projectId/assets', async (req, res) => {
         }
 
         // Validate asset type
-        const validTypes = ['character', 'prop', 'location'];
+        const validTypes = ['character', 'prop', 'location', 'extra_archetype'];
         if (!validTypes.includes(asset_type)) {
             return res.status(400).json({
                 error: `Invalid asset type. Must be one of: ${validTypes.join(', ')}`
@@ -826,6 +827,7 @@ router.post('/:projectId/assets', async (req, res) => {
 
             const stage5State = stage5States?.[0];
             styleId = stage5State?.content?.locked_visual_style_capsule_id;
+            // Note: if using manual tone instead of capsule, styleId will be null — that's OK
         }
 
         const { data: asset, error } = await supabase
@@ -894,6 +896,24 @@ router.post('/:projectId/assets/:assetId/generate-image', async (req, res) => {
 
         console.log(`[ProjectAssets] Generating image for asset ${assetId} (${asset.asset_type})`);
 
+        // Check for manual visual tone in stage state as fallback if no capsule ID
+        let manualVisualTone: string | undefined;
+        if (!asset.visual_style_capsule_id) {
+            const { data: stage5States } = await supabase
+                .from('stage_states')
+                .select('content')
+                .eq('branch_id', project.active_branch_id)
+                .eq('stage_number', 5)
+                .order('version', { ascending: false })
+                .limit(1);
+
+            const stageContent = stage5States?.[0]?.content;
+            if (stageContent?.manual_visual_tone) {
+                manualVisualTone = stageContent.manual_visual_tone;
+                console.log(`[ProjectAssets] Using manual visual tone for asset ${assetId}`);
+            }
+        }
+
         // Create image generation job (aspect ratio auto-determined by service)
         const result = await imageService.createImageJob({
             projectId,
@@ -901,6 +921,7 @@ router.post('/:projectId/assets/:assetId/generate-image', async (req, res) => {
             jobType: 'master_asset',
             prompt,
             visualStyleCapsuleId: asset.visual_style_capsule_id,
+            manualVisualTone,
             assetId,
             idempotencyKey: `asset-${assetId}-${Date.now()}`
         });
@@ -1008,6 +1029,61 @@ router.post('/:projectId/assets/:assetId/upload-image', upload.single('image'), 
 });
 
 /**
+ * POST /api/projects/:projectId/assets/:assetId/analyze-image
+ * Analyze uploaded image via Gemini Vision and extract visual description
+ */
+router.post('/:projectId/assets/:assetId/analyze-image', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, assetId } = req.params;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Get asset details
+        const { data: asset, error: assetError } = await supabase
+            .from('project_assets')
+            .select('id, name, asset_type, description, image_key_url')
+            .eq('id', assetId)
+            .eq('project_id', projectId)
+            .single();
+
+        if (assetError || !asset) {
+            return res.status(404).json({ error: 'Asset not found' });
+        }
+
+        if (!asset.image_key_url) {
+            return res.status(400).json({ error: 'Asset has no image to analyze' });
+        }
+
+        const analysisService = new ImageAnalysisService();
+        const result = await analysisService.analyzeAssetImage(
+            asset.image_key_url,
+            asset.description || '',
+            asset.asset_type,
+            asset.name
+        );
+
+        res.json(result);
+    } catch (error) {
+        console.error('[ProjectAssets] Analyze image error:', error);
+        res.status(500).json({
+            error: 'Image analysis failed',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+
+/**
  * POST /api/projects/:projectId/assets/:assetId/lock
  * Lock individual asset
  */
@@ -1068,6 +1144,94 @@ router.post('/:projectId/assets/:assetId/lock', async (req, res) => {
 });
 
 /**
+ * POST /api/projects/:projectId/assets/mark-style-outdated
+ * Mark all assets with images as style_outdated (3A.9)
+ */
+router.post('/:projectId/assets/mark-style-outdated', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId } = req.params;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Mark all assets with images as style_outdated
+        const { data: updatedAssets, error: updateError } = await supabase
+            .from('project_assets')
+            .update({ style_outdated: true })
+            .eq('branch_id', project.active_branch_id)
+            .not('image_key_url', 'is', null)
+            .select('id');
+
+        if (updateError) {
+            console.error('[ProjectAssets] Mark style outdated error:', updateError);
+            return res.status(500).json({ error: 'Failed to mark assets as outdated' });
+        }
+
+        const count = updatedAssets?.length || 0;
+        console.log(`[ProjectAssets] Marked ${count} assets as style_outdated for project ${projectId}`);
+
+        res.json({ count });
+    } catch (error) {
+        console.error('[ProjectAssets] Mark style outdated error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/assets/clear-all-images
+ * Clear all asset images for the branch (3A.9)
+ */
+router.post('/:projectId/assets/clear-all-images', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId } = req.params;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Clear image_key_url on all assets for the branch
+        const { data: updatedAssets, error: updateError } = await supabase
+            .from('project_assets')
+            .update({ image_key_url: null, style_outdated: false })
+            .eq('branch_id', project.active_branch_id)
+            .not('image_key_url', 'is', null)
+            .select('id');
+
+        if (updateError) {
+            console.error('[ProjectAssets] Clear all images error:', updateError);
+            return res.status(500).json({ error: 'Failed to clear images' });
+        }
+
+        const count = updatedAssets?.length || 0;
+        console.log(`[ProjectAssets] Cleared images for ${count} assets in project ${projectId}`);
+
+        res.json({ count });
+    } catch (error) {
+        console.error('[ProjectAssets] Clear all images error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
  * POST /api/projects/:projectId/assets/lock-all
  * Lock all assets (gatekeeper for Stage 6)
  */
@@ -1091,7 +1255,7 @@ router.post('/:projectId/assets/lock-all', async (req, res) => {
         // Get all assets for the project
         const { data: assets, error: assetsError } = await supabase
             .from('project_assets')
-            .select('id, locked, image_key_url, deferred')
+            .select('id, locked, image_key_url, deferred, asset_type')
             .eq('branch_id', project.active_branch_id);
 
         if (assetsError) {
@@ -1102,17 +1266,20 @@ router.post('/:projectId/assets/lock-all', async (req, res) => {
         // Only validate active (non-deferred) assets
         const activeAssets = assets.filter(a => !a.deferred);
 
-        if (activeAssets.length === 0) {
+        // Gate assets = active assets excluding extra_archetypes (extras don't require images)
+        const gateAssets = activeAssets.filter(a => a.asset_type !== 'extra_archetype');
+
+        if (gateAssets.length === 0) {
             return res.status(400).json({
                 error: 'No active assets to lock. At least one non-deferred asset is required.'
             });
         }
 
-        // Validate all active assets have image keys
-        const activeWithoutImages = activeAssets.filter(a => !a.image_key_url);
-        if (activeWithoutImages.length > 0) {
+        // Validate gate assets have image keys (extra_archetypes exempt)
+        const gateWithoutImages = gateAssets.filter(a => !a.image_key_url);
+        if (gateWithoutImages.length > 0) {
             return res.status(400).json({
-                error: `${activeWithoutImages.length} active asset(s) missing image keys`
+                error: `${gateWithoutImages.length} active asset(s) missing image keys`
             });
         }
 

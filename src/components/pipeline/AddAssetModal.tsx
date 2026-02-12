@@ -28,6 +28,7 @@ interface AddAssetModalProps {
   onClose: () => void;
   projectId: string;
   onAssetCreated: () => void;
+  defaultType?: AssetType;
 }
 
 export function AddAssetModal({
@@ -35,16 +36,17 @@ export function AddAssetModal({
   onClose,
   projectId,
   onAssetCreated,
+  defaultType,
 }: AddAssetModalProps) {
   const [name, setName] = useState('');
-  const [assetType, setAssetType] = useState<AssetType>('character');
+  const [assetType, setAssetType] = useState<AssetType>(defaultType || 'character');
   const [description, setDescription] = useState('');
   const [sceneNumbers, setSceneNumbers] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const resetForm = () => {
     setName('');
-    setAssetType('character');
+    setAssetType(defaultType || 'character');
     setDescription('');
     setSceneNumbers('');
   };
@@ -91,7 +93,9 @@ export function AddAssetModal({
         <DialogHeader>
           <DialogTitle>Add Asset Manually</DialogTitle>
           <DialogDescription>
-            Create a new asset that wasn't caught by extraction.
+            {defaultType === 'extra_archetype'
+              ? 'Create a background character prototype for consistent crowd/extras generation.'
+              : 'Create a new asset that wasn\'t caught by extraction.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -116,6 +120,7 @@ export function AddAssetModal({
                 <SelectItem value="character">Character</SelectItem>
                 <SelectItem value="location">Location</SelectItem>
                 <SelectItem value="prop">Prop</SelectItem>
+                <SelectItem value="extra_archetype">Extra Archetype</SelectItem>
               </SelectContent>
             </Select>
           </div>

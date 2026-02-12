@@ -16,6 +16,7 @@ export interface CreateImageJobRequest {
     jobType: 'master_asset' | 'start_frame' | 'end_frame' | 'inpaint' | 'scene_asset';
     prompt: string;
     visualStyleCapsuleId?: string;
+    manualVisualTone?: string;
     width?: number;
     height?: number;
     assetId?: string;
@@ -51,10 +52,11 @@ export class ImageGenerationService {
     private provider: ImageProvider;
     
     // Type-specific aspect ratios for master assets
-    private readonly ASPECT_RATIOS = {
-        character: { width: 512, height: 768 },   // 2:3 portrait for full-body
-        prop: { width: 512, height: 512 },        // 1:1 square for product-style
-        location: { width: 1024, height: 576 }    // 16:9 cinematic landscape
+    private readonly ASPECT_RATIOS: Record<string, { width: number; height: number }> = {
+        character: { width: 512, height: 768 },        // 2:3 portrait for full-body
+        prop: { width: 512, height: 512 },             // 1:1 square for product-style
+        location: { width: 1024, height: 576 },        // 16:9 cinematic landscape
+        extra_archetype: { width: 512, height: 768 }   // 2:3 portrait, same as characters
     };
 
     constructor() {
@@ -92,8 +94,9 @@ export class ImageGenerationService {
         }
 
         // Enforce visual style for Stage 5 master assets and scene asset keys
-        if ((request.jobType === 'master_asset' || request.jobType === 'scene_asset') && !request.visualStyleCapsuleId) {
-            throw new Error('Visual Style Capsule is required for master asset and scene asset generation');
+        // Either visualStyleCapsuleId or manualVisualTone must be provided
+        if ((request.jobType === 'master_asset' || request.jobType === 'scene_asset') && !request.visualStyleCapsuleId && !request.manualVisualTone) {
+            throw new Error('Visual Style Capsule or Manual Visual Tone is required for master asset and scene asset generation');
         }
 
         const jobId = uuidv4();
@@ -200,10 +203,16 @@ export class ImageGenerationService {
                 last_attempt_at: new Date().toISOString()
             });
 
-            // Get visual style context if provided
+            // Get visual style context: either from capsule or manual tone
             let visualStyleContext: VisualStyleContext | null = null;
             if (request.visualStyleCapsuleId) {
                 visualStyleContext = await this.getVisualStyleContext(request.visualStyleCapsuleId);
+            } else if (request.manualVisualTone) {
+                console.log(`[ImageService] Using manual visual tone (${request.manualVisualTone.length} chars)`);
+                visualStyleContext = {
+                    textContext: request.manualVisualTone,
+                    referenceImages: []
+                };
             }
 
             // Prepend reference image URL if provided (master asset identity reference)
@@ -270,6 +279,11 @@ export class ImageGenerationService {
                         source: 'generated',
                         is_selected: true,
                     });
+                    // Clear style_outdated flag on successful regeneration
+                    await supabase
+                        .from('project_assets')
+                        .update({ style_outdated: false })
+                        .eq('id', request.assetId);
                     console.log(`[ImageService] Created generation attempt for project asset ${request.assetId}`);
                 } catch (attemptError) {
                     console.error(`[ImageService] Failed to create attempt for asset ${request.assetId}:`, attemptError);
@@ -735,7 +749,7 @@ export class ImageGenerationService {
     /**
      * Get asset details from project_assets or global_assets
      */
-    private async getAssetDetails(assetId: string): Promise<{ asset_type: 'character' | 'prop' | 'location'; name: string; description: string } | null> {
+    private async getAssetDetails(assetId: string): Promise<{ asset_type: string; name: string; description: string } | null> {
         // Try project_assets first
         const { data: projectAsset } = await supabase
             .from('project_assets')
@@ -744,7 +758,7 @@ export class ImageGenerationService {
             .single();
 
         if (projectAsset) {
-            return projectAsset as { asset_type: 'character' | 'prop' | 'location'; name: string; description: string };
+            return projectAsset as { asset_type: string; name: string; description: string };
         }
 
         // Fallback to global_assets
@@ -755,7 +769,7 @@ export class ImageGenerationService {
             .single();
 
         if (globalAsset) {
-            return globalAsset as { asset_type: 'character' | 'prop' | 'location'; name: string; description: string };
+            return globalAsset as { asset_type: string; name: string; description: string };
         }
 
         return null;

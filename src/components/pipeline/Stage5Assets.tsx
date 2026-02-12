@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  User, MapPin, Package, Sparkles, Check, Lock, Loader2,
+  User, MapPin, Package, Users, Sparkles, Check, Lock, Loader2,
   AlertTriangle, Info, MoreVertical, Trash2, Edit, Upload,
   RefreshCw, PauseCircle, Play, ChevronDown, Plus
 } from 'lucide-react';
@@ -43,6 +43,8 @@ import { AssetDrawer } from './AssetDrawer';
 import { AssetFilterModal } from './AssetFilterModal';
 import { AssetVersionSync } from './AssetVersionSync';
 import { AddAssetModal } from './AddAssetModal';
+import { ImageDescriptionModal } from './ImageDescriptionModal';
+import { StyleChangeWarningDialog } from './StyleChangeWarningDialog';
 import { ProjectAssetCarousel } from './ProjectAssetCarousel';
 import type { ProjectAsset, AssetPreviewEntity, AssetType, AssetDecision } from '@/types/asset';
 import type { StageStatus } from '@/types/project';
@@ -57,10 +59,22 @@ interface Stage5AssetsProps {
   onUnlock?: () => void;
 }
 
-const ASPECT_RATIOS = {
+const VISUAL_TONE_PRESETS = [
+  { id: '3d-animation', label: '3D Animation', description: 'Pixar/DreamWorks style 3D rendered characters and environments with smooth textures, volumetric lighting, and vibrant colors' },
+  { id: 'hyperrealistic', label: 'Hyperrealistic', description: 'Photorealistic cinematic imagery with natural lighting, film grain, shallow depth of field, and lifelike textures' },
+  { id: 'noir', label: 'Noir', description: 'High contrast black and white with dramatic shadows, venetian blind lighting, rain-slicked streets, and moody atmosphere' },
+  { id: '2d-animation', label: '2D Animation', description: 'Traditional hand-drawn animation style with clean lines, flat colors, expressive characters, and dynamic poses' },
+  { id: 'watercolor', label: 'Watercolor', description: 'Soft watercolor painting style with flowing pigments, paper texture, gentle color bleeds, and dreamy atmospheric quality' },
+  { id: 'comic-book', label: 'Comic Book', description: 'Bold ink outlines, halftone dots, dynamic action poses, speech bubble aesthetics, and saturated primary colors' },
+  { id: 'retro-80s', label: 'Retro 80s', description: 'Synthwave aesthetics with neon colors, chrome reflections, grid landscapes, sunset gradients, and VHS scan lines' },
+  { id: 'studio-ghibli', label: 'Studio Ghibli', description: 'Hayao Miyazaki inspired hand-painted backgrounds, soft pastoral lighting, detailed nature, and whimsical character design' },
+];
+
+const ASPECT_RATIOS: Record<string, { width: number; height: number; label: string }> = {
   character: { width: 512, height: 768, label: '2:3 portrait' },
   location: { width: 1024, height: 576, label: '16:9 cinematic' },
-  prop: { width: 512, height: 512, label: '1:1 square' }
+  prop: { width: 512, height: 512, label: '1:1 square' },
+  extra_archetype: { width: 512, height: 768, label: '2:3 portrait' }
 };
 
 export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNext, onUnlock }: Stage5AssetsProps) {
@@ -99,15 +113,41 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
 
   // Add Asset modal state
   const [showAddAssetModal, setShowAddAssetModal] = useState(false);
+  const [defaultAssetType, setDefaultAssetType] = useState<AssetType | undefined>(undefined);
 
   // Deferred section state
   const [deferredOpen, setDeferredOpen] = useState(false);
+
+  // Image analysis state (3A.7)
+  const [imageAnalysisModal, setImageAnalysisModal] = useState<{
+    assetId: string;
+    assetName: string;
+    currentDescription: string;
+    extractedDescription: string;
+    suggestedMerge: string;
+    confidence: number;
+  } | null>(null);
+
+  // Style change warning state (3A.9)
+  const [showStyleChangeWarning, setShowStyleChangeWarning] = useState(false);
+
+  // Manual visual tone state (3A.8)
+  const [styleMode, setStyleMode] = useState<'capsule' | 'manual'>('capsule');
+  const [manualTonePreset, setManualTonePreset] = useState<string | null>(null);
+  const [manualToneCustom, setManualToneCustom] = useState('');
 
   // Initialize from saved state
   useEffect(() => {
     if (content?.locked_visual_style_capsule_id) {
       setLockedStyleId(content.locked_visual_style_capsule_id);
       setIsStyleLocked(true);
+      setStyleMode('capsule');
+    } else if (content?.manual_visual_tone) {
+      setIsStyleLocked(true);
+      setStyleMode('manual');
+      if (content.manual_tone_preset) {
+        setManualTonePreset(content.manual_tone_preset);
+      }
     }
   }, [content]);
 
@@ -137,28 +177,117 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
   const groupedAssets = {
     characters: activeAssets.filter(a => a.asset_type === 'character'),
     locations: activeAssets.filter(a => a.asset_type === 'location'),
-    props: activeAssets.filter(a => a.asset_type === 'prop')
+    props: activeAssets.filter(a => a.asset_type === 'prop'),
+    extra_archetypes: activeAssets.filter(a => a.asset_type === 'extra_archetype')
   };
 
-  const allActiveHaveImages = activeAssets.every(a => a.image_key_url);
-  const canProceed = isStyleLocked && allActiveHaveImages && activeAssets.length > 0;
+  // Gate assets = active assets excluding extra_archetypes (extras are optional, don't block stage lock)
+  const gateAssets = activeAssets.filter(a => a.asset_type !== 'extra_archetype');
+  const allGateHaveImages = gateAssets.every(a => a.image_key_url);
+  const canProceed = isStyleLocked && allGateHaveImages && gateAssets.length > 0;
 
   const handleStyleLock = async (styleId: string) => {
     setLockedStyleId(styleId);
     setIsStyleLocked(true);
+    setManualTonePreset(null);
+    setManualToneCustom('');
 
     setContent({
       locked_visual_style_capsule_id: styleId,
+      manual_visual_tone: null,
+      manual_tone_preset: null,
       style_locked_at: new Date().toISOString()
     });
 
     toast.success('Visual style locked! You can now extract assets.');
   };
 
+  const handleManualToneLock = () => {
+    const preset = VISUAL_TONE_PRESETS.find(p => p.id === manualTonePreset);
+    const toneText = [
+      preset?.description,
+      manualToneCustom.trim()
+    ].filter(Boolean).join('. ');
+
+    if (!toneText) {
+      toast.error('Please select a preset or enter a custom tone description');
+      return;
+    }
+
+    setIsStyleLocked(true);
+    setLockedStyleId(null);
+
+    setContent({
+      locked_visual_style_capsule_id: null,
+      manual_visual_tone: toneText,
+      manual_tone_preset: manualTonePreset,
+      style_locked_at: new Date().toISOString()
+    });
+
+    toast.success('Manual visual tone locked! You can now extract assets.');
+  };
+
+  // Style change handlers (3A.9)
+  const handleStyleChangeMarkOutdated = async () => {
+    try {
+      await projectAssetService.markStyleOutdated(projectId);
+
+      // Unlock style
+      setIsStyleLocked(false);
+      setLockedStyleId(null);
+      setManualTonePreset(null);
+      setManualToneCustom('');
+
+      // Clear style from stage state
+      setContent({
+        locked_visual_style_capsule_id: null,
+        manual_visual_tone: null,
+        manual_tone_preset: null,
+        style_locked_at: null
+      });
+
+      // Reload assets to get updated style_outdated flags
+      await loadAssets();
+
+      toast.info('Images marked as outdated. Select a new style and regenerate.');
+    } catch (error) {
+      console.error('Failed to mark style outdated:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to mark as outdated');
+    }
+  };
+
+  const handleStyleChangeClearImages = async () => {
+    try {
+      const result = await projectAssetService.clearAllImages(projectId);
+
+      // Unlock style
+      setIsStyleLocked(false);
+      setLockedStyleId(null);
+      setManualTonePreset(null);
+      setManualToneCustom('');
+
+      // Clear style from stage state
+      setContent({
+        locked_visual_style_capsule_id: null,
+        manual_visual_tone: null,
+        manual_tone_preset: null,
+        style_locked_at: null
+      });
+
+      // Update local asset state to clear images
+      setAssets(prev => prev.map(a => ({ ...a, image_key_url: undefined, style_outdated: false })));
+
+      toast.info(`Cleared ${result.count} images. Select a new style and regenerate.`);
+    } catch (error) {
+      console.error('Failed to clear images:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to clear images');
+    }
+  };
+
   // Step 1: Instant preview scan — no LLM, opens filter modal
   const handleExtractAssets = async () => {
-    if (!lockedStyleId) {
-      toast.error('Please select a visual style first');
+    if (!isStyleLocked) {
+      toast.error('Please lock a visual style first');
       return;
     }
 
@@ -271,6 +400,23 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
       queryClient.invalidateQueries({ queryKey: ['project-asset-attempts', projectId, assetId] });
 
       toast.success(`Image uploaded for ${asset.name}!`);
+
+      // Auto-trigger image analysis (3A.7) — gracefully degrade on failure
+      try {
+        toast.info(`Analyzing image for ${asset.name}...`);
+        const analysis = await projectAssetService.analyzeImage(projectId, assetId);
+        setImageAnalysisModal({
+          assetId,
+          assetName: asset.name,
+          currentDescription: asset.description || '',
+          extractedDescription: analysis.extractedDescription,
+          suggestedMerge: analysis.suggestedMerge,
+          confidence: analysis.confidence,
+        });
+      } catch (analysisError) {
+        console.error('Image analysis failed (non-blocking):', analysisError);
+        toast.info('Image uploaded. Auto-description extraction unavailable.');
+      }
     } catch (error) {
       console.error('Failed to upload image:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to upload image';
@@ -424,20 +570,36 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
     toast.success(`"${clonedAsset.name}" cloned to project`);
   };
 
+  const handleImageDescriptionConfirm = (action: 'keep' | 'replace' | 'merge', text?: string) => {
+    if (!imageAnalysisModal) return;
+    const { assetId } = imageAnalysisModal;
+
+    if (action === 'replace') {
+      handleUpdateDescription(assetId, imageAnalysisModal.extractedDescription);
+      setEditingDescriptions(prev => ({ ...prev, [assetId]: imageAnalysisModal.extractedDescription }));
+    } else if (action === 'merge' && text) {
+      handleUpdateDescription(assetId, text);
+      setEditingDescriptions(prev => ({ ...prev, [assetId]: text }));
+    }
+    // 'keep' = no action needed
+
+    setImageAnalysisModal(null);
+  };
+
   const handleLockAllAssets = async () => {
     if (!isStyleLocked) {
       toast.error('Visual style must be selected');
       return;
     }
 
-    if (activeAssets.length === 0) {
+    if (gateAssets.length === 0) {
       toast.error('At least one active asset is required');
       return;
     }
 
-    const activeWithoutImages = activeAssets.filter(a => !a.image_key_url);
-    if (activeWithoutImages.length > 0) {
-      toast.error(`${activeWithoutImages.length} active assets need image keys`);
+    const gateWithoutImages = gateAssets.filter(a => !a.image_key_url);
+    if (gateWithoutImages.length > 0) {
+      toast.error(`${gateWithoutImages.length} active assets need image keys`);
       return;
     }
 
@@ -462,6 +624,8 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
       case 'character': return User;
       case 'location': return MapPin;
       case 'prop': return Package;
+      case 'extra_archetype': return Users;
+      default: return Package;
     }
   };
 
@@ -505,29 +669,121 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                 {isStyleLocked ? '✓' : '1'}
               </div>
               <h3 className="font-display text-xl font-semibold">
-                Select Visual Style Capsule
+                Select Visual Style
               </h3>
               {isStyleLocked && (
                 <Badge variant="default" className="bg-success">LOCKED</Badge>
+              )}
+              {isStyleLocked && !isStageLockedOrOutdated && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-muted-foreground"
+                  onClick={() => setShowStyleChangeWarning(true)}
+                >
+                  Change Style
+                </Button>
               )}
             </div>
 
             <Alert className={isStyleLocked ? "border-success" : "border-primary"}>
               <AlertDescription>
                 {isStyleLocked
-                  ? "Visual style is locked. All assets will use this style."
+                  ? `Visual style is locked (${styleMode === 'capsule' ? 'Style Capsule' : 'Manual Tone'}). All assets will use this style.`
                   : "You must select a visual style before extracting assets. This ensures all generated images are consistent."}
               </AlertDescription>
             </Alert>
 
-            <StyleCapsuleSelector
-              type="visual"
-              value={lockedStyleId || ''}
-              onChange={handleStyleLock}
-              required={true}
-              disabled={isStyleLocked}
-              showPreview={true}
-            />
+            {/* Style Mode Toggle */}
+            {!isStyleLocked && !isStageLockedOrOutdated && (
+              <div className="flex gap-2">
+                <Button
+                  variant={styleMode === 'capsule' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setStyleMode('capsule')}
+                >
+                  Style Capsule
+                </Button>
+                <Button
+                  variant={styleMode === 'manual' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setStyleMode('manual')}
+                >
+                  Manual Tone
+                </Button>
+              </div>
+            )}
+
+            {/* Capsule Mode */}
+            {styleMode === 'capsule' && (
+              <StyleCapsuleSelector
+                type="visual"
+                value={lockedStyleId || ''}
+                onChange={handleStyleLock}
+                required={true}
+                disabled={isStyleLocked}
+                showPreview={true}
+              />
+            )}
+
+            {/* Manual Tone Mode */}
+            {styleMode === 'manual' && !isStyleLocked && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Tone Presets</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {VISUAL_TONE_PRESETS.map(preset => (
+                      <Button
+                        key={preset.id}
+                        variant={manualTonePreset === preset.id ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setManualTonePreset(manualTonePreset === preset.id ? null : preset.id)}
+                        className="text-xs"
+                      >
+                        {preset.label}
+                      </Button>
+                    ))}
+                  </div>
+                  {manualTonePreset && (
+                    <p className="text-xs text-muted-foreground italic">
+                      {VISUAL_TONE_PRESETS.find(p => p.id === manualTonePreset)?.description}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Custom Tone Description (optional)</Label>
+                  <Textarea
+                    value={manualToneCustom}
+                    onChange={(e) => setManualToneCustom(e.target.value)}
+                    placeholder="Add additional style details: lighting, color palette, mood..."
+                    rows={3}
+                    className="resize-none text-sm"
+                  />
+                </div>
+
+                <Button
+                  onClick={handleManualToneLock}
+                  disabled={!manualTonePreset && !manualToneCustom.trim()}
+                  className="w-full"
+                >
+                  <Lock className="w-4 h-4 mr-2" />
+                  Lock Visual Tone
+                </Button>
+              </div>
+            )}
+
+            {/* Show locked manual tone info */}
+            {styleMode === 'manual' && isStyleLocked && (
+              <div className="rounded-md border border-success/30 bg-success/5 p-3">
+                <p className="text-sm font-medium text-success">
+                  Manual Tone: {manualTonePreset ? VISUAL_TONE_PRESETS.find(p => p.id === manualTonePreset)?.label : 'Custom'}
+                </p>
+                {content?.manual_visual_tone && (
+                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{content.manual_visual_tone}</p>
+                )}
+              </div>
+            )}
           </section>
 
           {/* STEP 1: Asset Extraction */}
@@ -593,7 +849,8 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                 </div>
 
                 <div className="text-sm text-muted-foreground">
-                  {activeAssets.filter(a => a.image_key_url).length}/{activeAssets.length} active assets have images
+                  {gateAssets.filter(a => a.image_key_url).length}/{gateAssets.length} active assets have images
+                  {groupedAssets.extra_archetypes.length > 0 && ` | ${groupedAssets.extra_archetypes.length} extras`}
                   {deferredAssets.length > 0 && ` | ${deferredAssets.length} deferred`}
                 </div>
               </div>
@@ -615,7 +872,7 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setShowAddAssetModal(true)}
+                  onClick={() => { setDefaultAssetType(undefined); setShowAddAssetModal(true); }}
                   disabled={isStageLockedOrOutdated}
                 >
                   <Plus className="w-4 h-4 mr-2" />
@@ -624,8 +881,17 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={() => { setDefaultAssetType('extra_archetype'); setShowAddAssetModal(true); }}
+                  disabled={isStageLockedOrOutdated}
+                >
+                  <Users className="w-4 h-4 mr-2" />
+                  Add Extra Archetype
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={async () => {
-                    const assetsWithoutImages = activeAssets.filter(a => !a.image_key_url);
+                    const assetsWithoutImages = gateAssets.filter(a => !a.image_key_url);
                     if (assetsWithoutImages.length === 0) {
                       toast.info('All active assets already have images');
                       return;
@@ -641,10 +907,10 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                       }
                     }
                   }}
-                  disabled={activeAssets.filter(a => !a.image_key_url).length === 0}
+                  disabled={gateAssets.filter(a => !a.image_key_url).length === 0}
                 >
                   <Sparkles className="w-4 h-4 mr-2" />
-                  Generate All Images ({activeAssets.filter(a => !a.image_key_url).length})
+                  Generate All Images ({gateAssets.filter(a => !a.image_key_url).length})
                 </Button>
               </div>
 
@@ -686,6 +952,9 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                                       <Badge variant="outline" className="text-[10px] px-1">{asset.asset_type}</Badge>
                                       {asset.source === 'manual' && (
                                         <Badge variant="secondary" className="text-[10px] px-1">Manual</Badge>
+                                      )}
+                                      {asset.style_outdated && (
+                                        <Badge variant="outline" className="text-[10px] px-1 border-amber-500 text-amber-500">Style Outdated</Badge>
                                       )}
                                     </div>
                                   </div>
@@ -918,9 +1187,10 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
       {/* Add Asset Modal */}
       <AddAssetModal
         isOpen={showAddAssetModal}
-        onClose={() => setShowAddAssetModal(false)}
+        onClose={() => { setShowAddAssetModal(false); setDefaultAssetType(undefined); }}
         projectId={projectId}
         onAssetCreated={loadAssets}
+        defaultType={defaultAssetType}
       />
 
       {/* Asset Drawer */}
@@ -930,6 +1200,38 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
         onClose={() => setAssetDrawerOpen(false)}
         onAssetCloned={handleAssetCloned}
       />
+
+      {/* Style Change Warning Dialog (3A.9) */}
+      <StyleChangeWarningDialog
+        open={showStyleChangeWarning}
+        onOpenChange={setShowStyleChangeWarning}
+        currentStyleName={
+          styleMode === 'capsule'
+            ? 'Style Capsule'
+            : manualTonePreset
+              ? VISUAL_TONE_PRESETS.find(p => p.id === manualTonePreset)?.label || 'Manual Tone'
+              : 'Custom Manual Tone'
+        }
+        affectedImageCount={activeAssets.filter(a => a.image_key_url).length}
+        onMarkOutdated={handleStyleChangeMarkOutdated}
+        onClearImages={handleStyleChangeClearImages}
+      />
+
+      {/* Image Description Modal (3A.7) */}
+      {imageAnalysisModal && (
+        <ImageDescriptionModal
+          isOpen={!!imageAnalysisModal}
+          onClose={() => setImageAnalysisModal(null)}
+          assetName={imageAnalysisModal.assetName}
+          currentDescription={imageAnalysisModal.currentDescription}
+          extractedDescription={imageAnalysisModal.extractedDescription}
+          suggestedMerge={imageAnalysisModal.suggestedMerge}
+          confidence={imageAnalysisModal.confidence}
+          onKeepCurrent={() => handleImageDescriptionConfirm('keep')}
+          onReplaceWithExtracted={() => handleImageDescriptionConfirm('replace')}
+          onUseMerged={(text) => handleImageDescriptionConfirm('merge', text)}
+        />
+      )}
 
       {/* Promotion Confirmation Dialog */}
       <AlertDialog open={promotionConfirmOpen} onOpenChange={setPromotionConfirmOpen}>
@@ -968,7 +1270,8 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                 )}
               </div>
               <div className="text-muted-foreground">
-                {activeAssets.filter(a => a.image_key_url).length}/{activeAssets.length} active assets have images
+                {gateAssets.filter(a => a.image_key_url).length}/{gateAssets.length} active assets have images
+                {groupedAssets.extra_archetypes.length > 0 && ` | ${groupedAssets.extra_archetypes.length} extras`}
                 {deferredAssets.length > 0 && ` | ${deferredAssets.length} deferred`}
                 {!isStyleLocked && ' | Style not locked'}
               </div>

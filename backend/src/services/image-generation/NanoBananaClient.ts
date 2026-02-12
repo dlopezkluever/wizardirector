@@ -82,7 +82,8 @@ export class NanoBananaClient implements ImageProvider {
                     prompt = `Generate an image that matches the visual style, color palette, mood, and aesthetic shown in the provided reference image. ${styleGuidance}Subject: ${options.prompt}`;
                 } else if (options.visualStyleContext) {
                     // No successfully loaded images, fallback to text-only style context
-                    prompt = `${options.prompt}\n\nStyle: ${options.visualStyleContext}`;
+                    // Use more directive prompt to strengthen style influence
+                    prompt = `Generate an image with the following visual style applied strongly throughout: ${options.visualStyleContext}\n\nSubject: ${options.prompt}\n\nIMPORTANT: The visual style described above must be clearly evident in the generated image.`;
                 }
             }
 

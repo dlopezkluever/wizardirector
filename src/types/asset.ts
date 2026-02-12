@@ -1,4 +1,4 @@
-export type AssetType = 'character' | 'prop' | 'location';
+export type AssetType = 'character' | 'prop' | 'location' | 'extra_archetype';
 
 export interface GlobalAsset {
   id: string;
@@ -30,6 +30,7 @@ export interface ProjectAsset {
   visual_style_capsule_id?: string;
   locked: boolean;
   deferred?: boolean;
+  style_outdated?: boolean;
   scene_numbers?: number[];
   source?: 'extracted' | 'manual' | 'cloned';
   overridden_fields?: string[]; // Fields that have been manually edited and should not be overwritten during sync

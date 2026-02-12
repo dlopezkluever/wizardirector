@@ -19,7 +19,7 @@ export interface MergeAssetsRequest {
 
 export interface CreateProjectAssetRequest {
   name: string;
-  asset_type: 'character' | 'prop' | 'location';
+  asset_type: 'character' | 'prop' | 'location' | 'extra_archetype';
   description: string;
   visual_style_capsule_id?: string;
 }
@@ -552,6 +552,88 @@ class ProjectAssetService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to check version sync status');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Analyze an uploaded asset image via Gemini Vision
+   */
+  async analyzeImage(projectId: string, assetId: string): Promise<{
+    extractedDescription: string;
+    suggestedMerge: string;
+    confidence: number;
+  }> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/analyze-image`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to analyze image');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Mark all assets with images as style outdated
+   */
+  async markStyleOutdated(projectId: string): Promise<{ count: number }> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/mark-style-outdated`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to mark assets as outdated');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Clear all asset images
+   */
+  async clearAllImages(projectId: string): Promise<{ count: number }> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/clear-all-images`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to clear images');
     }
 
     return response.json();
