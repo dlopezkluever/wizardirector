@@ -10,7 +10,6 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import type { AssetPreviewEntity, AssetType, AssetDecision } from '@/types/asset';
 
 interface AssetFilterModalProps {
@@ -110,7 +109,7 @@ export function AssetFilterModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isConfirming && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>Review Extracted Assets</DialogTitle>
           <DialogDescription>
@@ -119,7 +118,7 @@ export function AssetFilterModal({
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0 pr-4 -mr-4">
+        <div className="flex-1 min-h-0 overflow-y-auto pr-2">
           <div className="space-y-6 py-2">
             {(Object.entries(grouped) as [AssetType, AssetPreviewEntity[]][]).map(
               ([type, typeEntities]) => {
@@ -209,7 +208,7 @@ export function AssetFilterModal({
               }
             )}
           </div>
-        </ScrollArea>
+        </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
           <div className="flex-1 text-xs text-muted-foreground">
