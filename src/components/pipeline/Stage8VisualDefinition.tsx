@@ -55,7 +55,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { RearviewMirror } from '@/components/pipeline/RearviewMirror';
+import { ContentAccessCarousel } from '@/components/pipeline/ContentAccessCarousel';
 import { AssetDrawer } from '@/components/pipeline/AssetDrawer';
 import { sceneAssetService } from '@/lib/services/sceneAssetService';
 import { sceneService } from '@/lib/services/sceneService';
@@ -92,27 +92,6 @@ const statusColors: Record<string, string> = {
   edited: 'bg-amber-500/20 text-amber-400',
   locked: 'bg-emerald-500/20 text-emerald-400',
 };
-
-// ---------------------------------------------------------------------------
-// Continuity Header (wraps RearviewMirror for Stage 8)
-// ---------------------------------------------------------------------------
-interface ContinuityHeaderProps {
-  priorSceneEndState?: string;
-  priorEndFrame?: string;
-  priorSceneName?: string;
-}
-
-function ContinuityHeader({ priorSceneEndState, priorEndFrame, priorSceneName }: ContinuityHeaderProps) {
-  const mode = priorEndFrame ? 'visual' : 'text';
-  return (
-    <RearviewMirror
-      mode={mode}
-      priorSceneEndState={priorSceneEndState}
-      priorEndFrame={priorEndFrame}
-      priorSceneName={priorSceneName}
-    />
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Empty State: no assets – user chooses Detect or Add Manually (Task 8)
@@ -417,13 +396,6 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
   const [removeConfirmAssetId, setRemoveConfirmAssetId] = useState<string | null>(null);
 
   // Prior scene data for Continuity Header
-  const [priorSceneData, setPriorSceneData] = useState<{
-    endState?: string;
-    endFrame?: string;
-    sceneNumber?: number;
-  } | null>(null);
-  const [currentSceneNumber, setCurrentSceneNumber] = useState<number>(0);
-
   // Tag carry-forward prompt (Task 5, Feature 5.3)
   const [showTagCarryForwardPrompt, setShowTagCarryForwardPrompt] = useState(false);
   const [priorInstancesWithTags, setPriorInstancesWithTags] = useState<Array<{
@@ -431,29 +403,15 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
     assetName: string;
   }>>([]);
 
-  useEffect(() => {
-    if (!projectId || !sceneId) return;
-    sceneService.fetchScenes(projectId).then(scenes => {
-      const idx = scenes.findIndex(s => s.id === sceneId);
-      if (idx >= 0) {
-        setCurrentSceneNumber(scenes[idx].sceneNumber);
-      }
-      if (idx <= 0) return;
-      const prior = scenes[idx - 1];
-      setPriorSceneData({
-        endState: prior.priorSceneEndState,
-        endFrame: prior.endFrameThumbnail,
-        sceneNumber: prior.sceneNumber,
-      });
-    }).catch(() => {});
-  }, [projectId, sceneId]);
-
   const { data: scenes } = useQuery({
     queryKey: ['scenes', projectId],
     queryFn: () => sceneService.fetchScenes(projectId),
     enabled: !!projectId,
   });
   const currentScene = scenes?.find(s => s.id === sceneId);
+  const currentSceneNumber = currentScene?.sceneNumber ?? 0;
+  const priorSceneIndex = scenes ? scenes.findIndex(s => s.id === sceneId) - 1 : -1;
+  const priorSceneNumber = priorSceneIndex >= 0 ? scenes![priorSceneIndex].sceneNumber : undefined;
 
   const { data: sceneAssets = [], isLoading, refetch } = useQuery({
     queryKey: ['scene-assets', projectId, sceneId],
@@ -534,7 +492,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
 
   // Task 5: Show tag carry-forward prompt when entering Stage 8 with inherited instances that have tags
   useEffect(() => {
-    if (!sceneAssets || sceneAssets.length === 0 || !priorSceneData?.sceneNumber) return;
+    if (!sceneAssets || sceneAssets.length === 0 || !priorSceneNumber) return;
 
     const inheritedWithTags = sceneAssets.filter(a =>
       a.inherited_from_instance_id &&
@@ -553,7 +511,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
       );
       setShowTagCarryForwardPrompt(true);
     }
-  }, [sceneAssets, priorSceneData?.sceneNumber, sceneId]);
+  }, [sceneAssets, priorSceneNumber, sceneId]);
 
   const handleTagCarryForwardConfirm = useCallback(async (decisions: TagCarryForwardDecision[]) => {
     try {
@@ -842,10 +800,10 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
             </div>
           </div>
         )}
-        <ContinuityHeader
-          priorSceneEndState={priorSceneData?.endState}
-          priorEndFrame={priorSceneData?.endFrame}
-          priorSceneName={priorSceneData?.sceneNumber != null ? `Scene ${priorSceneData.sceneNumber}` : undefined}
+        <ContentAccessCarousel
+          projectId={projectId}
+          sceneId={sceneId}
+          stageNumber={8}
         />
         <EmptyStatePanel
           onDetectAssets={handleDetectAndPopulateAssets}
@@ -899,10 +857,10 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           </div>
         </div>
       )}
-      <ContinuityHeader
-        priorSceneEndState={priorSceneData?.endState}
-        priorEndFrame={priorSceneData?.endFrame}
-        priorSceneName={priorSceneData?.sceneNumber != null ? `Scene ${priorSceneData.sceneNumber}` : undefined}
+      <ContentAccessCarousel
+        projectId={projectId}
+        sceneId={sceneId}
+        stageNumber={8}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -946,7 +904,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           sceneId={sceneId}
           isUpdating={updateMutation.isPending}
           isGeneratingImage={isGeneratingSingle}
-          inheritedFromSceneNumber={priorSceneData?.sceneNumber ?? null}
+          inheritedFromSceneNumber={priorSceneNumber ?? null}
         />
 
         <AssetDrawerTriggerPanel
@@ -984,7 +942,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           setShowTagCarryForwardPrompt(false);
           localStorage.setItem(`tag-prompt-${sceneId}`, 'true');
         }}
-        priorSceneNumber={priorSceneData?.sceneNumber ?? 0}
+        priorSceneNumber={priorSceneNumber ?? 0}
         currentSceneNumber={currentSceneNumber}
         priorInstances={priorInstancesWithTags}
         onConfirm={handleTagCarryForwardConfirm}
