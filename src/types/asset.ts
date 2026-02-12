@@ -125,6 +125,36 @@ export interface AssetMatchResult {
   matched: boolean; // true if matched with existing, false if cloned new
 }
 
+// 3C.2: Multi-angle asset generation types
+export type AngleType = 'front' | 'side' | 'three_quarter' | 'back';
+
+export interface AssetAngleVariant {
+  id: string;
+  project_asset_id: string;
+  angle_type: AngleType;
+  image_url: string | null;
+  storage_path: string | null;
+  image_generation_job_id: string | null;
+  prompt_snapshot: string | null;
+  status: 'pending' | 'generating' | 'completed' | 'failed';
+  created_at: string;
+  updated_at: string;
+}
+
+export const ANGLE_LABELS: Record<AngleType, string> = {
+  front: 'Front View',
+  side: 'Side Profile',
+  three_quarter: '3/4 View',
+  back: 'Back View',
+};
+
+export const ANGLE_PROMPTS: Record<AngleType, string> = {
+  front: 'front-facing view, looking directly at the camera',
+  side: 'side profile view, facing left, showing full silhouette',
+  three_quarter: 'three-quarter angle view, slightly turned from the camera',
+  back: 'rear view from behind, showing the back of the character',
+};
+
 // Two-pass extraction types (3A.1)
 export interface AssetPreviewEntity {
   name: string;
