@@ -13,7 +13,7 @@ interface VisualStyleContext {
 export interface CreateImageJobRequest {
     projectId: string;
     branchId: string;
-    jobType: 'master_asset' | 'start_frame' | 'end_frame' | 'inpaint' | 'scene_asset';
+    jobType: 'master_asset' | 'start_frame' | 'end_frame' | 'inpaint' | 'scene_asset' | 'angle_variant';
     prompt: string;
     visualStyleCapsuleId?: string;
     manualVisualTone?: string;
@@ -24,6 +24,7 @@ export interface CreateImageJobRequest {
     shotId?: string;
     idempotencyKey?: string;
     referenceImageUrl?: string; // Optional reference image URL for merged assets
+    angleVariantId?: string; // For angle_variant jobs: the asset_angle_variants row ID
 }
 
 export interface CreateGlobalAssetImageJobRequest {
@@ -59,8 +60,44 @@ export class ImageGenerationService {
         extra_archetype: { width: 512, height: 768 }   // 2:3 portrait, same as characters
     };
 
+    // Asset types that require clean background isolation (3C.1)
+    private readonly ISOLATABLE_TYPES = ['character', 'prop', 'extra_archetype'];
+
     constructor() {
         this.provider = new NanoBananaClient();
+    }
+
+    /**
+     * 3C.1: Auto-inject background isolation instructions for isolatable asset types.
+     * Characters, props, and extra archetypes are generated on plain white backgrounds
+     * to avoid confusing noise in downstream frame/video generation.
+     * Locations are excluded — they need environmental context.
+     */
+    private injectBackgroundContext(prompt: string, assetType: string, jobType: string): string {
+        if (!this.ISOLATABLE_TYPES.includes(assetType)) {
+            return prompt;
+        }
+        // Only inject for asset image jobs, not frames or inpainting
+        if (jobType !== 'master_asset' && jobType !== 'scene_asset' && jobType !== 'angle_variant') {
+            return prompt;
+        }
+        const injection = '. Isolated on a plain white background, no environment, no other characters or objects.';
+        console.log(`[ImageService] 3C.1: Injecting background isolation for ${assetType} (${jobType})`);
+        return prompt + injection;
+    }
+
+    /**
+     * 3C.1 Placeholder: Post-processing background removal safety net.
+     * Currently a no-op passthrough. Wire up Rembg or a background removal API here
+     * when ready to add post-processing as a second layer of background cleanup.
+     */
+    private async postProcessBackground(imageBuffer: Buffer, assetType: string): Promise<Buffer> {
+        if (!this.ISOLATABLE_TYPES.includes(assetType)) {
+            return imageBuffer;
+        }
+        // TODO: Integrate Rembg or specialized background removal API here.
+        // The buffer is returned unchanged for now — prompt injection handles clean backgrounds.
+        return imageBuffer;
     }
 
     /**
@@ -81,14 +118,16 @@ export class ImageGenerationService {
             }
         }
 
-        // Auto-determine aspect ratio for master_asset job type
-        if (request.jobType === 'master_asset' && request.assetId) {
+        // Auto-determine aspect ratio and inject background context for asset jobs
+        if ((request.jobType === 'master_asset' || request.jobType === 'angle_variant') && request.assetId) {
             const asset = await this.getAssetDetails(request.assetId);
             if (asset) {
                 const dimensions = this.ASPECT_RATIOS[asset.asset_type];
                 request.width = dimensions.width;
                 request.height = dimensions.height;
-                
+                // 3C.1: Inject background isolation for isolatable asset types
+                request.prompt = this.injectBackgroundContext(request.prompt, asset.asset_type, request.jobType);
+
                 console.log(`[ImageService] Auto-sizing ${asset.asset_type}: ${dimensions.width}x${dimensions.height}`);
             }
         }
@@ -173,7 +212,8 @@ export class ImageGenerationService {
             throw new Error(`Scene asset instance ${sceneInstanceId} has no project_asset`);
         }
 
-        const prompt = instance.effective_description;
+        // 3C.1: Inject background isolation for isolatable asset types
+        const prompt = this.injectBackgroundContext(instance.effective_description, projectAsset.asset_type, 'scene_asset');
         const dimensions = this.ASPECT_RATIOS[projectAsset.asset_type];
 
         return await this.createImageJob({
@@ -188,6 +228,56 @@ export class ImageGenerationService {
             sceneId: instance.scene_id,
             idempotencyKey: `scene-asset-${sceneInstanceId}-${Date.now()}`,
             referenceImageUrl: projectAsset?.image_key_url ?? undefined,
+        });
+    }
+
+    /**
+     * 3C.2: Create image generation job for a specific angle variant of a character asset.
+     * Generates an angle-specific view (front/side/3-quarter/back) on a clean white background.
+     */
+    async createAngleVariantJob(
+        angleVariantId: string,
+        projectAssetId: string,
+        angleType: string,
+        projectId: string,
+        branchId: string,
+        visualStyleCapsuleId?: string,
+        manualVisualTone?: string
+    ): Promise<ImageJobResult> {
+        const ANGLE_PROMPTS: Record<string, string> = {
+            front: 'front-facing view, looking directly at the camera',
+            side: 'side profile view, facing left, showing full silhouette',
+            three_quarter: 'three-quarter angle view, slightly turned from the camera',
+            back: 'rear view from behind, showing the back of the character',
+        };
+
+        const asset = await this.getAssetDetails(projectAssetId);
+        if (!asset) {
+            throw new Error(`Asset ${projectAssetId} not found`);
+        }
+
+        const baseDescription = asset.description;
+        const angleInstruction = ANGLE_PROMPTS[angleType] || ANGLE_PROMPTS.front;
+        const prompt = `${angleInstruction} of ${baseDescription}`;
+
+        // Mark variant as generating
+        await supabase
+            .from('asset_angle_variants')
+            .update({ status: 'generating', prompt_snapshot: prompt })
+            .eq('id', angleVariantId);
+
+        return await this.createImageJob({
+            projectId,
+            branchId,
+            jobType: 'angle_variant',
+            prompt,
+            visualStyleCapsuleId,
+            manualVisualTone,
+            width: this.ASPECT_RATIOS.character.width,
+            height: this.ASPECT_RATIOS.character.height,
+            assetId: projectAssetId,
+            angleVariantId,
+            idempotencyKey: `angle-${angleVariantId}-${Date.now()}`,
         });
     }
 
@@ -248,7 +338,15 @@ export class ImageGenerationService {
             });
 
             // Convert artifact to buffer for upload
-            const imageBuffer = await this.artifactToBuffer(result.artifact);
+            let imageBuffer = await this.artifactToBuffer(result.artifact);
+
+            // 3C.1 Placeholder: Post-process background removal for isolatable asset types
+            if (request.assetId && (request.jobType === 'master_asset' || request.jobType === 'scene_asset' || request.jobType === 'angle_variant')) {
+                const assetDetails = await this.getAssetDetails(request.assetId);
+                if (assetDetails) {
+                    imageBuffer = await this.postProcessBackground(imageBuffer, assetDetails.asset_type);
+                }
+            }
 
             // Upload to Supabase Storage
             const storagePath = this.buildStoragePath(request);
@@ -356,6 +454,25 @@ export class ImageGenerationService {
                 }
             }
 
+            // If this is an angle_variant job, update the asset_angle_variants table
+            if (request.jobType === 'angle_variant' && request.angleVariantId) {
+                const { error: angleUpdateError } = await supabase
+                    .from('asset_angle_variants')
+                    .update({
+                        image_url: urlData.publicUrl,
+                        storage_path: storagePath,
+                        image_generation_job_id: jobId,
+                        status: 'completed',
+                    })
+                    .eq('id', request.angleVariantId);
+
+                if (angleUpdateError) {
+                    console.error(`[ImageService] Failed to update angle variant ${request.angleVariantId}:`, angleUpdateError);
+                } else {
+                    console.log(`[ImageService] Updated angle variant ${request.angleVariantId} with image URL`);
+                }
+            }
+
             // If this is a start_frame or end_frame job, update the frames table
             if ((request.jobType === 'start_frame' || request.jobType === 'end_frame') && request.shotId) {
                 const frameType = request.jobType === 'start_frame' ? 'start' : 'end';
@@ -413,6 +530,14 @@ export class ImageGenerationService {
                 error_message: errorMessage,
                 failure_stage: failureStage
             });
+
+            // Mark angle variant as failed if applicable
+            if (request.jobType === 'angle_variant' && request.angleVariantId) {
+                await supabase
+                    .from('asset_angle_variants')
+                    .update({ status: 'failed' })
+                    .eq('id', request.angleVariantId);
+            }
         }
     }
 
@@ -443,6 +568,9 @@ export class ImageGenerationService {
         
         if (request.jobType === 'master_asset') {
             return `project_${request.projectId}/branch_${request.branchId}/master-assets/${request.assetId}_${timestamp}_${random}.png`;
+        }
+        if (request.jobType === 'angle_variant' && request.assetId && request.angleVariantId) {
+            return `project_${request.projectId}/branch_${request.branchId}/master-assets/angles/${request.assetId}_${request.angleVariantId}_${timestamp}_${random}.png`;
         }
         if (request.jobType === 'scene_asset' && request.sceneId && request.assetId) {
             return `project_${request.projectId}/branch_${request.branchId}/scene_${request.sceneId}/scene-assets/${request.assetId}_${timestamp}_${random}.png`;
@@ -574,6 +702,9 @@ export class ImageGenerationService {
         const width = request.width || dimensions.width;
         const height = request.height || dimensions.height;
 
+        // 3C.1: Inject background isolation for isolatable asset types
+        request.prompt = this.injectBackgroundContext(request.prompt, asset.asset_type, 'master_asset');
+
         console.log(`[ImageService] Generating image for global asset ${request.assetId} (${asset.asset_type}): ${width}x${height}`);
 
         const jobId = uuidv4();
@@ -660,7 +791,13 @@ export class ImageGenerationService {
             });
 
             // Convert artifact to buffer
-            const imageBuffer = await this.artifactToBuffer(result.artifact);
+            let imageBuffer = await this.artifactToBuffer(result.artifact);
+
+            // 3C.1 Placeholder: Post-process background removal for isolatable asset types
+            const assetDetails = await this.getAssetDetails(request.assetId);
+            if (assetDetails) {
+                imageBuffer = await this.postProcessBackground(imageBuffer, assetDetails.asset_type);
+            }
 
             // Build storage path for global asset
             const timestamp = Date.now();
