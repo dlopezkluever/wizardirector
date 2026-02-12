@@ -179,10 +179,7 @@
   Rationale: Extras archetypes → image description extraction → style capsule investigation → locking fix. Completes all Stage 5   
     work
   ────────────────────────────────────────
-  Worktree: WT-8
-  Tasks (sequential within): 3B.6 → 3B.7 → 3B.8 → 3B.9
-  Files: SceneAssetListPanel.tsx, sceneAssets.ts
-  Rationale: Button fix → remove assets → persist suggestions → shot flags. All share the list panel
+  Worktree: WT-8 
   ────────────────────────────────────────
   Worktree: WT-9
   Tasks (sequential within): 3B.10 → 3B.11
