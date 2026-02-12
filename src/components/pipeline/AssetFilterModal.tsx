@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { User, MapPin, Package, Loader2 } from 'lucide-react';
+import { User, MapPin, Package, Users, Loader2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -25,6 +25,7 @@ const TYPE_CONFIG: Record<AssetType, { icon: typeof User; label: string }> = {
   character: { icon: User, label: 'Characters' },
   location: { icon: MapPin, label: 'Locations' },
   prop: { icon: Package, label: 'Props' },
+  extra_archetype: { icon: Users, label: 'Extra Archetypes' },
 };
 
 function entityKey(entity: { type: string; name: string }): string {
@@ -59,6 +60,7 @@ export function AssetFilterModal({
       character: [],
       location: [],
       prop: [],
+      extra_archetype: [],
     };
     for (const e of entities) {
       groups[e.type]?.push(e);
