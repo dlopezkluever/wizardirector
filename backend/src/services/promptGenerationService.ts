@@ -23,6 +23,12 @@ export interface ShotData {
   beat_reference?: string;
 }
 
+export interface AngleVariantData {
+  angle_type: string;
+  image_url: string | null;
+  status: string;
+}
+
 export interface SceneAssetInstanceData {
   id: string;
   project_asset?: {
@@ -39,6 +45,8 @@ export interface SceneAssetInstanceData {
   master_image_url?: string;
   carry_forward?: boolean;
   inherited_from_instance_id?: string;
+  angle_variants?: AngleVariantData[];
+  matched_angle_url?: string;
 }
 
 export interface GeneratedPromptSet {
@@ -60,6 +68,53 @@ export interface BulkPromptGenerationResult {
 
 const PROMPT_GENERATION_TIMEOUT_MS = 30000;
 const DEFAULT_COMPATIBLE_MODELS = ['Veo3'];
+
+/**
+ * 3C.2: Map a shot's camera angle text to the best matching asset angle variant.
+ * Parses the free-text camera field to extract the angle component, then maps it
+ * to the closest available angle variant for reference image selection.
+ */
+export function mapCameraToAngleType(camera: string): string {
+  const lower = camera.toLowerCase();
+
+  if (lower.includes('profile') || lower.includes('side')) return 'side';
+  if (lower.includes('three-quarter') || lower.includes('3/4') || lower.includes('three quarter')) return 'three_quarter';
+  if (lower.includes('behind') || lower.includes('over-the-shoulder') || lower.includes('over the shoulder') || lower.includes('back') || lower.includes('rear')) return 'back';
+
+  // Default: front-facing (covers eye-level, low-angle, high-angle, dutch, bird's-eye)
+  return 'front';
+}
+
+/**
+ * 3C.2: Enrich scene assets with angle-matched reference URLs for a given shot camera.
+ * For each character asset with angle variants, select the best matching angle
+ * variant image based on the shot's camera angle.
+ */
+export function enrichAssetsWithAngleMatch(
+  assets: SceneAssetInstanceData[],
+  shotCamera: string
+): SceneAssetInstanceData[] {
+  const targetAngle = mapCameraToAngleType(shotCamera);
+
+  return assets.map(asset => {
+    if (
+      asset.project_asset?.asset_type !== 'character' ||
+      !asset.angle_variants?.length
+    ) {
+      return asset;
+    }
+
+    // Find the target angle variant, fall back to front
+    const match =
+      asset.angle_variants.find(v => v.angle_type === targetAngle && v.status === 'completed' && v.image_url) ||
+      asset.angle_variants.find(v => v.angle_type === 'front' && v.status === 'completed' && v.image_url);
+
+    return {
+      ...asset,
+      matched_angle_url: match?.image_url ?? undefined,
+    };
+  });
+}
 
 /**
  * Build rich asset context for frame prompt generation.
@@ -85,11 +140,13 @@ function buildAssetContext(assets: SceneAssetInstanceData[]): string {
     if (a.carry_forward) inheritanceNotes.push('carry_forward');
     const inheritanceStr = inheritanceNotes.length ? ` [${inheritanceNotes.join(', ')}]` : '';
 
-    // Image reference indicators
+    // Image reference indicators (3C.2: angle-matched reference takes priority)
+    const hasAngleRef = !!a.matched_angle_url;
     const hasSceneRef = !!a.image_key_url;
     const hasMasterRef = !!a.master_image_url;
     let refNote = '';
-    if (hasSceneRef) refNote = ' Scene reference image available.';
+    if (hasAngleRef) refNote = ' Angle-matched reference image available.';
+    else if (hasSceneRef) refNote = ' Scene reference image available.';
     else if (hasMasterRef) refNote = ' Master reference image available.';
 
     return `- ${name}${inheritanceStr}${tags}: ${a.effective_description}${refNote}`;
@@ -208,7 +265,9 @@ export class PromptGenerationService {
   ): Promise<GeneratedPromptSet> {
     console.log(`[PromptGeneration] Generating prompts for shot ${shot.shot_id}`);
 
-    const assetContext = buildAssetContext(sceneAssets);
+    // 3C.2: Enrich assets with angle-matched reference URLs based on shot camera
+    const enrichedAssets = enrichAssetsWithAngleMatch(sceneAssets, shot.camera);
+    const assetContext = buildAssetContext(enrichedAssets);
     const styleContext = buildStyleContext(styleCapsule);
 
     // Generate frame prompt (visual/spatial focus)

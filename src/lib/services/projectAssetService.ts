@@ -4,7 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
-import type { ProjectAsset, CloneAssetRequest, AssetVersionStatus, AssetPreviewResponse, AssetType, AssetDecision, ProjectAssetGenerationAttempt } from '@/types/asset';
+import type { ProjectAsset, CloneAssetRequest, AssetVersionStatus, AssetPreviewResponse, AssetType, AssetDecision, ProjectAssetGenerationAttempt, AngleType, AssetAngleVariant } from '@/types/asset';
 
 export interface ExtractAssetsResponse {
   assets: ProjectAsset[];
@@ -751,6 +751,89 @@ class ProjectAssetService {
     }
 
     return response.json();
+  }
+
+  // ============================================================================
+  // 3C.2: Angle Variant Methods
+  // ============================================================================
+
+  /**
+   * List all angle variants for a project asset
+   */
+  async listAngleVariants(projectId: string, assetId: string): Promise<AssetAngleVariant[]> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/angle-variants`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to list angle variants');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Generate angle variant(s) for a character asset
+   */
+  async generateAngleVariants(
+    projectId: string,
+    assetId: string,
+    angleTypes: AngleType[]
+  ): Promise<{ variants: AssetAngleVariant[]; jobIds: string[] }> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/angle-variants/generate`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ angleTypes }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to generate angle variants');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Delete a specific angle variant
+   */
+  async deleteAngleVariant(projectId: string, assetId: string, variantId: string): Promise<void> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/angle-variants/${variantId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to delete angle variant');
+    }
   }
 }
 

@@ -2090,6 +2090,40 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
       inherited_from_instance_id: instance.inherited_from_instance_id || undefined,
     }));
 
+    // 3C.2: Fetch angle variants for character assets and attach to scene asset data
+    const characterAssetIds = sceneAssets
+      .filter(a => a.project_asset?.asset_type === 'character' && a.project_asset?.id)
+      .map(a => a.project_asset!.id);
+
+    if (characterAssetIds.length > 0) {
+      const { data: angleVariants } = await supabase
+        .from('asset_angle_variants')
+        .select('project_asset_id, angle_type, image_url, status')
+        .in('project_asset_id', characterAssetIds)
+        .eq('status', 'completed');
+
+      if (angleVariants && angleVariants.length > 0) {
+        const variantsByAsset = new Map<string, Array<{ angle_type: string; image_url: string | null; status: string }>>();
+        for (const v of angleVariants) {
+          if (!variantsByAsset.has(v.project_asset_id)) {
+            variantsByAsset.set(v.project_asset_id, []);
+          }
+          variantsByAsset.get(v.project_asset_id)!.push({
+            angle_type: v.angle_type,
+            image_url: v.image_url,
+            status: v.status,
+          });
+        }
+
+        for (const asset of sceneAssets) {
+          if (asset.project_asset?.id && variantsByAsset.has(asset.project_asset.id)) {
+            asset.angle_variants = variantsByAsset.get(asset.project_asset.id);
+          }
+        }
+        console.log(`[Stage9] Attached angle variants for ${variantsByAsset.size} character asset(s)`);
+      }
+    }
+
     // Fetch visual style capsule if applied to the project
     let styleCapsule = null;
     if (project.visual_style_capsule_id) {

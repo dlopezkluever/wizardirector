@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   User, MapPin, Package, Users, Sparkles, Check, Lock, Loader2,
   AlertTriangle, Info, MoreVertical, Trash2, Edit, Upload,
-  RefreshCw, PauseCircle, Play, ChevronDown, Plus
+  RefreshCw, PauseCircle, Play, ChevronDown, Plus, RotateCw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -46,6 +46,7 @@ import { AddAssetModal } from './AddAssetModal';
 import { ImageDescriptionModal } from './ImageDescriptionModal';
 import { StyleChangeWarningDialog } from './StyleChangeWarningDialog';
 import { ProjectAssetCarousel } from './ProjectAssetCarousel';
+import { AngleVariantsDialog } from './AngleVariantsDialog';
 import type { ProjectAsset, AssetPreviewEntity, AssetType, AssetDecision } from '@/types/asset';
 import type { StageStatus } from '@/types/project';
 import { LockedStageHeader } from './LockedStageHeader';
@@ -130,6 +131,9 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
 
   // Style change warning state (3A.9)
   const [showStyleChangeWarning, setShowStyleChangeWarning] = useState(false);
+
+  // Angle variants dialog state (3C.2)
+  const [angleDialogAsset, setAngleDialogAsset] = useState<ProjectAsset | null>(null);
 
   // Manual visual tone state (3A.8)
   const [styleMode, setStyleMode] = useState<'capsule' | 'manual'>('capsule');
@@ -977,6 +981,12 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                                         Defer Asset
                                       </DropdownMenuItem>
                                     )}
+                                    {asset.asset_type === 'character' && (
+                                      <DropdownMenuItem onClick={() => setAngleDialogAsset(asset)}>
+                                        <RotateCw className="w-4 h-4 mr-2" />
+                                        Manage Angles
+                                      </DropdownMenuItem>
+                                    )}
                                     {asset.image_key_url && (
                                       <DropdownMenuItem onClick={() => handlePromoteToGlobal(asset.id)}>
                                         <Upload className="w-4 h-4 mr-2" />
@@ -1304,6 +1314,16 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
             </Button>
           </div>
         </div>
+      )}
+
+      {/* 3C.2: Angle Variants Dialog */}
+      {angleDialogAsset && (
+        <AngleVariantsDialog
+          projectId={projectId}
+          asset={angleDialogAsset}
+          open={!!angleDialogAsset}
+          onOpenChange={(open) => { if (!open) setAngleDialogAsset(null); }}
+        />
       )}
     </div>
   );

@@ -2020,5 +2020,242 @@ router.delete('/:projectId/assets/:assetId/attempts/:attemptId', async (req, res
     }
 });
 
+// ============================================================================
+// 3C.2: ANGLE VARIANT ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /api/projects/:projectId/assets/:assetId/angle-variants
+ * List all angle variants for a character asset
+ */
+router.get('/:projectId/assets/:assetId/angle-variants', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, assetId } = req.params;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Verify asset belongs to project
+        const { data: asset, error: assetError } = await supabase
+            .from('project_assets')
+            .select('id, asset_type')
+            .eq('id', assetId)
+            .eq('project_id', projectId)
+            .single();
+
+        if (assetError || !asset) {
+            return res.status(404).json({ error: 'Asset not found' });
+        }
+
+        const { data: variants, error } = await supabase
+            .from('asset_angle_variants')
+            .select('*')
+            .eq('project_asset_id', assetId)
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            console.error('[ProjectAssets] List angle variants error:', error);
+            return res.status(500).json({ error: 'Failed to list angle variants' });
+        }
+
+        res.json(variants || []);
+    } catch (error) {
+        console.error('[ProjectAssets] List angle variants error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/assets/:assetId/angle-variants/generate
+ * Generate angle variant(s) for a character asset.
+ * Body: { angleTypes: ('front' | 'side' | 'three_quarter' | 'back')[] }
+ */
+router.post('/:projectId/assets/:assetId/angle-variants/generate', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, assetId } = req.params;
+        const { angleTypes } = req.body;
+
+        if (!angleTypes || !Array.isArray(angleTypes) || angleTypes.length === 0) {
+            return res.status(400).json({ error: 'angleTypes array is required' });
+        }
+
+        const validAngles = ['front', 'side', 'three_quarter', 'back'];
+        const invalidAngles = angleTypes.filter((a: string) => !validAngles.includes(a));
+        if (invalidAngles.length > 0) {
+            return res.status(400).json({ error: `Invalid angle types: ${invalidAngles.join(', ')}` });
+        }
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Verify asset is a character
+        const { data: asset, error: assetError } = await supabase
+            .from('project_assets')
+            .select('id, asset_type, visual_style_capsule_id')
+            .eq('id', assetId)
+            .eq('project_id', projectId)
+            .single();
+
+        if (assetError || !asset) {
+            return res.status(404).json({ error: 'Asset not found' });
+        }
+
+        if (asset.asset_type !== 'character') {
+            return res.status(400).json({ error: 'Multi-angle generation is only supported for character assets' });
+        }
+
+        // Get visual style: from asset or from stage 5 state
+        let visualStyleCapsuleId = asset.visual_style_capsule_id;
+        let manualVisualTone: string | undefined;
+
+        if (!visualStyleCapsuleId) {
+            const { data: stage5States } = await supabase
+                .from('stage_states')
+                .select('content')
+                .eq('branch_id', project.active_branch_id)
+                .eq('stage_number', 5)
+                .order('version', { ascending: false })
+                .limit(1);
+
+            const stageContent = stage5States?.[0]?.content;
+            visualStyleCapsuleId = stageContent?.locked_visual_style_capsule_id;
+            if (!visualStyleCapsuleId && stageContent?.manual_visual_tone) {
+                manualVisualTone = stageContent.manual_visual_tone;
+            }
+        }
+
+        if (!visualStyleCapsuleId && !manualVisualTone) {
+            return res.status(400).json({ error: 'Visual style is required. Set a style capsule or manual tone in Stage 5.' });
+        }
+
+        const variants = [];
+        const jobIds = [];
+
+        for (const angleType of angleTypes) {
+            // Upsert: create or reset existing variant row
+            const { data: variant, error: upsertError } = await supabase
+                .from('asset_angle_variants')
+                .upsert(
+                    {
+                        project_asset_id: assetId,
+                        angle_type: angleType,
+                        status: 'pending',
+                        image_url: null,
+                        storage_path: null,
+                        image_generation_job_id: null,
+                    },
+                    { onConflict: 'project_asset_id,angle_type' }
+                )
+                .select()
+                .single();
+
+            if (upsertError || !variant) {
+                console.error(`[ProjectAssets] Failed to upsert angle variant ${angleType}:`, upsertError);
+                continue;
+            }
+
+            // Kick off generation job
+            const result = await imageService.createAngleVariantJob(
+                variant.id,
+                assetId,
+                angleType,
+                projectId,
+                project.active_branch_id,
+                visualStyleCapsuleId || undefined,
+                manualVisualTone
+            );
+
+            variants.push(variant);
+            jobIds.push(result.jobId);
+        }
+
+        res.json({ variants, jobIds });
+    } catch (error) {
+        console.error('[ProjectAssets] Generate angle variants error:', error);
+        res.status(500).json({
+            error: 'Angle variant generation failed',
+            message: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+});
+
+/**
+ * DELETE /api/projects/:projectId/assets/:assetId/angle-variants/:variantId
+ * Delete a specific angle variant
+ */
+router.delete('/:projectId/assets/:assetId/angle-variants/:variantId', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, assetId, variantId } = req.params;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Verify variant belongs to the correct asset
+        const { data: variant, error: variantError } = await supabase
+            .from('asset_angle_variants')
+            .select('id, storage_path')
+            .eq('id', variantId)
+            .eq('project_asset_id', assetId)
+            .single();
+
+        if (variantError || !variant) {
+            return res.status(404).json({ error: 'Angle variant not found' });
+        }
+
+        // Delete storage file if it exists
+        if (variant.storage_path) {
+            await supabase.storage
+                .from('asset-images')
+                .remove([variant.storage_path]);
+        }
+
+        // Delete the variant row
+        const { error: deleteError } = await supabase
+            .from('asset_angle_variants')
+            .delete()
+            .eq('id', variantId);
+
+        if (deleteError) {
+            console.error('[ProjectAssets] Delete angle variant error:', deleteError);
+            return res.status(500).json({ error: 'Failed to delete angle variant' });
+        }
+
+        res.status(204).send();
+    } catch (error) {
+        console.error('[ProjectAssets] Delete angle variant error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 export const projectAssetsRouter = router;
 
