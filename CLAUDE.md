@@ -108,4 +108,29 @@ Uses Supabase for authentication, database, and file storage. Key features:
 
 ## Testing
 
-No specific test framework detected in package.json. If implementing tests, follow React Testing Library conventions and create tests alongside components.
+**After making code changes, always run tests to catch regressions:**
+
+```bash
+# Frontend tests (from project root):
+cd "C:\Users\Daniel Lopez\Desktop\Aiuteur\wizardirector" && npm test
+
+# Backend tests (if backend code changed):
+cd "C:\Users\Daniel Lopez\Desktop\Aiuteur\wizardirector\backend" && npm test
+```
+
+If any test fails, fix the failure before considering the task complete.
+
+**Frontend**: Vitest + React Testing Library + MSW (Mock Service Worker)
+- Test config in `vite.config.ts` → `test` block
+- Setup file: `src/test/setup.ts`
+- Tests co-located in `__tests__/` dirs next to source (e.g. `src/lib/services/__tests__/`)
+
+**Backend**: Jest + ts-jest + Supertest
+- Config: `backend/jest.config.js`
+- Tests in `backend/src/tests/` and `backend/src/utils/__tests__/`
+
+**When to write new tests:**
+- Pure logic functions (parsing, validation, transformation) → unit test
+- New frontend service methods → service test with MSW mocks
+- New backend routes → supertest route test
+- Do NOT test: simple wrappers, styling, config changes
