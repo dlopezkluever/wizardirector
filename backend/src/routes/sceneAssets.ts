@@ -523,6 +523,279 @@ router.delete('/:projectId/scenes/:sceneId/assets/:instanceId', async (req, res)
 });
 
 // ============================================================================
+// SUGGESTIONS ENDPOINTS (3B.8)
+// ============================================================================
+
+const BulkSuggestionsSchema = z.object({
+  suggestions: z.array(z.object({
+    name: z.string().min(1),
+    assetType: z.string(),
+    description: z.string().optional().default(''),
+    justification: z.string().optional().default(''),
+  })),
+});
+
+const UpdateSuggestionSchema = z.object({
+  accepted: z.boolean().optional(),
+  dismissed: z.boolean().optional(),
+});
+
+/**
+ * GET /api/projects/:projectId/scenes/:sceneId/suggestions
+ * Fetch non-dismissed suggestions for a scene
+ */
+router.get('/:projectId/scenes/:sceneId/suggestions', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId } = req.params;
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const { data: suggestions, error } = await supabase
+      .from('scene_asset_suggestions')
+      .select('*')
+      .eq('scene_id', sceneId)
+      .eq('dismissed', false)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('[SceneAssets] List suggestions error:', error);
+      return res.status(500).json({ error: 'Failed to fetch suggestions' });
+    }
+
+    res.json(suggestions || []);
+  } catch (err) {
+    console.error('[SceneAssets] List suggestions error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/suggestions
+ * Bulk-create suggestions (from AI detection)
+ */
+router.post('/:projectId/scenes/:sceneId/suggestions', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId } = req.params;
+
+    const validation = BulkSuggestionsSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        details: validation.error.errors,
+      });
+    }
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const rows = validation.data.suggestions.map(s => ({
+      scene_id: sceneId,
+      name: s.name,
+      asset_type: s.assetType,
+      description: s.description || null,
+      justification: s.justification || null,
+      suggested_by: 'ai_relevance',
+    }));
+
+    const { data: created, error: insertError } = await supabase
+      .from('scene_asset_suggestions')
+      .insert(rows)
+      .select('*');
+
+    if (insertError) {
+      console.error('[SceneAssets] Bulk create suggestions error:', insertError);
+      return res.status(500).json({ error: 'Failed to save suggestions' });
+    }
+
+    res.status(201).json(created || []);
+  } catch (err) {
+    console.error('[SceneAssets] Bulk create suggestions error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * PATCH /api/projects/:projectId/scenes/:sceneId/suggestions/:suggestionId
+ * Update a suggestion (accept or dismiss)
+ */
+router.patch('/:projectId/scenes/:sceneId/suggestions/:suggestionId', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId, suggestionId } = req.params;
+
+    const validation = UpdateSuggestionSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        details: validation.error.errors,
+      });
+    }
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (validation.data.accepted !== undefined) payload.accepted = validation.data.accepted;
+    if (validation.data.dismissed !== undefined) payload.dismissed = validation.data.dismissed;
+
+    const { data: updated, error: updateError } = await supabase
+      .from('scene_asset_suggestions')
+      .update(payload)
+      .eq('id', suggestionId)
+      .eq('scene_id', sceneId)
+      .select('*')
+      .single();
+
+    if (updateError) {
+      console.error('[SceneAssets] Update suggestion error:', updateError);
+      return res.status(500).json({ error: 'Failed to update suggestion' });
+    }
+
+    res.json(updated);
+  } catch (err) {
+    console.error('[SceneAssets] Update suggestion error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================================
+// CREATE WITH PROJECT ASSET (3B.6)
+// ============================================================================
+
+const CreateWithProjectAssetSchema = z.object({
+  name: z.string().min(1).max(200),
+  assetType: z.enum(['character', 'location', 'prop']),
+  description: z.string().max(2000).optional().default(''),
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/assets/create-with-project-asset
+ * Atomically creates a project_asset + scene_asset_instance in one request
+ */
+router.post('/:projectId/scenes/:sceneId/assets/create-with-project-asset', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId } = req.params;
+
+    const validation = CreateWithProjectAssetSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        details: validation.error.errors,
+      });
+    }
+
+    const { name, assetType, description } = validation.data;
+
+    // Verify project ownership + get active_branch_id
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Verify scene belongs to project
+    const { data: scene, error: sceneError } = await supabase
+      .from('scenes')
+      .select('id, branch_id, scene_number')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+
+    if (sceneError || !scene) {
+      return res.status(404).json({ error: 'Scene not found' });
+    }
+
+    // 1. Create project_asset
+    const { data: projectAsset, error: paError } = await supabase
+      .from('project_assets')
+      .insert({
+        project_id: projectId,
+        branch_id: project.active_branch_id,
+        name,
+        asset_type: assetType,
+        description: description || null,
+        locked: true,
+        source: 'manual',
+        scene_numbers: scene.scene_number ? [scene.scene_number] : [],
+      })
+      .select('id')
+      .single();
+
+    if (paError || !projectAsset) {
+      console.error('[SceneAssets] Create project asset error:', paError);
+      return res.status(500).json({ error: 'Failed to create project asset' });
+    }
+
+    // 2. Create scene_asset_instance
+    const { data: instance, error: insertError } = await supabase
+      .from('scene_asset_instances')
+      .insert({
+        scene_id: sceneId,
+        project_asset_id: projectAsset.id,
+        effective_description: description || null,
+        description_override: description || null,
+        status_tags: [],
+        carry_forward: true,
+      })
+      .select(`
+        *,
+        project_asset:project_assets(
+          id, name, asset_type, description, image_key_url
+        )
+      `)
+      .single();
+
+    if (insertError) {
+      console.error('[SceneAssets] Create scene instance error:', insertError);
+      // Attempt cleanup of the orphaned project_asset
+      await supabase.from('project_assets').delete().eq('id', projectAsset.id);
+      return res.status(500).json({ error: 'Failed to create scene asset instance' });
+    }
+
+    console.log(
+      `[SceneAssets] Created project asset ${projectAsset.id} + scene instance ${instance.id} for scene ${sceneId}`
+    );
+    res.status(201).json(instance);
+  } catch (err) {
+    console.error('[SceneAssets] Create with project asset error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================================
 // DETERMINISTIC PRE-POPULATION
 // ============================================================================
 
