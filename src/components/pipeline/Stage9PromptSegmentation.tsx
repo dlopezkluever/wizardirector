@@ -31,6 +31,7 @@ import { LockedStageHeader } from './LockedStageHeader';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
+import { ContentAccessCarousel } from './ContentAccessCarousel';
 
 interface Stage9PromptSegmentationProps {
   projectId: string;
@@ -335,6 +336,13 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
           lockAndProceedLabel="Lock & Proceed"
         />
       )}
+
+      {/* Content Access Carousel */}
+      <ContentAccessCarousel
+        projectId={projectId}
+        sceneId={sceneId}
+        stageNumber={9}
+      />
 
       {/* Header */}
       <div className="p-4 border-b border-border/50 flex items-center justify-between">

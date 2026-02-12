@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import { sceneService } from '@/lib/services/sceneService';
 import { checkoutService } from '@/lib/services/checkoutService';
 import type { Scene, SceneStatus, ContinuityRisk } from '@/types/scene';
+import { ContentAccessCarousel } from './ContentAccessCarousel';
 
 const statusConfig: Record<SceneStatus, { label: string; color: string; icon: typeof CheckCircle2 }> = {
   'draft': { label: 'Draft', color: 'bg-muted text-muted-foreground', icon: Clock },
@@ -429,16 +430,14 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
                   </div>
                 </div>
 
-                {/* Prior Scene End State */}
-                {selectedScene.priorSceneEndState && (
-                  <div className="bg-card/50 rounded-lg p-4 border border-border/30">
-                    <h3 className="text-sm font-medium text-foreground mb-2">
-                      Prior Scene End State
-                    </h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      {selectedScene.priorSceneEndState}
-                    </p>
-                  </div>
+                {/* Content Access Carousel */}
+                {projectId && (
+                  <ContentAccessCarousel
+                    projectId={projectId}
+                    sceneId={selectedScene.id}
+                    stageNumber={6}
+                    sceneNumber={selectedScene.sceneNumber}
+                  />
                 )}
 
                 {/* Continuity Risk Warning */}

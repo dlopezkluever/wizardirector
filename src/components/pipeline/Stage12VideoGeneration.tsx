@@ -34,6 +34,7 @@ import { checkoutService } from '@/lib/services/checkoutService';
 import type { VideoGenerationJob, VideoJobStatus, IssueType } from '@/types/scene';
 import { LockedStageHeader } from './LockedStageHeader';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
+import { ContentAccessCarousel } from './ContentAccessCarousel';
 
 const issueTypes: { type: IssueType; label: string; icon: typeof AlertTriangle; returnStage: number; description: string }[] = [
   { type: 'visual-continuity', label: 'Visual Continuity', icon: ImageIcon, returnStage: 8, description: 'Character appearance, set dressing, or visual style issues' },
@@ -314,6 +315,13 @@ export function Stage12VideoGeneration({
           }}
         />
       )}
+
+      {/* Content Access Carousel */}
+      <ContentAccessCarousel
+        projectId={projectId}
+        sceneId={sceneId}
+        stageNumber={12}
+      />
 
       {/* Header */}
       <div className="p-4 border-b border-border/50 flex items-center justify-between">
