@@ -1,8 +1,8 @@
 /**
  * Content Access Carousel (4WT-1)
  * Multi-tab collapsible, resizable panel providing access to:
- *   Tab 1 — Rearview Mirror (prior scene end state / end frame)
- *   Tab 2 — Script Excerpt (current scene's script in simplified screenplay format)
+ *   Tab 1 — Script Excerpt (current scene's script in simplified screenplay format)
+ *   Tab 2 — Rearview Mirror (prior scene end state / end frame, scene 2+)
  *   Tab 3 — Shot List (vertical carousel of shot cards, stages 8-12 only)
  *
  * Replaces the old RearviewMirror component.
@@ -66,8 +66,9 @@ const MIN_HEIGHT = 100;
 const DEFAULT_HEIGHT_RATIO = 0.25;
 const MAX_HEIGHT_RATIO = 0.5;
 
-// Module-level session-persistent height (survives re-renders/navigation, resets on page reload)
+// Module-level session-persistent state (survives re-renders/navigation, resets on page reload)
 let sessionPanelHeight: number | null = null;
+let sessionActiveTabId: TabId | null = null;
 
 // ---------------------------------------------------------------------------
 // Script line parser (simplified screenplay formatting)
@@ -392,14 +393,17 @@ function ShotListContent({ shots }: { shots: Shot[] }) {
 function ResizeHandle({
   onDragStart,
   isDragging,
+  onDoubleClick,
 }: {
   onDragStart: (e: React.MouseEvent | React.TouchEvent) => void;
   isDragging: boolean;
+  onDoubleClick?: () => void;
 }) {
   return (
     <div
       onMouseDown={onDragStart}
       onTouchStart={onDragStart}
+      onDoubleClick={onDoubleClick}
       className={cn(
         'h-3 cursor-row-resize flex items-center justify-center border-t border-border/30',
         'hover:bg-border/30 transition-colors select-none',
@@ -430,20 +434,8 @@ export function ContentAccessCarousel({
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
 
-  // Carousel state
-  const [carouselApi, setCarouselApi] = useState<CarouselApi>();
-  const [activeTabIndex, setActiveTabIndex] = useState(0);
-
-  // Sync carousel position → active tab
-  useEffect(() => {
-    if (!carouselApi) return;
-    const onSelect = () => setActiveTabIndex(carouselApi.selectedScrollSnap());
-    carouselApi.on('select', onSelect);
-    return () => { carouselApi.off('select', onSelect); };
-  }, [carouselApi]);
-
   // ---------------------------------------------------------------------------
-  // Data fetching
+  // Data fetching (must precede tab/carousel state for initializer access)
   // ---------------------------------------------------------------------------
 
   const { data: scenes } = useQuery({
@@ -470,19 +462,19 @@ export function ContentAccessCarousel({
   });
 
   // ---------------------------------------------------------------------------
-  // Tab availability
+  // Tab availability (must precede carousel state for initializer access)
   // ---------------------------------------------------------------------------
 
   const availableTabs = useMemo<TabDef[]>(() => {
     const tabs: TabDef[] = [];
 
+    // Script: always available (stages 6-12) — most frequently used, always first
+    tabs.push({ id: 'script', label: 'Script', icon: FileText });
+
     // Rearview: stages 6-12, hidden for scene 1
     if (derivedSceneNumber > 1) {
       tabs.push({ id: 'rearview', label: 'Rearview', icon: Eye });
     }
-
-    // Script: always available (stages 6-12)
-    tabs.push({ id: 'script', label: 'Script', icon: FileText });
 
     // Shots: stages 8-12 only
     if (stageNumber >= 8) {
@@ -491,6 +483,42 @@ export function ContentAccessCarousel({
 
     return tabs;
   }, [stageNumber, derivedSceneNumber]);
+
+  // ---------------------------------------------------------------------------
+  // Carousel state (initialized from session-persisted tab)
+  // ---------------------------------------------------------------------------
+
+  const [carouselApi, setCarouselApi] = useState<CarouselApi>();
+  const [activeTabIndex, setActiveTabIndex] = useState(() => {
+    if (sessionActiveTabId) {
+      const idx = availableTabs.findIndex(t => t.id === sessionActiveTabId);
+      if (idx >= 0) return idx;
+    }
+    return 0;
+  });
+
+  // Sync carousel position → active tab
+  useEffect(() => {
+    if (!carouselApi) return;
+    const onSelect = () => setActiveTabIndex(carouselApi.selectedScrollSnap());
+    carouselApi.on('select', onSelect);
+    return () => { carouselApi.off('select', onSelect); };
+  }, [carouselApi]);
+
+  // Scroll carousel to preserved tab on re-mount (after collapse/expand)
+  useEffect(() => {
+    if (carouselApi && activeTabIndex > 0) {
+      requestAnimationFrame(() => {
+        carouselApi.scrollTo(activeTabIndex, true); // instant, no animation
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carouselApi]);
+
+  // Persist active tab to module-level variable
+  useEffect(() => {
+    sessionActiveTabId = availableTabs[activeTabIndex]?.id ?? null;
+  }, [activeTabIndex, availableTabs]);
 
   // Reset active tab when available tabs change
   useEffect(() => {
@@ -555,6 +583,13 @@ export function ContentAccessCarousel({
     [carouselApi]
   );
 
+  // Double-click resize handle → reset to default height
+  const handleResetHeight = useCallback(() => {
+    const defaultHeight = window.innerHeight * DEFAULT_HEIGHT_RATIO;
+    setPanelHeight(defaultHeight);
+    sessionPanelHeight = defaultHeight;
+  }, []);
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -587,7 +622,7 @@ export function ContentAccessCarousel({
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: panelHeight }}
             exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2, ease: 'easeInOut' }}
+            transition={{ duration: isDragging ? 0 : 0.2, ease: 'easeInOut' }}
             className="overflow-hidden flex flex-col"
           >
             <div className="flex-1 min-h-0">
@@ -595,14 +630,14 @@ export function ContentAccessCarousel({
                 orientation="horizontal"
                 opts={{ watchDrag: false }}
                 setApi={setCarouselApi}
-                className="h-full"
+                className="h-full [&>div]:h-full"
               >
                 <CarouselContent className="h-full">
                   {availableTabs.map((tab) => (
                     <CarouselItem key={tab.id} className="h-full">
                       {tab.id === 'rearview' && (
                         <RearviewContent
-                          priorSceneEndState={priorScene?.priorSceneEndState}
+                          priorSceneEndState={currentScene?.priorSceneEndState}
                           endFrameThumbnail={priorScene?.endFrameThumbnail}
                           priorSceneName={priorScene ? `Scene ${priorScene.sceneNumber}` : undefined}
                         />
@@ -620,7 +655,7 @@ export function ContentAccessCarousel({
             </div>
 
             {/* Resize handle */}
-            <ResizeHandle onDragStart={handleDragStart} isDragging={isDragging} />
+            <ResizeHandle onDragStart={handleDragStart} isDragging={isDragging} onDoubleClick={handleResetHeight} />
           </motion.div>
         )}
       </AnimatePresence>
