@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import { Loader2, RefreshCw, Trash2, ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { projectAssetService } from '@/lib/services/projectAssetService';
@@ -35,6 +36,7 @@ export function AngleVariantsDialog({ projectId, asset, open, onOpenChange }: An
   const [loading, setLoading] = useState(false);
   const [generatingAngles, setGeneratingAngles] = useState<Set<AngleType>>(new Set());
   const [pollingAngles, setPollingAngles] = useState<Set<AngleType>>(new Set());
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const fetchVariants = useCallback(async () => {
     try {
@@ -174,16 +176,16 @@ export function AngleVariantsDialog({ projectId, asset, open, onOpenChange }: An
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Angle Variants — {asset.name}</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
+          <DialogTitle className="text-base">Angle Variants — {asset.name}</DialogTitle>
+          <DialogDescription className="text-xs">
             Generate multiple angle views for consistent frame composition.
-            {completedCount > 0 && ` ${completedCount}/${ALL_ANGLES.length} angles generated.`}
+            {completedCount > 0 && ` ${completedCount}/${ALL_ANGLES.length} generated.`}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="flex-1 overflow-y-auto space-y-3 pr-1">
           {/* Generate All button */}
           <div className="flex justify-end">
             <Button
@@ -193,9 +195,9 @@ export function AngleVariantsDialog({ projectId, asset, open, onOpenChange }: An
               variant="outline"
             >
               {anyGenerating ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
               ) : (
-                <RefreshCw className="w-4 h-4 mr-2" />
+                <RefreshCw className="w-3 h-3 mr-1.5" />
               )}
               Generate Missing Angles
             </Button>
@@ -203,11 +205,11 @@ export function AngleVariantsDialog({ projectId, asset, open, onOpenChange }: An
 
           {/* 2x2 Grid */}
           {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               {ALL_ANGLES.map(angle => {
                 const variant = getVariantForAngle(angle);
                 const isGenerating = generatingAngles.has(angle);
@@ -216,45 +218,53 @@ export function AngleVariantsDialog({ projectId, asset, open, onOpenChange }: An
                 return (
                   <div
                     key={angle}
-                    className="border rounded-lg p-3 space-y-2"
+                    className="border rounded-lg p-2 space-y-1.5"
                   >
                     {/* Header */}
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">{ANGLE_LABELS[angle]}</span>
+                      <span className="text-xs font-medium">{ANGLE_LABELS[angle]}</span>
                       {variant && (
-                        <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[variant.status]}`}>
+                        <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${STATUS_COLORS[variant.status]}`}>
                           {variant.status}
                         </Badge>
                       )}
                     </div>
 
-                    {/* Image area */}
-                    <div className="aspect-[2/3] bg-muted/30 rounded-md flex items-center justify-center overflow-hidden">
+                    {/* Image area — compact square */}
+                    <div
+                      className={cn(
+                        "aspect-square bg-muted/30 rounded-md flex items-center justify-center overflow-hidden",
+                        hasImage && "cursor-pointer"
+                      )}
+                      onClick={() => {
+                        if (hasImage) setPreviewUrl(variant.image_url!);
+                      }}
+                    >
                       {isGenerating || variant?.status === 'generating' ? (
-                        <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                          <Loader2 className="w-6 h-6 animate-spin" />
-                          <span className="text-xs">Generating...</span>
+                        <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          <span className="text-[10px]">Generating...</span>
                         </div>
                       ) : hasImage ? (
                         <img
                           src={variant.image_url!}
                           alt={`${asset.name} — ${ANGLE_LABELS[angle]}`}
-                          className="w-full h-full object-cover rounded-md"
+                          className="w-full h-full object-contain rounded-md"
                         />
                       ) : (
-                        <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                          <ImageIcon className="w-8 h-8" />
-                          <span className="text-xs">Not generated</span>
+                        <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                          <ImageIcon className="w-6 h-6" />
+                          <span className="text-[10px]">Not generated</span>
                         </div>
                       )}
                     </div>
 
                     {/* Actions */}
-                    <div className="flex gap-2">
+                    <div className="flex gap-1.5">
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-1"
+                        className="flex-1 h-7 text-xs"
                         disabled={isGenerating || variant?.status === 'generating'}
                         onClick={() => handleGenerateSingle(angle)}
                       >
@@ -263,15 +273,15 @@ export function AngleVariantsDialog({ projectId, asset, open, onOpenChange }: An
                         ) : (
                           <RefreshCw className="w-3 h-3 mr-1" />
                         )}
-                        {hasImage ? 'Regenerate' : 'Generate'}
+                        {hasImage ? 'Redo' : 'Generate'}
                       </Button>
                       {variant && (
                         <Button
                           variant="ghost"
                           size="sm"
+                          className="h-7 text-destructive hover:text-destructive"
                           onClick={() => handleDeleteVariant(variant)}
                           disabled={isGenerating || variant.status === 'generating'}
-                          className="text-destructive hover:text-destructive"
                         >
                           <Trash2 className="w-3 h-3" />
                         </Button>
@@ -284,6 +294,19 @@ export function AngleVariantsDialog({ projectId, asset, open, onOpenChange }: An
           )}
         </div>
       </DialogContent>
+
+      {/* Full-size image preview */}
+      {previewUrl && (
+        <Dialog open={!!previewUrl} onOpenChange={() => setPreviewUrl(null)}>
+          <DialogContent className="max-w-3xl p-2 bg-black/90 border-none">
+            <img
+              src={previewUrl}
+              alt="Angle variant preview"
+              className="w-full h-auto max-h-[85vh] object-contain rounded"
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </Dialog>
   );
 }
