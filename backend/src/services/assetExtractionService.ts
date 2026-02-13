@@ -16,6 +16,7 @@
 
 import { llmClient } from './llm-client.js';
 import { supabase } from '../config/supabase.js';
+import { extractManifest } from '../utils/scriptManifest.js';
 
 // Raw entity from Pass 1
 export interface RawEntity {
@@ -62,9 +63,16 @@ export class AssetExtractionService {
   async extractSelectedAssets(
     branchId: string,
     selectedEntities: Array<{ name: string; type: string }>,
-    visualStyleId: string
+    visualStyleId: string,
+    manualVisualTone?: string
   ): Promise<ExtractedAsset[]> {
-    const rawEntities = await this.aggregateSceneDependencies(branchId);
+    let rawEntities = await this.aggregateSceneDependencies(branchId);
+
+    // Fallback: if no scene dependencies, try tiptapDoc from stage 4
+    if (rawEntities.length === 0) {
+      console.log('[AssetExtraction] No scene dependencies, trying tiptapDoc fallback');
+      rawEntities = await this.aggregateFromTiptapDoc(branchId);
+    }
 
     // Build a set of selected keys for fast lookup
     const selectedKeys = new Set(
@@ -79,7 +87,7 @@ export class AssetExtractionService {
 
     const distilledAssets: ExtractedAsset[] = [];
     for (const entity of filtered) {
-      const asset = await this.distillVisualSummary(entity, visualStyleId);
+      const asset = await this.distillVisualSummary(entity, visualStyleId, manualVisualTone);
       distilledAssets.push(asset);
     }
 
@@ -266,6 +274,75 @@ export class AssetExtractionService {
   }
 
   /**
+   * Fallback: Build RawEntity[] from Stage 4 tiptapDoc when scene dependencies are empty.
+   * Mirrors the preview fallback in projectAssets route.
+   */
+  private async aggregateFromTiptapDoc(branchId: string): Promise<RawEntity[]> {
+    const { data: stage4States } = await supabase
+      .from('stage_states')
+      .select('content')
+      .eq('branch_id', branchId)
+      .eq('stage_number', 4)
+      .order('version', { ascending: false })
+      .limit(1);
+
+    const tiptapDoc = stage4States?.[0]?.content?.tiptapDoc;
+    if (!tiptapDoc) {
+      console.warn('[AssetExtraction] No tiptapDoc found for tiptapDoc fallback');
+      return [];
+    }
+
+    const manifest = extractManifest(tiptapDoc);
+    const entityMap = new Map<string, RawEntity>();
+
+    for (const [, char] of manifest.globalCharacters) {
+      entityMap.set(`character:${char.name.toLowerCase()}`, {
+        name: char.name,
+        aliases: [char.name],
+        type: 'character',
+        mentions: char.sceneNumbers.map(sn => ({
+          sceneNumber: sn,
+          text: `Character appears in scene ${sn}`,
+          context: '',
+        })),
+      });
+    }
+
+    for (const loc of manifest.globalLocations) {
+      const sceneNums = manifest.scenes
+        .filter(s => s.location === loc)
+        .map(s => s.sceneNumber);
+      entityMap.set(`location:${loc.toLowerCase()}`, {
+        name: loc,
+        aliases: [loc],
+        type: 'location',
+        mentions: sceneNums.map(sn => ({
+          sceneNumber: sn,
+          text: `Location: ${loc}`,
+          context: '',
+        })),
+      });
+    }
+
+    for (const [, prop] of manifest.globalProps) {
+      entityMap.set(`prop:${prop.name.toLowerCase()}`, {
+        name: prop.name,
+        aliases: [prop.name],
+        type: 'prop',
+        mentions: prop.sceneNumbers.map(sn => ({
+          sceneNumber: sn,
+          text: `Prop appears in scene ${sn}`,
+          context: prop.contexts[0] || '',
+        })),
+      });
+    }
+
+    const entities = Array.from(entityMap.values());
+    console.log(`[AssetExtraction] tiptapDoc fallback: ${entities.length} entities (${entities.filter(e => e.type === 'character').length} characters, ${entities.filter(e => e.type === 'prop').length} props, ${entities.filter(e => e.type === 'location').length} locations)`);
+    return entities;
+  }
+
+  /**
    * Extract context snippet from script excerpt for mention context
    * Returns first 3 lines or first 200 characters, whichever is shorter
    */
@@ -443,10 +520,13 @@ Return a JSON array with this structure:
    */
   private async distillVisualSummary(
     entity: RawEntity,
-    visualStyleId: string
+    visualStyleId: string,
+    manualVisualTone?: string
   ): Promise<ExtractedAsset> {
     // Get visual style context for consistency
-    const styleContext = await this.getStyleContext(visualStyleId);
+    const styleContext = visualStyleId
+      ? await this.getStyleContext(visualStyleId)
+      : { name: 'Manual Tone', description: manualVisualTone || 'Cinematic, high-quality visual style' };
 
     const systemPrompt = `You are a visual description specialist. Create a concise, vivid 3-5 sentence description suitable for AI image generation.
 
