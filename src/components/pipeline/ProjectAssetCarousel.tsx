@@ -11,6 +11,10 @@ import { Check, Trash2, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
+  Dialog,
+  DialogContent,
+} from '@/components/ui/dialog';
+import {
   Carousel,
   CarouselContent,
   CarouselItem,
@@ -42,6 +46,7 @@ export function ProjectAssetCarousel({
 }: ProjectAssetCarouselProps) {
   const queryClient = useQueryClient();
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const queryKey = ['project-asset-attempts', projectId, assetId];
 
@@ -121,23 +126,39 @@ export function ProjectAssetCarousel({
   if (total === 1) {
     const attempt = attempts[0];
     return (
-      <div className="relative aspect-video rounded-lg overflow-hidden bg-muted/50 border-2 border-amber-400">
-        <img
-          src={attempt.image_url}
-          alt="Asset image"
-          className="w-full h-full object-cover"
-        />
-        <Badge className="absolute top-2 left-2 bg-amber-400 text-amber-900 text-[10px] gap-1">
-          <Check className="w-3 h-3" />
-          Selected
-        </Badge>
-        <Badge
-          variant="secondary"
-          className="absolute top-2 right-2 text-[10px] bg-background/80 backdrop-blur-sm"
+      <>
+        <div
+          className="relative aspect-video rounded-lg overflow-hidden bg-muted/50 border-2 border-amber-400 cursor-pointer"
+          onClick={() => setPreviewUrl(attempt.image_url)}
         >
-          {sourceLabel(attempt.source)}
-        </Badge>
-      </div>
+          <img
+            src={attempt.image_url}
+            alt="Asset image"
+            className="w-full h-full object-cover"
+          />
+          <Badge className="absolute top-2 left-2 bg-amber-400 text-amber-900 text-[10px] gap-1">
+            <Check className="w-3 h-3" />
+            Selected
+          </Badge>
+          <Badge
+            variant="secondary"
+            className="absolute top-2 right-2 text-[10px] bg-background/80 backdrop-blur-sm"
+          >
+            {sourceLabel(attempt.source)}
+          </Badge>
+        </div>
+        {previewUrl && (
+          <Dialog open={!!previewUrl} onOpenChange={() => setPreviewUrl(null)}>
+            <DialogContent className="max-w-3xl p-2 bg-black/90 border-none">
+              <img
+                src={previewUrl}
+                alt="Asset preview"
+                className="w-full h-auto max-h-[85vh] object-contain rounded"
+              />
+            </DialogContent>
+          </Dialog>
+        )}
+      </>
     );
   }
 
@@ -176,7 +197,8 @@ export function ProjectAssetCarousel({
                 <img
                   src={attempt.image_url}
                   alt={`Attempt ${attempt.attempt_number}`}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover cursor-pointer"
+                  onClick={() => setPreviewUrl(attempt.image_url)}
                 />
 
                 {/* Selected badge */}
@@ -242,6 +264,18 @@ export function ProjectAssetCarousel({
           </>
         )}
       </Carousel>
+
+      {previewUrl && (
+        <Dialog open={!!previewUrl} onOpenChange={() => setPreviewUrl(null)}>
+          <DialogContent className="max-w-3xl p-2 bg-black/90 border-none">
+            <img
+              src={previewUrl}
+              alt="Asset preview"
+              className="w-full h-auto max-h-[85vh] object-contain rounded"
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
