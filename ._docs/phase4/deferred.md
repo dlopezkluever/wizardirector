@@ -8,20 +8,53 @@
 
 ---
 
-## Task 4C.1 — Structured Image & Video Prompts
+## Task 4C.1 — Revise Structured Image & Video Prompts
 
-**Ticket**: 9.1
 **Priority**: HIGH
 **This is the keystone task of Phase 4** — Wave 2 tasks 4C.5 (prompt chaining) and 4E.1 (adaptive descriptions) both depend on this landing first.
 
 ### Problem
-Current prompts are vague, unstructured paragraphs — not optimal for frame/video generation. Prompts should be structured and deterministic, incorporating character descriptions, scene context, shot list details, camera angles, and visual style capsule directives.
+Prompts used to be vague, unstructured paragraphs — not optimal for frame/video generation.   
+
+We Tried Fixing this by implementing the following task:
+### Ticket DC-2 (from Tickets.md — related context)
+
+
+Prompts should be structured and deterministic, incorporating character descriptions, scene context, shot list details, camera angles, and visual style capsule directives.
 
 ### Ticket 9.1 (from Tickets.md)
 > Current prompts are vague, unstructured paragraphs — likely not optimal for frame/video generation. Need robust, structured, deterministic prompts that leverage all work done in previous stages. Set format optimized per provider (one for Sora, one for Veo3).
 
-### Ticket DC-2 (from Tickets.md — related context)
-> Standard screenplay-format scripts lack the detail needed for production prompting. This is the motivation for the Master Document stage (see 4.2). The system needs clear, descriptive action/character/setting details — not minimalist screenplay conventions.
+Now We implemented the following POORLY earlier: """Prompt Generation System Messages (Core Improvement)
+
+ File: backend/src/services/promptGenerationService.ts (~lines 262-340)
+
+ Step 4.1 — Rewrite frame prompt system message:
+ - Structure around the guide's 5-part formula: [Camera Position & Framing] + [Subject Appearance] + [Spatial Placement &   
+ Pose] + [Environment & Props] + [Lighting, Color & Style]
+ - Explicitly instruct: NO action, NO dialogue, NO sound — frozen visual snapshot
+ - Instruct the LLM to use asset descriptions for character appearance blocks
+ - Include style capsule aesthetic directives (design pillars, descriptor strings, negative constraints)
+ - Instruct to reference master image descriptions when available
+
+ Step 4.2 — Rewrite video prompt system message:
+ - Structure around the guide's formula: [Camera Movement] + [Action/Performance] + [Dialogue] + [Sound Design]
+ - Explicitly instruct: NO character appearance, NO environment description, NO lighting/color
+ - Instruct: "The starting frame already encodes all visual truth"
+ - Include dialogue with delivery direction (accent, tone, pace, emotion)
+ - Include SFX and ambient audio direction
+
+ Step 4.3 — Update character limits:
+ - Frame prompt: 800 → 1200 characters
+ - Video prompt: 600 → 500 characters
+ - Update cleanPromptOutput() calls and system prompt instructions
+
+ Step 4.4 — Improve camera data routing:
+ - In frame prompt user message: instruct LLM to extract STATIC camera position from the camera field
+ - In video prompt user message: instruct LLM to extract MOVEMENT from the camera field
+ - Add explicit split guidance: "Camera position (shot type, angle, lens) goes in frame prompt. Camera movement (pan,       
+ dolly, track) goes in video prompt."""
+
 
 **Note**: DC-2 was deferred as a separate stage. Instead, 4C.1 addresses this by making prompts themselves pull in all the rich context from earlier stages.
 

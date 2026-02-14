@@ -95,15 +95,14 @@ None.
 **Priority**: LOW
 
 ### Problem
-The next/previous toggle for merging shots is not obvious enough. Users may not realize they can merge with the previous shot instead of the next one.
+The next/previous toggle doesn't look obvious enough that is in correlation to merging shots. it needs to be obvious that toggle is attributed to the merge button in the UI
 
 ### Ticket 7.2 (from Tickets.md)
-> The next/previous toggle for merging shots is not obvious enough. The merge modal should house the toggle at the top: `"Merge with: Next (preselected) | Previous"`, then show the rest of the modal contents underneath.
+> The next/previous toggle for merging shots is not obvious enough. 
 
 ### Core Features
-- [ ] Move toggle to top of merge modal: `"Merge with: Next (preselected) | Previous"`
-- [ ] Show rest of modal contents underneath
-- [ ] Clear visual distinction between next/previous merge direction
+- [ ]  I think just put the two items (the merge button & the  Next (preselected) | Previous"` toggle ) INSIDE a sort of own like box within the horizontal container they are in currently, but maybe also just have the "Split-Shot" be moved more to the right, so that the orger of right aligned items is (from left to right): Next | Prev; Merge;  Split Shot;  Delete .... 
+
 
 ### Dependencies
 None.
@@ -121,6 +120,8 @@ This is a **research task only** — no code changes expected. Investigate:
 - [ ] Veo3 extend API capabilities (does the API support extending a generated video?)
 - [ ] Design notes for "Extend Shot" UI if API supports it
 - [ ] How this would integrate with cost tracking
+
+Report back with a Markdown file about how to possibly integrate extend feature shot into our project
 
 ---
 
