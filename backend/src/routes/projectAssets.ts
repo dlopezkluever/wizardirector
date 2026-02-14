@@ -301,10 +301,12 @@ router.post('/:projectId/assets/extract-confirm', async (req, res) => {
             .order('version', { ascending: false })
             .limit(1);
 
-        const visualStyleId = stage5States?.[0]?.content?.locked_visual_style_capsule_id;
-        if (!visualStyleId) {
+        const stage5Content = stage5States?.[0]?.content;
+        const visualStyleId = stage5Content?.locked_visual_style_capsule_id;
+        const manualVisualTone = stage5Content?.manual_visual_tone;
+        if (!visualStyleId && !manualVisualTone) {
             return res.status(400).json({
-                error: 'Visual Style Capsule must be selected before extraction',
+                error: 'Visual Style Capsule or manual tone must be selected before extraction',
             });
         }
 
@@ -323,7 +325,8 @@ router.post('/:projectId/assets/extract-confirm', async (req, res) => {
         const extractedAssets = await extractionService.extractSelectedAssets(
             project.active_branch_id,
             entitiesToProcess.map((e: ConfirmEntity) => ({ name: e.name, type: e.type })),
-            visualStyleId
+            visualStyleId,
+            manualVisualTone
         );
 
         // Build a lookup from entity name+type to decision and sceneNumbers
@@ -344,7 +347,7 @@ router.post('/:projectId/assets/extract-confirm', async (req, res) => {
                 name: asset.name,
                 asset_type: asset.type,
                 description: asset.description,
-                visual_style_capsule_id: visualStyleId,
+                visual_style_capsule_id: visualStyleId || null,
                 locked: false,
                 deferred: entityInfo.decision === 'defer',
                 scene_numbers: entityInfo.sceneNumbers,
