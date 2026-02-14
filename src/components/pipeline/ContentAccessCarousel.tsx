@@ -28,8 +28,6 @@ import {
   Carousel,
   CarouselContent,
   CarouselItem,
-  CarouselPrevious,
-  CarouselNext,
   type CarouselApi,
 } from '@/components/ui/carousel';
 import { sceneService } from '@/lib/services/sceneService';
@@ -329,16 +327,6 @@ function ShotCard({ shot }: { shot: Shot }) {
 }
 
 function ShotListContent({ shots }: { shots: Shot[] }) {
-  const [innerApi, setInnerApi] = useState<CarouselApi>();
-  const [currentIndex, setCurrentIndex] = useState(0);
-
-  useEffect(() => {
-    if (!innerApi) return;
-    const onSelect = () => setCurrentIndex(innerApi.selectedScrollSnap());
-    innerApi.on('select', onSelect);
-    return () => { innerApi.off('select', onSelect); };
-  }, [innerApi]);
-
   if (shots.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
@@ -351,41 +339,14 @@ function ShotListContent({ shots }: { shots: Shot[] }) {
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between px-4 py-1.5 text-xs text-muted-foreground border-b border-border/30">
         <span>{shots.length} shot{shots.length !== 1 ? 's' : ''}</span>
-        {shots.length > 1 && (
-          <span>{currentIndex + 1} / {shots.length}</span>
-        )}
       </div>
-      <div className="flex-1 relative min-h-0">
-        <Carousel
-          orientation="vertical"
-          className="h-full"
-          setApi={setInnerApi}
-        >
-          <CarouselContent className="h-full">
-            {shots.map((shot) => (
-              <CarouselItem key={shot.id} className="basis-full">
-                <ScrollArea className="h-full">
-                  <ShotCard shot={shot} />
-                </ScrollArea>
-              </CarouselItem>
-            ))}
-          </CarouselContent>
-          {shots.length > 1 && (
-            <>
-              <CarouselPrevious
-                className="absolute -top-0 right-2 h-6 w-6 rounded-full"
-                variant="ghost"
-                size="icon"
-              />
-              <CarouselNext
-                className="absolute -bottom-0 right-2 h-6 w-6 rounded-full"
-                variant="ghost"
-                size="icon"
-              />
-            </>
-          )}
-        </Carousel>
-      </div>
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="divide-y divide-border/30">
+          {shots.map((shot) => (
+            <ShotCard key={shot.id} shot={shot} />
+          ))}
+        </div>
+      </ScrollArea>
     </div>
   );
 }
