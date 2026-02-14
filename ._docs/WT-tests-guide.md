@@ -89,7 +89,7 @@
 # 3WT-7:
 Here's a quick testing guide for each feature:
 
-  3A.5 — Extra Archetypes
+  *3A.5 — Extra Archetypes*
 
   1. Open Stage 5, lock a style, extract assets
   2. Click "Add Extra Archetype" button — verify it opens the modal with "Extra Archetype" pre-selected   and the archetype-specific description

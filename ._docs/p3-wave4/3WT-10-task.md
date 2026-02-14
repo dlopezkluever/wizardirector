@@ -85,4 +85,3 @@ Generate assets on clean backgrounds to avoid confusing background noise when in
 Ticket More Info:  
 ### 5.8 — Multiple Views/Angles of Assets for Production
 Consider generating multiple angles/views of assets (front shot, side shot, etc.) with no background noise — like engineering documentation views. This would help Stage 10 frame generation accurately place assets in different shot angles without confusion from background elements.
----
