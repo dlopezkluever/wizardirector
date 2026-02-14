@@ -48,6 +48,15 @@ CREATE POLICY "Users can manage their angle variants"
 -- UPDATED_AT TRIGGER
 -- ============================================================================
 
+-- Create the reusable trigger function if it doesn't already exist
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE TRIGGER update_angle_variants_updated_at
     BEFORE UPDATE ON asset_angle_variants
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
