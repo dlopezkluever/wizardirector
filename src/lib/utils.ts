@@ -6,19 +6,23 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export interface FormattedSceneHeader {
+  /** Full format: "Exterior Construction Site - Day" */
   formatted: string;
+  /** Short format: "Ext. Construction Site - Day" */
+  formattedShort: string;
   prefix: string;
   prefixFull: string;
+  prefixShort: string;
   location: string;
   timeOfDay: string;
 }
 
-const PREFIX_MAP: Record<string, string> = {
-  ext: 'Exterior',
-  int: 'Interior',
-  'int/ext': 'Interior/Exterior',
-  'ext/int': 'Exterior/Interior',
-  'i/e': 'Interior/Exterior',
+const PREFIX_MAP: Record<string, { full: string; short: string }> = {
+  ext: { full: 'Exterior', short: 'Ext.' },
+  int: { full: 'Interior', short: 'Int.' },
+  'int/ext': { full: 'Interior/Exterior', short: 'Int./Ext.' },
+  'ext/int': { full: 'Exterior/Interior', short: 'Ext./Int.' },
+  'i/e': { full: 'Interior/Exterior', short: 'Int./Ext.' },
 };
 
 const TIME_OF_DAY_TOKENS = new Set([
@@ -31,14 +35,11 @@ const TIME_OF_DAY_TOKENS = new Set([
  * formatted header: "Exterior Construction Site - Day"
  */
 export function formatSceneHeader(slug: string): FormattedSceneHeader {
-  if (!slug || typeof slug !== 'string') {
-    return { formatted: slug ?? '', prefix: '', prefixFull: '', location: '', timeOfDay: '' };
-  }
+  const empty: FormattedSceneHeader = { formatted: slug ?? '', formattedShort: slug ?? '', prefix: '', prefixFull: '', prefixShort: '', location: '', timeOfDay: '' };
+  if (!slug || typeof slug !== 'string') return empty;
 
   const segments = slug.split('-').filter(Boolean);
-  if (segments.length === 0) {
-    return { formatted: slug, prefix: '', prefixFull: '', location: '', timeOfDay: '' };
-  }
+  if (segments.length === 0) return { ...empty, formatted: slug, formattedShort: slug };
 
   // Strip trailing number (scene index like "-1", "-2")
   const lastSeg = segments[segments.length - 1];
@@ -46,13 +47,12 @@ export function formatSceneHeader(slug: string): FormattedSceneHeader {
     segments.pop();
   }
 
-  if (segments.length === 0) {
-    return { formatted: slug, prefix: '', prefixFull: '', location: '', timeOfDay: '' };
-  }
+  if (segments.length === 0) return { ...empty, formatted: slug, formattedShort: slug };
 
   // Detect prefix: int, ext, int/ext, etc.
   let prefix = '';
   let prefixFull = '';
+  let prefixShort = '';
   const firstLower = segments[0].toLowerCase();
 
   // Check for compound prefix like "int/ext" encoded as two segments
@@ -60,19 +60,21 @@ export function formatSceneHeader(slug: string): FormattedSceneHeader {
     const compoundKey = `${firstLower}/${segments[1].toLowerCase()}`;
     if (PREFIX_MAP[compoundKey]) {
       prefix = compoundKey;
-      prefixFull = PREFIX_MAP[compoundKey];
+      prefixFull = PREFIX_MAP[compoundKey].full;
+      prefixShort = PREFIX_MAP[compoundKey].short;
       segments.splice(0, 2);
     }
   }
 
   if (!prefix && PREFIX_MAP[firstLower]) {
     prefix = firstLower;
-    prefixFull = PREFIX_MAP[firstLower];
+    prefixFull = PREFIX_MAP[firstLower].full;
+    prefixShort = PREFIX_MAP[firstLower].short;
     segments.splice(0, 1);
   }
 
   if (segments.length === 0) {
-    return { formatted: prefixFull || slug, prefix, prefixFull, location: '', timeOfDay: '' };
+    return { formatted: prefixFull || slug, formattedShort: prefixShort || slug, prefix, prefixFull, prefixShort, location: '', timeOfDay: '' };
   }
 
   // Detect time of day from last segment
@@ -88,16 +90,24 @@ export function formatSceneHeader(slug: string): FormattedSceneHeader {
     .map(s => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase())
     .join(' ');
 
-  // Build formatted string
+  // Build formatted strings (full + short)
   let formatted = '';
+  let formattedShort = '';
   if (prefixFull) formatted += prefixFull + ' ';
+  if (prefixShort) formattedShort += prefixShort + ' ';
   formatted += location;
-  if (timeOfDay) formatted += ' - ' + timeOfDay;
+  formattedShort += location;
+  if (timeOfDay) {
+    formatted += ' - ' + timeOfDay;
+    formattedShort += ' - ' + timeOfDay;
+  }
 
   return {
     formatted: formatted.trim() || slug,
+    formattedShort: formattedShort.trim() || slug,
     prefix,
     prefixFull,
+    prefixShort,
     location,
     timeOfDay,
   };

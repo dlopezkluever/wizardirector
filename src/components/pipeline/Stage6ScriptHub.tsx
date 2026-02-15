@@ -179,7 +179,7 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
       <motion.div
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
-        className="w-80 border-r border-border/50 bg-card/30 backdrop-blur-sm flex flex-col"
+        className="w-96 border-r border-border/50 bg-card/30 backdrop-blur-sm flex flex-col"
       >
         <div className="p-4 border-b border-border/50">
           <h2 className="font-display text-lg font-semibold text-foreground flex items-center gap-2">
@@ -268,22 +268,9 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
                     scene.isDeferred && 'opacity-50'
                   )}
                 >
-                  <div className="flex items-start gap-3">
-                    {/* Thumbnail */}
-                    <div className="w-16 h-10 rounded bg-muted/50 flex items-center justify-center overflow-hidden flex-shrink-0">
-                      {scene.endFrameThumbnail ? (
-                        <img 
-                          src={scene.endFrameThumbnail} 
-                          alt="" 
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <ImageIcon className="w-4 h-4 text-muted-foreground" />
-                      )}
-                    </div>
-
+                  <div className="flex items-start gap-2">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 overflow-hidden">
+                      <div className="flex items-center gap-1.5 mb-1 overflow-hidden">
                         <span className="text-xs font-mono text-primary flex-shrink-0">
                           {String(scene.sceneNumber).padStart(2, '0')}
                         </span>
@@ -291,7 +278,7 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
                           className="text-sm font-medium text-foreground truncate"
                           title={formatSceneHeader(scene.slug).formatted}
                         >
-                          {formatSceneHeader(scene.slug).formatted}
+                          {formatSceneHeader(scene.slug).formattedShort}
                         </span>
                       </div>
 
@@ -312,7 +299,7 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
                           <StatusIcon className="w-3 h-3 mr-1" />
                           {statusConfig[scene.status].label}
                         </Badge>
-                        
+
                         {renderStatuses[scene.id] === 'complete' && (
                           <Badge
                             variant="secondary"
@@ -340,7 +327,7 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
                     </div>
 
                     <ChevronRight className={cn(
-                      'w-4 h-4 transition-colors flex-shrink-0',
+                      'w-4 h-4 transition-colors flex-shrink-0 mt-0.5',
                       isSelected ? 'text-primary' : 'text-muted-foreground'
                     )} />
                   </div>
