@@ -45,6 +45,8 @@ export interface Scene {
   continuityRisk?: ContinuityRisk;
   /** ISO timestamp when shot list was locked; present when scene is locked for Stage 8+ */
   shotListLockedAt?: string;
+  /** Whether this scene is deferred/sidelined by the user */
+  isDeferred?: boolean;
   /** Phase 5: Scene asset instances (lazy-loaded via API) */
   assetInstances?: SceneAssetInstance[];
 }
