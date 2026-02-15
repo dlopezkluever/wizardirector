@@ -13,15 +13,30 @@
 **Ticket**: 10.2
 **Priority**: HIGH
 
-### Problem
-Currently only generating the starting frame. Both starting frame AND end frame are sometimes required for the video production API. Veo3 supports `startFrameUrl` (→ `image`) and `endFrameUrl` (→ `lastFrame`) parameters.
+### Problem. 
+Currently only generating the starting frame. But we need the option, with a toggle for a shot to have Both starting frame AND end frame as the video production API has both options, like Veo3 supports `startFrameUrl` (→ `image`) only and also the option for `startFrameUrl` (→ `image`)  and `endFrameUrl` (→ `lastFrame`) parameters.
+
+I think I would actually do this 
+
+1. We need the ability to choose, at some point, what model we will be using (right now we only have veo3 integrated but we should be moving to SORA & SeeDance (may have to make users use VPN cuz it be banned in amerikka))
+
+1b. We need the ability to choose between modes, spcifically for image to video. I still maintain Frame to video is the peak control mode. But I can actually see how it could be problemeatic for complex shots, think montages, or highly stylistic/artistic shot descriptions. Maybe then , you differ the frame, and only rather plug in the key assets, and describe the complex shot in detail
+
+1c. But immediatly, we need the ability, if within VEO3, to be able to toggle, for each shot in stage 9, whether we are doing staqting and END frame or just starting Frame
+
+For end frames, the prompt to make the end frame needs to be like, the starting frame prompt, but wiht the idea that YOU ARE MAKING AN IMAGE OF THIS SCENE WHERE 8 seconds have passed, and this action occured.
+
+2. The reqal KEY however  is making sure the actual assets are bieng used to make the frames. Like what is the current way frames are bing generated?? are they linking the relevant scene instance images into their prompts? Becuase it would appear not TO ME
+ Consider the following example:
+ Image 1 & 2 have the character assets for a scene, yet Image 3 is what was gnerated. Its a completly different visual style (cinematic drawing, not old style disney animation)
+
 
 ### Ticket 10.2 (from Tickets.md)
 > Currently only generating the starting frame. Both starting frame AND end frame are sometimes required for the video production API.
 
 ### Core Features
-- [ ] Generate end frame for each shot alongside start frame
-- [ ] Pass both frames to video generation API
+- [ ] Generate end frame for each shot alongside start frame (using this type of prompting system maybe {its just an ideaa that I think could work}:  But do reserach to make to see how to best prompt)
+- [ ] Pass both frames to video generation API (like if the user elects to do both starting and end frame)
 - [ ] UI for reviewing/editing end frames (approve/reject/regenerate like start frames)
 - [ ] End frame considers shot action/movement for accurate ending state
   - e.g., if shot starts with character standing and action is "sits down", end frame should show character seated
