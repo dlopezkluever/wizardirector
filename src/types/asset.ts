@@ -177,3 +177,30 @@ export interface AssetConfirmRequest {
   }>;
 }
 
+// Merge & Split types (Stage 5 asset deduplication / variant creation)
+export interface MergeAssetsRequest {
+  survivorAssetId: string;
+  absorbedAssetIds: string[];
+  updatedName?: string;
+}
+
+export interface MergeAssetsResponse {
+  success: true;
+  survivor: ProjectAsset;
+  instancesRepointed: number;
+  assetsAbsorbed: number;
+}
+
+export interface SplitAssetRequest {
+  variantName: string;
+  variantDescription?: string;
+  scenesForVariant: number[];
+}
+
+export interface SplitAssetResponse {
+  success: true;
+  original: ProjectAsset;
+  variant: ProjectAsset;
+  instancesRepointed: number;
+}
+

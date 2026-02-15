@@ -702,17 +702,18 @@ router.delete('/:projectId/assets/:assetId', async (req, res) => {
 
 /**
  * POST /api/projects/:projectId/assets/merge
- * Merge two assets into one
+ * Merge multiple assets into a single survivor asset.
+ * Re-points scene_asset_instances, unions scene_numbers, deletes absorbed assets.
  */
 router.post('/:projectId/assets/merge', async (req, res) => {
     try {
         const userId = req.user!.id;
         const { projectId } = req.params;
-        const { sourceAssetId, targetAssetId, mergedDescription } = req.body;
+        const { survivorAssetId, absorbedAssetIds, updatedName } = req.body;
 
-        if (!sourceAssetId || !targetAssetId || !mergedDescription) {
+        if (!survivorAssetId || !Array.isArray(absorbedAssetIds) || absorbedAssetIds.length === 0) {
             return res.status(400).json({
-                error: 'Missing required fields: sourceAssetId, targetAssetId, mergedDescription'
+                error: 'Missing required fields: survivorAssetId, absorbedAssetIds (non-empty array)'
             });
         }
 
@@ -728,55 +729,283 @@ router.post('/:projectId/assets/merge', async (req, res) => {
             return res.status(404).json({ error: 'Project not found' });
         }
 
-        // Verify both assets exist and are not locked
+        // Fetch all involved assets
+        const allIds = [survivorAssetId, ...absorbedAssetIds];
         const { data: assets, error: fetchError } = await supabase
             .from('project_assets')
-            .select('id, locked, name')
+            .select('*')
             .eq('project_id', projectId)
-            .in('id', [sourceAssetId, targetAssetId]);
+            .in('id', allIds);
 
-        if (fetchError || !assets || assets.length !== 2) {
-            return res.status(404).json({ error: 'One or both assets not found' });
+        if (fetchError || !assets || assets.length !== allIds.length) {
+            return res.status(404).json({ error: 'One or more assets not found in this project' });
         }
 
-        const lockedAsset = assets.find(a => a.locked);
+        // Validate: none locked
+        const lockedAsset = assets.find((a: any) => a.locked);
         if (lockedAsset) {
             return res.status(400).json({
-                error: `Cannot merge locked asset: ${lockedAsset.name}`
+                error: `Cannot merge locked asset: ${(lockedAsset as any).name}`
             });
         }
 
-        // Update target asset with merged description
-        const { data: updatedAsset, error: updateError } = await supabase
+        // Validate: all same asset_type
+        const survivor = assets.find((a: any) => a.id === survivorAssetId) as any;
+        const differentType = assets.find((a: any) => a.asset_type !== survivor.asset_type);
+        if (differentType) {
+            return res.status(400).json({
+                error: `All assets must be the same type. "${(differentType as any).name}" is ${(differentType as any).asset_type}, survivor is ${survivor.asset_type}`
+            });
+        }
+
+        // 1. Re-point scene_asset_instances from absorbed → survivor
+        //    Handle duplicates: if survivor already has an instance for the same scene,
+        //    delete the absorbed instance instead of re-pointing.
+        let instancesRepointed = 0;
+
+        // Get existing survivor instances (to detect duplicates)
+        const { data: survivorInstances } = await supabase
+            .from('scene_asset_instances')
+            .select('scene_id')
+            .eq('project_asset_id', survivorAssetId);
+
+        const survivorSceneIds = new Set((survivorInstances || []).map((i: any) => i.scene_id));
+
+        // Get absorbed instances
+        const { data: absorbedInstances } = await supabase
+            .from('scene_asset_instances')
+            .select('id, scene_id')
+            .in('project_asset_id', absorbedAssetIds);
+
+        if (absorbedInstances && absorbedInstances.length > 0) {
+            const toRepoint = absorbedInstances.filter((i: any) => !survivorSceneIds.has(i.scene_id));
+            const toDelete = absorbedInstances.filter((i: any) => survivorSceneIds.has(i.scene_id));
+
+            // Re-point non-duplicate instances
+            if (toRepoint.length > 0) {
+                const repointIds = toRepoint.map((i: any) => i.id);
+                const { error: repointError } = await supabase
+                    .from('scene_asset_instances')
+                    .update({ project_asset_id: survivorAssetId })
+                    .in('id', repointIds);
+
+                if (repointError) {
+                    console.error('[ProjectAssets] Merge repoint error:', repointError);
+                    return res.status(500).json({ error: 'Failed to re-point scene instances' });
+                }
+                instancesRepointed = toRepoint.length;
+            }
+
+            // Delete duplicate instances
+            if (toDelete.length > 0) {
+                const deleteIds = toDelete.map((i: any) => i.id);
+                await supabase
+                    .from('scene_asset_instances')
+                    .delete()
+                    .in('id', deleteIds);
+            }
+        }
+
+        // 2. Union all scene_numbers into survivor
+        const allSceneNumbers = new Set<number>();
+        for (const asset of assets) {
+            const scenes = (asset as any).scene_numbers;
+            if (Array.isArray(scenes)) {
+                scenes.forEach((n: number) => allSceneNumbers.add(n));
+            }
+        }
+        const unionedScenes = Array.from(allSceneNumbers).sort((a, b) => a - b);
+
+        // 3. Update survivor: scene_numbers + optional name
+        const updatePayload: any = { scene_numbers: unionedScenes };
+        if (updatedName && updatedName.trim()) {
+            updatePayload.name = updatedName.trim();
+        }
+
+        const { data: updatedSurvivor, error: updateError } = await supabase
             .from('project_assets')
-            .update({ description: mergedDescription })
-            .eq('id', targetAssetId)
+            .update(updatePayload)
+            .eq('id', survivorAssetId)
             .eq('project_id', projectId)
             .select()
             .single();
 
         if (updateError) {
-            console.error('[ProjectAssets] Merge update error:', updateError);
-            return res.status(500).json({ error: 'Failed to update target asset' });
+            console.error('[ProjectAssets] Merge update survivor error:', updateError);
+            return res.status(500).json({ error: 'Failed to update survivor asset' });
         }
 
-        // Delete source asset
+        // 4. Delete absorbed assets (generation_attempts cascade via FK)
         const { error: deleteError } = await supabase
             .from('project_assets')
             .delete()
-            .eq('id', sourceAssetId)
+            .in('id', absorbedAssetIds)
             .eq('project_id', projectId);
 
         if (deleteError) {
-            console.error('[ProjectAssets] Merge delete error:', deleteError);
-            return res.status(500).json({ error: 'Failed to delete source asset' });
+            console.error('[ProjectAssets] Merge delete absorbed error:', deleteError);
+            return res.status(500).json({ error: 'Failed to delete absorbed assets' });
         }
 
-        console.log(`[ProjectAssets] Merged asset ${sourceAssetId} into ${targetAssetId}`);
+        console.log(`[ProjectAssets] Merged ${absorbedAssetIds.length} assets into ${survivorAssetId}, repointed ${instancesRepointed} instances`);
 
-        res.json(updatedAsset);
+        res.json({
+            success: true,
+            survivor: updatedSurvivor,
+            instancesRepointed,
+            assetsAbsorbed: absorbedAssetIds.length,
+        });
     } catch (error) {
         console.error('[ProjectAssets] Merge error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/assets/:assetId/split
+ * Split an asset into original + variant by reassigning scenes.
+ */
+router.post('/:projectId/assets/:assetId/split', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, assetId } = req.params;
+        const { variantName, variantDescription, scenesForVariant } = req.body;
+
+        if (!variantName || !Array.isArray(scenesForVariant) || scenesForVariant.length === 0) {
+            return res.status(400).json({
+                error: 'Missing required fields: variantName, scenesForVariant (non-empty array)'
+            });
+        }
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Fetch original asset
+        const { data: original, error: assetError } = await supabase
+            .from('project_assets')
+            .select('*')
+            .eq('id', assetId)
+            .eq('project_id', projectId)
+            .single();
+
+        if (assetError || !original) {
+            return res.status(404).json({ error: 'Asset not found' });
+        }
+
+        if ((original as any).locked) {
+            return res.status(400).json({ error: 'Cannot split a locked asset' });
+        }
+
+        const originalScenes: number[] = (original as any).scene_numbers || [];
+
+        // Validate scenesForVariant is a subset of original's scene_numbers
+        const invalidScenes = scenesForVariant.filter((s: number) => !originalScenes.includes(s));
+        if (invalidScenes.length > 0) {
+            return res.status(400).json({
+                error: `Scenes [${invalidScenes.join(', ')}] are not assigned to this asset`
+            });
+        }
+
+        // Validate at least 1 scene remains with original
+        const remainingScenes = originalScenes.filter((s: number) => !scenesForVariant.includes(s));
+        if (remainingScenes.length === 0) {
+            return res.status(400).json({
+                error: 'At least one scene must remain with the original asset'
+            });
+        }
+
+        // 1. Create variant asset
+        const { data: variant, error: createError } = await supabase
+            .from('project_assets')
+            .insert({
+                project_id: projectId,
+                branch_id: (original as any).branch_id,
+                name: variantName.trim(),
+                asset_type: (original as any).asset_type,
+                description: variantDescription?.trim() || (original as any).description,
+                image_prompt: (original as any).image_prompt,
+                visual_style_capsule_id: (original as any).visual_style_capsule_id,
+                scene_numbers: scenesForVariant.sort((a: number, b: number) => a - b),
+                source: 'manual',
+                locked: false,
+                image_key_url: null, // Variant starts without an image
+            })
+            .select()
+            .single();
+
+        if (createError || !variant) {
+            console.error('[ProjectAssets] Split create variant error:', createError);
+            return res.status(500).json({ error: 'Failed to create variant asset' });
+        }
+
+        // 2. Update original: remove split-off scenes
+        const { data: updatedOriginal, error: updateError } = await supabase
+            .from('project_assets')
+            .update({ scene_numbers: remainingScenes.sort((a: number, b: number) => a - b) })
+            .eq('id', assetId)
+            .eq('project_id', projectId)
+            .select()
+            .single();
+
+        if (updateError) {
+            console.error('[ProjectAssets] Split update original error:', updateError);
+            return res.status(500).json({ error: 'Failed to update original asset' });
+        }
+
+        // 3. Re-point scene_asset_instances for variant scenes
+        //    Find scenes by scene_number, then re-point instances
+        let instancesRepointed = 0;
+
+        // Get scenes for this project that match the variant scene numbers
+        const { data: projectScenes } = await supabase
+            .from('scenes')
+            .select('id, scene_number, branch_id')
+            .eq('branch_id', (original as any).branch_id)
+            .in('scene_number', scenesForVariant);
+
+        if (projectScenes && projectScenes.length > 0) {
+            const sceneIds = projectScenes.map((s: any) => s.id);
+
+            const { data: instancesToRepoint } = await supabase
+                .from('scene_asset_instances')
+                .select('id')
+                .eq('project_asset_id', assetId)
+                .in('scene_id', sceneIds);
+
+            if (instancesToRepoint && instancesToRepoint.length > 0) {
+                const instanceIds = instancesToRepoint.map((i: any) => i.id);
+                const { error: repointError } = await supabase
+                    .from('scene_asset_instances')
+                    .update({ project_asset_id: (variant as any).id })
+                    .in('id', instanceIds);
+
+                if (repointError) {
+                    console.error('[ProjectAssets] Split repoint error:', repointError);
+                } else {
+                    instancesRepointed = instancesToRepoint.length;
+                }
+            }
+        }
+
+        console.log(`[ProjectAssets] Split asset ${assetId}: variant ${(variant as any).id} with scenes [${scenesForVariant}], repointed ${instancesRepointed} instances`);
+
+        res.json({
+            success: true,
+            original: updatedOriginal,
+            variant,
+            instancesRepointed,
+        });
+    } catch (error) {
+        console.error('[ProjectAssets] Split error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
