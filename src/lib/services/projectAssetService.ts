@@ -4,18 +4,15 @@
  */
 
 import { supabase } from '@/lib/supabase';
-import type { ProjectAsset, CloneAssetRequest, AssetVersionStatus, AssetPreviewResponse, AssetType, AssetDecision, ProjectAssetGenerationAttempt, AngleType, AssetAngleVariant } from '@/types/asset';
+import type { ProjectAsset, CloneAssetRequest, AssetVersionStatus, AssetPreviewResponse, AssetType, AssetDecision, ProjectAssetGenerationAttempt, AngleType, AssetAngleVariant, MergeAssetsRequest, MergeAssetsResponse, SplitAssetRequest, SplitAssetResponse } from '@/types/asset';
 
 export interface ExtractAssetsResponse {
   assets: ProjectAsset[];
   count: number;
 }
 
-export interface MergeAssetsRequest {
-  sourceAssetId: string;
-  targetAssetId: string;
-  mergedDescription: string;
-}
+/** @deprecated Use MergeAssetsRequest from @/types/asset instead */
+export type { MergeAssetsRequest } from '@/types/asset';
 
 export interface CreateProjectAssetRequest {
   name: string;
@@ -240,9 +237,9 @@ class ProjectAssetService {
   }
 
   /**
-   * Merge two assets into one
+   * Merge multiple assets into a single survivor
    */
-  async mergeAssets(projectId: string, request: MergeAssetsRequest): Promise<ProjectAsset> {
+  async mergeAssets(projectId: string, request: MergeAssetsRequest): Promise<MergeAssetsResponse> {
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session?.access_token) {
@@ -261,6 +258,33 @@ class ProjectAssetService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to merge assets');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Split an asset into original + variant by reassigning scenes
+   */
+  async splitAsset(projectId: string, assetId: string, request: SplitAssetRequest): Promise<SplitAssetResponse> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/split`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to split asset');
     }
 
     return response.json();
