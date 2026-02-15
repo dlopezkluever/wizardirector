@@ -48,7 +48,8 @@ class SceneService {
       priorSceneEndState: scene.priorSceneEndState,
       endFrameThumbnail: scene.endFrameThumbnail ?? (scene as any).end_frame_thumbnail_url,
       continuityRisk: scene.continuityRisk || 'safe',     // Add safe fallback
-      shotListLockedAt: scene.shotListLockedAt ?? (scene as any).shot_list_locked_at ?? undefined
+      shotListLockedAt: scene.shotListLockedAt ?? (scene as any).shot_list_locked_at ?? undefined,
+      isDeferred: scene.isDeferred ?? false,
     }));
   }
 
@@ -91,6 +92,48 @@ class SceneService {
     }
 
     console.log(`✅ [SCENE SERVICE] Successfully updated scene ${sceneId} status`);
+  }
+
+  /**
+   * Defer (sideline) a scene
+   */
+  async deferScene(projectId: string, sceneId: string): Promise<void> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error('User not authenticated');
+
+    const response = await fetch(`/api/projects/${projectId}/scenes/${sceneId}/defer`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to defer scene');
+    }
+  }
+
+  /**
+   * Restore a deferred scene
+   */
+  async restoreScene(projectId: string, sceneId: string): Promise<void> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error('User not authenticated');
+
+    const response = await fetch(`/api/projects/${projectId}/scenes/${sceneId}/restore`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to restore scene');
+    }
   }
 
   /**
