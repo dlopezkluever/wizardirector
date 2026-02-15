@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   User, MapPin, Package, Users, Sparkles, Check, Lock, Loader2,
   AlertTriangle, Info, MoreVertical, Trash2, Edit, Upload,
-  RefreshCw, PauseCircle, Play, ChevronDown, Plus, RotateCw
+  RefreshCw, PauseCircle, Play, ChevronDown, Plus, RotateCw,
+  MousePointerClick, Merge, SplitSquareHorizontal, X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,13 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,6 +55,8 @@ import { ImageDescriptionModal } from './ImageDescriptionModal';
 import { StyleChangeWarningDialog } from './StyleChangeWarningDialog';
 import { ProjectAssetCarousel } from './ProjectAssetCarousel';
 import { AngleVariantsDialog } from './AngleVariantsDialog';
+import { MergeDialog } from './MergeDialog';
+import { SplitWizard } from './SplitWizard';
 import type { ProjectAsset, AssetPreviewEntity, AssetType, AssetDecision } from '@/types/asset';
 import type { StageStatus } from '@/types/project';
 import { LockedStageHeader } from './LockedStageHeader';
@@ -134,6 +144,12 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
 
   // Angle variants dialog state (3C.2)
   const [angleDialogAsset, setAngleDialogAsset] = useState<ProjectAsset | null>(null);
+
+  // Selection mode state (merge / split)
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
+  const [showMergeDialog, setShowMergeDialog] = useState(false);
+  const [showSplitWizard, setShowSplitWizard] = useState(false);
 
   // Manual visual tone state (3A.8)
   const [styleMode, setStyleMode] = useState<'capsule' | 'manual'>('capsule');
@@ -590,6 +606,83 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
     setImageAnalysisModal(null);
   };
 
+  // Selection mode helpers
+  const toggleAssetSelection = (assetId: string) => {
+    setSelectedAssetIds(prev => {
+      const next = new Set(prev);
+      if (next.has(assetId)) {
+        next.delete(assetId);
+      } else {
+        next.add(assetId);
+      }
+      return next;
+    });
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedAssetIds(new Set());
+  };
+
+  const selectedAssets = activeAssets.filter(a => selectedAssetIds.has(a.id));
+
+  // Merge validation: 2+ selected, all same type
+  const canMerge = selectedAssets.length >= 2 &&
+    new Set(selectedAssets.map(a => a.asset_type)).size === 1;
+
+  const mergeDisabledReason = selectedAssets.length < 2
+    ? 'Select at least 2 assets to merge'
+    : new Set(selectedAssets.map(a => a.asset_type)).size > 1
+      ? 'Selected assets must be the same type'
+      : '';
+
+  // Split validation: exactly 1 selected with multiple scenes
+  const canSplit = selectedAssets.length === 1 &&
+    (selectedAssets[0]?.scene_numbers?.length || 0) > 1;
+
+  const splitDisabledReason = selectedAssets.length !== 1
+    ? 'Select exactly 1 asset to split'
+    : (selectedAssets[0]?.scene_numbers?.length || 0) <= 1
+      ? 'Asset must appear in 2+ scenes to split'
+      : '';
+
+  const handleMergeConfirm = async (survivorId: string, updatedName?: string) => {
+    const absorbedIds = selectedAssets.filter(a => a.id !== survivorId).map(a => a.id);
+    try {
+      const result = await projectAssetService.mergeAssets(projectId, {
+        survivorAssetId: survivorId,
+        absorbedAssetIds: absorbedIds,
+        updatedName,
+      });
+      toast.success(`Merged ${result.assetsAbsorbed} asset${result.assetsAbsorbed > 1 ? 's' : ''} into "${result.survivor.name}"`);
+      await loadAssets();
+      exitSelectionMode();
+      setShowMergeDialog(false);
+    } catch (error) {
+      console.error('Merge failed:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to merge assets');
+    }
+  };
+
+  const handleSplitConfirm = async (variantName: string, variantDescription: string | undefined, scenesForVariant: number[]) => {
+    const asset = selectedAssets[0];
+    if (!asset) return;
+    try {
+      const result = await projectAssetService.splitAsset(projectId, asset.id, {
+        variantName,
+        variantDescription,
+        scenesForVariant,
+      });
+      toast.success(`Split "${asset.name}" — variant "${result.variant.name}" created with ${scenesForVariant.length} scene${scenesForVariant.length > 1 ? 's' : ''}`);
+      await loadAssets();
+      exitSelectionMode();
+      setShowSplitWizard(false);
+    } catch (error) {
+      console.error('Split failed:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to split asset');
+    }
+  };
+
   const handleLockAllAssets = async () => {
     if (!isStyleLocked) {
       toast.error('Visual style must be selected');
@@ -861,6 +954,16 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
 
               {/* Batch Actions */}
               <div className="flex gap-2 justify-end items-center flex-wrap">
+                {!isStageLockedOrOutdated && (
+                  <Button
+                    variant={selectionMode ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
+                  >
+                    <MousePointerClick className="w-4 h-4 mr-2" />
+                    {selectionMode ? 'Exit Select' : 'Select'}
+                  </Button>
+                )}
                 <AssetVersionSync
                   projectId={projectId}
                   onSyncComplete={loadAssets}
@@ -940,10 +1043,28 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                         const isSaving = savingAssets.has(asset.id);
 
                         return (
-                          <Card key={asset.id} className="transition-all">
+                          <Card
+                            key={asset.id}
+                            className={cn(
+                              "transition-all relative",
+                              selectionMode && selectedAssetIds.has(asset.id) && "ring-2 ring-primary"
+                            )}
+                            onClick={selectionMode && !asset.locked ? () => toggleAssetSelection(asset.id) : undefined}
+                          >
+                            {/* Selection checkbox overlay */}
+                            {selectionMode && (
+                              <div className="absolute top-2 left-2 z-10">
+                                <Checkbox
+                                  checked={selectedAssetIds.has(asset.id)}
+                                  onCheckedChange={() => toggleAssetSelection(asset.id)}
+                                  disabled={asset.locked}
+                                  onClick={e => e.stopPropagation()}
+                                />
+                              </div>
+                            )}
                             <CardHeader className="p-4 pb-2">
                               <div className="flex items-start justify-between">
-                                <div className="flex items-start gap-2 flex-1 min-w-0">
+                                <div className={cn("flex items-start gap-2 flex-1 min-w-0", selectionMode && "pl-6")}>
                                   <div className={cn(
                                     'flex items-center justify-center w-8 h-8 rounded-lg shrink-0',
                                     asset.image_key_url ? 'bg-success/20 text-success' : 'bg-secondary text-muted-foreground'
@@ -1324,6 +1445,87 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
           open={!!angleDialogAsset}
           onOpenChange={(open) => { if (!open) setAngleDialogAsset(null); }}
         />
+      )}
+
+      {/* Merge Dialog */}
+      {showMergeDialog && selectedAssets.length >= 2 && (
+        <MergeDialog
+          open={showMergeDialog}
+          onOpenChange={setShowMergeDialog}
+          assets={selectedAssets}
+          onConfirm={handleMergeConfirm}
+        />
+      )}
+
+      {/* Split Wizard */}
+      {showSplitWizard && selectedAssets.length === 1 && (
+        <SplitWizard
+          open={showSplitWizard}
+          onOpenChange={setShowSplitWizard}
+          asset={selectedAssets[0]}
+          onConfirm={handleSplitConfirm}
+        />
+      )}
+
+      {/* Floating Selection Toolbar */}
+      {selectionMode && selectedAssetIds.size > 0 && !isStageLockedOrOutdated && (
+        <TooltipProvider>
+          <div className="fixed bottom-16 left-[280px] right-0 bg-card border-t border-border p-3 shadow-lg z-50">
+            <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
+              <span className="text-sm font-medium">
+                {selectedAssetIds.size} selected
+              </span>
+              <div className="flex gap-2">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowMergeDialog(true)}
+                        disabled={!canMerge}
+                      >
+                        <Merge className="w-4 h-4 mr-1" />
+                        Merge
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {!canMerge && (
+                    <TooltipContent>{mergeDisabledReason}</TooltipContent>
+                  )}
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowSplitWizard(true)}
+                        disabled={!canSplit}
+                      >
+                        <SplitSquareHorizontal className="w-4 h-4 mr-1" />
+                        Split Variant
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {!canSplit && (
+                    <TooltipContent>{splitDisabledReason}</TooltipContent>
+                  )}
+                </Tooltip>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={exitSelectionMode}
+                >
+                  <X className="w-4 h-4 mr-1" />
+                  Clear
+                </Button>
+              </div>
+            </div>
+          </div>
+        </TooltipProvider>
       )}
     </div>
   );
