@@ -1,27 +1,32 @@
 /**
- * Content Access Carousel (4WT-1)
+ * Content Access Carousel (v2 — 4WT-D)
  * Multi-tab collapsible, resizable panel providing access to:
  *   Tab 1 — Script Excerpt (current scene's script in simplified screenplay format)
- *   Tab 2 — Rearview Mirror (prior scene end state / end frame, scene 2+)
- *   Tab 3 — Shot List (vertical carousel of shot cards, stages 8-12 only)
+ *   Tab 2 — Stills (start frames from all other scenes' shots)
+ *   Tab 3 — Clips (video clips from all other scenes' shots)
+ *   Tab 4 — Shot List (vertical carousel of shot cards, stages 8-12 only)
  *
- * Replaces the old RearviewMirror component.
+ * Replaces v1 which had a Rearview tab.
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Eye,
   FileText,
+  Image,
+  Film,
   Clapperboard,
   ChevronUp,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Camera,
   Clock,
+  Play,
+  X,
   GripHorizontal,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -32,19 +37,42 @@ import {
 } from '@/components/ui/carousel';
 import { sceneService } from '@/lib/services/sceneService';
 import { shotService } from '@/lib/services/shotService';
+import { frameService } from '@/lib/services/frameService';
+import { checkoutService } from '@/lib/services/checkoutService';
 import { cn } from '@/lib/utils';
-import type { Shot } from '@/types/scene';
+import type { Shot, FrameStatus } from '@/types/scene';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type TabId = 'rearview' | 'script' | 'shots';
+type TabId = 'script' | 'stills' | 'clips' | 'shots';
 
 interface TabDef {
   id: TabId;
   label: string;
   icon: React.ElementType;
+}
+
+interface SceneStillsData {
+  sceneId: string;
+  sceneNumber: number;
+  stills: {
+    shotId: string;
+    imageUrl: string;
+    frameStatus: FrameStatus;
+  }[];
+}
+
+interface SceneClipsData {
+  sceneId: string;
+  sceneNumber: number;
+  clips: {
+    shotId: string;
+    videoUrl: string;
+    startFrameUrl: string;
+    duration: number;
+  }[];
 }
 
 export interface ContentAccessCarouselProps {
@@ -67,6 +95,74 @@ const MAX_HEIGHT_RATIO = 0.5;
 // Module-level session-persistent state (survives re-renders/navigation, resets on page reload)
 let sessionPanelHeight: number | null = null;
 let sessionActiveTabId: TabId | null = null;
+
+// ---------------------------------------------------------------------------
+// Data aggregation functions
+// ---------------------------------------------------------------------------
+
+async function fetchAllStartFrames(
+  projectId: string,
+  excludeSceneId: string,
+  scenes: { id: string; sceneNumber: number }[]
+): Promise<SceneStillsData[]> {
+  const otherScenes = scenes.filter(s => s.id !== excludeSceneId);
+
+  const results = await Promise.all(
+    otherScenes.map(async (scene) => {
+      try {
+        const framesData = await frameService.fetchFrames(projectId, scene.id);
+        return {
+          sceneId: scene.id,
+          sceneNumber: scene.sceneNumber,
+          stills: framesData.shots
+            .filter(shot => shot.startFrame?.imageUrl)
+            .map(shot => ({
+              shotId: shot.shotId,
+              imageUrl: shot.startFrame!.imageUrl!,
+              frameStatus: shot.startFrame!.status,
+            })),
+        };
+      } catch {
+        return { sceneId: scene.id, sceneNumber: scene.sceneNumber, stills: [] };
+      }
+    })
+  );
+
+  return results.filter(r => r.stills.length > 0);
+}
+
+async function fetchAllCompletedClips(
+  projectId: string,
+  excludeSceneId: string,
+  scenes: { id: string; sceneNumber: number }[]
+): Promise<SceneClipsData[]> {
+  const otherScenes = scenes.filter(s => s.id !== excludeSceneId);
+
+  const results = await Promise.all(
+    otherScenes.map(async (scene) => {
+      try {
+        const jobsData = await checkoutService.getVideoJobs(projectId, scene.id);
+        const completedJobs = jobsData.jobs.filter(
+          job => job.status === 'completed' && job.videoUrl
+        );
+        return {
+          sceneId: scene.id,
+          sceneNumber: scene.sceneNumber,
+          clips: completedJobs.map(job => ({
+            shotId: job.shotId,
+            videoUrl: job.videoUrl!,
+            startFrameUrl: job.startFrameUrl,
+            duration: job.durationSeconds,
+          })),
+        };
+      } catch {
+        return { sceneId: scene.id, sceneNumber: scene.sceneNumber, clips: [] };
+      }
+    })
+  );
+
+  return results.filter(r => r.clips.length > 0);
+}
 
 // ---------------------------------------------------------------------------
 // Script line parser (simplified screenplay formatting)
@@ -137,6 +233,31 @@ function parseScriptLines(excerpt: string): ParsedLine[] {
 }
 
 // ---------------------------------------------------------------------------
+// Helper: compute default scene selection
+// ---------------------------------------------------------------------------
+
+function getDefaultSceneIndex(
+  scenesData: { sceneNumber: number }[],
+  currentSceneNumber: number,
+  stageNumber: number
+): number {
+  if (scenesData.length === 0) return 0;
+
+  if (stageNumber >= 7) {
+    // Pick the most recent prior scene (scene N-1), fall back to nearest prior, then first available
+    const priorScenes = scenesData
+      .map((s, i) => ({ ...s, idx: i }))
+      .filter(s => s.sceneNumber < currentSceneNumber)
+      .sort((a, b) => b.sceneNumber - a.sceneNumber);
+
+    if (priorScenes.length > 0) return priorScenes[0].idx;
+  }
+
+  // Stage 6 or no prior scenes: first available
+  return 0;
+}
+
+// ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
 
@@ -174,86 +295,40 @@ function TabBar({
   );
 }
 
-function RearviewContent({
-  priorSceneEndState,
-  endFrameThumbnail,
-  priorSceneName,
+function SceneTabBar({
+  scenes,
+  activeSceneId,
+  onSceneClick,
 }: {
-  priorSceneEndState?: string;
-  endFrameThumbnail?: string;
-  priorSceneName?: string;
+  scenes: { sceneId: string; sceneNumber: number }[];
+  activeSceneId: string;
+  onSceneClick: (sceneId: string) => void;
 }) {
-  const [imageError, setImageError] = useState(false);
-  const [imageLoading, setImageLoading] = useState(!!endFrameThumbnail);
-
-  useEffect(() => {
-    if (endFrameThumbnail) {
-      setImageLoading(true);
-      setImageError(false);
-    }
-  }, [endFrameThumbnail]);
-
-  const showVisual = endFrameThumbnail && !imageError;
-
-  if (!priorSceneEndState && !endFrameThumbnail) {
-    return (
-      <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-        No prior scene data available.
-      </div>
-    );
-  }
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   return (
-    <ScrollArea className="h-full">
-      <div className="px-4 py-3">
-        {priorSceneName && (
-          <p className="text-xs text-muted-foreground mb-2">
-            Previous: {priorSceneName}
-          </p>
-        )}
-
-        {showVisual ? (
-          <div className="flex gap-4 items-start">
-            <div className="relative group shrink-0">
-              {imageLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-lg min-w-[12rem] min-h-[7rem]">
-                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                </div>
-              )}
-              <img
-                src={endFrameThumbnail}
-                alt={priorSceneName ? `Final frame from ${priorSceneName}` : 'Final frame from previous scene'}
-                className="w-48 h-28 object-cover rounded-lg border border-border/50"
-                onLoad={() => setImageLoading(false)}
-                onError={() => {
-                  setImageLoading(false);
-                  setImageError(true);
-                }}
-              />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="text-sm font-medium text-foreground mb-1">
-                Final Frame Reference
-              </h4>
-              <p className="text-xs text-muted-foreground">
-                Use this as your visual anchor for continuity.
-              </p>
-              {priorSceneEndState && (
-                <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
-                  {priorSceneEndState}
-                </p>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="bg-background/50 rounded-lg p-4 border border-border/30">
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              {priorSceneEndState}
-            </p>
-          </div>
-        )}
-      </div>
-    </ScrollArea>
+    <div
+      ref={scrollRef}
+      className="flex items-center gap-1 px-3 py-1.5 overflow-x-auto border-b border-border/20 scrollbar-thin"
+    >
+      {scenes.map((scene) => {
+        const isActive = scene.sceneId === activeSceneId;
+        return (
+          <button
+            key={scene.sceneId}
+            onClick={() => onSceneClick(scene.sceneId)}
+            className={cn(
+              'shrink-0 px-2.5 py-1 rounded text-[10px] font-medium transition-colors whitespace-nowrap',
+              isActive
+                ? 'bg-primary/15 text-primary'
+                : 'text-muted-foreground hover:text-foreground bg-muted/30 hover:bg-muted/50'
+            )}
+          >
+            Scene {scene.sceneNumber}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -299,6 +374,383 @@ function ScriptExcerptContent({ scriptExcerpt }: { scriptExcerpt?: string }) {
     </ScrollArea>
   );
 }
+
+// ---------------------------------------------------------------------------
+// StillsContent
+// ---------------------------------------------------------------------------
+
+function StillCard({
+  shotId,
+  imageUrl,
+  onEnlarge,
+}: {
+  shotId: string;
+  imageUrl: string;
+  onEnlarge: () => void;
+}) {
+  const [loadError, setLoadError] = useState(false);
+
+  return (
+    <div className="shrink-0 flex flex-col items-center gap-1">
+      <button
+        onClick={onEnlarge}
+        className="relative group rounded-md overflow-hidden border border-border/50 hover:border-primary/50 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/40"
+      >
+        {loadError ? (
+          <div className="w-32 h-20 bg-muted/50 flex items-center justify-center">
+            <Image className="w-5 h-5 text-muted-foreground/50" />
+          </div>
+        ) : (
+          <img
+            src={imageUrl}
+            alt={`Shot ${shotId} start frame`}
+            className="w-32 h-20 object-cover"
+            loading="lazy"
+            onError={() => setLoadError(true)}
+          />
+        )}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+      </button>
+      <span className="text-xs font-mono text-muted-foreground">{shotId}</span>
+    </div>
+  );
+}
+
+function LightboxModal({
+  imageUrl,
+  shotId,
+  onClose,
+}: {
+  imageUrl: string;
+  shotId: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+      onClick={onClose}
+    >
+      <div
+        className="relative max-w-[90vw] max-h-[90vh]"
+        onClick={e => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          className="absolute -top-3 -right-3 z-10 p-1.5 rounded-full bg-background/90 text-foreground hover:bg-background transition-colors border border-border/50"
+        >
+          <X className="w-4 h-4" />
+        </button>
+        <img
+          src={imageUrl}
+          alt={`Shot ${shotId} full resolution`}
+          className="max-w-full max-h-[85vh] object-contain rounded-lg"
+        />
+        <p className="text-center text-xs font-mono text-muted-foreground mt-2">
+          Shot {shotId}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function HorizontalScrollCarousel({ children }: { children: React.ReactNode }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateScrollState = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 0);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  }, []);
+
+  useEffect(() => {
+    updateScrollState();
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', updateScrollState, { passive: true });
+    const ro = new ResizeObserver(updateScrollState);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', updateScrollState);
+      ro.disconnect();
+    };
+  }, [updateScrollState]);
+
+  const scroll = useCallback((dir: 'left' | 'right') => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const amount = el.clientWidth * 0.6;
+    el.scrollBy({ left: dir === 'left' ? -amount : amount, behavior: 'smooth' });
+  }, []);
+
+  return (
+    <div className="relative flex-1 min-h-0">
+      {canScrollLeft && (
+        <button
+          onClick={() => scroll('left')}
+          className="absolute left-1 top-1/2 -translate-y-1/2 z-10 p-1 rounded-full bg-background/80 border border-border/50 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronLeft className="w-3.5 h-3.5" />
+        </button>
+      )}
+      <div
+        ref={scrollRef}
+        className="flex items-start gap-3 px-4 py-3 overflow-x-auto scrollbar-thin h-full"
+      >
+        {children}
+      </div>
+      {canScrollRight && (
+        <button
+          onClick={() => scroll('right')}
+          className="absolute right-1 top-1/2 -translate-y-1/2 z-10 p-1 rounded-full bg-background/80 border border-border/50 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronRight className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function StillsContent({
+  allStills,
+  isLoading,
+  currentSceneNumber,
+  stageNumber,
+}: {
+  allStills: SceneStillsData[];
+  isLoading: boolean;
+  currentSceneNumber: number;
+  stageNumber: number;
+}) {
+  const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<{ imageUrl: string; shotId: string } | null>(null);
+
+  // Auto-select default scene
+  useEffect(() => {
+    if (allStills.length === 0) {
+      setActiveSceneId(null);
+      return;
+    }
+    // If current selection is still valid, keep it
+    if (activeSceneId && allStills.some(s => s.sceneId === activeSceneId)) return;
+
+    const defaultIdx = getDefaultSceneIndex(allStills, currentSceneNumber, stageNumber);
+    setActiveSceneId(allStills[defaultIdx]?.sceneId ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allStills, currentSceneNumber, stageNumber]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+        <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2" />
+        Loading stills...
+      </div>
+    );
+  }
+
+  if (allStills.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full text-sm text-muted-foreground px-4 text-center">
+        No stills available yet. Start frames are generated in Stage 10.
+      </div>
+    );
+  }
+
+  const activeScene = allStills.find(s => s.sceneId === activeSceneId) ?? allStills[0];
+
+  return (
+    <div className="h-full flex flex-col">
+      <SceneTabBar
+        scenes={allStills.map(s => ({ sceneId: s.sceneId, sceneNumber: s.sceneNumber }))}
+        activeSceneId={activeScene.sceneId}
+        onSceneClick={setActiveSceneId}
+      />
+      <HorizontalScrollCarousel>
+        {activeScene.stills.map((still) => (
+          <StillCard
+            key={still.shotId}
+            shotId={still.shotId}
+            imageUrl={still.imageUrl}
+            onEnlarge={() => setLightboxImage({ imageUrl: still.imageUrl, shotId: still.shotId })}
+          />
+        ))}
+      </HorizontalScrollCarousel>
+      {lightboxImage && (
+        <LightboxModal
+          imageUrl={lightboxImage.imageUrl}
+          shotId={lightboxImage.shotId}
+          onClose={() => setLightboxImage(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ClipsContent
+// ---------------------------------------------------------------------------
+
+function ClipCard({
+  shotId,
+  videoUrl,
+  startFrameUrl,
+  duration,
+}: {
+  shotId: string;
+  videoUrl: string;
+  startFrameUrl: string;
+  duration: number;
+}) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [thumbError, setThumbError] = useState(false);
+
+  const handlePlay = useCallback(() => {
+    setIsPlaying(true);
+  }, []);
+
+  const handleEnded = useCallback(() => {
+    setIsPlaying(false);
+  }, []);
+
+  useEffect(() => {
+    if (isPlaying && videoRef.current) {
+      videoRef.current.play().catch(() => setIsPlaying(false));
+    }
+  }, [isPlaying]);
+
+  return (
+    <div className="shrink-0 flex flex-col items-center gap-1">
+      <div className="relative rounded-md overflow-hidden border border-border/50 w-32 h-20">
+        {isPlaying ? (
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            className="w-full h-full object-cover"
+            controls
+            onEnded={handleEnded}
+            onPause={() => {
+              if (videoRef.current && videoRef.current.ended) {
+                setIsPlaying(false);
+              }
+            }}
+          />
+        ) : (
+          <button
+            onClick={handlePlay}
+            className="relative group w-full h-full focus:outline-none focus:ring-2 focus:ring-primary/40"
+          >
+            {thumbError ? (
+              <div className="w-full h-full bg-muted/50 flex items-center justify-center">
+                <Film className="w-5 h-5 text-muted-foreground/50" />
+              </div>
+            ) : (
+              <img
+                src={startFrameUrl}
+                alt={`Shot ${shotId} clip thumbnail`}
+                className="w-full h-full object-cover"
+                loading="lazy"
+                onError={() => setThumbError(true)}
+              />
+            )}
+            {/* Play overlay */}
+            <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
+              <div className="w-8 h-8 rounded-full bg-black/60 flex items-center justify-center">
+                <Play className="w-3.5 h-3.5 text-white ml-0.5" />
+              </div>
+            </div>
+            {/* Duration badge */}
+            <span className="absolute bottom-1 right-1 text-[9px] font-mono bg-black/70 text-white px-1 rounded">
+              {duration}s
+            </span>
+          </button>
+        )}
+      </div>
+      <span className="text-xs font-mono text-muted-foreground">{shotId}</span>
+    </div>
+  );
+}
+
+function ClipsContent({
+  allClips,
+  isLoading,
+  currentSceneNumber,
+  stageNumber,
+}: {
+  allClips: SceneClipsData[];
+  isLoading: boolean;
+  currentSceneNumber: number;
+  stageNumber: number;
+}) {
+  const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
+
+  // Auto-select default scene
+  useEffect(() => {
+    if (allClips.length === 0) {
+      setActiveSceneId(null);
+      return;
+    }
+    if (activeSceneId && allClips.some(s => s.sceneId === activeSceneId)) return;
+
+    const defaultIdx = getDefaultSceneIndex(allClips, currentSceneNumber, stageNumber);
+    setActiveSceneId(allClips[defaultIdx]?.sceneId ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allClips, currentSceneNumber, stageNumber]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+        <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2" />
+        Loading clips...
+      </div>
+    );
+  }
+
+  if (allClips.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full text-sm text-muted-foreground px-4 text-center">
+        No clips available yet. Videos are generated in Stage 12.
+      </div>
+    );
+  }
+
+  const activeScene = allClips.find(s => s.sceneId === activeSceneId) ?? allClips[0];
+
+  return (
+    <div className="h-full flex flex-col">
+      <SceneTabBar
+        scenes={allClips.map(s => ({ sceneId: s.sceneId, sceneNumber: s.sceneNumber }))}
+        activeSceneId={activeScene.sceneId}
+        onSceneClick={setActiveSceneId}
+      />
+      <HorizontalScrollCarousel>
+        {activeScene.clips.map((clip) => (
+          <ClipCard
+            key={clip.shotId}
+            shotId={clip.shotId}
+            videoUrl={clip.videoUrl}
+            startFrameUrl={clip.startFrameUrl}
+            duration={clip.duration}
+          />
+        ))}
+      </HorizontalScrollCarousel>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shot list (unchanged)
+// ---------------------------------------------------------------------------
 
 function ShotCard({ shot }: { shot: Shot }) {
   return (
@@ -350,6 +802,10 @@ function ShotListContent({ shots }: { shots: Shot[] }) {
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Resize handle
+// ---------------------------------------------------------------------------
 
 function ResizeHandle({
   onDragStart,
@@ -411,7 +867,6 @@ export function ContentAccessCarousel({
     [scenes, sceneId]
   );
   const currentScene = currentSceneIndex >= 0 ? scenes![currentSceneIndex] : null;
-  const priorScene = currentSceneIndex > 0 ? scenes![currentSceneIndex - 1] : null;
 
   const derivedSceneNumber = sceneNumberProp ?? currentScene?.sceneNumber ?? 0;
 
@@ -429,13 +884,14 @@ export function ContentAccessCarousel({
   const availableTabs = useMemo<TabDef[]>(() => {
     const tabs: TabDef[] = [];
 
-    // Script: always available (stages 6-12) — most frequently used, always first
+    // Script: always available (stages 6-12)
     tabs.push({ id: 'script', label: 'Script', icon: FileText });
 
-    // Rearview: stages 6-12, hidden for scene 1
-    if (derivedSceneNumber > 1) {
-      tabs.push({ id: 'rearview', label: 'Rearview', icon: Eye });
-    }
+    // Stills: always available (stages 6-12)
+    tabs.push({ id: 'stills', label: 'Stills', icon: Image });
+
+    // Clips: always available (stages 6-12)
+    tabs.push({ id: 'clips', label: 'Clips', icon: Film });
 
     // Shots: stages 8-12 only
     if (stageNumber >= 8) {
@@ -443,7 +899,7 @@ export function ContentAccessCarousel({
     }
 
     return tabs;
-  }, [stageNumber, derivedSceneNumber]);
+  }, [stageNumber]);
 
   // ---------------------------------------------------------------------------
   // Carousel state (initialized from session-persisted tab)
@@ -457,6 +913,8 @@ export function ContentAccessCarousel({
     }
     return 0;
   });
+
+  const activeTabId = availableTabs[activeTabIndex]?.id ?? 'script';
 
   // Sync carousel position → active tab
   useEffect(() => {
@@ -488,6 +946,29 @@ export function ContentAccessCarousel({
       carouselApi?.scrollTo(0);
     }
   }, [availableTabs.length, activeTabIndex, carouselApi]);
+
+  // ---------------------------------------------------------------------------
+  // Lazy-loaded stills & clips data
+  // ---------------------------------------------------------------------------
+
+  const scenesForFetch = useMemo(
+    () => (scenes ?? []).map(s => ({ id: s.id, sceneNumber: s.sceneNumber })),
+    [scenes]
+  );
+
+  const { data: allStills = [], isLoading: stillsLoading } = useQuery({
+    queryKey: ['all-start-frames', projectId, sceneId],
+    queryFn: () => fetchAllStartFrames(projectId, sceneId, scenesForFetch),
+    enabled: !!projectId && !!sceneId && activeTabId === 'stills' && scenesForFetch.length > 0,
+    staleTime: 120_000,
+  });
+
+  const { data: allClips = [], isLoading: clipsLoading } = useQuery({
+    queryKey: ['all-completed-clips', projectId, sceneId],
+    queryFn: () => fetchAllCompletedClips(projectId, sceneId, scenesForFetch),
+    enabled: !!projectId && !!sceneId && activeTabId === 'clips' && scenesForFetch.length > 0,
+    staleTime: 120_000,
+  });
 
   // ---------------------------------------------------------------------------
   // Drag-to-resize
@@ -563,9 +1044,14 @@ export function ContentAccessCarousel({
       animate={{ opacity: 1, y: 0 }}
       className="border-b border-border/50 bg-card/30 backdrop-blur-sm"
     >
-      {/* Tab bar + collapse toggle — always visible */}
+      {/* Header bar — always visible */}
       <div className="flex items-center justify-between px-4 py-1.5">
-        <TabBar tabs={availableTabs} activeIndex={activeTabIndex} onTabClick={handleTabClick} />
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted-foreground select-none">Content Access</span>
+          {isExpanded && (
+            <TabBar tabs={availableTabs} activeIndex={activeTabIndex} onTabClick={handleTabClick} />
+          )}
+        </div>
         <button
           onClick={() => setIsExpanded(prev => !prev)}
           className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
@@ -596,15 +1082,24 @@ export function ContentAccessCarousel({
                 <CarouselContent className="h-full">
                   {availableTabs.map((tab) => (
                     <CarouselItem key={tab.id} className="h-full">
-                      {tab.id === 'rearview' && (
-                        <RearviewContent
-                          priorSceneEndState={currentScene?.priorSceneEndState}
-                          endFrameThumbnail={priorScene?.endFrameThumbnail}
-                          priorSceneName={priorScene ? `Scene ${priorScene.sceneNumber}` : undefined}
-                        />
-                      )}
                       {tab.id === 'script' && (
                         <ScriptExcerptContent scriptExcerpt={currentScene?.scriptExcerpt} />
+                      )}
+                      {tab.id === 'stills' && (
+                        <StillsContent
+                          allStills={allStills}
+                          isLoading={stillsLoading && activeTabId === 'stills'}
+                          currentSceneNumber={derivedSceneNumber}
+                          stageNumber={stageNumber}
+                        />
+                      )}
+                      {tab.id === 'clips' && (
+                        <ClipsContent
+                          allClips={allClips}
+                          isLoading={clipsLoading && activeTabId === 'clips'}
+                          currentSceneNumber={derivedSceneNumber}
+                          stageNumber={stageNumber}
+                        />
                       )}
                       {tab.id === 'shots' && (
                         <ShotListContent shots={shots} />
