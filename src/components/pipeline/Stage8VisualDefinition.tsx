@@ -60,7 +60,7 @@ import { AssetDrawer } from '@/components/pipeline/AssetDrawer';
 import { sceneAssetService } from '@/lib/services/sceneAssetService';
 import { sceneService } from '@/lib/services/sceneService';
 import { shotService } from '@/lib/services/shotService';
-import { cn } from '@/lib/utils';
+import { cn, formatSceneHeader } from '@/lib/utils';
 import type { SceneAssetInstance, SceneAssetRelevanceResult, SceneAssetSuggestion } from '@/types/scene';
 import { LockedStageHeader } from './LockedStageHeader';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
@@ -845,7 +845,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
                 Scene {currentScene.sceneNumber}
               </Badge>
               <h2 className="text-lg font-semibold">
-                {currentScene.slug}
+                {formatSceneHeader(currentScene.slug).formatted}
               </h2>
             </div>
             <Badge

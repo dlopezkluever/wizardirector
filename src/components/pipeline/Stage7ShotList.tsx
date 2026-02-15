@@ -21,7 +21,8 @@ import {
   AlertCircle,
   Save,
   GripVertical,
-  Lock
+  Lock,
+  EyeOff
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -113,6 +114,10 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
   // Merge: direction and loading
   const [mergeDirection, setMergeDirection] = useState<'next' | 'previous'>('next');
   const [isMerging, setIsMerging] = useState(false);
+
+  // Last shot defer dialog
+  const [showLastShotDialog, setShowLastShotDialog] = useState(false);
+  const [isDeferringScene, setIsDeferringScene] = useState(false);
 
   // Lock / validation state
   const [isSceneLocked, setIsSceneLocked] = useState(false);
@@ -301,25 +306,58 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
   };
 
   const handleDeleteShot = async (shotId: string) => {
+    // Check if this is the last shot — show defer dialog instead
+    if (shots.length <= 1) {
+      setShowLastShotDialog(true);
+      return;
+    }
+
     try {
       await shotService.deleteShot(projectId, sceneId, shotId);
-      
+
       setShots(prev => prev.filter(s => s.id !== shotId));
-      
+
       if (selectedShot?.id === shotId) {
         setSelectedShot(shots.find(s => s.id !== shotId) || null);
       }
-      
+
       toast({
         title: 'Shot deleted',
         description: 'Shot removed successfully',
       });
     } catch (error) {
+      // Handle 409 LAST_SHOT from backend (race condition fallback)
+      const errObj = error as { status?: number; message?: string };
+      if (errObj?.status === 409 || errObj?.message?.includes('last shot')) {
+        setShowLastShotDialog(true);
+        return;
+      }
       toast({
         title: 'Failed to delete shot',
         description: error instanceof Error ? error.message : 'Unknown error',
         variant: 'destructive',
       });
+    }
+  };
+
+  const handleDeferFromLastShot = async () => {
+    try {
+      setIsDeferringScene(true);
+      await sceneService.deferScene(projectId, sceneId);
+      toast({
+        title: 'Scene deferred',
+        description: 'Scene has been sidelined. Returning to Script Hub.',
+      });
+      setShowLastShotDialog(false);
+      onBack();
+    } catch (error) {
+      toast({
+        title: 'Failed to defer scene',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeferringScene(false);
     }
   };
 
@@ -795,17 +833,8 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      disabled={!canEdit}
-                      onClick={() => handleSplitShot(selectedShot.id)}
-                      className="border-primary/20 hover:border-primary/40"
-                    >
-                      <Split className="w-4 h-4 mr-1.5" />
-                      Split Shot
-                    </Button>
-                    <div className="flex items-center gap-1">
+                    {/* Merge group: direction toggle + merge button */}
+                    <div className="flex items-center gap-1 rounded-lg border border-border/50 bg-muted/20 px-1.5 py-0.5">
                       <div className="flex rounded-md border border-border/50 overflow-hidden">
                         <button
                           type="button"
@@ -840,8 +869,8 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
                           Prev
                         </button>
                       </div>
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         size="sm"
                         disabled={!canEdit || !canMerge || isMerging}
                         onClick={handleMergeShot}
@@ -851,8 +880,18 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
                         Merge
                       </Button>
                     </div>
-                    <Button 
-                      variant="ghost" 
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!canEdit}
+                      onClick={() => handleSplitShot(selectedShot.id)}
+                      className="border-primary/20 hover:border-primary/40"
+                    >
+                      <Split className="w-4 h-4 mr-1.5" />
+                      Split Shot
+                    </Button>
+                    <Button
+                      variant="ghost"
                       size="sm"
                       disabled={!canEdit}
                       className="text-destructive hover:text-destructive hover:bg-destructive/10"
@@ -1188,6 +1227,48 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
         onConfirm={handleConfirmUnlock}
         isConfirming={isConfirmingUnlock}
       />
+
+      {/* Last Shot Defer Dialog */}
+      <Dialog open={showLastShotDialog} onOpenChange={setShowLastShotDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-amber-500" />
+              Last Shot in Scene
+            </DialogTitle>
+            <DialogDescription>
+              This is the only shot in the scene. Every scene must have at least one shot. Would you like to defer this scene instead?
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="flex-row gap-2 sm:gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setShowLastShotDialog(false)}
+              disabled={isDeferringScene}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeferFromLastShot}
+              disabled={isDeferringScene}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {isDeferringScene ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deferring...
+                </>
+              ) : (
+                <>
+                  <EyeOff className="w-4 h-4 mr-2" />
+                  Defer Scene
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Split Shot Dialog */}
       <Dialog open={showSplitDialog} onOpenChange={setShowSplitDialog}>

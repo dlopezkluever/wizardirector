@@ -15,11 +15,13 @@ import {
   Loader2,
   Play,
   Eye,
+  EyeOff,
+  Undo2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { cn } from '@/lib/utils';
+import { cn, formatSceneHeader } from '@/lib/utils';
 import { toast } from 'sonner';
 import { sceneService } from '@/lib/services/sceneService';
 import { checkoutService } from '@/lib/services/checkoutService';
@@ -55,6 +57,7 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [renderStatuses, setRenderStatuses] = useState<Record<string, string>>({});
+  const [isDeferring, setIsDeferring] = useState(false);
 
   // Fetch scenes on mount
   useEffect(() => {
@@ -140,6 +143,36 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
     }
   };
 
+  const handleDeferScene = async () => {
+    if (!projectId || !selectedScene) return;
+    try {
+      setIsDeferring(true);
+      await sceneService.deferScene(projectId, selectedScene.id);
+      setScenes(prev => prev.map(s => s.id === selectedScene.id ? { ...s, isDeferred: true } : s));
+      setSelectedScene(prev => prev ? { ...prev, isDeferred: true } : null);
+      toast.success(`Scene ${selectedScene.sceneNumber} deferred`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to defer scene');
+    } finally {
+      setIsDeferring(false);
+    }
+  };
+
+  const handleRestoreScene = async () => {
+    if (!projectId || !selectedScene) return;
+    try {
+      setIsDeferring(true);
+      await sceneService.restoreScene(projectId, selectedScene.id);
+      setScenes(prev => prev.map(s => s.id === selectedScene.id ? { ...s, isDeferred: false } : s));
+      setSelectedScene(prev => prev ? { ...prev, isDeferred: false } : null);
+      toast.success(`Scene ${selectedScene.sceneNumber} restored`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to restore scene');
+    } finally {
+      setIsDeferring(false);
+    }
+  };
+
   return (
     <div className="flex-1 flex overflow-hidden">
       {/* Scene Index - Left Panel */}
@@ -156,7 +189,11 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
           <p className="text-xs text-muted-foreground mt-1">
             {isLoading ? 'Loading...' : (
               <>
-                {scenes.length} scenes • {scenes.filter(s => s.status === 'video_complete').length} complete
+                {scenes.filter(s => !s.isDeferred).length} scenes
+                {scenes.filter(s => s.isDeferred).length > 0 && (
+                  <> · {scenes.filter(s => s.isDeferred).length} deferred</>
+                )}
+                {' '}· {scenes.filter(s => s.status === 'video_complete').length} complete
               </>
             )}
           </p>
@@ -225,9 +262,10 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
                   whileTap={{ scale: 0.99 }}
                   className={cn(
                     'w-full p-3 rounded-lg mb-2 text-left transition-all',
-                    isSelected 
-                      ? 'bg-primary/10 border border-primary/30' 
-                      : 'bg-card/50 border border-border/30 hover:border-border'
+                    isSelected
+                      ? 'bg-primary/10 border border-primary/30'
+                      : 'bg-card/50 border border-border/30 hover:border-border',
+                    scene.isDeferred && 'opacity-50'
                   )}
                 >
                   <div className="flex items-start gap-3">
@@ -245,18 +283,30 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-mono text-primary">
+                      <div className="flex items-center gap-2 mb-1 overflow-hidden">
+                        <span className="text-xs font-mono text-primary flex-shrink-0">
                           {String(scene.sceneNumber).padStart(2, '0')}
                         </span>
-                        <span className="text-sm font-medium text-foreground truncate">
-                          {scene.slug}
+                        <span
+                          className="text-sm font-medium text-foreground truncate"
+                          title={formatSceneHeader(scene.slug).formatted}
+                        >
+                          {formatSceneHeader(scene.slug).formatted}
                         </span>
                       </div>
-                      
-                      <div className="flex items-center gap-2">
-                        <Badge 
-                          variant="secondary" 
+
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {scene.isDeferred && (
+                          <Badge
+                            variant="secondary"
+                            className="text-[10px] px-1.5 py-0 bg-muted text-muted-foreground"
+                          >
+                            <EyeOff className="w-3 h-3 mr-1" />
+                            Deferred
+                          </Badge>
+                        )}
+                        <Badge
+                          variant="secondary"
                           className={cn('text-[10px] px-1.5 py-0', statusConfig[scene.status].color)}
                         >
                           <StatusIcon className="w-3 h-3 mr-1" />
@@ -319,7 +369,7 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
                       {String(selectedScene.sceneNumber).padStart(2, '0')}
                     </span>
                     <h1 className="font-display text-2xl font-bold text-foreground">
-                      {selectedScene.slug}
+                      {formatSceneHeader(selectedScene.slug).formatted}
                     </h1>
                     <Badge 
                       variant="secondary" 
@@ -342,6 +392,27 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
                     <ArrowUp className="w-4 h-4 mr-1" />
                     Narrative & Style Engine
                   </Button>
+                  {selectedScene.isDeferred ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRestoreScene}
+                      disabled={isDeferring}
+                    >
+                      {isDeferring ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Undo2 className="w-4 h-4 mr-1" />}
+                      Restore Scene
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDeferScene}
+                      disabled={isDeferring}
+                    >
+                      {isDeferring ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <EyeOff className="w-4 h-4 mr-1" />}
+                      Defer Scene
+                    </Button>
+                  )}
                   {renderStatuses[selectedScene.id] === 'complete' && (
                     <Button
                       variant="outline"
@@ -355,6 +426,7 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
                   <Button
                     variant="gold"
                     onClick={handleEnterPipeline}
+                    disabled={selectedScene.isDeferred}
                   >
                     Enter Scene Pipeline
                     <ChevronRight className="w-4 h-4 ml-1" />

@@ -593,7 +593,7 @@ router.get('/:id/scenes', async (req, res) => {
     // Include end_state_summary and updated_at for continuity analysis
     const { data: scenes, error: scenesError } = await supabase
       .from('scenes')
-      .select('id, scene_number, slug, status, script_excerpt, end_state_summary, end_frame_thumbnail_url, updated_at, expected_characters, expected_location, expected_props, dependencies_extracted_at, shot_list_locked_at')
+      .select('id, scene_number, slug, status, script_excerpt, end_state_summary, end_frame_thumbnail_url, updated_at, expected_characters, expected_location, expected_props, dependencies_extracted_at, shot_list_locked_at, is_deferred')
       .eq('branch_id', project.active_branch_id)
       .order('scene_number', { ascending: true });
 
@@ -669,7 +669,8 @@ router.get('/:id/scenes', async (req, res) => {
         expectedProps: dbScene.expected_props || [],
         priorSceneEndState: priorScene?.end_state_summary ?? null,
         endFrameThumbnail: scene.endFrameThumbnail ?? null,
-        continuityRisk
+        continuityRisk,
+        isDeferred: (dbScene as any).is_deferred ?? false,
       };
     });
 
@@ -680,6 +681,88 @@ router.get('/:id/scenes', async (req, res) => {
     });
   } catch (error) {
     console.error('Error in GET /api/projects/:id/scenes:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/projects/:id/scenes/:sceneId/defer - Defer (sideline) a scene
+router.put('/:id/scenes/:sceneId/defer', async (req, res) => {
+  try {
+    const { id, sceneId } = req.params;
+    const userId = req.user!.id;
+
+    const { data: project } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const { data: scene } = await supabase
+      .from('scenes')
+      .select('id, is_deferred')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+
+    if (!scene) return res.status(404).json({ error: 'Scene not found' });
+    if ((scene as any).is_deferred) {
+      return res.json({ success: true, message: 'Scene is already deferred' });
+    }
+
+    const { error: updateError } = await supabase
+      .from('scenes')
+      .update({ is_deferred: true, updated_at: new Date().toISOString() })
+      .eq('id', sceneId);
+
+    if (updateError) return res.status(500).json({ error: 'Failed to defer scene' });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error in PUT /api/projects/:id/scenes/:sceneId/defer:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/projects/:id/scenes/:sceneId/restore - Restore a deferred scene
+router.put('/:id/scenes/:sceneId/restore', async (req, res) => {
+  try {
+    const { id, sceneId } = req.params;
+    const userId = req.user!.id;
+
+    const { data: project } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const { data: scene } = await supabase
+      .from('scenes')
+      .select('id, is_deferred')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+
+    if (!scene) return res.status(404).json({ error: 'Scene not found' });
+    if (!(scene as any).is_deferred) {
+      return res.json({ success: true, message: 'Scene is not deferred' });
+    }
+
+    const { error: updateError } = await supabase
+      .from('scenes')
+      .update({ is_deferred: false, updated_at: new Date().toISOString() })
+      .eq('id', sceneId);
+
+    if (updateError) return res.status(500).json({ error: 'Failed to restore scene' });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error in PUT /api/projects/:id/scenes/:sceneId/restore:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1471,6 +1554,27 @@ router.delete('/:id/scenes/:sceneId/shots/:shotId', async (req, res) => {
       .eq('branch_id', project.active_branch_id)
       .single();
     if (!scene) return res.status(404).json({ error: 'Scene not found' });
+
+    // Check if this is the last shot in the scene
+    const { data: shotCount } = await supabase
+      .from('shots')
+      .select('id', { count: 'exact', head: true })
+      .eq('scene_id', sceneId);
+
+    const count = (shotCount as any)?.length ?? 0;
+    // Use the count from the response header if available, otherwise count rows
+    const { count: exactCount } = await supabase
+      .from('shots')
+      .select('id', { count: 'exact', head: true })
+      .eq('scene_id', sceneId);
+
+    if (exactCount !== null && exactCount <= 1) {
+      return res.status(409).json({
+        error: 'Cannot delete the last shot',
+        code: 'LAST_SHOT',
+        suggestion: 'defer_scene',
+      });
+    }
 
     const { error } = await supabase.from('shots').delete().eq('id', shotId).eq('scene_id', sceneId);
     if (error) return res.status(500).json({ error: 'Failed to delete shot' });
