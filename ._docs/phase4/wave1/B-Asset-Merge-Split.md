@@ -191,23 +191,6 @@ Stage 5 Asset Library
 
 ## Files At Play
 
-### Feature A: Content Access Carousel v2
-
-#### Frontend Components (Modified)
-- **`src/components/pipeline/ContentAccessCarousel.tsx`** — **PRIMARY FILE**: Major refactor. Remove Rearview, add Stills/Clips tabs, new sub-components, UI polish (collapsed state, "Content Access" label).
-
-#### Frontend Services (Read / Possibly Extended)
-- `src/lib/services/frameService.ts` — `fetchFrames()` used to get start frames per scene. May add a helper for batch fetching.
-- `src/lib/services/checkoutService.ts` — `getVideoJobs()` used to get clips per scene. `getBatchRenderStatus()` useful as pre-filter.
-- `src/lib/services/sceneService.ts` — `fetchScenes()` for scene list (already fetched by carousel).
-
-#### Frontend Types
-- `src/types/scene.ts` — Import `Frame`, `ShotWithFrames`, `VideoGenerationJob`, `FrameStatus`. Add `SceneStillsData` and `SceneClipsData` interfaces (could be in carousel file or types file).
-
-#### Backend (Optional — batch endpoints)
-- `backend/src/routes/frames.ts` — Consider adding `GET /api/projects/:projectId/batch-start-frames`
-- `backend/src/routes/checkout.ts` — Consider adding `GET /api/projects/:projectId/batch-completed-clips`
-
 ### Feature B: Asset Merge/Split
 
 #### Frontend Components (New/Modified)
@@ -231,34 +214,7 @@ Stage 5 Asset Library
 
 ---
 
-## Implementation Order
-
-1. **A.3** — Panel UI polish (Content Access label, collapsed state) — quick, visual, no data changes
-2. **A.4** — Stills tab (remove Rearview, add Stills with scene tabs + carousel) — core feature
-3. **A.5** — Clips tab (add Clips with scene tabs + video playback) — builds on Stills pattern
-4. **B.2** — Merge feature (backend endpoint + frontend dialog)
-5. **B.3** — Split feature (backend endpoint + frontend wizard)
-
-Features A and B are **independent** and can be worked in parallel by different agents/worktrees.
-
----
-
 ## Verification
-
-### Feature A
-1. `npm run lint` — no lint errors
-2. `npm run build:dev` — TypeScript compiles
-3. Manual test: Navigate to Stage 8+ for a scene, verify:
-   - "Content Access" label visible when collapsed (tabs hidden)
-   - Stills tab shows scene tabs for other scenes with generated start frames
-   - Clicking a scene tab shows that scene's shot start frames in a horizontal carousel
-   - Thumbnails display correctly with shot ID labels
-   - Click thumbnail → enlarges (lightbox)
-   - Clips tab shows scene tabs for scenes with completed video jobs
-   - Click play on a clip → video plays inline
-   - Script and Shots tabs still work as before
-   - Empty states display when no data exists
-4. Verify no Rearview tab references remain
 
 ### Feature B
 1. `npm run lint` + `npm run build:dev`

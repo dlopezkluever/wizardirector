@@ -300,3 +300,38 @@ interface SceneClipsData {
 | Panel is resized very small | Thumbnails should have a minimum size; if panel is too short, show 1 row with horizontal scroll |
 
 ---
+## Files At Play
+
+### Feature A: Content Access Carousel v2
+
+#### Frontend Components (Modified)
+- **`src/components/pipeline/ContentAccessCarousel.tsx`** — **PRIMARY FILE**: Major refactor. Remove Rearview, add Stills/Clips tabs, new sub-components, UI polish (collapsed state, "Content Access" label).
+
+#### Frontend Services (Read / Possibly Extended)
+- `src/lib/services/frameService.ts` — `fetchFrames()` used to get start frames per scene. May add a helper for batch fetching.
+- `src/lib/services/checkoutService.ts` — `getVideoJobs()` used to get clips per scene. `getBatchRenderStatus()` useful as pre-filter.
+- `src/lib/services/sceneService.ts` — `fetchScenes()` for scene list (already fetched by carousel).
+
+#### Frontend Types
+- `src/types/scene.ts` — Import `Frame`, `ShotWithFrames`, `VideoGenerationJob`, `FrameStatus`. Add `SceneStillsData` and `SceneClipsData` interfaces (could be in carousel file or types file).
+
+#### Backend (Optional — batch endpoints)
+- `backend/src/routes/frames.ts` — Consider adding `GET /api/projects/:projectId/batch-start-frames`
+- `backend/src/routes/checkout.ts` — Consider adding `GET /api/projects/:projectId/batch-completed-clips`
+
+## Verification
+
+### Feature A
+1. `npm run lint` — no lint errors
+2. `npm run build:dev` — TypeScript compiles
+3. Manual test: Navigate to Stage 8+ for a scene, verify:
+   - "Content Access" label visible when collapsed (tabs hidden)
+   - Stills tab shows scene tabs for other scenes with generated start frames
+   - Clicking a scene tab shows that scene's shot start frames in a horizontal carousel
+   - Thumbnails display correctly with shot ID labels
+   - Click thumbnail → enlarges (lightbox)
+   - Clips tab shows scene tabs for scenes with completed video jobs
+   - Click play on a clip → video plays inline
+   - Script and Shots tabs still work as before
+   - Empty states display when no data exists
+4. Verify no Rearview tab references remain
