@@ -1,3 +1,6 @@
+Resume this session with:
+claude --resume 6950679f-ba88-4155-ab36-b9aedbfa856f
+
 ## Interview-questions:
 
 ● I've now thoroughly read through your ideas doc, the existing ContentAccessCarousel.tsx component, the current UI
