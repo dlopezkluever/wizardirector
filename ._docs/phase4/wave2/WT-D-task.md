@@ -1,10 +1,9 @@
 # WT-D: End Frame Generation + Fix Asset Inheritance in Frames (Stage 10)
 
-**Wave**: 2 (parallel with WT-E and WT-F — after Wave 1 merges)
 **Tasks**: 4D.1 + 4D.2
-**Scope**: Generate end frames alongside start frames, fix asset inheritance so master assets actually influence frame generation
+**Scope**: Allow for toggling whether user wishes to use end frames alongside start frames (may have to update Video Provider API to have this toggle noted), fix asset inheritance so scene instance images AND/or master assets actually influence frame generation
 
-> **Note**: 4A.1 (Content Access Carousel) has already been built and merged. `RearviewMirror.tsx` has been replaced by `ContentAccessCarousel.tsx` in Stage10FrameGeneration.tsx. Preserve the ContentAccessCarousel when modifying Stage 10.
+> **Note**: Preserve the ContentAccessCarousel when modifying Stage 10.
 
 ---
 
@@ -16,27 +15,19 @@
 ### Problem. 
 Currently only generating the starting frame. But we need the option, with a toggle for a shot to have Both starting frame AND end frame as the video production API has both options, like Veo3 supports `startFrameUrl` (→ `image`) only and also the option for `startFrameUrl` (→ `image`)  and `endFrameUrl` (→ `lastFrame`) parameters.
 
-I think I would actually do this 
+User Notes: I think I would actually do this:
 
-1. We need the ability to choose, at some point, what model we will be using (right now we only have veo3 integrated but we should be moving to SORA & SeeDance (may have to make users use VPN cuz it be banned in amerikka))
+1c. We need the functionality to be able to toggle, for each shot in stage 9, whether we are doing starting and END frame or just starting Frame. There could be like a default just starting, but toggle for end frame image generation as well
 
-1b. We need the ability to choose between modes, spcifically for image to video. I still maintain Frame to video is the peak control mode. But I can actually see how it could be problemeatic for complex shots, think montages, or highly stylistic/artistic shot descriptions. Maybe then , you differ the frame, and only rather plug in the key assets, and describe the complex shot in detail
+1d. Make sure it is in the aspect ratio as designated in stage 1. 
 
-1c. But immediatly, we need the ability, if within VEO3, to be able to toggle, for each shot in stage 9, whether we are doing staqting and END frame or just starting Frame
-
-For end frames, the prompt to make the end frame needs to be like, the starting frame prompt, but wiht the idea that YOU ARE MAKING AN IMAGE OF THIS SCENE WHERE 8 seconds have passed, and this action occured.
-
-2. The reqal KEY however  is making sure the actual assets are bieng used to make the frames. Like what is the current way frames are bing generated?? are they linking the relevant scene instance images into their prompts? Becuase it would appear not TO ME
- Consider the following example:
- Image 1 & 2 have the character assets for a scene, yet Image 3 is what was gnerated. Its a completly different visual style (cinematic drawing, not old style disney animation)
+1d. For end frames, the prompt to make the end frame needs to be like, the starting frame prompt, but wiht the idea that YOU ARE MAKING AN IMAGE OF THIS SCENE WHERE 8 seconds have passed, and this action occured.
 
 
-### Ticket 10.2 (from Tickets.md)
-> Currently only generating the starting frame. Both starting frame AND end frame are sometimes required for the video production API.
 
-### Core Features
+### Possible Features
 - [ ] Generate end frame for each shot alongside start frame (using this type of prompting system maybe {its just an ideaa that I think could work}:  But do reserach to make to see how to best prompt)
-- [ ] Pass both frames to video generation API (like if the user elects to do both starting and end frame)
+- [ ] Pass both frames to video generation API if end frame is toggled (like if the user elects to do both starting and end frame)
 - [ ] UI for reviewing/editing end frames (approve/reject/regenerate like start frames)
 - [ ] End frame considers shot action/movement for accurate ending state
   - e.g., if shot starts with character standing and action is "sits down", end frame should show character seated
@@ -60,8 +51,15 @@ For end frames, the prompt to make the end frame needs to be like, the starting 
 **Tickets**: 10.1, DC-3
 **Priority**: HIGH
 
+# User Notes: 2. The real KEY  Thing we need to do in this session is making sure the actual assets are being used to make the frames. 
+
+To do this, we first needto analysze what is the current way frames are being generated; like what is the system prompt data flow that is being inputed in the api calls to the image generation
+
+I think it's likely its not useing the actual images of the assets from the relevant scene instance images into their prompts. I say this becuase, based on my testing of the app, it would appear it's completly different outputs than that of the scene instance image. Like the characters look completely different, as does the overal compositon Consider the following example:
+ 
+
 ### Problem
-Looking at generations in Stage 10, there's no influence from any master assets — just generic slop. Something is wrong with the asset inheritance into frame generation. The full inheritance chain (Stage 5 → 8 → 9 → 10) must be verified and repaired.
+Looking at generations in Stage 10, there's no influence from any master assets — looks like a completely unique generationop. Something is wrong with the asset inheritance into frame generation. The full inheritance chain (Stage 5 → 8 → 9 → 10) must be verified and repaired.
 
 ### Ticket 10.1 (from Tickets.md)
 > Looking at generations in Stage 10, there's no influence from any master assets — just generic slop. Something is wrong with the asset inheritance into frame generation. Needs testing.
