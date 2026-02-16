@@ -1,3 +1,315 @@
+
+
+  4D.2 — Asset Reference Images:
+  - buildNumberedImageManifest() orders assets (chars → locations → props), picks best image per asset (angle-matched > scene instance > master), assigns Image #1..N labels
+  - Labels go into LLM system prompt only — the LLM writes vivid descriptions without Image #N in output
+  - referenceImageOrder JSONB persisted per-shot, threaded through to Stage 10
+  - ReferenceImage type gets role?: 'identity' | 'style' so NanoBanana can differentiate asset refs from style capsule refs in prompt building
+  - 32x32 numbered thumbnails shown above frame prompt textarea in Stage 9, and below frame images in Stage 10
+
+  4D.1 — End Frame Workflow:
+  - Stage 9: always-visible clickable toggle badge (green ON / muted OFF)
+  - Backend: dedicated generateEndFramePrompt() LLM method + two new endpoints
+  - Stage 10: toggleable slide-in panel from the right (w-80) — frame grid compacts left when open. Panel contains: generate prompt button → editable textarea → save → generate end frame image
+  - end_frame_prompt replaces the old frame_prompt + suffix approach (with backward compat fallback for legacy data)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── Ready to code?
+
+ Here is Claude's plan:
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ WT-D: Asset Reference Images in Frame Gen + End Frame Workflow
+
+ Context
+
+ Generated frames in Stage 10 ignore asset reference images entirely — characters/locations/props look nothing like their master or scene-instance images because the image generation API only receives text + style capsule images. Additionally, end       
+ frames use a naive suffix (frame_prompt + ' [End of shot - showing action completion]') with no user control or dedicated LLM prompt.
+
+ This plan threads asset reference images through the full pipeline (Stage 9 → Stage 10 → image API) and adds a proper two-step end frame workflow.
+
+ User decisions baked into this plan:
+ - Numbered image labels in LLM system prompt only (LLM writes detailed descriptions, does NOT include Image #N in output)
+ - Asset thumbnails shown above the frame prompt textarea in Stage 9
+ - Toggleable slide-in panel from the right in Stage 10 for end frame prompt editing
+ - End Frame badge in Stage 9 becomes always-visible clickable toggle
+
+ ---
+ Step 1: Database Migration (manual via Supabase dashboard)
+
+ ALTER TABLE shots ADD COLUMN reference_image_order JSONB DEFAULT NULL;
+ ALTER TABLE shots ADD COLUMN end_frame_prompt TEXT DEFAULT NULL;
+
+ Both nullable — old data continues to work (text-only fallback when null).
+
+ ---
+ Step 2: Backend — Image Manifest + Prompt Generation (4D.2 Phase A)
+
+ File: backend/src/services/promptGenerationService.ts
+
+ 2a. Extend types
+
+ - Add referenceImageOrder: { label: string; assetName: string; url: string; type: string }[] to GeneratedPromptSet (line ~52)
+ - Add same field (optional) to BulkPromptGenerationResult (line ~59)
+
+ 2b. New exported function: buildNumberedImageManifest(assets, shotCamera)
+
+ Place after enrichAssetsWithAngleMatch(). Logic:
+ 1. Sort assets: characters → locations → props
+ 2. For each asset with an image, pick best URL: matched_angle_url > image_key_url (scene instance) > master_image_url
+ 3. Assign sequential labels (Image #1, Image #2, ...)
+ 4. Build manifest string for LLM:
+ REFERENCE IMAGES (attached alongside this prompt during image generation):
+ Image #1: Hansel (character)
+ Image #2: Dark Forest (location)
+ 5. Return { manifest, imageOrder }
+
+ 2c. Update generateFramePrompt() (private method)
+
+ - Add imageManifest: string parameter
+ - Inject manifest + instruction into system prompt after asset context:
+ ${imageManifest}
+
+ IMPORTANT: The reference images above will be attached during generation. Write vivid descriptions INFORMED by knowing these refs exist. Do NOT include "Image #N" in your output text.
+
+ 2d. Update generatePromptSet() / generateBulkPromptSets()
+
+ - Call buildNumberedImageManifest() before generateFramePrompt()
+ - Thread referenceImageOrder through return values
+
+ 2e. Update prompt generation route
+
+ File: backend/src/routes/projects.ts (line ~2283)
+
+ - Add reference_image_order: r.referenceImageOrder || null to the shots update
+ - Add reference_image_order to the select query on re-fetch (line ~2299)
+ - Map as referenceImageOrder in response transform (line ~2317)
+ - Also update the GET prompts endpoint to include/return referenceImageOrder
+
+ ---
+ Step 3: Backend — Thread Refs to Image API (4D.2 Phase B)
+
+ 3a. Add role to ReferenceImage
+
+ File: backend/src/services/image-generation/ImageProviderInterface.ts
+ export interface ReferenceImage {
+     url: string;
+     mimeType?: string;
+     role?: 'identity' | 'style';  // NEW
+ }
+
+ 3b. Add referenceImageUrls to CreateImageJobRequest
+
+ File: backend/src/services/image-generation/ImageGenerationService.ts
+ - Add referenceImageUrls?: ReferenceImage[] to CreateImageJobRequest
+ - In executeJobInBackground() (after line ~318): prepend referenceImageUrls array (with role=identity) before style capsule images
+
+ 3c. Update NanoBanana prompt building for mixed identity+style images
+
+ File: backend/src/services/image-generation/NanoBananaClient.ts (lines 68-88)
+
+ Replace the multi/single image prompt logic to differentiate by role:
+ - Identity + style images: "Maintain characters/subjects from FIRST N identity refs. Apply visual style from remaining style refs."
+ - Identity only: "Maintain characters/subjects from the N reference images."
+ - Legacy (no roles): Keep current behavior for backward compat
+ - Single / text-only: Keep current behavior
+
+ 3d. New private method fetchShotReferenceImages(shotId)
+
+ File: backend/src/services/frameGenerationService.ts
+ - Read shots.reference_image_order for the shot
+ - Convert each entry to ReferenceImage with role: 'identity'
+ - Return empty array if null (backward compat)
+
+ 3e. Update startFrameGeneration() signature
+
+ File: backend/src/services/frameGenerationService.ts (line ~313)
+ - Add referenceImageUrls?: ReferenceImage[] parameter
+ - Pass to createImageJob()
+
+ 3f. Update generateFrames() loop (line ~220)
+
+ - For each shot: call fetchShotReferenceImages(shot.id) and pass to startFrameGeneration()
+ - For end frames: use shot.end_frame_prompt instead of suffix (skip if null — backward compat falls back to old suffix for legacy data)
+ - For end frames: prepend approved start frame's image_url as first identity reference
+
+ 3g. Update regenerateFrame() (line ~436)
+
+ - Fetch end_frame_prompt in the shots join
+ - Use end_frame_prompt for end frames (fallback to old suffix for legacy)
+ - Fetch + pass reference images (+ start frame image for end frames)
+
+ 3h. Update fetchFramesForScene() (line ~85)
+
+ - Add reference_image_order, end_frame_prompt to select
+ - Map as referenceImageOrder, endFramePrompt in response
+ - Add these fields to the backend ShotWithFrames interface
+
+ ---
+ Step 4: Backend — End Frame Prompt Generation (4D.1)
+
+ 4a. New method generateEndFramePrompt() in promptGenerationService.ts
+
+ async generateEndFramePrompt(shot, startFramePrompt, sceneAssets, styleCapsule): Promise<string>
+
+ LLM system prompt describes the frozen end-state: same camera, same characters (only pose/expression changes), references the start frame prompt as "before" state, shot action as "what happened", duration as time elapsed. Max 1200 chars output.
+
+ 4b. New endpoints in backend/src/routes/frames.ts
+
+ POST /:projectId/scenes/:sceneId/shots/:shotId/generate-end-frame-prompt
+ - Fetches shot, scene assets, style capsule
+ - Calls promptGenerationService.generateEndFramePrompt()
+ - Saves to shots.end_frame_prompt
+ - Returns { endFramePrompt }
+
+ PUT /:projectId/scenes/:sceneId/shots/:shotId/end-frame-prompt
+ - Accepts { endFramePrompt: string }
+ - Updates shots.end_frame_prompt
+ - Returns { success: true }
+
+ Import promptGenerationService and StyleCapsuleService at top of frames.ts.
+
+ ---
+ Step 5: Frontend Types + Services
+
+ 5a. src/types/scene.ts
+
+ - Add to PromptSet (line ~178): referenceImageOrder?: { label: string; assetName: string; url: string; type: string }[] | null
+ - Add to ShotWithFrames (line ~231): referenceImageOrder? and endFramePrompt?: string | null
+
+ 5b. src/lib/services/frameService.ts
+
+ Add two methods:
+ - generateEndFramePrompt(projectId, sceneId, shotId) → POST
+ - saveEndFramePrompt(projectId, sceneId, shotId, endFramePrompt) → PUT
+
+ ---
+ Step 6: Frontend — Stage 9 Changes
+
+ File: src/components/pipeline/Stage9PromptSegmentation.tsx
+
+ 6a. End Frame toggle badge (line ~468)
+
+ Replace conditional {promptSet.requiresEndFrame && <Badge>...} with always-visible clickable badge:
+ - Green when ON ("End Frame"), muted when OFF ("No End Frame")
+ - onClick → handleToggleEndFrame(shotUuid, !currentValue)
+ - Handler calls promptService.updatePrompt() with { requiresEndFrame: newValue } (endpoint already supports this)
+ - Optimistic UI update with revert on error
+
+ 6b. Reference image thumbnails (above frame prompt textarea)
+
+ After the shot context info div and before the "Frame Prompt" section, add:
+ - Row of 32x32px thumbnails from promptSet.referenceImageOrder
+ - Each has a numbered badge (1-N) in top-left corner
+ - Tooltip on hover showing assetName (type)
+ - Only renders when referenceImageOrder has entries
+
+ ---
+ Step 7: Frontend — Stage 10 Changes
+
+ 7a. FramePanel props + thumbnails
+
+ File: src/components/pipeline/FramePanel.tsx
+
+ Add new props:
+ - referenceImages?: { label, assetName, url, type }[]
+
+ Add 32x32px numbered thumbnail row below the aspect-video container (same design as Stage 9).
+
+ 7b. End Frame Prompt — Toggleable slide-in panel
+
+ File: src/components/pipeline/Stage10FrameGeneration.tsx
+
+ Layout change for the main content area (line ~528):
+
+ Current: grid grid-cols-2 (start frame | end frame)
+
+ New: Wrap in a flex container. When end frame prompt panel is toggled open, a right-side panel (w-80, ~320px) slides in via AnimatePresence/motion.div, and the frame grid gets flex-1 to compact left.
+
+ [Shot Sidebar] | [Frame Grid (flex-1)]          | [End Prompt Panel (w-80, toggleable)]
+                |  Start Frame  | End Frame      |  "End Frame Prompt"
+                |  (image)      | (image)        |  [textarea]
+                |  [actions]    | [actions]       |  [Regenerate] [Save]
+                |  [ref thumbs] | [ref thumbs]   |  [Generate End Frame btn]
+                |  [shot context]                 |
+
+ New state: showEndPromptPanel: boolean — toggled by a button on the end frame FramePanel header or a dedicated button.
+
+ The slide-in panel contains:
+ - If no endFramePrompt: "Generate End Frame Prompt" button (calls generateEndFramePromptMutation)
+ - If endFramePrompt exists: editable textarea, "Regenerate Prompt" button, "Save Prompt" button (appears when text differs from saved)
+ - "Generate End Frame" button (only enabled when prompt exists + not disabled)
+
+ 7c. New mutations in Stage10FrameGeneration.tsx
+
+ const generateEndFramePromptMutation = useMutation({
+     mutationFn: (shotId: string) => frameService.generateEndFramePrompt(projectId, sceneId, shotId),
+     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] }),
+ });
+
+ const saveEndFramePromptMutation = useMutation({
+     mutationFn: ({ shotId, prompt }) => frameService.saveEndFramePrompt(projectId, sceneId, shotId, prompt),
+     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] }),
+ });
+
+ Pass referenceImageOrder to both FramePanel instances.
+
+ ---
+ Files to Modify (Summary)
+
+ ┌─────────────────────────────────────────────────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │                              File                               │                                                                               Changes                                                                                │
+ ├─────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ backend/src/services/promptGenerationService.ts                 │ buildNumberedImageManifest(), update generateFramePrompt() system prompt, generateEndFramePrompt(), extend GeneratedPromptSet                                        │
+ ├─────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ backend/src/services/frameGenerationService.ts                  │ fetchShotReferenceImages(), update startFrameGeneration() sig, update generateFrames() + regenerateFrame() for refs + end_frame_prompt, update fetchFramesForScene() │
+ ├─────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ backend/src/services/image-generation/ImageGenerationService.ts │ Add referenceImageUrls to CreateImageJobRequest, update executeJobInBackground()                                                                                     │
+ ├─────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ backend/src/services/image-generation/ImageProviderInterface.ts │ Add role?: 'identity' | 'style' to ReferenceImage                                                                                                                    │
+ ├─────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ backend/src/services/image-generation/NanoBananaClient.ts       │ Update prompt building for mixed identity+style images                                                                                                               │
+ ├─────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ backend/src/routes/projects.ts                                  │ Persist + return referenceImageOrder in prompt generation route                                                                                                      │
+ ├─────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ backend/src/routes/frames.ts                                    │ New POST generate-end-frame-prompt, new PUT end-frame-prompt endpoints                                                                                               │
+ ├─────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ src/types/scene.ts                                              │ Add referenceImageOrder to PromptSet, add referenceImageOrder + endFramePrompt to ShotWithFrames                                                                     │
+ ├─────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ src/lib/services/frameService.ts                                │ Add generateEndFramePrompt() + saveEndFramePrompt()                                                                                                                  │
+ ├─────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ src/components/pipeline/Stage9PromptSegmentation.tsx            │ Clickable End Frame toggle badge, reference image thumbnails                                                                                                         │
+ ├─────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ src/components/pipeline/FramePanel.tsx                          │ Reference image thumbnails prop + rendering                                                                                                                          │
+ ├─────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ src/components/pipeline/Stage10FrameGeneration.tsx              │ Slide-in end frame prompt panel, new mutations, pass referenceImages to FramePanels                                                                                  │
+ └─────────────────────────────────────────────────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ ---
+ Implementation Order
+
+ 1. DB migration (manual) — unblocks everything
+ 2. Step 2: Backend prompt generation (promptGenerationService + projects.ts route)
+ 3. Step 3: Backend image threading (ImageProviderInterface → ImageGenerationService → NanoBanana → frameGenerationService)
+ 4. Step 4: Backend end frame prompt generation (promptGenerationService + frames.ts routes)
+ 5. Step 5: Frontend types + services
+ 6. Step 6: Frontend Stage 9 UI
+ 7. Step 7: Frontend Stage 10 UI
+
+ ---
+ Verification
+
+ 1. Generate prompts in Stage 9 → verify reference_image_order populated in DB, returned in API, thumbnails visible in UI
+ 2. Verify LLM output does NOT contain Image #N labels (clean descriptions only)
+ 3. Toggle End Frame badge → verify DB update + UI reflects state
+ 4. Generate start frame in Stage 10 → check API logs show asset ref images before style capsule images
+ 5. Click "Generate End Frame Prompt" in slide-in panel → verify LLM produces end-state description
+ 6. Edit + save end frame prompt → verify DB update
+ 7. Generate end frame → verify uses end_frame_prompt (not suffix), start frame image prepended as reference
+ 8. Regenerate any frame → verify reference images still included
+ 9. Old shots (null fields) → verify backward compat (text-only generation, old suffix for end frames)
+ 10. Run npm run lint, npm test (frontend), cd backend && npm test
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+---
+
 # WT-D Revised: Asset Reference Images in Frame Gen + End Frame Workflow
 
 **Tasks**: 4D.2 (Asset Inheritance) + 4D.1 (End Frames)
@@ -684,3 +996,5 @@ COMMENT ON COLUMN shots.end_frame_prompt IS 'LLM-generated or user-edited end fr
 4. **The `referenceImageOrder` field is per-shot, not per-scene** — different shots may reference different assets (based on characters_foreground/background) and different angle variants (based on camera angle).
 5. **End frame prompt generation is on-demand** — it's triggered by the user in Stage 10, NOT auto-generated in Stage 9. This is intentional: users should have their start frames approved before committing to end frame prompts.
 6. **Backward compatibility** — shots that don't have `reference_image_order` or `end_frame_prompt` (old data) should still work. The system should gracefully fall back to text-only generation (current behavior) when these fields are null.
+
+Hey Matt, I hope you've been doing good ol chap; I know this is a bit out of the blue, but I need to ask a favor. I'm in the process of getting on boarded for the job in the treasury and the last hurdle I have to clear is getting this quite invasive background check for a trust clearnece. As part of it they need contact info from all sorts of people who knew me at certain points of life. Now from what i've been told by Sam, they only contact a small number of the people listed, so it's kinda like a roulette. But all that's to say, would it be cool if I put you down? I would need to list your address on-top of your phone #/preferred email. If not, no sweat at all, just lmk. 

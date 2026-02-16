@@ -26,3 +26,6 @@ It's just worth thinking about.
 PLAN: leave as is, lets seen if we can just get the stage 9 to get REALLY good at defining the shot in prompt form, basically to the degree my new idea thinks about, while, instead of just having some "RAW" platonic ideal image, the image is much closer to the truth of whats invisioned, as we have determined 
 
 BUT THE BIG KEY will be, beign able to have the asset (whether from stage 5 or 8) be inserted in teh frame CORRECTLY, as RN im just not seeing it when it comes to stage 10, it really seems like its utterly disregarding my stage 5 & stage 8 visual asset AND its like the shot list just kinda sucks; its not descriptive enough, RIGHT NOW
+
+
+Should we have stage 8 be broken dowm further; like instead of just scene instance images for the whole scene, the user has to go down each shot, and choose whether to keep the assets as is (like a button is there to press that says "use from last shot") 

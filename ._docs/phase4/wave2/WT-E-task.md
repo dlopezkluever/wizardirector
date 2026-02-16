@@ -54,9 +54,6 @@ This is sequential by nature — each shot depends on the previous. The bulk gen
 - "Regenerate from this shot" option that re-chains from that point forward
 - Toggle: "Chain prompts" ON/OFF per scene
 
-### Dependencies
-- **4C.1 (Structured Prompts)** — Must be merged first. Chaining depends on having structured prompt data to extract state from.
-
 ---
 
 ## Files At Play
