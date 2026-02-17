@@ -1,5 +1,6 @@
 import { supabase } from '../config/supabase.js';
 import { ImageGenerationService } from './image-generation/ImageGenerationService.js';
+import type { ReferenceImage } from './image-generation/ImageProviderInterface.js';
 import { v4 as uuidv4 } from 'uuid';
 
 // Frame status type
@@ -39,6 +40,8 @@ export interface ShotWithFrames {
     requiresEndFrame: boolean;
     framePrompt: string | null;
     videoPrompt: string | null;
+    referenceImageOrder: { label: string; assetName: string; url: string; type: string }[] | null;
+    endFramePrompt: string | null;
     startFrame: Frame | null;
     endFrame: Frame | null;
 }
@@ -97,7 +100,9 @@ export class FrameGenerationService {
                 camera,
                 requires_end_frame,
                 frame_prompt,
-                video_prompt
+                video_prompt,
+                reference_image_order,
+                end_frame_prompt
             `)
             .eq('scene_id', sceneId)
             .order('shot_order', { ascending: true });
@@ -175,6 +180,8 @@ export class FrameGenerationService {
                 requiresEndFrame: shot.requires_end_frame ?? true,
                 framePrompt: shot.frame_prompt,
                 videoPrompt: shot.video_prompt,
+                referenceImageOrder: shot.reference_image_order || null,
+                endFramePrompt: shot.end_frame_prompt || null,
                 startFrame: frameEntry.start,
                 endFrame: frameEntry.end,
             };
@@ -224,6 +231,9 @@ export class FrameGenerationService {
                 continue;
             }
 
+            // Fetch asset reference images for this shot
+            const shotRefImages = await this.fetchShotReferenceImages(shot.id);
+
             // Generate start frame
             const startFrame = await this.ensureFrame(shot.id, 'start', previousEndFrameId);
             if (startFrame.status === 'pending' || startFrame.status === 'rejected') {
@@ -235,7 +245,8 @@ export class FrameGenerationService {
                     shot.id,
                     shot.frame_prompt,
                     visualStyleCapsuleId,
-                    aspectRatio
+                    aspectRatio,
+                    shotRefImages
                 );
                 jobsCreated++;
             }
@@ -252,15 +263,27 @@ export class FrameGenerationService {
                 // Quick mode or Control mode after start approved: generate end frames
                 const endFrame = await this.ensureFrame(shot.id, 'end', null);
                 if (endFrame.status === 'pending' || endFrame.status === 'rejected') {
+                    // Use end_frame_prompt if available; fall back to old suffix for legacy data
+                    const endPrompt = shot.end_frame_prompt
+                        ? shot.end_frame_prompt
+                        : shot.frame_prompt + ' [End of shot - showing action completion]';
+
+                    // For end frames: prepend approved start frame image as identity reference
+                    const endRefImages = [...shotRefImages];
+                    if (startFrame.imageUrl) {
+                        endRefImages.unshift({ url: startFrame.imageUrl, role: 'identity' as const });
+                    }
+
                     await this.startFrameGeneration(
                         endFrame.id,
                         projectId,
                         branchId,
                         sceneId,
                         shot.id,
-                        shot.frame_prompt + ' [End of shot - showing action completion]',
+                        endPrompt,
                         visualStyleCapsuleId,
-                        aspectRatio
+                        aspectRatio,
+                        endRefImages
                     );
                     jobsCreated++;
                 }
@@ -308,6 +331,26 @@ export class FrameGenerationService {
     }
 
     /**
+     * Fetch asset reference images for a shot from reference_image_order column
+     */
+    private async fetchShotReferenceImages(shotId: string): Promise<ReferenceImage[]> {
+        const { data: shot } = await supabase
+            .from('shots')
+            .select('reference_image_order')
+            .eq('id', shotId)
+            .single();
+
+        if (!shot?.reference_image_order || !Array.isArray(shot.reference_image_order)) {
+            return [];
+        }
+
+        return shot.reference_image_order.map((entry: { url: string }) => ({
+            url: entry.url,
+            role: 'identity' as const,
+        }));
+    }
+
+    /**
      * Start frame generation job
      */
     private async startFrameGeneration(
@@ -318,7 +361,8 @@ export class FrameGenerationService {
         shotId: string,
         prompt: string,
         visualStyleCapsuleId?: string,
-        aspectRatio: string = '16:9'
+        aspectRatio: string = '16:9',
+        referenceImageUrls?: ReferenceImage[]
     ): Promise<void> {
         // Get current frame data
         const { data: frame, error: fetchError } = await supabase
@@ -359,6 +403,7 @@ export class FrameGenerationService {
                 width: (this.FRAME_DIMENSIONS[aspectRatio] || this.FRAME_DIMENSIONS['16:9']).width,
                 height: (this.FRAME_DIMENSIONS[aspectRatio] || this.FRAME_DIMENSIONS['16:9']).height,
                 idempotencyKey: `frame-${frameId}-${Date.now()}`,
+                referenceImageUrls,
             });
 
             // Update frame with job ID and increment generation count
@@ -448,7 +493,8 @@ export class FrameGenerationService {
                 *,
                 shots!inner (
                     id,
-                    frame_prompt
+                    frame_prompt,
+                    end_frame_prompt
                 )
             `)
             .eq('id', frameId)
@@ -463,10 +509,29 @@ export class FrameGenerationService {
             throw new Error('Shot has no frame prompt');
         }
 
-        // Prepare prompt (add end frame context if end frame)
+        // Prepare prompt: use end_frame_prompt for end frames, fall back to old suffix
         let prompt = shot.frame_prompt;
         if (frame.frame_type === 'end') {
-            prompt += ' [End of shot - showing action completion]';
+            prompt = shot.end_frame_prompt
+                ? shot.end_frame_prompt
+                : shot.frame_prompt + ' [End of shot - showing action completion]';
+        }
+
+        // Fetch reference images for the shot
+        const shotRefImages = await this.fetchShotReferenceImages(shot.id);
+
+        // For end frames: prepend start frame image as identity reference
+        const refImages = [...shotRefImages];
+        if (frame.frame_type === 'end') {
+            const { data: startFrame } = await supabase
+                .from('frames')
+                .select('image_url')
+                .eq('shot_id', shot.id)
+                .eq('frame_type', 'start')
+                .single();
+            if (startFrame?.image_url) {
+                refImages.unshift({ url: startFrame.image_url, role: 'identity' as const });
+            }
         }
 
         // Start regeneration
@@ -478,7 +543,8 @@ export class FrameGenerationService {
             shot.id,
             prompt,
             visualStyleCapsuleId,
-            aspectRatio
+            aspectRatio,
+            refImages
         );
 
         // Return updated frame
