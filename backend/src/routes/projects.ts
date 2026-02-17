@@ -1968,6 +1968,7 @@ router.get('/:id/scenes/:sceneId/prompts', async (req, res) => {
         video_prompt,
         requires_end_frame,
         compatible_models,
+        reference_image_order,
         prompts_generated_at
       `)
       .eq('scene_id', sceneId)
@@ -1986,6 +1987,7 @@ router.get('/:id/scenes/:sceneId/prompts', async (req, res) => {
       videoPrompt: shot.video_prompt || '',
       requiresEndFrame: shot.requires_end_frame ?? true,
       compatibleModels: shot.compatible_models || ['Veo3'],
+      referenceImageOrder: shot.reference_image_order || null,
       promptsGeneratedAt: shot.prompts_generated_at || null,
       // Include shot data for context
       duration: shot.duration,
@@ -2285,6 +2287,7 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
             video_prompt: r.videoPrompt,
             requires_end_frame: r.requiresEndFrame,
             compatible_models: r.compatibleModels,
+            reference_image_order: r.referenceImageOrder || null,
             prompts_generated_at: now,
             updated_at: now,
           })
@@ -2303,6 +2306,7 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
         video_prompt,
         requires_end_frame,
         compatible_models,
+        reference_image_order,
         prompts_generated_at,
         duration,
         dialogue,
@@ -2321,6 +2325,7 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
       videoPrompt: shot.video_prompt || '',
       requiresEndFrame: shot.requires_end_frame ?? true,
       compatibleModels: shot.compatible_models || ['Veo3'],
+      referenceImageOrder: shot.reference_image_order || null,
       promptsGeneratedAt: shot.prompts_generated_at || null,
       duration: shot.duration,
       dialogue: shot.dialogue || '',

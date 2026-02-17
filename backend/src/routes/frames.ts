@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import { supabase } from '../config/supabase.js';
 import { frameGenerationService } from '../services/frameGenerationService.js';
+import { promptGenerationService, enrichAssetsWithAngleMatch } from '../services/promptGenerationService.js';
+import type { ShotData, SceneAssetInstanceData } from '../services/promptGenerationService.js';
+import { StyleCapsuleService } from '../services/styleCapsuleService.js';
 
 const router = Router();
 
@@ -335,6 +338,149 @@ router.get('/:projectId/scenes/:sceneId/frames/:frameId/status', async (req, res
         res.json(status);
     } catch (error: any) {
         console.error('Error in GET /api/projects/:projectId/scenes/:sceneId/frames/:frameId/status:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/shots/:shotId/generate-end-frame-prompt
+ * Generate an end frame prompt using LLM
+ */
+router.post('/:projectId/scenes/:sceneId/shots/:shotId/generate-end-frame-prompt', async (req, res) => {
+    try {
+        const { projectId, sceneId, shotId } = req.params;
+        const userId = req.user!.id;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id, visual_style_capsule_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Fetch shot data
+        const { data: shot, error: shotError } = await supabase
+            .from('shots')
+            .select('*')
+            .eq('id', shotId)
+            .eq('scene_id', sceneId)
+            .single();
+
+        if (shotError || !shot) {
+            return res.status(404).json({ error: 'Shot not found' });
+        }
+
+        if (!shot.frame_prompt) {
+            return res.status(400).json({ error: 'Shot has no frame prompt — generate frame prompts first' });
+        }
+
+        // Fetch scene assets
+        const { data: sceneAssets } = await supabase
+            .from('scene_asset_instances')
+            .select(`
+                id,
+                description_override,
+                effective_description,
+                status_tags,
+                image_key_url,
+                carry_forward,
+                inherited_from_instance_id,
+                project_asset:project_assets(id, name, asset_type, description, image_key_url)
+            `)
+            .eq('scene_id', sceneId);
+
+        // Fetch style capsule
+        let styleCapsule = null;
+        if (project.visual_style_capsule_id) {
+            try {
+                const styleCapsuleService = new StyleCapsuleService();
+                styleCapsule = await styleCapsuleService.getCapsuleById(project.visual_style_capsule_id, userId);
+            } catch {
+                // Continue without style capsule
+            }
+        }
+
+        // Build shot data for the service
+        const shotData: ShotData = {
+            id: shot.id,
+            shot_id: shot.shot_id,
+            duration: shot.duration,
+            dialogue: shot.dialogue || '',
+            action: shot.action,
+            characters_foreground: shot.characters_foreground || [],
+            characters_background: shot.characters_background || [],
+            setting: shot.setting,
+            camera: shot.camera,
+            continuity_flags: shot.continuity_flags,
+            beat_reference: shot.beat_reference,
+        };
+
+        // Generate end frame prompt
+        const endFramePrompt = await promptGenerationService.generateEndFramePrompt(
+            shotData,
+            shot.frame_prompt,
+            (sceneAssets || []) as unknown as SceneAssetInstanceData[],
+            styleCapsule
+        );
+
+        // Save to database
+        await supabase
+            .from('shots')
+            .update({ end_frame_prompt: endFramePrompt, updated_at: new Date().toISOString() })
+            .eq('id', shotId);
+
+        res.json({ endFramePrompt });
+    } catch (error: any) {
+        console.error('Error in POST generate-end-frame-prompt:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
+/**
+ * PUT /api/projects/:projectId/scenes/:sceneId/shots/:shotId/end-frame-prompt
+ * Save/update an end frame prompt
+ */
+router.put('/:projectId/scenes/:sceneId/shots/:shotId/end-frame-prompt', async (req, res) => {
+    try {
+        const { projectId, sceneId, shotId } = req.params;
+        const { endFramePrompt } = req.body;
+        const userId = req.user!.id;
+
+        if (typeof endFramePrompt !== 'string') {
+            return res.status(400).json({ error: 'endFramePrompt is required and must be a string' });
+        }
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Update shot
+        const { error: updateError } = await supabase
+            .from('shots')
+            .update({ end_frame_prompt: endFramePrompt, updated_at: new Date().toISOString() })
+            .eq('id', shotId)
+            .eq('scene_id', sceneId);
+
+        if (updateError) {
+            throw new Error(`Failed to update end frame prompt: ${updateError.message}`);
+        }
+
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error('Error in PUT end-frame-prompt:', error);
         res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });

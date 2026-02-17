@@ -1,10 +1,9 @@
 # WT-D: End Frame Generation + Fix Asset Inheritance in Frames (Stage 10)
 
-**Wave**: 2 (parallel with WT-E and WT-F — after Wave 1 merges)
 **Tasks**: 4D.1 + 4D.2
-**Scope**: Generate end frames alongside start frames, fix asset inheritance so master assets actually influence frame generation
+**Scope**: Allow for toggling whether user wishes to use end frames alongside start frames (may have to update Video Provider API to have this toggle noted), fix asset inheritance so scene instance images AND/or master assets actually influence frame generation
 
-> **Note**: 4A.1 (Content Access Carousel) has already been built and merged. `RearviewMirror.tsx` has been replaced by `ContentAccessCarousel.tsx` in Stage10FrameGeneration.tsx. Preserve the ContentAccessCarousel when modifying Stage 10.
+> **Note**: Preserve the ContentAccessCarousel when modifying Stage 10.
 
 ---
 
@@ -13,15 +12,22 @@
 **Ticket**: 10.2
 **Priority**: HIGH
 
-### Problem
-Currently only generating the starting frame. Both starting frame AND end frame are sometimes required for the video production API. Veo3 supports `startFrameUrl` (→ `image`) and `endFrameUrl` (→ `lastFrame`) parameters.
+### Problem. 
+Currently only generating the starting frame. But we need the option, with a toggle for a shot to have Both starting frame AND end frame as the video production API has both options, like Veo3 supports `startFrameUrl` (→ `image`) only and also the option for `startFrameUrl` (→ `image`)  and `endFrameUrl` (→ `lastFrame`) parameters.
 
-### Ticket 10.2 (from Tickets.md)
-> Currently only generating the starting frame. Both starting frame AND end frame are sometimes required for the video production API.
+User Notes: I think I would actually do this:
 
-### Core Features
-- [ ] Generate end frame for each shot alongside start frame
-- [ ] Pass both frames to video generation API
+1c. We need the functionality to be able to toggle, for each shot in stage 9, whether we are doing starting and END frame or just starting Frame. There could be like a default just starting, but toggle for end frame image generation as well
+
+1d. Make sure it is in the aspect ratio as designated in stage 1. 
+
+1d. For end frames, the prompt to make the end frame needs to be like, the starting frame prompt, but wiht the idea that YOU ARE MAKING AN IMAGE OF THIS SCENE WHERE 8 seconds have passed, and this action occured.
+
+
+
+### Possible Features
+- [ ] Generate end frame for each shot alongside start frame (using this type of prompting system maybe {its just an ideaa that I think could work}:  But do reserach to make to see how to best prompt)
+- [ ] Pass both frames to video generation API if end frame is toggled (like if the user elects to do both starting and end frame)
 - [ ] UI for reviewing/editing end frames (approve/reject/regenerate like start frames)
 - [ ] End frame considers shot action/movement for accurate ending state
   - e.g., if shot starts with character standing and action is "sits down", end frame should show character seated
@@ -45,8 +51,15 @@ Currently only generating the starting frame. Both starting frame AND end frame 
 **Tickets**: 10.1, DC-3
 **Priority**: HIGH
 
+# User Notes: 2. The real KEY  Thing we need to do in this session is making sure the actual assets are being used to make the frames. 
+
+To do this, we first needto analysze what is the current way frames are being generated; like what is the system prompt data flow that is being inputed in the api calls to the image generation
+
+I think it's likely its not useing the actual images of the assets from the relevant scene instance images into their prompts. I say this becuase, based on my testing of the app, it would appear it's completly different outputs than that of the scene instance image. Like the characters look completely different, as does the overal compositon Consider the following example:
+ 
+
 ### Problem
-Looking at generations in Stage 10, there's no influence from any master assets — just generic slop. Something is wrong with the asset inheritance into frame generation. The full inheritance chain (Stage 5 → 8 → 9 → 10) must be verified and repaired.
+Looking at generations in Stage 10, there's no influence from any master assets — looks like a completely unique generationop. Something is wrong with the asset inheritance into frame generation. The full inheritance chain (Stage 5 → 8 → 9 → 10) must be verified and repaired.
 
 ### Ticket 10.1 (from Tickets.md)
 > Looking at generations in Stage 10, there's no influence from any master assets — just generic slop. Something is wrong with the asset inheritance into frame generation. Needs testing.

@@ -1,0 +1,2 @@
+ALTER TABLE shots ADD COLUMN reference_image_order JSONB DEFAULT NULL;
+ALTER TABLE shots ADD COLUMN end_frame_prompt TEXT DEFAULT NULL;

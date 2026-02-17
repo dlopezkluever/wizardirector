@@ -14,6 +14,13 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { Frame, FrameType } from '@/types/scene';
 
+interface ReferenceImageEntry {
+  label: string;
+  assetName: string;
+  url: string;
+  type: string;
+}
+
 interface FramePanelProps {
   frame: Frame | null;
   frameType: FrameType;
@@ -27,6 +34,7 @@ interface FramePanelProps {
   onInpaint: () => void;
   onCompare?: () => void;
   showCompare?: boolean;
+  referenceImages?: ReferenceImageEntry[];
 }
 
 const STATUS_STYLES: Record<string, { badge: string; label: string }> = {
@@ -50,6 +58,7 @@ export function FramePanel({
   onInpaint,
   onCompare,
   showCompare = false,
+  referenceImages,
 }: FramePanelProps) {
   const [imageError, setImageError] = useState(false);
 
@@ -139,6 +148,29 @@ export function FramePanel({
           </div>
         )}
       </div>
+
+      {/* Reference image thumbnails */}
+      {referenceImages && referenceImages.length > 0 && (
+        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+          <span className="text-[10px] text-muted-foreground">Refs:</span>
+          {referenceImages.map((ref, idx) => (
+            <div
+              key={idx}
+              className="relative w-8 h-8 rounded border border-border/50 overflow-hidden group/thumb"
+              title={`${ref.assetName} (${ref.type})`}
+            >
+              <img
+                src={ref.url}
+                alt={ref.assetName}
+                className="w-full h-full object-cover"
+              />
+              <span className="absolute top-0 left-0 bg-black/70 text-[8px] text-white px-0.5 leading-tight">
+                {idx + 1}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Action buttons */}
       <div className="flex gap-2 mt-3">

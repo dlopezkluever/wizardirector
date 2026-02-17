@@ -465,14 +465,44 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                           No prompts
                         </Badge>
                       )}
-                      {promptSet.requiresEndFrame && (
-                        <Badge
-                          variant="secondary"
-                          className="bg-emerald-500/20 text-emerald-400 text-xs"
-                        >
-                          End Frame
-                        </Badge>
-                      )}
+                      <Badge
+                        variant="secondary"
+                        className={cn(
+                          'text-xs cursor-pointer select-none transition-colors',
+                          promptSet.requiresEndFrame
+                            ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+                            : 'bg-muted/40 text-muted-foreground hover:bg-muted/60'
+                        )}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (promptSet.shotUuid) {
+                            const newValue = !promptSet.requiresEndFrame;
+                            // Optimistic update
+                            setPromptSets(prev => prev.map(p =>
+                              p.shotId === promptSet.shotId
+                                ? { ...p, requiresEndFrame: newValue }
+                                : p
+                            ));
+                            promptService.updatePrompt(projectId, sceneId, promptSet.shotUuid, {
+                              requiresEndFrame: newValue,
+                            }).catch(() => {
+                              // Revert on error
+                              setPromptSets(prev => prev.map(p =>
+                                p.shotId === promptSet.shotId
+                                  ? { ...p, requiresEndFrame: !newValue }
+                                  : p
+                              ));
+                              toast({
+                                title: 'Error',
+                                description: 'Failed to update end frame setting',
+                                variant: 'destructive',
+                              });
+                            });
+                          }
+                        }}
+                      >
+                        {promptSet.requiresEndFrame ? 'End Frame' : 'No End Frame'}
+                      </Badge>
                       {promptSet.hasChanges && (
                         <Badge
                           variant="secondary"
@@ -517,6 +547,34 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                             {promptSet.camera && (
                               <p><span className="text-muted-foreground">Camera:</span> {promptSet.camera}</p>
                             )}
+                          </div>
+                        )}
+
+                        {/* Reference Image Thumbnails */}
+                        {promptSet.referenceImageOrder && promptSet.referenceImageOrder.length > 0 && (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs text-muted-foreground">Refs:</span>
+                            {promptSet.referenceImageOrder.map((ref, idx) => (
+                              <div
+                                key={idx}
+                                className="relative w-8 h-8 rounded border border-border/50 overflow-hidden group/thumb"
+                                title={`${ref.assetName} (${ref.type})`}
+                              >
+                                <img
+                                  src={ref.url}
+                                  alt={ref.assetName}
+                                  className="w-full h-full object-cover"
+                                />
+                                <span className="absolute top-0 left-0 bg-black/70 text-[8px] text-white px-0.5 leading-tight">
+                                  {idx + 1}
+                                </span>
+                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center">
+                                  <span className="text-[7px] text-white text-center leading-tight px-0.5">
+                                    {ref.assetName}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         )}
 

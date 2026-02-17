@@ -6,6 +6,7 @@
 export interface ReferenceImage {
     url: string;
     mimeType?: string;
+    role?: 'identity' | 'style';
 }
 
 export interface ImageGenerationOptions {
