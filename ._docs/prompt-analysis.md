@@ -1247,3 +1247,33 @@ Build an internal tool that lets you:
 - Track prompt performance over time
 
 This is the most impactful infrastructure investment for systematic prompt improvement.
+
+Haha dude I've re-entered this sort of homeless arc
+
+
+## *DEV/User Thoughts*:
+
+1. Frame Prompt HAS Image refferences for a Image Gen Call:
+
+-> Take into account character descriptions, either from stage 8 if using Scene Ref Image OR 
+Stage 5 if using Master Asset (and when using past scene's reference image, just use THAT scenes' description as the baseline), and KNOWING that those said individual descriptions were known to be used to generate the image, you THUS don't actually need to include said descriptions in the frame / video prompts.
+
+
+SO let's take for example:
+
+
+
+
+
+There's a deterministic way to do this. I KNOW IT TO BE TRUE
+
+
+Indeed, make the frame prompts be much more procise about framing and like physcial placement of misc en scene in shot, and make sure to keep continuity throught scene, unless explicitly asked to be changed. 
+
+Example: 
+
+
+
+2. Frame Prompt is Sans Image ref Gen Call:]
+
+Hey Howie, this is Daniel, I stayed in the hostel last fall and am coming back to Austin soon and was just trying to see if you all were hiring volunteers for the work exchange. I applied through worldpackers last week and didn't get a response, after being directed to do so via email. I’m likely arriving Thursday and would be ready to start as soon as needed. I'm more than happy to help with repairs & painting, on top of the typical hostel duties, & I have open availability for hours, meaning I can work whatever hours are most in need. No sweat if there's no openings or whatever, just looking for some clarity to get my affairs in order. Thanks!

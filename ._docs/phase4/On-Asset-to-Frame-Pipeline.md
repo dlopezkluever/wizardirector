@@ -29,3 +29,4 @@ BUT THE BIG KEY will be, beign able to have the asset (whether from stage 5 or 8
 
 
 Should we have stage 8 be broken dowm further; like instead of just scene instance images for the whole scene, the user has to go down each shot, and choose whether to keep the assets as is (like a button is there to press that says "use from last shot")
+
