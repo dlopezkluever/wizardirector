@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Image as ImageIcon,
@@ -9,9 +9,16 @@ import {
   Shield,
   ChevronRight,
   AlertCircle,
+  PanelRightOpen,
+  PanelRightClose,
+  Sparkles,
+  RefreshCw,
+  Save,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ContentAccessCarousel } from './ContentAccessCarousel';
 import { FramePanel } from './FramePanel';
@@ -70,6 +77,10 @@ export function Stage10FrameGeneration({
     shotId: string;
     frameType: 'start' | 'end';
   } | null>(null);
+
+  // End frame prompt panel state
+  const [showEndPromptPanel, setShowEndPromptPanel] = useState(false);
+  const [editedEndPrompt, setEditedEndPrompt] = useState('');
 
   // Prior scene data (for comparison feature — display handled by ContentAccessCarousel)
   const { data: allScenes } = useQuery({
@@ -181,8 +192,38 @@ export function Stage10FrameGeneration({
     },
   });
 
+  // Generate end frame prompt mutation
+  const generateEndFramePromptMutation = useMutation({
+    mutationFn: (shotId: string) =>
+      frameService.generateEndFramePrompt(projectId, sceneId, shotId),
+    onSuccess: (data) => {
+      setEditedEndPrompt(data.endFramePrompt);
+      queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+    },
+  });
+
+  // Save end frame prompt mutation
+  const saveEndFramePromptMutation = useMutation({
+    mutationFn: ({ shotId, prompt }: { shotId: string; prompt: string }) =>
+      frameService.saveEndFramePrompt(projectId, sceneId, shotId, prompt),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+    },
+  });
+
   // Get selected shot
   const selectedShot = shots.find((s) => s.id === selectedShotId);
+
+  // Sync edited end prompt when selected shot changes
+  useEffect(() => {
+    if (selectedShot?.endFramePrompt) {
+      setEditedEndPrompt(selectedShot.endFramePrompt);
+    } else {
+      setEditedEndPrompt('');
+    }
+  }, [selectedShot?.id, selectedShot?.endFramePrompt]);
+
+  const endPromptHasChanges = selectedShot?.endFramePrompt !== editedEndPrompt && editedEndPrompt !== '';
 
   // Get previous shot for continuity comparison
   const getPreviousShot = useCallback(
@@ -526,68 +567,204 @@ export function Stage10FrameGeneration({
             {selectedShot && (
               <ScrollArea className="flex-1">
                 <div className="p-6">
-                  <div className="grid grid-cols-2 gap-6">
-                    {/* Start Frame */}
-                    <FramePanel
-                      frame={selectedShot.startFrame}
-                      frameType="start"
-                      shotId={selectedShot.shotId}
-                      onGenerate={() => handleGenerateShot(selectedShot.id, true)}
-                      onApprove={() =>
-                        selectedShot.startFrame &&
-                        approveMutation.mutate(selectedShot.startFrame.id)
-                      }
-                      onReject={() =>
-                        selectedShot.startFrame &&
-                        rejectMutation.mutate(selectedShot.startFrame.id)
-                      }
-                      onRegenerate={() =>
-                        selectedShot.startFrame &&
-                        regenerateMutation.mutate(selectedShot.startFrame.id)
-                      }
-                      onInpaint={() =>
-                        selectedShot.startFrame &&
-                        handleInpaint(
-                          selectedShot.startFrame,
-                          selectedShot.shotId,
-                          'start'
-                        )
-                      }
-                      onCompare={() => handleCompare(selectedShot.id)}
-                      showCompare={canCompare(selectedShot.id)}
-                    />
+                  <div className="flex gap-6">
+                    {/* Frame Grid - flex grows to fill available space */}
+                    <div className="flex-1 min-w-0">
+                      <div className="grid grid-cols-2 gap-6">
+                        {/* Start Frame */}
+                        <FramePanel
+                          frame={selectedShot.startFrame}
+                          frameType="start"
+                          shotId={selectedShot.shotId}
+                          onGenerate={() => handleGenerateShot(selectedShot.id, true)}
+                          onApprove={() =>
+                            selectedShot.startFrame &&
+                            approveMutation.mutate(selectedShot.startFrame.id)
+                          }
+                          onReject={() =>
+                            selectedShot.startFrame &&
+                            rejectMutation.mutate(selectedShot.startFrame.id)
+                          }
+                          onRegenerate={() =>
+                            selectedShot.startFrame &&
+                            regenerateMutation.mutate(selectedShot.startFrame.id)
+                          }
+                          onInpaint={() =>
+                            selectedShot.startFrame &&
+                            handleInpaint(
+                              selectedShot.startFrame,
+                              selectedShot.shotId,
+                              'start'
+                            )
+                          }
+                          onCompare={() => handleCompare(selectedShot.id)}
+                          showCompare={canCompare(selectedShot.id)}
+                          referenceImages={selectedShot.referenceImageOrder ?? undefined}
+                        />
 
-                    {/* End Frame */}
-                    {selectedShot.requiresEndFrame && (
-                      <FramePanel
-                        frame={selectedShot.endFrame}
-                        frameType="end"
-                        shotId={selectedShot.shotId}
-                        isDisabled={selectedShot.startFrame?.status !== 'approved'}
-                        disabledReason="Approve start frame first"
-                        onGenerate={() => handleGenerateShot(selectedShot.id, false)}
-                        onApprove={() =>
-                          selectedShot.endFrame &&
-                          approveMutation.mutate(selectedShot.endFrame.id)
-                        }
-                        onReject={() =>
-                          selectedShot.endFrame &&
-                          rejectMutation.mutate(selectedShot.endFrame.id)
-                        }
-                        onRegenerate={() =>
-                          selectedShot.endFrame &&
-                          regenerateMutation.mutate(selectedShot.endFrame.id)
-                        }
-                        onInpaint={() =>
-                          selectedShot.endFrame &&
-                          handleInpaint(
-                            selectedShot.endFrame,
-                            selectedShot.shotId,
-                            'end'
-                          )
-                        }
-                      />
-                    )}
+                        {/* End Frame */}
+                        {selectedShot.requiresEndFrame && (
+                          <div className="flex flex-col">
+                            <FramePanel
+                              frame={selectedShot.endFrame}
+                              frameType="end"
+                              shotId={selectedShot.shotId}
+                              isDisabled={selectedShot.startFrame?.status !== 'approved'}
+                              disabledReason="Approve start frame first"
+                              onGenerate={() => handleGenerateShot(selectedShot.id, false)}
+                              onApprove={() =>
+                                selectedShot.endFrame &&
+                                approveMutation.mutate(selectedShot.endFrame.id)
+                              }
+                              onReject={() =>
+                                selectedShot.endFrame &&
+                                rejectMutation.mutate(selectedShot.endFrame.id)
+                              }
+                              onRegenerate={() =>
+                                selectedShot.endFrame &&
+                                regenerateMutation.mutate(selectedShot.endFrame.id)
+                              }
+                              onInpaint={() =>
+                                selectedShot.endFrame &&
+                                handleInpaint(
+                                  selectedShot.endFrame,
+                                  selectedShot.shotId,
+                                  'end'
+                                )
+                              }
+                              referenceImages={selectedShot.referenceImageOrder ?? undefined}
+                            />
+                            {/* Toggle end frame prompt panel */}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="mt-2"
+                              onClick={() => setShowEndPromptPanel(!showEndPromptPanel)}
+                            >
+                              {showEndPromptPanel ? (
+                                <PanelRightClose className="w-4 h-4 mr-1" />
+                              ) : (
+                                <PanelRightOpen className="w-4 h-4 mr-1" />
+                              )}
+                              End Prompt
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* End Frame Prompt Slide-in Panel */}
+                    <AnimatePresence>
+                      {showEndPromptPanel && selectedShot.requiresEndFrame && (
+                        <motion.div
+                          initial={{ width: 0, opacity: 0 }}
+                          animate={{ width: 320, opacity: 1 }}
+                          exit={{ width: 0, opacity: 0 }}
+                          transition={{ duration: 0.2, ease: 'easeInOut' }}
+                          className="overflow-hidden flex-shrink-0"
+                        >
+                          <div className="w-80 border-l border-border/50 pl-4 space-y-4">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-sm font-medium text-foreground">
+                                End Frame Prompt
+                              </h4>
+                              <Badge
+                                variant="secondary"
+                                className={cn(
+                                  'text-xs',
+                                  selectedShot.endFramePrompt
+                                    ? 'bg-emerald-500/20 text-emerald-400'
+                                    : 'bg-muted text-muted-foreground'
+                                )}
+                              >
+                                {selectedShot.endFramePrompt ? 'Set' : 'Empty'}
+                              </Badge>
+                            </div>
+
+                            {!selectedShot.endFramePrompt && !editedEndPrompt ? (
+                              <div className="space-y-3">
+                                <p className="text-xs text-muted-foreground">
+                                  Generate a dedicated end frame prompt using LLM. This replaces the default suffix-based approach.
+                                </p>
+                                <Button
+                                  variant="gold"
+                                  size="sm"
+                                  className="w-full"
+                                  onClick={() => generateEndFramePromptMutation.mutate(selectedShot.id)}
+                                  disabled={generateEndFramePromptMutation.isPending || !selectedShot.framePrompt}
+                                >
+                                  {generateEndFramePromptMutation.isPending ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <Sparkles className="w-4 h-4 mr-2" />
+                                  )}
+                                  Generate End Frame Prompt
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="space-y-3">
+                                <Textarea
+                                  value={editedEndPrompt}
+                                  onChange={(e) => setEditedEndPrompt(e.target.value)}
+                                  rows={8}
+                                  placeholder="End frame prompt..."
+                                  className="resize-none text-xs"
+                                />
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-1"
+                                    onClick={() => generateEndFramePromptMutation.mutate(selectedShot.id)}
+                                    disabled={generateEndFramePromptMutation.isPending}
+                                  >
+                                    {generateEndFramePromptMutation.isPending ? (
+                                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                    ) : (
+                                      <RefreshCw className="w-3 h-3 mr-1" />
+                                    )}
+                                    Regenerate
+                                  </Button>
+                                  {endPromptHasChanges && (
+                                    <Button
+                                      variant="gold"
+                                      size="sm"
+                                      className="flex-1"
+                                      onClick={() => saveEndFramePromptMutation.mutate({
+                                        shotId: selectedShot.id,
+                                        prompt: editedEndPrompt,
+                                      })}
+                                      disabled={saveEndFramePromptMutation.isPending}
+                                    >
+                                      {saveEndFramePromptMutation.isPending ? (
+                                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                      ) : (
+                                        <Save className="w-3 h-3 mr-1" />
+                                      )}
+                                      Save
+                                    </Button>
+                                  )}
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full"
+                                  onClick={() => handleGenerateShot(selectedShot.id, false)}
+                                  disabled={
+                                    !editedEndPrompt ||
+                                    selectedShot.startFrame?.status !== 'approved' ||
+                                    generateMutation.isPending
+                                  }
+                                >
+                                  <ImageIcon className="w-3 h-3 mr-1" />
+                                  Generate End Frame
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
 
                   {/* Shot context */}
