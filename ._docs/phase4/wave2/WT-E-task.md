@@ -69,3 +69,5 @@ This is sequential by nature — each shot depends on the previous. The bulk gen
 
 ### Types
 - `src/types/scene.ts` — `PromptSet` interface may need a `chainedContext?: string` field
+
+

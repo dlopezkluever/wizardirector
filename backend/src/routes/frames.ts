@@ -485,4 +485,230 @@ router.put('/:projectId/scenes/:sceneId/shots/:shotId/end-frame-prompt', async (
     }
 });
 
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/frames/:frameId/regenerate-with-correction
+ * Apply an LLM correction to the frame prompt, then regenerate
+ */
+router.post('/:projectId/scenes/:sceneId/frames/:frameId/regenerate-with-correction', async (req, res) => {
+    try {
+        const { projectId, sceneId, frameId } = req.params;
+        const { correction } = req.body;
+        const userId = req.user!.id;
+
+        if (!correction || typeof correction !== 'string') {
+            return res.status(400).json({ error: 'correction is required and must be a string' });
+        }
+
+        // Verify project ownership and get aspect_ratio
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id, aspect_ratio')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Get frame and its shot
+        const { data: frame, error: frameError } = await supabase
+            .from('frames')
+            .select('*, shots!inner(id, frame_prompt, end_frame_prompt)')
+            .eq('id', frameId)
+            .single();
+
+        if (frameError || !frame) {
+            return res.status(404).json({ error: 'Frame not found' });
+        }
+
+        const shot = (frame as any).shots;
+        const currentPrompt = frame.frame_type === 'end'
+            ? (shot.end_frame_prompt || shot.frame_prompt)
+            : shot.frame_prompt;
+
+        if (!currentPrompt) {
+            return res.status(400).json({ error: 'Frame has no prompt to correct' });
+        }
+
+        // Apply LLM correction
+        const correctedPrompt = await promptGenerationService.applyFramePromptCorrection(
+            currentPrompt,
+            correction,
+            frame.frame_type as 'start' | 'end'
+        );
+
+        // Update the shot's prompt in DB
+        const promptField = frame.frame_type === 'end' ? 'end_frame_prompt' : 'frame_prompt';
+        await supabase
+            .from('shots')
+            .update({ [promptField]: correctedPrompt, updated_at: new Date().toISOString() })
+            .eq('id', shot.id);
+
+        // Get visual style capsule
+        const { data: stageState } = await supabase
+            .from('stage_states')
+            .select('state_data')
+            .eq('project_id', projectId)
+            .eq('stage_number', 3)
+            .single();
+
+        const visualStyleCapsuleId = stageState?.state_data?.visualStyleCapsuleId;
+
+        // Regenerate the frame with corrected prompt
+        const updatedFrame = await frameGenerationService.regenerateFrame(
+            frameId,
+            projectId,
+            project.active_branch_id,
+            sceneId,
+            visualStyleCapsuleId,
+            project.aspect_ratio || '16:9'
+        );
+
+        res.json({
+            success: true,
+            frame: updatedFrame,
+            updatedPrompt: correctedPrompt,
+        });
+    } catch (error: any) {
+        console.error('Error in POST regenerate-with-correction:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/frames/:frameId/regenerate-with-prompt
+ * Update the frame prompt and regenerate
+ */
+router.post('/:projectId/scenes/:sceneId/frames/:frameId/regenerate-with-prompt', async (req, res) => {
+    try {
+        const { projectId, sceneId, frameId } = req.params;
+        const { prompt } = req.body;
+        const userId = req.user!.id;
+
+        if (!prompt || typeof prompt !== 'string') {
+            return res.status(400).json({ error: 'prompt is required and must be a string' });
+        }
+
+        // Verify project ownership and get aspect_ratio
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id, aspect_ratio')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Get frame and its shot
+        const { data: frame, error: frameError } = await supabase
+            .from('frames')
+            .select('*, shots!inner(id)')
+            .eq('id', frameId)
+            .single();
+
+        if (frameError || !frame) {
+            return res.status(404).json({ error: 'Frame not found' });
+        }
+
+        const shot = (frame as any).shots;
+
+        // Update the shot's prompt in DB
+        const promptField = frame.frame_type === 'end' ? 'end_frame_prompt' : 'frame_prompt';
+        await supabase
+            .from('shots')
+            .update({ [promptField]: prompt, updated_at: new Date().toISOString() })
+            .eq('id', shot.id);
+
+        // Get visual style capsule
+        const { data: stageState } = await supabase
+            .from('stage_states')
+            .select('state_data')
+            .eq('project_id', projectId)
+            .eq('stage_number', 3)
+            .single();
+
+        const visualStyleCapsuleId = stageState?.state_data?.visualStyleCapsuleId;
+
+        // Regenerate the frame with new prompt
+        const updatedFrame = await frameGenerationService.regenerateFrame(
+            frameId,
+            projectId,
+            project.active_branch_id,
+            sceneId,
+            visualStyleCapsuleId,
+            project.aspect_ratio || '16:9'
+        );
+
+        res.json({
+            success: true,
+            frame: updatedFrame,
+        });
+    } catch (error: any) {
+        console.error('Error in POST regenerate-with-prompt:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/shots/:shotId/chain-from-end-frame
+ * Chain an approved end frame as the next shot's start frame reference
+ */
+router.post('/:projectId/scenes/:sceneId/shots/:shotId/chain-from-end-frame', async (req, res) => {
+    try {
+        const { projectId, sceneId, shotId } = req.params;
+        const { endFrameUrl, fromShotId } = req.body;
+        const userId = req.user!.id;
+
+        if (!endFrameUrl || typeof endFrameUrl !== 'string') {
+            return res.status(400).json({ error: 'endFrameUrl is required' });
+        }
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Get current reference_image_order for the target shot
+        const { data: shot, error: shotError } = await supabase
+            .from('shots')
+            .select('reference_image_order')
+            .eq('id', shotId)
+            .eq('scene_id', sceneId)
+            .single();
+
+        if (shotError || !shot) {
+            return res.status(404).json({ error: 'Shot not found' });
+        }
+
+        const existingOrder = Array.isArray(shot.reference_image_order) ? shot.reference_image_order : [];
+
+        // Remove any existing continuity reference, then prepend the new one
+        const filtered = existingOrder.filter((entry: any) => entry.type !== 'continuity');
+        const newOrder = [
+            { label: 'Continuity', assetName: 'Previous End Frame', url: endFrameUrl, type: 'continuity' },
+            ...filtered,
+        ];
+
+        await supabase
+            .from('shots')
+            .update({ reference_image_order: newOrder, updated_at: new Date().toISOString() })
+            .eq('id', shotId);
+
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error('Error in POST chain-from-end-frame:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
 export const framesRouter = router;
