@@ -558,6 +558,25 @@ Describe the RESULTING end state — what does the scene look like AFTER the act
   }
 
   /**
+   * Apply a surgical correction to an existing frame prompt using LLM.
+   * Used for the regeneration-with-correction flow in Stage 10.
+   */
+  async applyFramePromptCorrection(
+    currentPrompt: string,
+    correction: string,
+    frameType: 'start' | 'end'
+  ): Promise<string> {
+    console.log(`[PromptGeneration] Applying correction to ${frameType} frame prompt`);
+
+    const systemPrompt = `You are editing an image generation prompt. Apply the user's correction surgically — change only what they asked for, keep everything else identical. Return ONLY the revised prompt, no explanation.`;
+
+    const userPrompt = `Current prompt:\n${currentPrompt}\n\nCorrection:\n${correction}`;
+
+    const response = await this.callLLM(systemPrompt, userPrompt, 'frame_prompt_correction');
+    return this.cleanPromptOutput(response, 1200);
+  }
+
+  /**
    * Call LLM with retry and timeout
    */
   private async callLLM(
