@@ -175,6 +175,13 @@ export interface SceneAssetRelevanceResult {
   }>;
 }
 
+export interface ReferenceImageOrderEntry {
+  label: string;
+  assetName: string;
+  url: string;
+  type: string;
+}
+
 export interface PromptSet {
   shotId: string;
   shotUuid?: string; // Database UUID for API calls
@@ -183,6 +190,7 @@ export interface PromptSet {
   systemPrompt?: string;
   requiresEndFrame: boolean;
   compatibleModels: string[];
+  referenceImageOrder?: ReferenceImageOrderEntry[] | null;
   promptsGeneratedAt?: string | null;
   // Shot context data (included in API response)
   duration?: number;
@@ -240,6 +248,8 @@ export interface ShotWithFrames {
   requiresEndFrame: boolean;
   framePrompt: string | null;
   videoPrompt: string | null;
+  referenceImageOrder?: ReferenceImageOrderEntry[] | null;
+  endFramePrompt?: string | null;
   startFrame: Frame | null;
   endFrame: Frame | null;
 }
