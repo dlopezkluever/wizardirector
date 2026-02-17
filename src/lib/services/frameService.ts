@@ -261,6 +261,91 @@ class FrameService {
   }
 
   /**
+   * Regenerate a frame with LLM-applied correction
+   */
+  async regenerateWithCorrection(
+    projectId: string,
+    sceneId: string,
+    frameId: string,
+    correction: string
+  ): Promise<FrameActionResponse & { updatedPrompt?: string }> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/frames/${frameId}/regenerate-with-correction`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ correction }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to regenerate with correction');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Regenerate a frame with a manually edited prompt
+   */
+  async regenerateWithPrompt(
+    projectId: string,
+    sceneId: string,
+    frameId: string,
+    prompt: string
+  ): Promise<FrameActionResponse> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/frames/${frameId}/regenerate-with-prompt`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ prompt }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to regenerate with prompt');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Chain an end frame as a reference for the next shot
+   */
+  async chainFromEndFrame(
+    projectId: string,
+    sceneId: string,
+    shotId: string,
+    endFrameUrl: string,
+    fromShotId: string
+  ): Promise<{ success: boolean }> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/shots/${shotId}/chain-from-end-frame`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ endFrameUrl, fromShotId }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to chain end frame');
+    }
+
+    return response.json();
+  }
+
+  /**
    * Poll for frame job status
    */
   async pollFrameStatus(
