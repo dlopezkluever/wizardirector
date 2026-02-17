@@ -177,7 +177,7 @@ export function FrameGrid({
             ) : (
               <>
                 <ImageIcon className="w-4 h-4 mr-1" />
-                Generate All
+                {pendingFrames === totalFrames ? 'Generate All' : 'Generate Remaining'}
               </>
             )}
           </Button>
