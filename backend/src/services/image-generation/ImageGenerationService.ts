@@ -24,6 +24,7 @@ export interface CreateImageJobRequest {
     shotId?: string;
     idempotencyKey?: string;
     referenceImageUrl?: string; // Optional reference image URL for merged assets
+    referenceImageUrls?: ReferenceImage[]; // Asset reference images (identity refs for frame gen)
     angleVariantId?: string; // For angle_variant jobs: the asset_angle_variants row ID
 }
 
@@ -303,6 +304,21 @@ export class ImageGenerationService {
                     textContext: request.manualVisualTone,
                     referenceImages: []
                 };
+            }
+
+            // Prepend asset reference images (identity refs) before style capsule images
+            if (request.referenceImageUrls && request.referenceImageUrls.length > 0) {
+                if (!visualStyleContext) {
+                    visualStyleContext = { textContext: '', referenceImages: [] };
+                }
+                // Prepend identity refs so they appear FIRST (before style capsule images)
+                const identityRefs = request.referenceImageUrls.map(r => ({
+                    url: r.url,
+                    mimeType: r.mimeType,
+                    role: r.role || 'identity' as const,
+                }));
+                visualStyleContext.referenceImages.unshift(...identityRefs);
+                console.log(`[ImageService] Prepended ${identityRefs.length} asset reference image(s) (identity) to context`);
             }
 
             // Prepend reference image URL if provided (master asset identity reference)
