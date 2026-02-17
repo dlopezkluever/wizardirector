@@ -440,24 +440,7 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                       Shot {promptSet.shotId}
                     </Badge>
                     <div className="flex items-center gap-2">
-                      {hasPrompts ? (
-                        <>
-                          <Badge
-                            variant="secondary"
-                            className="bg-blue-500/20 text-blue-400 text-xs"
-                          >
-                            <ImageIcon className="w-3 h-3 mr-1" />
-                            Frame
-                          </Badge>
-                          <Badge
-                            variant="secondary"
-                            className="bg-purple-500/20 text-purple-400 text-xs"
-                          >
-                            <Video className="w-3 h-3 mr-1" />
-                            Video
-                          </Badge>
-                        </>
-                      ) : (
+                      {!hasPrompts && (
                         <Badge
                           variant="secondary"
                           className="bg-amber-500/20 text-amber-400 text-xs"
@@ -468,40 +451,13 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                       <Badge
                         variant="secondary"
                         className={cn(
-                          'text-xs cursor-pointer select-none transition-colors',
+                          'text-xs select-none',
                           promptSet.requiresEndFrame
-                            ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-                            : 'bg-muted/40 text-muted-foreground hover:bg-muted/60'
+                            ? 'bg-emerald-500/20 text-emerald-400'
+                            : 'bg-muted/40 text-muted-foreground'
                         )}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (promptSet.shotUuid) {
-                            const newValue = !promptSet.requiresEndFrame;
-                            // Optimistic update
-                            setPromptSets(prev => prev.map(p =>
-                              p.shotId === promptSet.shotId
-                                ? { ...p, requiresEndFrame: newValue }
-                                : p
-                            ));
-                            promptService.updatePrompt(projectId, sceneId, promptSet.shotUuid, {
-                              requiresEndFrame: newValue,
-                            }).catch(() => {
-                              // Revert on error
-                              setPromptSets(prev => prev.map(p =>
-                                p.shotId === promptSet.shotId
-                                  ? { ...p, requiresEndFrame: !newValue }
-                                  : p
-                              ));
-                              toast({
-                                title: 'Error',
-                                description: 'Failed to update end frame setting',
-                                variant: 'destructive',
-                              });
-                            });
-                          }
-                        }}
                       >
-                        {promptSet.requiresEndFrame ? 'End Frame' : 'No End Frame'}
+                        {promptSet.requiresEndFrame ? 'End Frame Recommended' : 'No End Frame'}
                       </Badge>
                       {promptSet.hasChanges && (
                         <Badge
@@ -707,22 +663,13 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                           </div>
                         </div>
 
-                        {/* Model Compatibility Footer */}
-                        <div className="flex items-center justify-between pt-2 border-t border-border/30">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">Compatible Models:</span>
-                            {promptSet.compatibleModels.map(model => (
-                              <Badge key={model} variant="outline" className="text-xs">
-                                {model}
-                              </Badge>
-                            ))}
-                          </div>
-                          {promptSet.promptsGeneratedAt && (
+                        {promptSet.promptsGeneratedAt && (
+                          <div className="pt-2 border-t border-border/30">
                             <span className="text-xs text-muted-foreground">
                               Generated: {new Date(promptSet.promptsGeneratedAt).toLocaleString()}
                             </span>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     </motion.div>
                   )}
