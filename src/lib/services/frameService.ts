@@ -207,6 +207,60 @@ class FrameService {
   }
 
   /**
+   * Generate an end frame prompt for a shot using LLM
+   */
+  async generateEndFramePrompt(
+    projectId: string,
+    sceneId: string,
+    shotId: string
+  ): Promise<{ endFramePrompt: string }> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/shots/${shotId}/generate-end-frame-prompt`,
+      {
+        method: 'POST',
+        headers,
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to generate end frame prompt');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Save/update an end frame prompt for a shot
+   */
+  async saveEndFramePrompt(
+    projectId: string,
+    sceneId: string,
+    shotId: string,
+    endFramePrompt: string
+  ): Promise<{ success: boolean }> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/shots/${shotId}/end-frame-prompt`,
+      {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ endFramePrompt }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to save end frame prompt');
+    }
+
+    return response.json();
+  }
+
+  /**
    * Poll for frame job status
    */
   async pollFrameStatus(
