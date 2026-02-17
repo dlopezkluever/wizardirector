@@ -49,11 +49,19 @@ export interface SceneAssetInstanceData {
   matched_angle_url?: string;
 }
 
+export interface ReferenceImageOrderEntry {
+  label: string;
+  assetName: string;
+  url: string;
+  type: string;
+}
+
 export interface GeneratedPromptSet {
   framePrompt: string;
   videoPrompt: string;
   requiresEndFrame: boolean;
   compatibleModels: string[];
+  referenceImageOrder: ReferenceImageOrderEntry[];
 }
 
 export interface BulkPromptGenerationResult {
@@ -63,6 +71,7 @@ export interface BulkPromptGenerationResult {
   videoPrompt?: string;
   requiresEndFrame?: boolean;
   compatibleModels?: string[];
+  referenceImageOrder?: ReferenceImageOrderEntry[];
   error?: string;
 }
 
@@ -114,6 +123,52 @@ export function enrichAssetsWithAngleMatch(
       matched_angle_url: match?.image_url ?? undefined,
     };
   });
+}
+
+/**
+ * 4D.2: Build a numbered image manifest for the LLM system prompt and an ordered
+ * list of reference images for the image generation API.
+ *
+ * Sorts assets: characters → locations → props.
+ * For each asset with an image, picks the best URL:
+ *   matched_angle_url > image_key_url (scene instance) > master_image_url
+ */
+export function buildNumberedImageManifest(
+  assets: SceneAssetInstanceData[]
+): { manifest: string; imageOrder: ReferenceImageOrderEntry[] } {
+  const sortOrder: Record<string, number> = { character: 0, location: 1, prop: 2 };
+  const sorted = [...assets].sort((a, b) => {
+    const aOrder = sortOrder[a.project_asset?.asset_type ?? 'prop'] ?? 2;
+    const bOrder = sortOrder[b.project_asset?.asset_type ?? 'prop'] ?? 2;
+    return aOrder - bOrder;
+  });
+
+  const imageOrder: ReferenceImageOrderEntry[] = [];
+  let index = 1;
+
+  for (const asset of sorted) {
+    const url = asset.matched_angle_url || asset.image_key_url || asset.master_image_url;
+    if (!url) continue;
+
+    const name = asset.project_asset?.name ?? 'Unknown';
+    const type = asset.project_asset?.asset_type ?? 'unknown';
+    imageOrder.push({
+      label: `Image #${index}`,
+      assetName: name,
+      url,
+      type,
+    });
+    index++;
+  }
+
+  if (imageOrder.length === 0) {
+    return { manifest: '', imageOrder: [] };
+  }
+
+  const lines = imageOrder.map(entry => `${entry.label}: ${entry.assetName} (${entry.type})`);
+  const manifest = `REFERENCE IMAGES (attached alongside this prompt during image generation):\n${lines.join('\n')}`;
+
+  return { manifest, imageOrder };
 }
 
 /**
@@ -270,8 +325,14 @@ export class PromptGenerationService {
     const assetContext = buildAssetContext(enrichedAssets);
     const styleContext = buildStyleContext(styleCapsule);
 
+    // 4D.2: Build numbered image manifest for LLM context + API reference ordering
+    const { manifest: imageManifest, imageOrder: referenceImageOrder } = buildNumberedImageManifest(enrichedAssets);
+    if (referenceImageOrder.length > 0) {
+      console.log(`[PromptGeneration] Built image manifest with ${referenceImageOrder.length} reference(s) for shot ${shot.shot_id}`);
+    }
+
     // Generate frame prompt (visual/spatial focus)
-    const framePrompt = await this.generateFramePrompt(shot, assetContext, styleContext);
+    const framePrompt = await this.generateFramePrompt(shot, assetContext, styleContext, imageManifest);
 
     // Generate video prompt (action/audio focus)
     const videoPrompt = await this.generateVideoPrompt(shot, framePrompt);
@@ -280,13 +341,14 @@ export class PromptGenerationService {
     const requiresEndFrame = determineRequiresEndFrame(shot);
     const compatibleModels = determineCompatibleModels(shot, framePrompt);
 
-    console.log(`[PromptGeneration] Generated prompts for shot ${shot.shot_id} (endFrame: ${requiresEndFrame})`);
+    console.log(`[PromptGeneration] Generated prompts for shot ${shot.shot_id} (endFrame: ${requiresEndFrame}, refs: ${referenceImageOrder.length})`);
 
     return {
       framePrompt,
       videoPrompt,
       requiresEndFrame,
       compatibleModels,
+      referenceImageOrder,
     };
   }
 
@@ -313,6 +375,7 @@ export class PromptGenerationService {
           videoPrompt: promptSet.videoPrompt,
           requiresEndFrame: promptSet.requiresEndFrame,
           compatibleModels: promptSet.compatibleModels,
+          referenceImageOrder: promptSet.referenceImageOrder,
         });
       } catch (error) {
         console.error(`[PromptGeneration] Failed to generate prompts for shot ${shot.shot_id}:`, error);
@@ -338,7 +401,8 @@ export class PromptGenerationService {
   private async generateFramePrompt(
     shot: ShotData,
     assetContext: string,
-    styleContext: string
+    styleContext: string,
+    imageManifest: string = ''
   ): Promise<string> {
     const systemPrompt = `You are a visual prompt engineer for AI image generation (starting frames for Veo 3.1 video pipeline).
 
@@ -361,7 +425,11 @@ RULES:
 ASSET DESCRIPTIONS:
 ${assetContext}
 
-${styleContext}`;
+${styleContext}${imageManifest ? `
+
+${imageManifest}
+
+IMPORTANT: The reference images above will be attached during generation. Write vivid descriptions INFORMED by knowing these refs exist. Do NOT include "Image #N" in your output text.` : ''}`;
 
     // Extract static camera info (shot type + angle) vs movement for routing guidance
     const userPrompt = `Generate a STARTING FRAME prompt for this shot:
@@ -426,6 +494,67 @@ Write the video prompt. Focus on action, movement, dialogue delivery, and sound.
 
     const response = await this.callLLM(systemPrompt, userPrompt, 'video_prompt');
     return this.cleanPromptOutput(response, 500);
+  }
+
+  /**
+   * Generate an end frame prompt for a shot.
+   * Describes the frozen end-state: same camera, same characters (only pose/expression changes),
+   * references the start frame prompt as "before" state, shot action as "what happened".
+   */
+  async generateEndFramePrompt(
+    shot: ShotData,
+    startFramePrompt: string,
+    sceneAssets: SceneAssetInstanceData[],
+    styleCapsule?: StyleCapsule | null
+  ): Promise<string> {
+    console.log(`[PromptGeneration] Generating end frame prompt for shot ${shot.shot_id}`);
+
+    const enrichedAssets = enrichAssetsWithAngleMatch(sceneAssets, shot.camera);
+    const assetContext = buildAssetContext(enrichedAssets);
+    const styleContext = buildStyleContext(styleCapsule);
+
+    const systemPrompt = `You are a visual prompt engineer for AI image generation (end frames for Veo 3.1 video pipeline).
+
+YOUR TASK: Generate a single dense paragraph describing a FROZEN VISUAL SNAPSHOT — the END frame of a shot. This is a PHOTOGRAPH, not a video. There is NO action, NO dialogue, NO sound, NO movement.
+
+This end frame shows the RESULT of the action that occurred during the shot. Same camera position, same characters — only their poses, expressions, and positions have changed.
+
+CONTEXT:
+- The START frame prompt (below) describes how the shot BEGAN
+- The shot action describes WHAT HAPPENED during the shot
+- The shot duration tells you HOW LONG the action took
+- Your job is to describe the RESULTING end state
+
+RULES:
+- Same camera position and framing as the start frame
+- Same characters, same clothing, same environment
+- Only change: poses, expressions, positions, and effects of the action
+- NO action verbs, NO dialogue, NO sound, NO movement — this is a still image
+- Reference character appearances EXACTLY from the asset descriptions
+- Output ONLY the prompt text as a single paragraph, max 1200 characters
+- No JSON, no headers, no formatting
+
+ASSET DESCRIPTIONS:
+${assetContext}
+
+${styleContext}`;
+
+    const userPrompt = `Generate an END FRAME prompt for this shot:
+
+Shot: ${shot.shot_id} | Duration: ${shot.duration}s
+Camera: ${shot.camera}
+Action that occurred: ${shot.action}
+Dialogue that was spoken: ${shot.dialogue || 'None'}
+Foreground characters: ${shot.characters_foreground.join(', ') || 'None'}
+Background characters: ${shot.characters_background.join(', ') || 'None'}
+
+START FRAME (the "before" state):
+${startFramePrompt}
+
+Describe the RESULTING end state — what does the scene look like AFTER the action is complete? Same camera, same environment, only poses/expressions/positions changed. Output ONLY the prompt text.`;
+
+    const response = await this.callLLM(systemPrompt, userPrompt, 'end_frame_prompt');
+    return this.cleanPromptOutput(response, 1200);
   }
 
   /**
