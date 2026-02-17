@@ -68,8 +68,25 @@ export class NanoBananaClient implements ImageProvider {
             // Build enhanced prompt with visual style context
             let prompt = options.prompt;
             if (options.visualStyleContext || (options.referenceImages && options.referenceImages.length > 0)) {
-                if (imageParts.length > 1) {
-                    // Multiple reference images: first is subject/identity, rest are style references
+                // Count identity vs style images based on role
+                const identityCount = options.referenceImages?.filter(r => r.role === 'identity').length ?? 0;
+                const styleCount = options.referenceImages?.filter(r => r.role === 'style').length ?? 0;
+                const hasRoles = identityCount > 0 || styleCount > 0;
+
+                if (hasRoles && identityCount > 0 && styleCount > 0 && imageParts.length > 1) {
+                    // Mixed identity + style images: differentiate clearly
+                    const styleGuidance = options.visualStyleContext
+                        ? `Apply these style guidelines: ${options.visualStyleContext}. `
+                        : '';
+                    prompt = `Maintain the characters/subjects from the FIRST ${identityCount} identity reference image(s) — preserve their exact appearance, features, clothing, and distinguishing details. Apply the visual style, color palette, mood, and aesthetic from the remaining ${styleCount} style reference image(s). ${styleGuidance}Subject: ${options.prompt}`;
+                } else if (hasRoles && identityCount > 0 && styleCount === 0) {
+                    // Identity only: maintain character appearance from all refs
+                    const styleGuidance = options.visualStyleContext
+                        ? `Apply these style guidelines: ${options.visualStyleContext}. `
+                        : '';
+                    prompt = `Maintain the characters/subjects from the ${identityCount} reference image(s) — preserve their exact appearance, features, clothing, and distinguishing details. ${styleGuidance}Subject: ${options.prompt}`;
+                } else if (imageParts.length > 1) {
+                    // Legacy (no roles): first is subject/identity, rest are style references
                     const styleGuidance = options.visualStyleContext
                         ? `Apply these style guidelines: ${options.visualStyleContext}. `
                         : '';
@@ -82,7 +99,6 @@ export class NanoBananaClient implements ImageProvider {
                     prompt = `Generate an image that matches the visual style, color palette, mood, and aesthetic shown in the provided reference image. ${styleGuidance}Subject: ${options.prompt}`;
                 } else if (options.visualStyleContext) {
                     // No successfully loaded images, fallback to text-only style context
-                    // Use more directive prompt to strengthen style influence
                     prompt = `Generate an image with the following visual style applied strongly throughout: ${options.visualStyleContext}\n\nSubject: ${options.prompt}\n\nIMPORTANT: The visual style described above must be clearly evident in the generated image.`;
                 }
             }
