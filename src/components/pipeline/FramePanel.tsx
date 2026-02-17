@@ -8,9 +8,11 @@ import {
   Paintbrush,
   Eye,
   Loader2,
+  Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import type { Frame, FrameType } from '@/types/scene';
 
@@ -31,10 +33,14 @@ interface FramePanelProps {
   onApprove: () => void;
   onReject: () => void;
   onRegenerate: () => void;
+  onRegenerateWithCorrection?: (correction: string) => void;
+  onRegenerateWithEditedPrompt?: (prompt: string) => void;
+  currentPrompt?: string;
   onInpaint: () => void;
   onCompare?: () => void;
   showCompare?: boolean;
   referenceImages?: ReferenceImageEntry[];
+  hideHeader?: boolean;
 }
 
 const STATUS_STYLES: Record<string, { badge: string; label: string }> = {
@@ -55,12 +61,20 @@ export function FramePanel({
   onApprove,
   onReject,
   onRegenerate,
+  onRegenerateWithCorrection,
+  onRegenerateWithEditedPrompt,
+  currentPrompt,
   onInpaint,
   onCompare,
   showCompare = false,
   referenceImages,
+  hideHeader = false,
 }: FramePanelProps) {
   const [imageError, setImageError] = useState(false);
+  const [showRegenOptions, setShowRegenOptions] = useState(false);
+  const [correctionText, setCorrectionText] = useState('');
+  const [showManualEdit, setShowManualEdit] = useState(false);
+  const [editedPrompt, setEditedPrompt] = useState('');
 
   const status = frame?.status || 'pending';
   const hasImage = frame?.imageUrl && !imageError;
@@ -72,18 +86,48 @@ export function FramePanel({
 
   const statusStyle = STATUS_STYLES[status] || STATUS_STYLES.pending;
 
+  const handleRegenClick = () => {
+    if (onRegenerateWithCorrection) {
+      setShowRegenOptions(true);
+      setCorrectionText('');
+      setShowManualEdit(false);
+      setEditedPrompt(currentPrompt || '');
+    } else {
+      onRegenerate();
+    }
+  };
+
+  const handleCorrectionSubmit = () => {
+    if (correctionText.trim() && onRegenerateWithCorrection) {
+      onRegenerateWithCorrection(correctionText.trim());
+      setShowRegenOptions(false);
+      setCorrectionText('');
+    }
+  };
+
+  const handleManualPromptSubmit = () => {
+    if (editedPrompt.trim() && onRegenerateWithEditedPrompt) {
+      onRegenerateWithEditedPrompt(editedPrompt.trim());
+      setShowRegenOptions(false);
+      setEditedPrompt('');
+      setShowManualEdit(false);
+    }
+  };
+
   return (
     <div className={cn('flex flex-col', isDisabled && 'opacity-60')}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium text-foreground capitalize">
-          {frameType} Frame
-        </h3>
-        <Badge variant="secondary" className={statusStyle.badge}>
-          {isGenerating && <RefreshCw className="w-3 h-3 mr-1 animate-spin" />}
-          {statusStyle.label}
-        </Badge>
-      </div>
+      {!hideHeader && (
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-foreground capitalize">
+            {frameType} Frame
+          </h3>
+          <Badge variant="secondary" className={statusStyle.badge}>
+            {isGenerating && <RefreshCw className="w-3 h-3 mr-1 animate-spin" />}
+            {statusStyle.label}
+          </Badge>
+        </div>
+      )}
 
       {/* Frame Display */}
       <div
@@ -179,7 +223,7 @@ export function FramePanel({
             variant="gold"
             className="w-full"
             disabled={isDisabled || isGenerating}
-            onClick={frame ? onRegenerate : onGenerate}
+            onClick={frame ? handleRegenClick : onGenerate}
           >
             <ImageIcon className="w-4 h-4 mr-2" />
             {frame ? 'Regenerate' : 'Generate'} {frameType} Frame
@@ -218,7 +262,7 @@ export function FramePanel({
               variant="outline"
               size="sm"
               className="flex-1"
-              onClick={onRegenerate}
+              onClick={handleRegenClick}
               disabled={isDisabled}
             >
               <RefreshCw className="w-4 h-4 mr-1" />
@@ -231,6 +275,95 @@ export function FramePanel({
           </>
         ) : null}
       </div>
+
+      {/* Regeneration correction area */}
+      {showRegenOptions && canRegenerate && (
+        <div className="mt-3 p-3 rounded-lg border border-border/50 bg-card/50 space-y-3">
+          {!showManualEdit ? (
+            <>
+              <div className="space-y-2">
+                <Textarea
+                  value={correctionText}
+                  onChange={(e) => setCorrectionText(e.target.value)}
+                  rows={2}
+                  placeholder="Describe what to change... (e.g. &quot;tighter on face, lower angle&quot;)"
+                  className="resize-none text-xs"
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <Button
+                    variant="gold"
+                    size="sm"
+                    className="flex-1"
+                    onClick={handleCorrectionSubmit}
+                    disabled={!correctionText.trim()}
+                  >
+                    <RefreshCw className="w-3 h-3 mr-1" />
+                    Regenerate with Correction
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      onRegenerate();
+                      setShowRegenOptions(false);
+                    }}
+                  >
+                    Re-roll
+                  </Button>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowManualEdit(true);
+                  setEditedPrompt(currentPrompt || '');
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+              >
+                <Pencil className="w-3 h-3" />
+                Edit prompt manually
+              </button>
+            </>
+          ) : (
+            <div className="space-y-2">
+              <Textarea
+                value={editedPrompt}
+                onChange={(e) => setEditedPrompt(e.target.value)}
+                rows={4}
+                placeholder="Full prompt..."
+                className="resize-none text-xs"
+              />
+              <div className="flex gap-2">
+                <Button
+                  variant="gold"
+                  size="sm"
+                  className="flex-1"
+                  onClick={handleManualPromptSubmit}
+                  disabled={!editedPrompt.trim()}
+                >
+                  <ImageIcon className="w-3 h-3 mr-1" />
+                  Generate with Edited Prompt
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowManualEdit(false)}
+                >
+                  Back
+                </Button>
+              </div>
+            </div>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full text-xs"
+            onClick={() => setShowRegenOptions(false)}
+          >
+            Cancel
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
