@@ -150,24 +150,6 @@ export function Stage10FrameGeneration({
     },
   });
 
-  // Approve frame mutation
-  const approveMutation = useMutation({
-    mutationFn: (frameId: string) =>
-      frameService.approveFrame(projectId, sceneId, frameId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
-    },
-  });
-
-  // Reject frame mutation
-  const rejectMutation = useMutation({
-    mutationFn: (frameId: string) =>
-      frameService.rejectFrame(projectId, sceneId, frameId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
-    },
-  });
-
   // Regenerate frame mutation
   const regenerateMutation = useMutation({
     mutationFn: (frameId: string) =>
@@ -376,24 +358,6 @@ export function Stage10FrameGeneration({
     generateMutation.mutate({ startOnly: false });
   };
 
-  // Handle approve all generated frames
-  const handleApproveAllGenerated = async () => {
-    const framesToApprove = shots.flatMap((shot) => {
-      const frames: string[] = [];
-      if (shot.startFrame?.status === 'generated') {
-        frames.push(shot.startFrame.id);
-      }
-      if (shot.endFrame?.status === 'generated') {
-        frames.push(shot.endFrame.id);
-      }
-      return frames;
-    });
-
-    for (const frameId of framesToApprove) {
-      await approveMutation.mutateAsync(frameId);
-    }
-  };
-
   // Check if there's something to compare with for current shot
   const canCompare = useCallback(
     (shotId: string) => {
@@ -478,8 +442,7 @@ export function Stage10FrameGeneration({
       {/* Cost Display */}
       <CostDisplay
         totalCredits={costSummary.totalCredits}
-        approvedFrames={progress.approvedFrames}
-        generatedFrames={progress.generatedFrames}
+        readyFrames={progress.readyFrames}
         generatingFrames={progress.generatingFrames}
         totalFrames={progress.totalFrames}
       />
@@ -533,7 +496,6 @@ export function Stage10FrameGeneration({
           shots={shots}
           onSelectShot={setSelectedShotId}
           onGenerateAll={handleGenerateAll}
-          onApproveAllGenerated={handleApproveAllGenerated}
           isGenerating={generateMutation.isPending}
           selectedShotId={selectedShotId || undefined}
         />
@@ -578,10 +540,8 @@ export function Stage10FrameGeneration({
                         <div
                           className={cn(
                             'flex-1 h-12 rounded border flex items-center justify-center overflow-hidden',
-                            shot.startFrame?.status === 'approved'
+                            (shot.startFrame?.status === 'approved' || shot.startFrame?.status === 'generated')
                               ? 'border-emerald-500/50 bg-emerald-500/10'
-                              : shot.startFrame?.status === 'generated'
-                              ? 'border-amber-500/50 bg-amber-500/10'
                               : 'border-border/30 bg-muted/20'
                           )}
                         >
@@ -601,10 +561,8 @@ export function Stage10FrameGeneration({
                           <div
                             className={cn(
                               'flex-1 h-12 rounded border flex items-center justify-center overflow-hidden',
-                              shot.endFrame?.status === 'approved'
+                              (shot.endFrame?.status === 'approved' || shot.endFrame?.status === 'generated')
                                 ? 'border-emerald-500/50 bg-emerald-500/10'
-                                : shot.endFrame?.status === 'generated'
-                                ? 'border-amber-500/50 bg-amber-500/10'
                                 : 'border-border/30 bg-muted/20'
                             )}
                           >
@@ -647,14 +605,6 @@ export function Stage10FrameGeneration({
                       projectId={projectId}
                       sceneId={sceneId}
                       onGenerate={() => handleGenerateShot(selectedShot.id, true)}
-                      onApprove={() =>
-                        selectedShot.startFrame &&
-                        approveMutation.mutate(selectedShot.startFrame.id)
-                      }
-                      onReject={() =>
-                        selectedShot.startFrame &&
-                        rejectMutation.mutate(selectedShot.startFrame.id)
-                      }
                       onRegenerate={() =>
                         selectedShot.startFrame &&
                         regenerateMutation.mutate(selectedShot.startFrame.id)
@@ -708,17 +658,9 @@ export function Stage10FrameGeneration({
                           shotId={selectedShot.shotId}
                           projectId={projectId}
                           sceneId={sceneId}
-                          isGenerateDisabled={selectedShot.startFrame?.status !== 'approved'}
-                          disabledReason="Approve start frame first"
+                          isGenerateDisabled={selectedShot.startFrame?.status !== 'approved' && selectedShot.startFrame?.status !== 'generated'}
+                          disabledReason="Start frame must be ready first"
                           onGenerate={() => handleGenerateShot(selectedShot.id, false)}
-                          onApprove={() =>
-                            selectedShot.endFrame &&
-                            approveMutation.mutate(selectedShot.endFrame.id)
-                          }
-                          onReject={() =>
-                            selectedShot.endFrame &&
-                            rejectMutation.mutate(selectedShot.endFrame.id)
-                          }
                           onRegenerate={() =>
                             selectedShot.endFrame &&
                             regenerateMutation.mutate(selectedShot.endFrame.id)
@@ -750,7 +692,7 @@ export function Stage10FrameGeneration({
                           hideHeader
                         />
                         {/* "Use as Next Start" chain button */}
-                        {selectedShot.endFrame?.status === 'approved' &&
+                        {(selectedShot.endFrame?.status === 'approved' || selectedShot.endFrame?.status === 'generated') &&
                           selectedShot.endFrame?.imageUrl &&
                           getNextShot(selectedShot.id) && (
                           <Button
