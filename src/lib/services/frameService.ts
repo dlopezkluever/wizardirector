@@ -407,6 +407,33 @@ class FrameService {
   }
 
   /**
+   * Delete a non-current generation from a frame
+   */
+  async deleteFrameGeneration(
+    projectId: string,
+    sceneId: string,
+    frameId: string,
+    jobId: string
+  ): Promise<{ success: boolean }> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/frames/${frameId}/generations/${jobId}`,
+      {
+        method: 'DELETE',
+        headers,
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to delete generation');
+    }
+
+    return response.json();
+  }
+
+  /**
    * Poll for frame job status
    */
   async pollFrameStatus(
@@ -505,6 +532,7 @@ class FrameService {
     generatingFrames: number;
     pendingFrames: number;
     rejectedFrames: number;
+    readyFrames: number;
   } {
     let totalFrames = 0;
     let approvedFrames = 0;
@@ -570,6 +598,7 @@ class FrameService {
       generatingFrames,
       pendingFrames,
       rejectedFrames,
+      readyFrames: approvedFrames + generatedFrames,
     };
   }
 }
