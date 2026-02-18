@@ -6,7 +6,6 @@ import {
   Box,
   ChevronLeft,
   ChevronRight,
-  Sparkles,
   LogOut
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -51,8 +50,8 @@ export function GlobalSidebar({}: GlobalSidebarProps) {
     >
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-6 border-b border-sidebar-border">
-        <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/20 shadow-gold">
-          <Sparkles className="w-5 h-5 text-primary" />
+        <div className="flex items-center justify-center w-15 h-15 rounded-xl shadow-gold overflow-hidden" style={{ backgroundColor: '#0d1015' }}>
+          <img src="/aiuteur-simple.png" alt="Aiuteur" className="w-14 h-14 object-contain" />
         </div>
         {!collapsed && (
           <motion.div

@@ -189,6 +189,7 @@ export interface PromptSet {
   videoPrompt: string;
   systemPrompt?: string;
   requiresEndFrame: boolean;
+  aiRecommendsEndFrame?: boolean | null;
   compatibleModels: string[];
   referenceImageOrder?: ReferenceImageOrderEntry[] | null;
   promptsGeneratedAt?: string | null;
@@ -246,6 +247,7 @@ export interface ShotWithFrames {
   setting: string;
   camera: string;
   requiresEndFrame: boolean;
+  aiRecommendsEndFrame?: boolean | null;
   framePrompt: string | null;
   videoPrompt: string | null;
   referenceImageOrder?: ReferenceImageOrderEntry[] | null;

@@ -996,11 +996,3 @@ COMMENT ON COLUMN shots.end_frame_prompt IS 'LLM-generated or user-edited end fr
 4. **The `referenceImageOrder` field is per-shot, not per-scene** — different shots may reference different assets (based on characters_foreground/background) and different angle variants (based on camera angle).
 5. **End frame prompt generation is on-demand** — it's triggered by the user in Stage 10, NOT auto-generated in Stage 9. This is intentional: users should have their start frames approved before committing to end frame prompts.
 6. **Backward compatibility** — shots that don't have `reference_image_order` or `end_frame_prompt` (old data) should still work. The system should gracefully fall back to text-only generation (current behavior) when these fields are null.
-
-Hey Matt, I hope things have been going well both at alpha and with life ol chap. I know this is a bit out of the blue, and I apologize for not having kept in touch, but I need to ask a small favor. I'm in the process of getting on boarded for the job in the treasury and the last hurdle I have to clear is getting this rather invasive background check for a trust clearence. As part of it they require contact info from people who knew me at certain points of my life in the last 7 years. Now from what i've been told by the CIO, they only contact a small number of the people listed, so it's kinda like a roulette. But all that's to say, would it be cool if I put you down as to cover the timeperiod in and around gauntlet? I would need to put on the form your phone #, email, and address. If they choose to contact you, it will most likely be a phone call of like 5-15 mins, but also maybe a form mailed/emailed (they no longer do in person visits, and those were rare and really for top secret secruity clearances anyways). If not, no sweat at all, just lmk, and thanks for considering.
-
-
-
- (and if they ask I LOVE trump I BLEED maga I HATE all foriegn countries I HATE all libtards and my flaws are that I care TOO much and I work TOO hard!) 
-
-Also 

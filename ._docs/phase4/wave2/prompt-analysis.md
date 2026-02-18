@@ -1247,3 +1247,257 @@ Build an internal tool that lets you:
 - Track prompt performance over time
 
 This is the most impactful infrastructure investment for systematic prompt improvement.
+
+Haha dude I've re-entered this sort of homeless arc
+
+
+## *DEV/User Thoughts*:
+
+1. Frame Prompt HAS Image refferences for a Image Gen Call:
+
+-> Take into account character descriptions, either from stage 8 if using Scene Ref Image OR 
+Stage 5 if using Master Asset (and when using past scene's reference image, just use THAT scenes' description as the baseline), and KNOWING that those said individual descriptions were known to be used to generate the image, you THUS don't actually need to include said descriptions in the frame / video prompts.
+
+
+
+
+
+
+There's a deterministic way to do this. I KNOW IT TO BE TRUE
+
+
+
+
+
+Indeed, make the frame prompts be much more procise about framing and like physcial placement of misc en scene in shot, and make sure to keep continuity throught scene, unless explicitly asked to be changed. 
+
+Example: 
+
+
+
+2. Frame Prompt is Sans Image ref Gen Call:]
+
+
+SO let's take for example:
+Persephone, in scene 2 starts as normal (blond nature princess), thus in the Stage 8 visual description she is set as such, with a description matching her master asset description very simularly, and here Scene Instance image again depicting her as her blonde nature princess. However, lets say, as the scene progresses, she transforms to a dark goth underworld queen look. I don't think our application is really designed to handle such edge cases, and I want to think about how we can make the requesite enhancements to be able to handle such situtations. 
+I believe WT-F-task description handles changes between scenes, but what about WITHIN scenes, this is not accounted for.
+Additioanlly, what about changes that occur within a SINGLE SHot, (think a shot of cinderella, at midnight, when she transforms from princess to poor maid rags) and then for the rest of the scene is in this poor rags look, not like the princess from the begenging of the scene (thus the scene instance image is insufficent to describe here), AND the changes that occured.
+How can we upgrade our design off our pipelien to handle such situations
+Let's brainstorm and discuss, before later trying to make a plan to implenet the enhancements.
+
+
+This is a great architectural question. I've now read both task docs, the full prompt-analysis doc, and deep-dived the   
+  current data model. Let me layeoutDtheeproblemzclearlypanduthen/brainstormtapproaches.s/scene.ts" - Not a directory      
+
+  ---
+  The Problem: Three Levels of Visual Transformation
+
+  Your current architecture has a fundamental assumption: one effective_description per asset per scene. A
+  scene_asset_instance row gives you exactly one description, one image, and one set of status tags for the entire scene.  
+  This works perfectly for the common case but breaks down at three levels:
+
+  Level 1: Cross-Scene (WT-F covers this)
+
+  Persephone is blonde in Scene 1, goth in Scene 4
+
+  This is the case WT-F addresses. Each scene gets its own scene_asset_instance with a different effective_description. The   adaptive description service detects the scene context and generates the right description. Solved by WT-F.
+
+  Level 2: Within-Scene, Cross-Shot (NOT covered)
+
+  Persephone starts Scene 2 as blonde (shots 1-3), transforms in shot 4, is goth for shots 5-8
+
+  The current scene_asset_instance can only hold ONE description. buildAssetContext(assets) assembles the same asset       
+  context for ALL shots in the scene. So shots 5-8 still inject "blonde nature princess" into the frame prompts even though   she's already transformed.
+
+  Level 3: Within-Shot (NOT covered)
+
+  Cinderella's midnight transformation — princess to rags in a single shot
+
+  This is the hardest case. The current architecture:
+  - Start frame prompt uses effective_description → shows princess
+  - End frame prompt explicitly says "same characters, same clothing, same environment" → still shows princess
+  - Video prompt explicitly says "NO character appearance descriptions" → can't describe the transformation
+
+  The end frame is architecturally forbidden from showing the transformation, and the video prompt is forbidden from       
+  describing it.
+
+  ---
+  Current Architecture Gaps
+
+  Gap: One description per asset per scene
+  Where: scene_asset_instances.effective_description
+  Impact: Can't represent pre/post states within a scene
+  ────────────────────────────────────────
+  Gap: One image per asset per scene
+  Where: scene_asset_instances.image_key_url
+  Impact: Scene instance image only shows one look
+  ────────────────────────────────────────
+  Gap: Same asset context for all shots
+  Where: buildAssetContext() in promptGenerationService
+  Impact: All shots get identical character descriptions
+  ────────────────────────────────────────
+  Gap: End frame copies start frame appearance
+  Where: 9C system prompt: "same clothing"
+  Impact: Transformation result can't be depicted
+  ────────────────────────────────────────
+  Gap: Video prompt bans appearance language
+  Where: 9B system prompt: "NO character appearance"
+  Impact: Transformation action can't be described
+  ────────────────────────────────────────
+  Gap: No transformation event model
+  Where: No table/type for it
+  Impact: Pipeline has no concept of "appearance changes here"
+
+  ---
+  Brainstorm: The "Transformation Event" Concept
+
+  The cleanest architectural addition I see is introducing a transformation event — a first-class entity that marks a      
+  specific shot as a visual transformation boundary.
+
+  Data Model
+
+  transformation_events
+  ├── id (UUID)
+  ├── scene_id (FK → scenes)
+  ├── scene_asset_instance_id (FK → scene_asset_instances)
+  ├── trigger_shot_id (FK → shots) — the shot where transformation occurs
+  ├── transformation_type: 'instant' | 'gradual' | 'within_shot'
+  ├── pre_description (TEXT) — appearance before (defaults from effective_description)
+  ├── post_description (TEXT) — appearance after
+  ├── post_status_tags (TEXT[]) — new status tags after transformation
+  ├── post_image_key_url (TEXT, nullable) — optional post-transformation reference image
+  ├── transformation_action (TEXT) — what the transformation looks like visually
+  ├── auto_detected (BOOLEAN) — was this detected by LLM or manually created?
+  └── user_confirmed (BOOLEAN) — has user reviewed and confirmed?
+
+  How It Changes Prompt Generation
+
+  During generateBulkPromptSets(), for each shot:
+
+  1. Check: Is there a transformation event for any asset in this scene?
+  2. For shots BEFORE the trigger shot: Use pre_description (same as current effective_description)
+  3. For the trigger shot itself:
+    - If within_shot: Start frame uses pre_description, end frame uses post_description, video prompt gets special
+  permission to describe the visual change using transformation_action
+    - If instant: Start frame = pre, end frame = post, video prompt describes the instant change
+    - If gradual: Start frame = pre, end frame = a transitional blend, video prompt describes the progression
+  4. For shots AFTER the trigger shot: Use post_description instead of effective_description
+
+  How It Integrates With Existing Architecture
+
+  - Stage 7 (Shot Extraction): Add a transformation_flag field to shot output. The LLM already reads the full script — add 
+  to the prompt: "Flag any shot where a character's physical appearance changes significantly (costume change,
+  transformation, injury)."
+  - Stage 8 (Scene Asset Relevance): The relevance detection already analyzes the script + shot list. Extend it to detect  
+  transformation points and auto-create transformation_events alongside scene_asset_instances. The
+  scene_asset_instance.effective_description becomes the starting description, and the transformation event holds the      
+  post-state.
+  - Stage 9 (Prompt Generation): The buildAssetContext() function becomes shot-aware — it checks transformation events and 
+  swaps descriptions at the right shot boundary. The 9B and 9C system prompts get conditional overrides for transformation 
+  shots.
+  - WT-E (Shot-to-Shot Chaining): Integrates naturally. After a transformation shot, the chained context carries the       
+  post-transformation description forward. This solves "rest of scene uses new look" elegantly.
+
+  Scene Instance Images
+
+  Currently: one image_key_url per scene_asset_instance.
+
+  For transforming characters, you'd need two reference images:
+  - The scene_asset_instance.image_key_url = pre-transformation (primary state)
+  - The transformation_event.post_image_key_url = post-transformation
+
+  The Stage 10 image generation for scene instances could be extended to generate both when a transformation event exists. 
+
+  ---
+  The Tricky Part: Within-Shot Transformations (Level 3)
+
+  This is where it gets architecturally interesting. A single shot where Cinderella transforms requires:
+
+  Start frame: Princess appearance → uses pre_description
+  Video prompt: Must break the "NO appearance descriptions" rule — it needs to say something like "At the stroke of        
+  midnight, her golden gown dissolves into threadbare rags, her glass slippers shatter, her upswept hair falls loose and   
+  tangled"
+  End frame: Must break the "same clothing" rule — needs to show post_description
+
+  So transformation shots need conditional prompt template overrides:
+  - 9B's system prompt drops the "NO appearance" prohibition for transformation shots and instead says: "Describe the      
+  visual transformation using the TRANSFORMATION ACTION context provided"
+  - 9C's system prompt drops "same clothing/same environment" for transformation shots and instead says: "Show the RESULT  
+  of the transformation — use the POST-TRANSFORMATION description"
+
+  This is a per-shot prompt variant, not a global change. The existing prompt templates stay identical for 99% of shots.   
+  Only flagged transformation shots get the modified templates.
+
+  ---
+  Alternative Approach: Shot-Level Asset State Stack
+
+  Instead of transformation events, you could allow per-shot description overrides — essentially making asset descriptions 
+  shot-scoped rather than scene-scoped:
+
+  shot_asset_states
+  ├── shot_id (FK)
+  ├── scene_asset_instance_id (FK)
+  ├── effective_description_override (TEXT)
+  ├── status_tags_override (TEXT[])
+  ├── image_reference_override (TEXT, nullable)
+
+  This is more flexible (every shot can have different descriptions for every asset) but:
+  - Pro: Maximum flexibility, handles any edge case
+  - Con: Much more data, more UI complexity, harder to manage for the 90% case where nothing changes
+  - Con: Doesn't explicitly model the event of transformation, just the result
+
+  I think the transformation event model is better because it's event-driven (captures the "what happened" and "when")     
+  rather than pure state (which loses the narrative meaning).
+
+  ---
+  Detection Strategy: Where Would Transformations Be Caught?
+
+  Best point: Stage 7 (Shot Extraction)
+
+  The LLM already reads the full scene script and produces shots with actions, characters, camera specs, etc. Adding       
+  transformation detection here is natural — the shot extraction prompt could include:
+
+  "If a character's physical appearance changes significantly during this shot (costume change, physical transformation,   
+  disguise, injury that changes appearance), set transformation: { asset_name, pre_state_summary, post_state_summary, type:   'instant'|'gradual'|'within_shot' } on that shot."
+
+  Secondary detection: Stage 8 (Relevance)
+
+  If Stage 7 flags transformations, Stage 8 can validate them against the master asset descriptions and create the
+  transformation_events alongside the scene_asset_instances.
+
+  User confirmation: Stage 8 UI
+
+  Show detected transformations in the VisualStateEditorPanel with a visual diff: "Pre: blonde nature princess" → "Post:   
+  dark goth underworld queen." User can confirm, edit, or dismiss.
+
+  ---
+  Summary of the Proposal
+
+  ┌──────────────────────────────────┬──────────────────────────────────────────────────────────────────────────┐
+  │             Concern              │                                 Solution                                 │
+  ├──────────────────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ Cross-scene changes              │ WT-F adaptive descriptions (already planned)                             │
+  ├──────────────────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ Within-scene, cross-shot changes │ transformation_events table + shot-aware buildAssetContext()             │
+  ├──────────────────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ Within-shot transformation       │ Conditional prompt template overrides for 9B/9C on flagged shots         │
+  ├──────────────────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ Detection                        │ Stage 7 flags transformations in shot extraction; Stage 8 creates events │
+  ├──────────────────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ User review                      │ Stage 8 UI shows pre/post with confirm/edit/dismiss                      │
+  ├──────────────────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ Reference images                 │ post_image_key_url on transformation event for post-state reference      │
+  ├──────────────────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ WT-E integration                 │ Chaining naturally carries post-transformation state forward             │
+  ├──────────────────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ Downstream continuity            │ Next scene inherits from post_description (last state in scene)          │
+  └──────────────────────────────────┴──────────────────────────────────────────────────────────────────────────┘
+
+  ---
+  What's your thinking on this? A few specific questions:
+
+  1. Do you like the transformation event model, or do you prefer the more flexible per-shot asset state approach?
+  2. For within-shot transformations — are you comfortable with the conditional prompt template override approach (where   
+  9B/9C get modified system prompts for transformation shots)?
+  3. Should transformation detection be primarily automatic (LLM-detected in Stage 7) with user confirmation, or primarily 
+  manual (user marks transformation points in Stage 8 UI)?

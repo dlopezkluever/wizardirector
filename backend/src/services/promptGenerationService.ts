@@ -60,6 +60,7 @@ export interface GeneratedPromptSet {
   framePrompt: string;
   videoPrompt: string;
   requiresEndFrame: boolean;
+  aiRecommendsEndFrame: boolean;
   compatibleModels: string[];
   referenceImageOrder: ReferenceImageOrderEntry[];
 }
@@ -70,6 +71,7 @@ export interface BulkPromptGenerationResult {
   framePrompt?: string;
   videoPrompt?: string;
   requiresEndFrame?: boolean;
+  aiRecommendsEndFrame?: boolean;
   compatibleModels?: string[];
   referenceImageOrder?: ReferenceImageOrderEntry[];
   error?: string;
@@ -347,6 +349,7 @@ export class PromptGenerationService {
       framePrompt,
       videoPrompt,
       requiresEndFrame,
+      aiRecommendsEndFrame: requiresEndFrame,
       compatibleModels,
       referenceImageOrder,
     };
@@ -374,6 +377,7 @@ export class PromptGenerationService {
           framePrompt: promptSet.framePrompt,
           videoPrompt: promptSet.videoPrompt,
           requiresEndFrame: promptSet.requiresEndFrame,
+          aiRecommendsEndFrame: promptSet.aiRecommendsEndFrame,
           compatibleModels: promptSet.compatibleModels,
           referenceImageOrder: promptSet.referenceImageOrder,
         });
@@ -554,6 +558,25 @@ ${startFramePrompt}
 Describe the RESULTING end state — what does the scene look like AFTER the action is complete? Same camera, same environment, only poses/expressions/positions changed. Output ONLY the prompt text.`;
 
     const response = await this.callLLM(systemPrompt, userPrompt, 'end_frame_prompt');
+    return this.cleanPromptOutput(response, 1200);
+  }
+
+  /**
+   * Apply a surgical correction to an existing frame prompt using LLM.
+   * Used for the regeneration-with-correction flow in Stage 10.
+   */
+  async applyFramePromptCorrection(
+    currentPrompt: string,
+    correction: string,
+    frameType: 'start' | 'end'
+  ): Promise<string> {
+    console.log(`[PromptGeneration] Applying correction to ${frameType} frame prompt`);
+
+    const systemPrompt = `You are editing an image generation prompt. Apply the user's correction surgically — change only what they asked for, keep everything else identical. Return ONLY the revised prompt, no explanation.`;
+
+    const userPrompt = `Current prompt:\n${currentPrompt}\n\nCorrection:\n${correction}`;
+
+    const response = await this.callLLM(systemPrompt, userPrompt, 'frame_prompt_correction');
     return this.cleanPromptOutput(response, 1200);
   }
 

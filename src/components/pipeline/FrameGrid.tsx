@@ -4,7 +4,6 @@ import {
   Check,
   RefreshCw,
   Loader2,
-  AlertCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,9 +15,12 @@ interface FrameGridProps {
   shots: ShotWithFrames[];
   onSelectShot: (shotId: string) => void;
   onGenerateAll: () => void;
-  onApproveAllGenerated: () => void;
   isGenerating: boolean;
   selectedShotId?: string;
+}
+
+function isFrameReady(frame: Frame | null): boolean {
+  return frame?.status === 'approved' || frame?.status === 'generated';
 }
 
 function FrameThumbnail({
@@ -39,13 +41,13 @@ function FrameThumbnail({
   }
 
   const status = frame?.status || 'pending';
+  const ready = isFrameReady(frame);
 
   return (
     <div
       className={cn(
         'aspect-video rounded border overflow-hidden relative',
-        status === 'approved' && 'border-emerald-500/50',
-        status === 'generated' && 'border-amber-500/50',
+        ready && 'border-emerald-500/50',
         status === 'generating' && 'border-blue-500/50',
         status === 'rejected' && 'border-red-500/50',
         status === 'pending' && 'border-border/30'
@@ -68,7 +70,7 @@ function FrameThumbnail({
       )}
 
       {/* Status indicator */}
-      {status === 'approved' && (
+      {ready && (
         <div className="absolute top-0.5 right-0.5">
           <div className="w-3 h-3 rounded-full bg-emerald-500 flex items-center justify-center">
             <Check className="w-2 h-2 text-white" />
@@ -83,7 +85,6 @@ export function FrameGrid({
   shots,
   onSelectShot,
   onGenerateAll,
-  onApproveAllGenerated,
   isGenerating,
   selectedShotId,
 }: FrameGridProps) {
@@ -93,17 +94,10 @@ export function FrameGrid({
     0
   );
 
-  const generatedFrames = shots.reduce((acc, shot) => {
+  const readyFrames = shots.reduce((acc, shot) => {
     let count = 0;
-    if (shot.startFrame?.status === 'generated') count++;
-    if (shot.endFrame?.status === 'generated') count++;
-    return acc + count;
-  }, 0);
-
-  const approvedFrames = shots.reduce((acc, shot) => {
-    let count = 0;
-    if (shot.startFrame?.status === 'approved') count++;
-    if (shot.endFrame?.status === 'approved') count++;
+    if (isFrameReady(shot.startFrame)) count++;
+    if (isFrameReady(shot.endFrame)) count++;
     return acc + count;
   }, 0);
 
@@ -124,7 +118,6 @@ export function FrameGrid({
   }, 0);
 
   const canGenerateAll = pendingFrames > 0 && !isGenerating;
-  const canApproveAll = generatedFrames > 0;
 
   return (
     <div className="flex flex-col h-full">
@@ -135,14 +128,8 @@ export function FrameGrid({
           <div className="flex items-center gap-2 text-xs">
             <Badge variant="outline" className="gap-1">
               <Check className="w-3 h-3 text-emerald-500" />
-              {approvedFrames}
+              {readyFrames}
             </Badge>
-            {generatedFrames > 0 && (
-              <Badge variant="outline" className="gap-1 text-amber-400">
-                <AlertCircle className="w-3 h-3" />
-                {generatedFrames}
-              </Badge>
-            )}
             {generatingFrames > 0 && (
               <Badge variant="outline" className="gap-1 text-blue-400">
                 <Loader2 className="w-3 h-3 animate-spin" />
@@ -154,15 +141,6 @@ export function FrameGrid({
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onApproveAllGenerated}
-            disabled={!canApproveAll || isGenerating}
-          >
-            <Check className="w-4 h-4 mr-1" />
-            Approve All Ready
-          </Button>
           <Button
             variant="gold"
             size="sm"
@@ -177,7 +155,7 @@ export function FrameGrid({
             ) : (
               <>
                 <ImageIcon className="w-4 h-4 mr-1" />
-                Generate All
+                {pendingFrames === totalFrames ? 'Generate All' : 'Generate Remaining'}
               </>
             )}
           </Button>
@@ -188,11 +166,11 @@ export function FrameGrid({
       <ScrollArea className="flex-1">
         <div className="p-4">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            {shots.map((shot, index) => {
+            {shots.map((shot) => {
               const isSelected = shot.id === selectedShotId;
-              const startApproved = shot.startFrame?.status === 'approved';
-              const endApproved = !shot.requiresEndFrame || shot.endFrame?.status === 'approved';
-              const allApproved = startApproved && endApproved;
+              const startReady = isFrameReady(shot.startFrame);
+              const endReady = !shot.requiresEndFrame || isFrameReady(shot.endFrame);
+              const allReady = startReady && endReady;
 
               return (
                 <motion.button
@@ -204,7 +182,7 @@ export function FrameGrid({
                     'p-3 rounded-lg border transition-all text-left',
                     isSelected
                       ? 'bg-primary/10 border-primary/50'
-                      : allApproved
+                      : allReady
                       ? 'bg-emerald-500/5 border-emerald-500/30 hover:border-emerald-500/50'
                       : 'bg-card/50 border-border/30 hover:border-border'
                   )}
@@ -214,7 +192,7 @@ export function FrameGrid({
                     <Badge variant="outline" className="font-mono text-xs">
                       {shot.shotId}
                     </Badge>
-                    {allApproved && (
+                    {allReady && (
                       <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center">
                         <Check className="w-3 h-3 text-emerald-500" />
                       </div>

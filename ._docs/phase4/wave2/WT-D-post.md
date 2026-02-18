@@ -1,4 +1,5 @@
-
+Resume this session with:
+claude --resume 11624b48-e560-4890-96d6-90d142557472
 
 Pelase tell me what the actual system prompts for generating each item looks like, in other words, what am I supposed to be llooking up. 
 

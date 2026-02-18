@@ -38,6 +38,7 @@ export interface ShotWithFrames {
     setting: string;
     camera: string;
     requiresEndFrame: boolean;
+    aiRecommendsEndFrame: boolean | null;
     framePrompt: string | null;
     videoPrompt: string | null;
     referenceImageOrder: { label: string; assetName: string; url: string; type: string }[] | null;
@@ -99,6 +100,7 @@ export class FrameGenerationService {
                 setting,
                 camera,
                 requires_end_frame,
+                ai_recommends_end_frame,
                 frame_prompt,
                 video_prompt,
                 reference_image_order,
@@ -178,6 +180,7 @@ export class FrameGenerationService {
                 setting: shot.setting,
                 camera: shot.camera,
                 requiresEndFrame: shot.requires_end_frame ?? true,
+                aiRecommendsEndFrame: shot.ai_recommends_end_frame ?? null,
                 framePrompt: shot.frame_prompt,
                 videoPrompt: shot.video_prompt,
                 referenceImageOrder: shot.reference_image_order || null,
@@ -775,7 +778,9 @@ export class FrameGenerationService {
     }
 
     /**
-     * Calculate total credits used for a scene's frames
+     * Calculate total credits used for a scene's frames.
+     * Reads from image_generation_jobs as the source of truth since
+     * the background execution flow sets cost_credits on jobs but not on frames.
      */
     async getSceneFrameCosts(sceneId: string): Promise<{ totalCredits: number; frameCount: number }> {
         const { data: shots } = await supabase
@@ -791,14 +796,30 @@ export class FrameGenerationService {
 
         const { data: frames } = await supabase
             .from('frames')
-            .select('total_cost_credits')
+            .select('id, total_cost_credits')
             .in('shot_id', shotIds);
 
-        if (!frames) {
+        if (!frames || frames.length === 0) {
             return { totalCredits: 0, frameCount: 0 };
         }
 
-        const totalCredits = frames.reduce((sum, f) => sum + (parseFloat(f.total_cost_credits) || 0), 0);
+        // First try frame-level costs
+        let totalCredits = frames.reduce((sum, f) => sum + (parseFloat(f.total_cost_credits) || 0), 0);
+
+        // If frame costs are zero, fall back to summing from image_generation_jobs
+        if (totalCredits === 0) {
+            const frameIds = frames.map(f => f.id);
+            const { data: jobs } = await supabase
+                .from('image_generation_jobs')
+                .select('cost_credits')
+                .in('shot_id', shotIds)
+                .in('job_type', ['start_frame', 'end_frame'])
+                .eq('status', 'completed');
+
+            if (jobs && jobs.length > 0) {
+                totalCredits = jobs.reduce((sum, j) => sum + (parseFloat(j.cost_credits) || 0), 0);
+            }
+        }
 
         return {
             totalCredits,
@@ -813,14 +834,14 @@ export class FrameGenerationService {
         const shotsWithFrames = await this.fetchFramesForScene(sceneId);
 
         for (const shot of shotsWithFrames) {
-            // Check start frame
-            if (!shot.startFrame || shot.startFrame.status !== 'approved') {
+            // Check start frame — both 'approved' and 'generated' count as ready
+            if (!shot.startFrame || (shot.startFrame.status !== 'approved' && shot.startFrame.status !== 'generated')) {
                 return false;
             }
 
             // Check end frame if required
             if (shot.requiresEndFrame) {
-                if (!shot.endFrame || shot.endFrame.status !== 'approved') {
+                if (!shot.endFrame || (shot.endFrame.status !== 'approved' && shot.endFrame.status !== 'generated')) {
                     return false;
                 }
             }

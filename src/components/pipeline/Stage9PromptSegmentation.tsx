@@ -32,6 +32,7 @@ import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
 import { ContentAccessCarousel } from './ContentAccessCarousel';
+import { ReferenceImageThumbnail } from './ReferenceImageThumbnail';
 
 interface Stage9PromptSegmentationProps {
   projectId: string;
@@ -440,24 +441,7 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                       Shot {promptSet.shotId}
                     </Badge>
                     <div className="flex items-center gap-2">
-                      {hasPrompts ? (
-                        <>
-                          <Badge
-                            variant="secondary"
-                            className="bg-blue-500/20 text-blue-400 text-xs"
-                          >
-                            <ImageIcon className="w-3 h-3 mr-1" />
-                            Frame
-                          </Badge>
-                          <Badge
-                            variant="secondary"
-                            className="bg-purple-500/20 text-purple-400 text-xs"
-                          >
-                            <Video className="w-3 h-3 mr-1" />
-                            Video
-                          </Badge>
-                        </>
-                      ) : (
+                      {!hasPrompts && (
                         <Badge
                           variant="secondary"
                           className="bg-amber-500/20 text-amber-400 text-xs"
@@ -465,32 +449,39 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                           No prompts
                         </Badge>
                       )}
-                      <Badge
-                        variant="secondary"
-                        className={cn(
-                          'text-xs cursor-pointer select-none transition-colors',
-                          promptSet.requiresEndFrame
-                            ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-                            : 'bg-muted/40 text-muted-foreground hover:bg-muted/60'
-                        )}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (promptSet.shotUuid) {
-                            const newValue = !promptSet.requiresEndFrame;
-                            // Optimistic update
-                            setPromptSets(prev => prev.map(p =>
-                              p.shotId === promptSet.shotId
-                                ? { ...p, requiresEndFrame: newValue }
-                                : p
+                      {promptSet.aiRecommendsEndFrame != null && (
+                        <Badge
+                          variant="secondary"
+                          className={cn(
+                            'text-xs select-none',
+                            promptSet.aiRecommendsEndFrame
+                              ? 'bg-blue-500/20 text-blue-400'
+                              : 'bg-muted/40 text-muted-foreground'
+                          )}
+                        >
+                          {promptSet.aiRecommendsEndFrame ? 'AI: End Frame' : 'AI: No End Frame'}
+                        </Badge>
+                      )}
+                      <div
+                        className="flex items-center gap-1.5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span className="text-[10px] text-muted-foreground">End Frame</span>
+                        <Switch
+                          checked={promptSet.requiresEndFrame}
+                          onCheckedChange={(checked) => {
+                            if (!promptSet.shotUuid) return;
+                            // Optimistic local update
+                            setPromptSets(prev => prev.map(ps =>
+                              ps.shotId === promptSet.shotId ? { ...ps, requiresEndFrame: checked } : ps
                             ));
+                            // Persist to backend
                             promptService.updatePrompt(projectId, sceneId, promptSet.shotUuid, {
-                              requiresEndFrame: newValue,
+                              requiresEndFrame: checked,
                             }).catch(() => {
-                              // Revert on error
-                              setPromptSets(prev => prev.map(p =>
-                                p.shotId === promptSet.shotId
-                                  ? { ...p, requiresEndFrame: !newValue }
-                                  : p
+                              // Revert on failure
+                              setPromptSets(prev => prev.map(ps =>
+                                ps.shotId === promptSet.shotId ? { ...ps, requiresEndFrame: !checked } : ps
                               ));
                               toast({
                                 title: 'Error',
@@ -498,11 +489,10 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                                 variant: 'destructive',
                               });
                             });
-                          }
-                        }}
-                      >
-                        {promptSet.requiresEndFrame ? 'End Frame' : 'No End Frame'}
-                      </Badge>
+                          }}
+                          className="scale-75"
+                        />
+                      </div>
                       {promptSet.hasChanges && (
                         <Badge
                           variant="secondary"
@@ -555,25 +545,13 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs text-muted-foreground">Refs:</span>
                             {promptSet.referenceImageOrder.map((ref, idx) => (
-                              <div
+                              <ReferenceImageThumbnail
                                 key={idx}
-                                className="relative w-8 h-8 rounded border border-border/50 overflow-hidden group/thumb"
-                                title={`${ref.assetName} (${ref.type})`}
-                              >
-                                <img
-                                  src={ref.url}
-                                  alt={ref.assetName}
-                                  className="w-full h-full object-cover"
-                                />
-                                <span className="absolute top-0 left-0 bg-black/70 text-[8px] text-white px-0.5 leading-tight">
-                                  {idx + 1}
-                                </span>
-                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center">
-                                  <span className="text-[7px] text-white text-center leading-tight px-0.5">
-                                    {ref.assetName}
-                                  </span>
-                                </div>
-                              </div>
+                                url={ref.url}
+                                assetName={ref.assetName}
+                                type={ref.type}
+                                index={idx}
+                              />
                             ))}
                           </div>
                         )}
@@ -707,22 +685,13 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                           </div>
                         </div>
 
-                        {/* Model Compatibility Footer */}
-                        <div className="flex items-center justify-between pt-2 border-t border-border/30">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">Compatible Models:</span>
-                            {promptSet.compatibleModels.map(model => (
-                              <Badge key={model} variant="outline" className="text-xs">
-                                {model}
-                              </Badge>
-                            ))}
-                          </div>
-                          {promptSet.promptsGeneratedAt && (
+                        {promptSet.promptsGeneratedAt && (
+                          <div className="pt-2 border-t border-border/30">
                             <span className="text-xs text-muted-foreground">
                               Generated: {new Date(promptSet.promptsGeneratedAt).toLocaleString()}
                             </span>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     </motion.div>
                   )}

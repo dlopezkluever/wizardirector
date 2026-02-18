@@ -111,11 +111,6 @@ export function MasterReferenceCarousel({
           <ImageIcon className="w-4 h-4 text-primary" />
           Master reference
         </Label>
-        {total > 1 && (
-          <span className="text-xs text-muted-foreground">
-            {currentIndex + 1}/{total}
-          </span>
-        )}
       </div>
 
       <Carousel
@@ -149,22 +144,32 @@ export function MasterReferenceCarousel({
                   {/* Label badge */}
                   <Badge
                     variant="secondary"
-                    className="absolute top-2 left-2 text-[10px] bg-background/80 backdrop-blur-sm"
+                    className="absolute top-1 left-1 z-10 text-[10px] bg-background/80 backdrop-blur-sm"
                   >
                     {referenceLabel(item)}
                   </Badge>
 
                   {/* Active indicator */}
                   {isActive && (
-                    <Badge className="absolute top-2 right-2 bg-primary text-primary-foreground text-[10px] gap-1">
+                    <Badge className="absolute top-1 right-1 z-10 bg-primary text-primary-foreground text-[10px] gap-1">
                       <Check className="w-3 h-3" />
                       Active
                     </Badge>
                   )}
 
+                  {/* Counter badge */}
+                  {total > 1 && (
+                    <Badge
+                      variant="secondary"
+                      className="absolute bottom-1 right-1 z-10 text-[10px] bg-background/80 backdrop-blur-sm font-mono"
+                    >
+                      {currentIndex + 1}/{total}
+                    </Badge>
+                  )}
+
                   {/* Select action overlay */}
                   {!isActive && (
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <div className="absolute inset-0 z-20 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                       <Button
                         size="sm"
                         variant="outline"
@@ -190,8 +195,8 @@ export function MasterReferenceCarousel({
         </CarouselContent>
         {total > 1 && (
           <>
-            <CarouselPrevious className="-left-10" />
-            <CarouselNext className="-right-10" />
+            <CarouselPrevious className="left-2 z-30 h-7 w-7 bg-black/60 border-white/20 text-white hover:bg-black/80 hover:text-white disabled:hidden" />
+            <CarouselNext className="right-2 z-30 h-7 w-7 bg-black/60 border-white/20 text-white hover:bg-black/80 hover:text-white disabled:hidden" />
           </>
         )}
       </Carousel>
