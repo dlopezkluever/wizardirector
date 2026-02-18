@@ -15,6 +15,8 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import type { Frame, FrameType } from '@/types/scene';
+import { ReferenceImageThumbnail } from './ReferenceImageThumbnail';
+import { FrameGenerationCarousel } from './FrameGenerationCarousel';
 
 interface ReferenceImageEntry {
   label: string;
@@ -28,6 +30,7 @@ interface FramePanelProps {
   frameType: FrameType;
   shotId: string;
   isDisabled?: boolean;
+  isGenerateDisabled?: boolean;
   disabledReason?: string;
   onGenerate: () => void;
   onApprove: () => void;
@@ -41,6 +44,8 @@ interface FramePanelProps {
   showCompare?: boolean;
   referenceImages?: ReferenceImageEntry[];
   hideHeader?: boolean;
+  projectId?: string;
+  sceneId?: string;
 }
 
 const STATUS_STYLES: Record<string, { badge: string; label: string }> = {
@@ -56,6 +61,7 @@ export function FramePanel({
   frameType,
   shotId,
   isDisabled = false,
+  isGenerateDisabled = false,
   disabledReason,
   onGenerate,
   onApprove,
@@ -69,6 +75,8 @@ export function FramePanel({
   showCompare = false,
   referenceImages,
   hideHeader = false,
+  projectId,
+  sceneId,
 }: FramePanelProps) {
   const [imageError, setImageError] = useState(false);
   const [showRegenOptions, setShowRegenOptions] = useState(false);
@@ -178,7 +186,7 @@ export function FramePanel({
           <div className="w-full h-full flex flex-col items-center justify-center">
             <ImageIcon className="w-12 h-12 text-muted-foreground mb-2" />
             <span className="text-sm text-muted-foreground">
-              {isDisabled && disabledReason ? disabledReason : 'No frame generated'}
+              {(isDisabled || isGenerateDisabled) && disabledReason ? disabledReason : 'No frame generated'}
             </span>
           </div>
         )}
@@ -193,25 +201,28 @@ export function FramePanel({
         )}
       </div>
 
+      {/* Generation history carousel */}
+      {frame && frame.generationCount > 1 && projectId && sceneId && (
+        <FrameGenerationCarousel
+          projectId={projectId}
+          sceneId={sceneId}
+          frameId={frame.id}
+          generationCount={frame.generationCount}
+        />
+      )}
+
       {/* Reference image thumbnails */}
       {referenceImages && referenceImages.length > 0 && (
         <div className="flex items-center gap-1.5 mt-2 flex-wrap">
           <span className="text-[10px] text-muted-foreground">Refs:</span>
           {referenceImages.map((ref, idx) => (
-            <div
+            <ReferenceImageThumbnail
               key={idx}
-              className="relative w-8 h-8 rounded border border-border/50 overflow-hidden group/thumb"
-              title={`${ref.assetName} (${ref.type})`}
-            >
-              <img
-                src={ref.url}
-                alt={ref.assetName}
-                className="w-full h-full object-cover"
-              />
-              <span className="absolute top-0 left-0 bg-black/70 text-[8px] text-white px-0.5 leading-tight">
-                {idx + 1}
-              </span>
-            </div>
+              url={ref.url}
+              assetName={ref.assetName}
+              type={ref.type}
+              index={idx}
+            />
           ))}
         </div>
       )}
@@ -222,7 +233,7 @@ export function FramePanel({
           <Button
             variant="gold"
             className="w-full"
-            disabled={isDisabled || isGenerating}
+            disabled={isDisabled || isGenerateDisabled || isGenerating}
             onClick={frame ? handleRegenClick : onGenerate}
           >
             <ImageIcon className="w-4 h-4 mr-2" />
@@ -240,7 +251,7 @@ export function FramePanel({
               size="sm"
               className="flex-1"
               onClick={onReject}
-              disabled={isDisabled}
+              disabled={isDisabled || isGenerateDisabled}
             >
               <X className="w-4 h-4 mr-1" />
               Reject
@@ -250,7 +261,7 @@ export function FramePanel({
               size="sm"
               className="flex-1"
               onClick={onApprove}
-              disabled={isDisabled}
+              disabled={isDisabled || isGenerateDisabled}
             >
               <Check className="w-4 h-4 mr-1" />
               Approve
@@ -263,7 +274,7 @@ export function FramePanel({
               size="sm"
               className="flex-1"
               onClick={handleRegenClick}
-              disabled={isDisabled}
+              disabled={isDisabled || isGenerateDisabled}
             >
               <RefreshCw className="w-4 h-4 mr-1" />
               Regenerate
