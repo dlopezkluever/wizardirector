@@ -60,6 +60,7 @@ export interface GeneratedPromptSet {
   framePrompt: string;
   videoPrompt: string;
   requiresEndFrame: boolean;
+  aiRecommendsEndFrame: boolean;
   compatibleModels: string[];
   referenceImageOrder: ReferenceImageOrderEntry[];
 }
@@ -70,6 +71,7 @@ export interface BulkPromptGenerationResult {
   framePrompt?: string;
   videoPrompt?: string;
   requiresEndFrame?: boolean;
+  aiRecommendsEndFrame?: boolean;
   compatibleModels?: string[];
   referenceImageOrder?: ReferenceImageOrderEntry[];
   error?: string;
@@ -347,6 +349,7 @@ export class PromptGenerationService {
       framePrompt,
       videoPrompt,
       requiresEndFrame,
+      aiRecommendsEndFrame: requiresEndFrame,
       compatibleModels,
       referenceImageOrder,
     };
@@ -374,6 +377,7 @@ export class PromptGenerationService {
           framePrompt: promptSet.framePrompt,
           videoPrompt: promptSet.videoPrompt,
           requiresEndFrame: promptSet.requiresEndFrame,
+          aiRecommendsEndFrame: promptSet.aiRecommendsEndFrame,
           compatibleModels: promptSet.compatibleModels,
           referenceImageOrder: promptSet.referenceImageOrder,
         });

@@ -38,6 +38,7 @@ export interface ShotWithFrames {
     setting: string;
     camera: string;
     requiresEndFrame: boolean;
+    aiRecommendsEndFrame: boolean | null;
     framePrompt: string | null;
     videoPrompt: string | null;
     referenceImageOrder: { label: string; assetName: string; url: string; type: string }[] | null;
@@ -99,6 +100,7 @@ export class FrameGenerationService {
                 setting,
                 camera,
                 requires_end_frame,
+                ai_recommends_end_frame,
                 frame_prompt,
                 video_prompt,
                 reference_image_order,
@@ -178,6 +180,7 @@ export class FrameGenerationService {
                 setting: shot.setting,
                 camera: shot.camera,
                 requiresEndFrame: shot.requires_end_frame ?? true,
+                aiRecommendsEndFrame: shot.ai_recommends_end_frame ?? null,
                 framePrompt: shot.frame_prompt,
                 videoPrompt: shot.video_prompt,
                 referenceImageOrder: shot.reference_image_order || null,
