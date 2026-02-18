@@ -82,3 +82,72 @@ Skip 4 (in fact, we can just let it be larger) instead of 4 "condense prompt" we
   - Tab → Switch focus between Start/End frame
 
 but also take into accound
+
+
+
+
+
+
+
+
+__________________________________________________________________
+-
+-
+-
+-
+-
+-
+--
+-
+-
+
+-
+  Implementation Summary
+
+  Improvement 1: End Frame Prompt height matching
+
+  - Stage10FrameGeneration.tsx — Changed End Frame Prompt container from space-y-3 to flex flex-col h-full gap-3, made empty state   use flex flex-col flex-1 items-center justify-center, and made textarea use flex-1 min-h-[100px] instead of rows={6} so it     
+  stretches to match the Shot Context panel height.
+
+  Improvement 5: Reference image hover-to-enlarge
+
+  - New: ReferenceImageThumbnail.tsx — Reusable component wrapping thumbnail in <HoverCard> with 200ms open delay. Shows ~200px   
+  enlarged image, asset name, and type badge on hover.
+  - Stage9PromptSegmentation.tsx — Replaced inline ref image markup with <ReferenceImageThumbnail>.
+  - FramePanel.tsx — Same replacement.
+
+  Improvement 7: Unblock end frame prompt editor
+
+  - FramePanel.tsx — Added isGenerateDisabled prop that gates action buttons (Generate, Approve, Reject, Regenerate) without      
+  dimming the panel. All action buttons now check isDisabled || isGenerateDisabled.
+  - Stage10FrameGeneration.tsx — Changed end frame FramePanel from isDisabled to isGenerateDisabled so the panel renders normally 
+  but buttons stay disabled until start frame is approved.
+
+  Improvement 3: Separate AI recommendation from toggle
+
+  - New: 029_ai_recommends_end_frame.sql — Migration adding ai_recommends_end_frame column (manual run required).
+  - promptGenerationService.ts — Added aiRecommendsEndFrame to GeneratedPromptSet and BulkPromptGenerationResult interfaces; set
+  during generation.
+  - projects.ts — Saves ai_recommends_end_frame in POST generate-prompts; selects and returns it in both GET prompts and POST     
+  generate-prompts responses.
+  - frameGenerationService.ts — Added aiRecommendsEndFrame to ShotWithFrames interface; selects and returns it in
+  fetchFramesForScene.
+  - scene.ts — Added aiRecommendsEndFrame?: boolean | null to PromptSet and ShotWithFrames types.
+  - Stage9PromptSegmentation.tsx — Replaced single badge with read-only "AI: End Frame" badge (blue) + separate Switch toggle with   stopPropagation and optimistic update via promptService.updatePrompt.
+
+  Improvement 2: Image carousel for generation history
+
+  - frames.ts (backend) — Two new endpoints: GET .../frames/:frameId/generations and PUT .../frames/:frameId/select-generation.   
+  - frameService.ts — Added FrameGeneration type, fetchFrameGenerations(), and selectFrameGeneration() methods.
+  - New: FrameGenerationCarousel.tsx — Embla carousel component showing all completed generations with Current badge, date badge, 
+  Select overlay, and Dialog preview.
+  - FramePanel.tsx — Added projectId/sceneId props; renders <FrameGenerationCarousel> when generationCount > 1.
+  - Stage10FrameGeneration.tsx — Passes projectId and sceneId to both FramePanel instances.
+
+  Verification
+
+  - Lint: 0 new errors (only 2 pre-existing hook dep warnings in Stage9)
+  - Frontend tests: 43/43 pass
+  - Backend tests: All pass except 7 pre-existing failures in image-generation.test.ts (unrelated)
+
+  Note: You need to manually run the migration backend/migrations/029_ai_recommends_end_frame.sql against your database.

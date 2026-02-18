@@ -1277,3 +1277,10 @@ Example:
 2. Frame Prompt is Sans Image ref Gen Call:]
 
 Hey Howie, this is Daniel, I stayed in the hostel last fall and am coming back to Austin soon and was just trying to see if you all were hiring volunteers for the work exchange. I applied through worldpackers last week and didn't get a response, after being directed to do so via email. I’m likely arriving Thursday and would be ready to start as soon as needed. I'm more than happy to help with repairs & painting, on top of the typical hostel duties, & I have open availability for hours, meaning I can work whatever hours are most in need. No sweat if there's no openings or whatever, just looking for some clarity to get my affairs in order. Thanks!
+
+ How can we fix the placement of the arrows, becuase how they are currently does not     
+  work; if we move them to with the image but on the outside, we need to make sure they   
+  are still pressable and not trapped under the in-paint or  select/detele overlays. I    
+  do like how the yellow/green outline denotes the state of the image.  consider moving   
+  the image count ("2/2" in the image) under the bottom right of frame panel instead of   
+  on top of the top right, so that the end and start frame stay aligned horizontally
