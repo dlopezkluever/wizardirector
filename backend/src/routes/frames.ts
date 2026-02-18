@@ -711,4 +711,154 @@ router.post('/:projectId/scenes/:sceneId/shots/:shotId/chain-from-end-frame', as
     }
 });
 
+/**
+ * GET /api/projects/:projectId/scenes/:sceneId/frames/:frameId/generations
+ * Fetch all completed generation attempts for a frame
+ */
+router.get('/:projectId/scenes/:sceneId/frames/:frameId/generations', async (req, res) => {
+    try {
+        const { projectId, frameId } = req.params;
+        const userId = req.user!.id;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Get the frame to find shot_id, frame_type, current_job_id
+        const { data: frame, error: frameError } = await supabase
+            .from('frames')
+            .select('id, shot_id, frame_type, current_job_id')
+            .eq('id', frameId)
+            .single();
+
+        if (frameError || !frame) {
+            return res.status(404).json({ error: 'Frame not found' });
+        }
+
+        // Map frame_type to job_type
+        const jobType = frame.frame_type === 'start' ? 'start_frame' : 'end_frame';
+
+        // Fetch all completed image generation jobs for this shot + frame type
+        const { data: jobs, error: jobsError } = await supabase
+            .from('image_generation_jobs')
+            .select('id, public_url, prompt, cost_credits, created_at')
+            .eq('shot_id', frame.shot_id)
+            .eq('job_type', jobType)
+            .eq('status', 'completed')
+            .order('created_at', { ascending: false });
+
+        if (jobsError) {
+            console.error('Error fetching generation jobs:', jobsError);
+            return res.status(500).json({ error: 'Failed to fetch generations' });
+        }
+
+        const generations = (jobs || []).map((job: any) => ({
+            jobId: job.id,
+            imageUrl: job.public_url,
+            prompt: job.prompt,
+            costCredits: parseFloat(job.cost_credits) || 0,
+            createdAt: job.created_at,
+            isCurrent: job.id === frame.current_job_id,
+        }));
+
+        res.json({ generations });
+    } catch (error: any) {
+        console.error('Error in GET frame generations:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
+/**
+ * PUT /api/projects/:projectId/scenes/:sceneId/frames/:frameId/select-generation
+ * Select a previous generation as the current frame image
+ */
+router.put('/:projectId/scenes/:sceneId/frames/:frameId/select-generation', async (req, res) => {
+    try {
+        const { projectId, frameId } = req.params;
+        const { jobId } = req.body;
+        const userId = req.user!.id;
+
+        if (!jobId || typeof jobId !== 'string') {
+            return res.status(400).json({ error: 'jobId is required' });
+        }
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Fetch the job to get its image URL and prompt
+        const { data: job, error: jobError } = await supabase
+            .from('image_generation_jobs')
+            .select('id, public_url, prompt')
+            .eq('id', jobId)
+            .eq('status', 'completed')
+            .single();
+
+        if (jobError || !job) {
+            return res.status(404).json({ error: 'Generation job not found' });
+        }
+
+        // Update the frame to point to this job
+        const { data: frame, error: updateError } = await supabase
+            .from('frames')
+            .update({
+                current_job_id: jobId,
+                image_url: job.public_url,
+                prompt_snapshot: job.prompt,
+                status: 'generated',
+                approved_at: null,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', frameId)
+            .select('*')
+            .single();
+
+        if (updateError || !frame) {
+            throw new Error(`Failed to update frame: ${updateError?.message}`);
+        }
+
+        res.json({
+            success: true,
+            frame: {
+                id: frame.id,
+                shotId: frame.shot_id,
+                frameType: frame.frame_type,
+                status: frame.status,
+                imageUrl: frame.image_url,
+                storagePath: frame.storage_path,
+                currentJobId: frame.current_job_id,
+                generationCount: frame.generation_count,
+                totalCostCredits: parseFloat(frame.total_cost_credits) || 0,
+                previousFrameId: frame.previous_frame_id,
+                promptSnapshot: frame.prompt_snapshot,
+                inpaintCount: frame.inpaint_count,
+                lastInpaintMaskPath: frame.last_inpaint_mask_path,
+                createdAt: frame.created_at,
+                updatedAt: frame.updated_at,
+                generatedAt: frame.generated_at,
+                approvedAt: frame.approved_at,
+            },
+        });
+    } catch (error: any) {
+        console.error('Error in PUT select-generation:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
 export const framesRouter = router;
