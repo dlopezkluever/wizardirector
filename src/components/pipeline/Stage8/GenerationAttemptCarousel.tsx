@@ -149,11 +149,6 @@ export function GenerationAttemptCarousel({
           <ImageIcon className="w-4 h-4 text-primary" />
           Scene instance image
         </Label>
-        {total > 1 && (
-          <span className="text-xs text-muted-foreground">
-            {currentIndex + 1}/{total}
-          </span>
-        )}
       </div>
 
       <TooltipProvider>
@@ -191,7 +186,7 @@ export function GenerationAttemptCarousel({
                       {/* Selected badge */}
                       {attempt.is_selected && (
                         <Badge
-                          className="absolute top-2 left-2 bg-amber-400 text-amber-900 text-[10px] gap-1"
+                          className="absolute top-1 left-1 z-10 bg-amber-400 text-amber-900 text-[10px] gap-1"
                         >
                           <Check className="w-3 h-3" />
                           Selected
@@ -201,14 +196,24 @@ export function GenerationAttemptCarousel({
                       {/* Source badge */}
                       <Badge
                         variant="secondary"
-                        className="absolute top-2 right-2 text-[10px] bg-background/80 backdrop-blur-sm"
+                        className="absolute top-1 right-1 z-10 text-[10px] bg-background/80 backdrop-blur-sm"
                       >
                         {sourceLabel(attempt.source)}
                       </Badge>
 
+                      {/* Counter badge */}
+                      {total > 1 && (
+                        <Badge
+                          variant="secondary"
+                          className="absolute bottom-1 right-1 z-10 text-[10px] bg-background/80 backdrop-blur-sm font-mono"
+                        >
+                          {currentIndex + 1}/{total}
+                        </Badge>
+                      )}
+
                       {/* Actions overlay */}
                       {!attempt.is_selected && (
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <div className="absolute inset-0 z-20 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                           <Button
                             size="sm"
                             variant="gold"
@@ -263,8 +268,8 @@ export function GenerationAttemptCarousel({
           </CarouselContent>
           {total > 1 && (
             <>
-              <CarouselPrevious className="-left-10" />
-              <CarouselNext className="-right-10" />
+              <CarouselPrevious className="left-2 z-30 h-7 w-7 bg-black/60 border-white/20 text-white hover:bg-black/80 hover:text-white disabled:hidden" />
+              <CarouselNext className="right-2 z-30 h-7 w-7 bg-black/60 border-white/20 text-white hover:bg-black/80 hover:text-white disabled:hidden" />
             </>
           )}
         </Carousel>
