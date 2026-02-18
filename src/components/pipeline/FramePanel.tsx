@@ -1,22 +1,39 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Image as ImageIcon,
   RefreshCw,
   Check,
-  X,
   Paintbrush,
   Eye,
   Loader2,
   Pencil,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+} from '@/components/ui/dialog';
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselPrevious,
+  CarouselNext,
+} from '@/components/ui/carousel';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { Frame, FrameType } from '@/types/scene';
 import { ReferenceImageThumbnail } from './ReferenceImageThumbnail';
-import { FrameGenerationCarousel } from './FrameGenerationCarousel';
+import { frameService, type FrameGeneration } from '@/lib/services/frameService';
 
 interface ReferenceImageEntry {
   label: string;
@@ -33,8 +50,6 @@ interface FramePanelProps {
   isGenerateDisabled?: boolean;
   disabledReason?: string;
   onGenerate: () => void;
-  onApprove: () => void;
-  onReject: () => void;
   onRegenerate: () => void;
   onRegenerateWithCorrection?: (correction: string) => void;
   onRegenerateWithEditedPrompt?: (prompt: string) => void;
@@ -51,8 +66,8 @@ interface FramePanelProps {
 const STATUS_STYLES: Record<string, { badge: string; label: string }> = {
   pending: { badge: 'bg-muted text-muted-foreground', label: 'Pending' },
   generating: { badge: 'bg-blue-500/20 text-blue-400', label: 'Generating' },
-  generated: { badge: 'bg-amber-500/20 text-amber-400', label: 'Ready' },
-  approved: { badge: 'bg-emerald-500/20 text-emerald-400', label: 'Approved' },
+  generated: { badge: 'bg-emerald-500/20 text-emerald-400', label: 'Ready' },
+  approved: { badge: 'bg-emerald-500/20 text-emerald-400', label: 'Ready' },
   rejected: { badge: 'bg-red-500/20 text-red-400', label: 'Rejected' },
 };
 
@@ -64,8 +79,6 @@ export function FramePanel({
   isGenerateDisabled = false,
   disabledReason,
   onGenerate,
-  onApprove,
-  onReject,
   onRegenerate,
   onRegenerateWithCorrection,
   onRegenerateWithEditedPrompt,
@@ -78,21 +91,54 @@ export function FramePanel({
   projectId,
   sceneId,
 }: FramePanelProps) {
+  const queryClient = useQueryClient();
   const [imageError, setImageError] = useState(false);
   const [showRegenOptions, setShowRegenOptions] = useState(false);
   const [correctionText, setCorrectionText] = useState('');
   const [showManualEdit, setShowManualEdit] = useState(false);
   const [editedPrompt, setEditedPrompt] = useState('');
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const status = frame?.status || 'pending';
   const hasImage = frame?.imageUrl && !imageError;
   const isGenerating = status === 'generating';
-  const isApproved = status === 'approved';
-  const canApprove = status === 'generated';
   const canRegenerate = status === 'generated' || status === 'rejected' || status === 'approved';
   const needsGeneration = status === 'pending' || status === 'rejected';
 
   const statusStyle = STATUS_STYLES[status] || STATUS_STYLES.pending;
+
+  // Fetch generations for carousel
+  const frameId = frame?.id;
+  const generationCount = frame?.generationCount || 0;
+  const generationsQueryKey = ['frame-generations', projectId, sceneId, frameId];
+
+  const { data: generations = [] } = useQuery({
+    queryKey: generationsQueryKey,
+    queryFn: () => frameService.fetchFrameGenerations(projectId!, sceneId!, frameId!),
+    enabled: generationCount > 1 && !!projectId && !!sceneId && !!frameId,
+  });
+
+  const selectMutation = useMutation({
+    mutationFn: (jobId: string) =>
+      frameService.selectFrameGeneration(projectId!, sceneId!, frameId!, jobId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: generationsQueryKey });
+      queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (jobId: string) =>
+      frameService.deleteFrameGeneration(projectId!, sceneId!, frameId!, jobId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: generationsQueryKey });
+      queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+    },
+  });
+
+  const showCarousel = generations.length > 1;
+  const total = generations.length;
 
   const handleRegenClick = () => {
     if (onRegenerateWithCorrection) {
@@ -122,6 +168,209 @@ export function FramePanel({
     }
   };
 
+  // Render a single image with hover overlay (used for single-generation mode)
+  const renderSingleImage = () => (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          className={cn(
+            'aspect-video bg-muted/50 rounded-lg border-2 overflow-hidden relative group cursor-pointer',
+            (status === 'approved' || status === 'generated') ? 'border-emerald-500/50' : 'border-border/30',
+            isGenerating && 'border-blue-500/30'
+          )}
+          onClick={() => frame?.imageUrl && setPreviewUrl(frame.imageUrl)}
+        >
+          <motion.img
+            src={frame!.imageUrl!}
+            alt={`${frameType} frame for shot ${shotId}`}
+            className="w-full h-full object-cover"
+            onError={() => setImageError(true)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3 }}
+          />
+          {/* Hover actions overlay */}
+          {!isDisabled && !isGenerating && (
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+              <Button
+                variant="glass"
+                size="sm"
+                onClick={(e) => { e.stopPropagation(); onInpaint(); }}
+                disabled={!hasImage}
+              >
+                <Paintbrush className="w-4 h-4 mr-1" />
+                Inpaint
+              </Button>
+              {showCompare && onCompare && (
+                <Button variant="glass" size="sm" onClick={(e) => { e.stopPropagation(); onCompare(); }}>
+                  <Eye className="w-4 h-4 mr-1" />
+                  Compare
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      </TooltipTrigger>
+      {frame?.promptSnapshot && (
+        <TooltipContent side="bottom" className="max-w-sm text-xs">
+          <p className="font-medium mb-1">Prompt:</p>
+          <p className="text-muted-foreground line-clamp-3">{frame.promptSnapshot}</p>
+          {frame.generatedAt && (
+            <p className="text-muted-foreground mt-1">
+              {new Date(frame.generatedAt).toLocaleDateString()}
+            </p>
+          )}
+        </TooltipContent>
+      )}
+    </Tooltip>
+  );
+
+  // Render carousel for multiple generations
+  const renderCarousel = () => (
+    <Carousel
+      className="w-full"
+      opts={{ startIndex: generations.findIndex(g => g.isCurrent) }}
+      setApi={(api) => {
+        if (!api) return;
+        api.on('select', () => {
+          setCurrentIndex(api.selectedScrollSnap());
+        });
+        setCurrentIndex(api.selectedScrollSnap());
+      }}
+    >
+      <CarouselContent>
+        {generations.map((gen: FrameGeneration) => (
+          <CarouselItem key={gen.jobId}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div
+                  className={cn(
+                    'aspect-video rounded-lg border-2 overflow-hidden bg-muted/50 relative group cursor-pointer',
+                    gen.isCurrent
+                      ? 'border-amber-400'
+                      : 'border-border/30'
+                  )}
+                  onClick={() => setPreviewUrl(gen.imageUrl)}
+                >
+                  <img
+                    src={gen.imageUrl}
+                    alt="Generation"
+                    className="w-full h-full object-cover"
+                  />
+
+                  {/* Selected badge - top left */}
+                  {gen.isCurrent && (
+                    <Badge
+                      className="absolute top-1 left-1 z-10 bg-amber-400 text-amber-900 text-[10px] gap-1"
+                    >
+                      <Check className="w-3 h-3" />
+                      Selected
+                    </Badge>
+                  )}
+
+                  {/* Date badge - top right */}
+                  <Badge
+                    variant="secondary"
+                    className="absolute top-1 right-1 z-10 text-[10px] bg-background/80 backdrop-blur-sm"
+                  >
+                    {new Date(gen.createdAt).toLocaleDateString()}
+                  </Badge>
+
+                  {/* Counter badge - bottom right */}
+                  <Badge
+                    variant="secondary"
+                    className="absolute bottom-1 right-1 z-10 text-[10px] bg-background/80 backdrop-blur-sm font-mono"
+                  >
+                    {currentIndex + 1}/{total}
+                  </Badge>
+
+                  {/* Current/selected item overlay: Inpaint + Compare */}
+                  {gen.isCurrent && !isDisabled && !isGenerating && (
+                    <div className="absolute inset-0 z-20 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                      <Button
+                        variant="glass"
+                        size="sm"
+                        onClick={(e) => { e.stopPropagation(); onInpaint(); }}
+                      >
+                        <Paintbrush className="w-4 h-4 mr-1" />
+                        Inpaint
+                      </Button>
+                      {showCompare && onCompare && (
+                        <Button variant="glass" size="sm" onClick={(e) => { e.stopPropagation(); onCompare(); }}>
+                          <Eye className="w-4 h-4 mr-1" />
+                          Compare
+                        </Button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Non-current item overlay: Select + Delete */}
+                  {!gen.isCurrent && (
+                    <div className="absolute inset-0 z-20 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                      <Button
+                        size="sm"
+                        className="bg-amber-400 hover:bg-amber-500 text-amber-900"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          selectMutation.mutate(gen.jobId);
+                        }}
+                        disabled={selectMutation.isPending}
+                      >
+                        {selectMutation.isPending ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <>
+                            <Check className="w-3 h-3 mr-1" />
+                            Select
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteMutation.mutate(gen.jobId);
+                        }}
+                        disabled={deleteMutation.isPending}
+                      >
+                        {deleteMutation.isPending ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3 h-3" />
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-sm text-xs">
+                {gen.prompt && (
+                  <>
+                    <p className="font-medium mb-1">Prompt:</p>
+                    <p className="text-muted-foreground line-clamp-3">{gen.prompt}</p>
+                  </>
+                )}
+                {gen.costCredits > 0 && (
+                  <p className="text-muted-foreground mt-1">Cost: {gen.costCredits.toFixed(2)} credits</p>
+                )}
+                <p className="text-muted-foreground mt-1">
+                  {new Date(gen.createdAt).toLocaleDateString()}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </CarouselItem>
+        ))}
+      </CarouselContent>
+      {total > 1 && (
+        <>
+          <CarouselPrevious className="left-2 z-30 h-7 w-7 bg-black/60 border-white/20 text-white hover:bg-black/80 hover:text-white disabled:hidden" />
+          <CarouselNext className="right-2 z-30 h-7 w-7 bg-black/60 border-white/20 text-white hover:bg-black/80 hover:text-white disabled:hidden" />
+        </>
+      )}
+    </Carousel>
+  );
+
   return (
     <div className={cn('flex flex-col', isDisabled && 'opacity-60')}>
       {/* Header */}
@@ -138,77 +387,26 @@ export function FramePanel({
       )}
 
       {/* Frame Display */}
-      <div
-        className={cn(
-          'aspect-video bg-muted/50 rounded-lg border overflow-hidden relative group',
-          isApproved ? 'border-emerald-500/50' : 'border-border/30',
-          isGenerating && 'border-blue-500/30'
-        )}
-      >
-        {hasImage ? (
-          <>
-            <motion.img
-              src={frame.imageUrl!}
-              alt={`${frameType} frame for shot ${shotId}`}
-              className="w-full h-full object-cover"
-              onError={() => setImageError(true)}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.3 }}
-            />
-            {/* Hover actions overlay */}
-            {!isDisabled && !isGenerating && (
-              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                <Button
-                  variant="glass"
-                  size="sm"
-                  onClick={onInpaint}
-                  disabled={!hasImage}
-                >
-                  <Paintbrush className="w-4 h-4 mr-1" />
-                  Inpaint
-                </Button>
-                {showCompare && onCompare && (
-                  <Button variant="glass" size="sm" onClick={onCompare}>
-                    <Eye className="w-4 h-4 mr-1" />
-                    Compare
-                  </Button>
-                )}
-              </div>
-            )}
-          </>
-        ) : isGenerating ? (
-          <div className="w-full h-full flex flex-col items-center justify-center">
-            <Loader2 className="w-12 h-12 text-blue-400 mb-3 animate-spin" />
-            <span className="text-sm text-muted-foreground">Generating frame...</span>
-          </div>
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center">
-            <ImageIcon className="w-12 h-12 text-muted-foreground mb-2" />
-            <span className="text-sm text-muted-foreground">
-              {(isDisabled || isGenerateDisabled) && disabledReason ? disabledReason : 'No frame generated'}
-            </span>
-          </div>
-        )}
-
-        {/* Generation count badge */}
-        {frame && frame.generationCount > 0 && (
-          <div className="absolute top-2 right-2">
-            <Badge variant="outline" className="bg-black/50 text-xs">
-              Gen #{frame.generationCount}
-            </Badge>
-          </div>
-        )}
-      </div>
-
-      {/* Generation history carousel */}
-      {frame && frame.generationCount > 1 && projectId && sceneId && (
-        <FrameGenerationCarousel
-          projectId={projectId}
-          sceneId={sceneId}
-          frameId={frame.id}
-          generationCount={frame.generationCount}
-        />
+      {showCarousel ? (
+        renderCarousel()
+      ) : hasImage ? (
+        renderSingleImage()
+      ) : isGenerating ? (
+        <div
+          className="aspect-video bg-muted/50 rounded-lg border border-blue-500/30 overflow-hidden relative flex flex-col items-center justify-center"
+        >
+          <Loader2 className="w-12 h-12 text-blue-400 mb-3 animate-spin" />
+          <span className="text-sm text-muted-foreground">Generating frame...</span>
+        </div>
+      ) : (
+        <div
+          className="aspect-video bg-muted/50 rounded-lg border border-border/30 overflow-hidden relative flex flex-col items-center justify-center"
+        >
+          <ImageIcon className="w-12 h-12 text-muted-foreground mb-2" />
+          <span className="text-sm text-muted-foreground">
+            {(isDisabled || isGenerateDisabled) && disabledReason ? disabledReason : 'No frame generated'}
+          </span>
+        </div>
       )}
 
       {/* Reference image thumbnails */}
@@ -244,46 +442,16 @@ export function FramePanel({
             <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
             Generating...
           </Button>
-        ) : canApprove ? (
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={onReject}
-              disabled={isDisabled || isGenerateDisabled}
-            >
-              <X className="w-4 h-4 mr-1" />
-              Reject
-            </Button>
-            <Button
-              variant="gold"
-              size="sm"
-              className="flex-1"
-              onClick={onApprove}
-              disabled={isDisabled || isGenerateDisabled}
-            >
-              <Check className="w-4 h-4 mr-1" />
-              Approve
-            </Button>
-          </>
-        ) : isApproved ? (
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={handleRegenClick}
-              disabled={isDisabled || isGenerateDisabled}
-            >
-              <RefreshCw className="w-4 h-4 mr-1" />
-              Regenerate
-            </Button>
-            <Button variant="gold" size="sm" className="flex-1" disabled>
-              <Check className="w-4 h-4 mr-1" />
-              Approved
-            </Button>
-          </>
+        ) : hasImage && !isGenerating ? (
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={handleRegenClick}
+            disabled={isDisabled || isGenerateDisabled}
+          >
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Regenerate
+          </Button>
         ) : null}
       </div>
 
@@ -374,6 +542,19 @@ export function FramePanel({
             Cancel
           </Button>
         </div>
+      )}
+
+      {/* Full-size preview dialog */}
+      {previewUrl && (
+        <Dialog open={!!previewUrl} onOpenChange={() => setPreviewUrl(null)}>
+          <DialogContent className="max-w-3xl p-2 bg-black/90 border-none">
+            <img
+              src={previewUrl}
+              alt="Frame preview"
+              className="w-full h-auto max-h-[85vh] object-contain rounded"
+            />
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );
