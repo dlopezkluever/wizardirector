@@ -42,6 +42,15 @@ export interface InpaintRequest {
   prompt: string;
 }
 
+export interface FrameGeneration {
+  jobId: string;
+  imageUrl: string;
+  prompt: string;
+  costCredits: number;
+  createdAt: string;
+  isCurrent: boolean;
+}
+
 class FrameService {
   private async getAuthHeaders(): Promise<HeadersInit> {
     const { data: { session } } = await supabase.auth.getSession();
@@ -340,6 +349,58 @@ class FrameService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to chain end frame');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Fetch all completed generations for a frame
+   */
+  async fetchFrameGenerations(
+    projectId: string,
+    sceneId: string,
+    frameId: string
+  ): Promise<FrameGeneration[]> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/frames/${frameId}/generations`,
+      { headers }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch generations');
+    }
+
+    const data = await response.json();
+    return data.generations;
+  }
+
+  /**
+   * Select a previous generation as the current frame image
+   */
+  async selectFrameGeneration(
+    projectId: string,
+    sceneId: string,
+    frameId: string,
+    jobId: string
+  ): Promise<{ success: boolean }> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/frames/${frameId}/select-generation`,
+      {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ jobId }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to select generation');
     }
 
     return response.json();
