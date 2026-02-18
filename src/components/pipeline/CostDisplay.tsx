@@ -1,11 +1,10 @@
-import { Coins, Image as ImageIcon, Check, Loader2 } from 'lucide-react';
+import { Coins, Check, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 interface CostDisplayProps {
   totalCredits: number;
-  approvedFrames: number;
-  generatedFrames: number;
+  readyFrames: number;
   generatingFrames: number;
   totalFrames: number;
   className?: string;
@@ -13,15 +12,13 @@ interface CostDisplayProps {
 
 export function CostDisplay({
   totalCredits,
-  approvedFrames,
-  generatedFrames,
+  readyFrames,
   generatingFrames,
   totalFrames,
   className,
 }: CostDisplayProps) {
-  const completedFrames = approvedFrames;
-  const progressPercent = totalFrames > 0 ? (completedFrames / totalFrames) * 100 : 0;
-  const isComplete = completedFrames === totalFrames && totalFrames > 0;
+  const progressPercent = totalFrames > 0 ? (readyFrames / totalFrames) * 100 : 0;
+  const isComplete = readyFrames === totalFrames && totalFrames > 0;
 
   return (
     <div
@@ -65,15 +62,8 @@ export function CostDisplay({
             )}
           >
             <Check className="w-3 h-3" />
-            {approvedFrames}
+            {readyFrames}
           </Badge>
-
-          {generatedFrames > 0 && (
-            <Badge variant="outline" className="gap-1 border-amber-500/50 text-amber-400">
-              <ImageIcon className="w-3 h-3" />
-              {generatedFrames}
-            </Badge>
-          )}
 
           {generatingFrames > 0 && (
             <Badge variant="outline" className="gap-1 border-blue-500/50 text-blue-400">
@@ -91,16 +81,12 @@ export function CostDisplay({
         {isComplete ? (
           <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
             <Check className="w-3 h-3 mr-1" />
-            All frames approved
+            All frames ready
           </Badge>
         ) : generatingFrames > 0 ? (
           <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
             <Loader2 className="w-3 h-3 mr-1 animate-spin" />
             Generating...
-          </Badge>
-        ) : generatedFrames > 0 ? (
-          <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
-            {generatedFrames} ready for review
           </Badge>
         ) : (
           <Badge variant="secondary" className="text-muted-foreground">
