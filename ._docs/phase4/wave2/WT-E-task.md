@@ -18,7 +18,10 @@
 For scenes with a lot of action and change, descriptions need to be dynamically connected. The first frame & video prompt should pipe context down to subsequent ones in the scene, creating continuity within a scene. Currently each shot's prompt is generated independently — there's no awareness of what happened in prior shots.
 
 ### Ticket 9.5 (from Tickets.md)
-> For scenes with a lot of action and change, descriptions need to be dynamically connected — the first frame & video prompt should pipe context down to subsequent ones in the scene.
+> For scenes with a lot of action and change, descriptions need to be dynamically connected — the first frame & video prompt should pipe context down to subsequent ones in the scene. Think staging, blocking, and things for visual continuity across shots / scenes in progression and changing camera angles, etc.
+
+*This will likely mean we need to, make the frame prompts be much more procise about framing and like physcial placement of misc en scene in shot, and make sure to keep continuity throught scene, unless explicitly asked to be changed.* 
+
 
 ### Core Features
 - [ ] **Extract key visual/narrative state from each shot's prompt**
