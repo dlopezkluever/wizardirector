@@ -644,6 +644,8 @@ export function Stage10FrameGeneration({
                       frame={selectedShot.startFrame}
                       frameType="start"
                       shotId={selectedShot.shotId}
+                      projectId={projectId}
+                      sceneId={sceneId}
                       onGenerate={() => handleGenerateShot(selectedShot.id, true)}
                       onApprove={() =>
                         selectedShot.startFrame &&
@@ -704,7 +706,9 @@ export function Stage10FrameGeneration({
                           frame={selectedShot.endFrame}
                           frameType="end"
                           shotId={selectedShot.shotId}
-                          isDisabled={selectedShot.startFrame?.status !== 'approved'}
+                          projectId={projectId}
+                          sceneId={sceneId}
+                          isGenerateDisabled={selectedShot.startFrame?.status !== 'approved'}
                           disabledReason="Approve start frame first"
                           onGenerate={() => handleGenerateShot(selectedShot.id, false)}
                           onApprove={() =>
@@ -818,7 +822,7 @@ export function Stage10FrameGeneration({
 
                     {/* Bottom-right: End Frame Prompt Editor (only when end frame is on) */}
                     {selectedShot.requiresEndFrame && (
-                      <div className="p-4 rounded-lg bg-muted/30 border border-border/30 space-y-3">
+                      <div className="p-4 rounded-lg bg-muted/30 border border-border/30 flex flex-col h-full gap-3">
                         <div className="flex items-center justify-between">
                           <h4 className="text-sm font-medium text-foreground">
                             End Frame Prompt
@@ -837,7 +841,7 @@ export function Stage10FrameGeneration({
                         </div>
 
                         {!selectedShot.endFramePrompt && !editedEndPrompt ? (
-                          <div className="space-y-3">
+                          <div className="flex flex-col flex-1 items-center justify-center gap-3">
                             <p className="text-xs text-muted-foreground">
                               Generate a dedicated end frame prompt using LLM.
                             </p>
@@ -857,13 +861,12 @@ export function Stage10FrameGeneration({
                             </Button>
                           </div>
                         ) : (
-                          <div className="space-y-3">
+                          <div className="flex flex-col flex-1 min-h-0 gap-3">
                             <Textarea
                               value={editedEndPrompt}
                               onChange={(e) => setEditedEndPrompt(e.target.value)}
-                              rows={6}
                               placeholder="End frame prompt..."
-                              className="resize-none text-xs"
+                              className="resize-none text-xs flex-1 min-h-[100px]"
                             />
                             <div className="flex gap-2">
                               <Button
