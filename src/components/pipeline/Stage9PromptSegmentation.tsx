@@ -32,6 +32,7 @@ import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
 import { ContentAccessCarousel } from './ContentAccessCarousel';
+import { ReferenceImageThumbnail } from './ReferenceImageThumbnail';
 
 interface Stage9PromptSegmentationProps {
   projectId: string;
@@ -448,17 +449,50 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                           No prompts
                         </Badge>
                       )}
-                      <Badge
-                        variant="secondary"
-                        className={cn(
-                          'text-xs select-none',
-                          promptSet.requiresEndFrame
-                            ? 'bg-emerald-500/20 text-emerald-400'
-                            : 'bg-muted/40 text-muted-foreground'
-                        )}
+                      {promptSet.aiRecommendsEndFrame != null && (
+                        <Badge
+                          variant="secondary"
+                          className={cn(
+                            'text-xs select-none',
+                            promptSet.aiRecommendsEndFrame
+                              ? 'bg-blue-500/20 text-blue-400'
+                              : 'bg-muted/40 text-muted-foreground'
+                          )}
+                        >
+                          {promptSet.aiRecommendsEndFrame ? 'AI: End Frame' : 'AI: No End Frame'}
+                        </Badge>
+                      )}
+                      <div
+                        className="flex items-center gap-1.5"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        {promptSet.requiresEndFrame ? 'End Frame Recommended' : 'No End Frame'}
-                      </Badge>
+                        <span className="text-[10px] text-muted-foreground">End Frame</span>
+                        <Switch
+                          checked={promptSet.requiresEndFrame}
+                          onCheckedChange={(checked) => {
+                            if (!promptSet.shotUuid) return;
+                            // Optimistic local update
+                            setPromptSets(prev => prev.map(ps =>
+                              ps.shotId === promptSet.shotId ? { ...ps, requiresEndFrame: checked } : ps
+                            ));
+                            // Persist to backend
+                            promptService.updatePrompt(projectId, sceneId, promptSet.shotUuid, {
+                              requiresEndFrame: checked,
+                            }).catch(() => {
+                              // Revert on failure
+                              setPromptSets(prev => prev.map(ps =>
+                                ps.shotId === promptSet.shotId ? { ...ps, requiresEndFrame: !checked } : ps
+                              ));
+                              toast({
+                                title: 'Error',
+                                description: 'Failed to update end frame setting',
+                                variant: 'destructive',
+                              });
+                            });
+                          }}
+                          className="scale-75"
+                        />
+                      </div>
                       {promptSet.hasChanges && (
                         <Badge
                           variant="secondary"
@@ -511,25 +545,13 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs text-muted-foreground">Refs:</span>
                             {promptSet.referenceImageOrder.map((ref, idx) => (
-                              <div
+                              <ReferenceImageThumbnail
                                 key={idx}
-                                className="relative w-8 h-8 rounded border border-border/50 overflow-hidden group/thumb"
-                                title={`${ref.assetName} (${ref.type})`}
-                              >
-                                <img
-                                  src={ref.url}
-                                  alt={ref.assetName}
-                                  className="w-full h-full object-cover"
-                                />
-                                <span className="absolute top-0 left-0 bg-black/70 text-[8px] text-white px-0.5 leading-tight">
-                                  {idx + 1}
-                                </span>
-                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center">
-                                  <span className="text-[7px] text-white text-center leading-tight px-0.5">
-                                    {ref.assetName}
-                                  </span>
-                                </div>
-                              </div>
+                                url={ref.url}
+                                assetName={ref.assetName}
+                                type={ref.type}
+                                index={idx}
+                              />
                             ))}
                           </div>
                         )}
