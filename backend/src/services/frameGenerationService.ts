@@ -834,14 +834,14 @@ export class FrameGenerationService {
         const shotsWithFrames = await this.fetchFramesForScene(sceneId);
 
         for (const shot of shotsWithFrames) {
-            // Check start frame
-            if (!shot.startFrame || shot.startFrame.status !== 'approved') {
+            // Check start frame — both 'approved' and 'generated' count as ready
+            if (!shot.startFrame || (shot.startFrame.status !== 'approved' && shot.startFrame.status !== 'generated')) {
                 return false;
             }
 
             // Check end frame if required
             if (shot.requiresEndFrame) {
-                if (!shot.endFrame || shot.endFrame.status !== 'approved') {
+                if (!shot.endFrame || (shot.endFrame.status !== 'approved' && shot.endFrame.status !== 'generated')) {
                     return false;
                 }
             }

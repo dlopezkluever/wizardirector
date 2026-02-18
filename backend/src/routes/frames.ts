@@ -861,4 +861,96 @@ router.put('/:projectId/scenes/:sceneId/frames/:frameId/select-generation', asyn
     }
 });
 
+/**
+ * DELETE /api/projects/:projectId/scenes/:sceneId/frames/:frameId/generations/:jobId
+ * Delete a non-current generation from a frame
+ */
+router.delete('/:projectId/scenes/:sceneId/frames/:frameId/generations/:jobId', async (req, res) => {
+    try {
+        const { projectId, frameId, jobId } = req.params;
+        const userId = req.user!.id;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Get the frame to check current_job_id and generation_count
+        const { data: frame, error: frameError } = await supabase
+            .from('frames')
+            .select('id, shot_id, frame_type, current_job_id, generation_count')
+            .eq('id', frameId)
+            .single();
+
+        if (frameError || !frame) {
+            return res.status(404).json({ error: 'Frame not found' });
+        }
+
+        // Guard: cannot delete the currently selected generation
+        if (jobId === frame.current_job_id) {
+            return res.status(400).json({ error: 'Cannot delete the currently selected generation' });
+        }
+
+        // Guard: must have at least 2 completed generations to delete one
+        const jobType = frame.frame_type === 'start' ? 'start_frame' : 'end_frame';
+        const { count } = await supabase
+            .from('image_generation_jobs')
+            .select('id', { count: 'exact', head: true })
+            .eq('shot_id', frame.shot_id)
+            .eq('job_type', jobType)
+            .eq('status', 'completed');
+
+        if ((count || 0) < 2) {
+            return res.status(400).json({ error: 'Must have at least 2 generations to delete one' });
+        }
+
+        // Fetch the job to get storage_path
+        const { data: job, error: jobError } = await supabase
+            .from('image_generation_jobs')
+            .select('id, storage_path')
+            .eq('id', jobId)
+            .single();
+
+        if (jobError || !job) {
+            return res.status(404).json({ error: 'Generation job not found' });
+        }
+
+        // Delete from storage if path exists
+        if (job.storage_path) {
+            await supabase.storage.from('frames').remove([job.storage_path]);
+        }
+
+        // Delete the job record
+        const { error: deleteError } = await supabase
+            .from('image_generation_jobs')
+            .delete()
+            .eq('id', jobId);
+
+        if (deleteError) {
+            throw new Error(`Failed to delete job: ${deleteError.message}`);
+        }
+
+        // Decrement generation_count
+        await supabase
+            .from('frames')
+            .update({
+                generation_count: Math.max(0, (frame.generation_count || 1) - 1),
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', frameId);
+
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error('Error in DELETE generation:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
 export const framesRouter = router;
