@@ -10,6 +10,8 @@ import { AssetInheritanceService } from '../services/assetInheritanceService.js'
 import { ImageGenerationService } from '../services/image-generation/ImageGenerationService.js';
 import { SceneAssetRelevanceService } from '../services/sceneAssetRelevanceService.js';
 import { SceneAssetAttemptsService } from '../services/sceneAssetAttemptsService.js';
+import { transformationEventService } from '../services/transformationEventService.js';
+import type { TransformationType, DetectedBy } from '../services/transformationEventService.js';
 import multer from 'multer';
 import path from 'path';
 
@@ -1570,6 +1572,154 @@ router.post('/:projectId/scenes/:sceneId/assets/:instanceId/upload-image', scene
   } catch (err) {
     console.error('[SceneAssets] Upload image error:', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================================
+// TRANSFORMATION EVENT ROUTES
+// ============================================================================
+
+const CreateTransformationEventSchema = z.object({
+  scene_asset_instance_id: z.string().uuid(),
+  trigger_shot_id: z.string().uuid(),
+  transformation_type: z.enum(['instant', 'gradual', 'within_shot']),
+  completion_shot_id: z.string().uuid().optional().nullable(),
+  pre_description: z.string().optional(),
+  post_description: z.string().min(1),
+  transformation_narrative: z.string().optional().nullable(),
+  pre_status_tags: z.array(z.string()).optional(),
+  post_status_tags: z.array(z.string()).optional(),
+  detected_by: z.enum(['stage7_extraction', 'stage8_relevance', 'manual']),
+});
+
+const UpdateTransformationEventSchema = z.object({
+  transformation_type: z.enum(['instant', 'gradual', 'within_shot']).optional(),
+  trigger_shot_id: z.string().uuid().optional(),
+  completion_shot_id: z.string().uuid().optional().nullable(),
+  pre_description: z.string().optional(),
+  post_description: z.string().optional(),
+  transformation_narrative: z.string().optional().nullable(),
+  pre_image_key_url: z.string().optional().nullable(),
+  post_image_key_url: z.string().optional().nullable(),
+  pre_status_tags: z.array(z.string()).optional(),
+  post_status_tags: z.array(z.string()).optional(),
+});
+
+/**
+ * GET /:projectId/scenes/:sceneId/transformation-events
+ * List all transformation events for a scene (with shot joins)
+ */
+router.get('/:projectId/scenes/:sceneId/transformation-events', async (req, res) => {
+  try {
+    const { sceneId } = req.params;
+    const events = await transformationEventService.getTransformationEventsForScene(sceneId);
+    res.json(events);
+  } catch (err) {
+    console.error('[TransformationEvents] Fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch transformation events' });
+  }
+});
+
+/**
+ * POST /:projectId/scenes/:sceneId/transformation-events
+ * Create a transformation event (manual or from detection)
+ */
+router.post('/:projectId/scenes/:sceneId/transformation-events', async (req, res) => {
+  try {
+    const { sceneId } = req.params;
+    const parsed = CreateTransformationEventSchema.parse(req.body);
+    const event = await transformationEventService.createTransformationEvent({
+      ...parsed,
+      scene_id: sceneId,
+      transformation_type: parsed.transformation_type as TransformationType,
+      detected_by: parsed.detected_by as DetectedBy,
+    });
+    res.status(201).json(event);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Validation error', details: err.errors });
+    }
+    console.error('[TransformationEvents] Create error:', err);
+    res.status(500).json({ error: 'Failed to create transformation event' });
+  }
+});
+
+/**
+ * PUT /:projectId/scenes/:sceneId/transformation-events/:eventId
+ * Update a transformation event
+ */
+router.put('/:projectId/scenes/:sceneId/transformation-events/:eventId', async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const parsed = UpdateTransformationEventSchema.parse(req.body);
+    const event = await transformationEventService.updateTransformationEvent(eventId, parsed);
+    res.json(event);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Validation error', details: err.errors });
+    }
+    console.error('[TransformationEvents] Update error:', err);
+    res.status(500).json({ error: 'Failed to update transformation event' });
+  }
+});
+
+/**
+ * POST /:projectId/scenes/:sceneId/transformation-events/:eventId/confirm
+ * Confirm a detected transformation event
+ */
+router.post('/:projectId/scenes/:sceneId/transformation-events/:eventId/confirm', async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const event = await transformationEventService.confirmTransformationEvent(eventId);
+    res.json(event);
+  } catch (err) {
+    console.error('[TransformationEvents] Confirm error:', err);
+    res.status(500).json({ error: 'Failed to confirm transformation event' });
+  }
+});
+
+/**
+ * DELETE /:projectId/scenes/:sceneId/transformation-events/:eventId
+ * Delete a transformation event
+ */
+router.delete('/:projectId/scenes/:sceneId/transformation-events/:eventId', async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    await transformationEventService.deleteTransformationEvent(eventId);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[TransformationEvents] Delete error:', err);
+    res.status(500).json({ error: 'Failed to delete transformation event' });
+  }
+});
+
+/**
+ * POST /:projectId/scenes/:sceneId/transformation-events/:eventId/generate-post-description
+ * LLM-generate post_description from pre_description + narrative
+ */
+router.post('/:projectId/scenes/:sceneId/transformation-events/:eventId/generate-post-description', async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const postDescription = await transformationEventService.generatePostDescription(eventId);
+    res.json({ post_description: postDescription });
+  } catch (err) {
+    console.error('[TransformationEvents] Generate post-description error:', err);
+    res.status(500).json({ error: 'Failed to generate post-description' });
+  }
+});
+
+/**
+ * POST /:projectId/scenes/:sceneId/transformation-events/:eventId/generate-post-image
+ * Placeholder: generate post-state reference image (requires image gen service integration)
+ */
+router.post('/:projectId/scenes/:sceneId/transformation-events/:eventId/generate-post-image', async (req, res) => {
+  try {
+    // TODO: Integrate with ImageGenerationService to generate post-state image
+    // For now, return a placeholder response
+    res.status(501).json({ error: 'Post-image generation not yet implemented' });
+  } catch (err) {
+    console.error('[TransformationEvents] Generate post-image error:', err);
+    res.status(500).json({ error: 'Failed to generate post-image' });
   }
 });
 
