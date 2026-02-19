@@ -8,6 +8,7 @@
 
 import { llmClient, type LLMRequest, LLMClientError } from './llm-client.js';
 import type { StyleCapsule } from './styleCapsuleService.js';
+import { transformationEventService, type TransformationEvent, type ShotAssetOverride } from './transformationEventService.js';
 
 export interface ShotData {
   id: string;
@@ -177,9 +178,19 @@ export function buildNumberedImageManifest(
  * Build rich asset context for frame prompt generation.
  * Groups by type, includes inheritance chain info, image reference indicators,
  * effective descriptions, and status tags for guide-compliant prompts.
+ *
+ * When shotOverrides is provided, swaps effective_description for overridden assets
+ * and appends transformation markers for within_shot assets.
  */
-function buildAssetContext(assets: SceneAssetInstanceData[]): string {
+function buildAssetContext(
+  assets: SceneAssetInstanceData[],
+  shotOverrides?: ShotAssetOverride[]
+): string {
   if (!assets.length) return 'No scene assets available.';
+
+  const overrideMap = new Map(
+    (shotOverrides ?? []).map(o => [o.asset_instance_id, o])
+  );
 
   const characterAssets = assets.filter(a => a.project_asset?.asset_type === 'character');
   const locationAssets = assets.filter(a => a.project_asset?.asset_type === 'location');
@@ -189,6 +200,8 @@ function buildAssetContext(assets: SceneAssetInstanceData[]): string {
 
   const formatAssetEntry = (a: SceneAssetInstanceData): string => {
     const name = a.project_asset?.name ?? 'Unknown';
+    const override = overrideMap.get(a.id);
+    const description = override ? override.effective_description : a.effective_description;
     const tags = a.status_tags.length ? ` [${a.status_tags.join(', ')}]` : '';
 
     // Inheritance indicators
@@ -206,7 +219,12 @@ function buildAssetContext(assets: SceneAssetInstanceData[]): string {
     else if (hasSceneRef) refNote = ' Scene reference image available.';
     else if (hasMasterRef) refNote = ' Master reference image available.';
 
-    return `- ${name}${inheritanceStr}${tags}: ${a.effective_description}${refNote}`;
+    let transformNote = '';
+    if (override?.is_transforming) {
+      transformNote = '\n  [TRANSFORMING IN THIS SHOT — see transformation context below]';
+    }
+
+    return `- ${name}${inheritanceStr}${tags}: ${description}${refNote}${transformNote}`;
   };
 
   if (characterAssets.length) {
@@ -313,18 +331,36 @@ function determineCompatibleModels(shot: ShotData, framePrompt: string): string[
 
 export class PromptGenerationService {
   /**
-   * Generate frame and video prompts for a single shot
+   * Generate frame and video prompts for a single shot.
+   * When shotOverrides is provided, swaps asset descriptions and injects
+   * transformation context for within_shot events.
    */
   async generatePromptSet(
     shot: ShotData,
     sceneAssets: SceneAssetInstanceData[],
-    styleCapsule?: StyleCapsule | null
+    styleCapsule?: StyleCapsule | null,
+    shotOverrides?: ShotAssetOverride[]
   ): Promise<GeneratedPromptSet> {
     console.log(`[PromptGeneration] Generating prompts for shot ${shot.shot_id}`);
 
     // 3C.2: Enrich assets with angle-matched reference URLs based on shot camera
-    const enrichedAssets = enrichAssetsWithAngleMatch(sceneAssets, shot.camera);
-    const assetContext = buildAssetContext(enrichedAssets);
+    let enrichedAssets = enrichAssetsWithAngleMatch(sceneAssets, shot.camera);
+
+    // Apply transformation image overrides to the enriched assets
+    if (shotOverrides?.length) {
+      const overrideMap = new Map(shotOverrides.map(o => [o.asset_instance_id, o]));
+      enrichedAssets = enrichedAssets.map(asset => {
+        const override = overrideMap.get(asset.id);
+        if (!override) return asset;
+        return {
+          ...asset,
+          // Swap image if post-transformation image is available
+          ...(override.image_key_url ? { image_key_url: override.image_key_url, matched_angle_url: undefined } : {}),
+        };
+      });
+    }
+
+    const assetContext = buildAssetContext(enrichedAssets, shotOverrides);
     const styleContext = buildStyleContext(styleCapsule);
 
     // 4D.2: Build numbered image manifest for LLM context + API reference ordering
@@ -333,17 +369,20 @@ export class PromptGenerationService {
       console.log(`[PromptGeneration] Built image manifest with ${referenceImageOrder.length} reference(s) for shot ${shot.shot_id}`);
     }
 
+    // Identify assets transforming in this shot (for video prompt injection)
+    const transformingAssets = shotOverrides?.filter(o => o.is_transforming) ?? [];
+
     // Generate frame prompt (visual/spatial focus)
     const framePrompt = await this.generateFramePrompt(shot, assetContext, styleContext, imageManifest);
 
-    // Generate video prompt (action/audio focus)
-    const videoPrompt = await this.generateVideoPrompt(shot, framePrompt);
+    // Generate video prompt (action/audio focus) — inject transformation context for within_shot
+    const videoPrompt = await this.generateVideoPrompt(shot, framePrompt, transformingAssets, sceneAssets);
 
     // Determine end frame requirement and model compatibility
     const requiresEndFrame = determineRequiresEndFrame(shot);
     const compatibleModels = determineCompatibleModels(shot, framePrompt);
 
-    console.log(`[PromptGeneration] Generated prompts for shot ${shot.shot_id} (endFrame: ${requiresEndFrame}, refs: ${referenceImageOrder.length})`);
+    console.log(`[PromptGeneration] Generated prompts for shot ${shot.shot_id} (endFrame: ${requiresEndFrame}, refs: ${referenceImageOrder.length}, transforming: ${transformingAssets.length})`);
 
     return {
       framePrompt,
@@ -356,21 +395,46 @@ export class PromptGenerationService {
   }
 
   /**
-   * Generate prompts for multiple shots in a scene
+   * Generate prompts for multiple shots in a scene.
+   * When transformationEvents are provided, resolves per-shot asset overrides
+   * so each shot gets the correct pre/post description.
    */
   async generateBulkPromptSets(
     shots: ShotData[],
     sceneAssets: SceneAssetInstanceData[],
-    styleCapsule?: StyleCapsule | null
+    styleCapsule?: StyleCapsule | null,
+    transformationEvents?: TransformationEvent[]
   ): Promise<BulkPromptGenerationResult[]> {
     console.log(`[PromptGeneration] Bulk generating prompts for ${shots.length} shots`);
+
+    // Build shot refs for the resolution algorithm
+    const shotRefs = shots.map(s => ({ id: s.id, shot_id: s.shot_id, shot_order: (s as any).shot_order ?? 0 }));
+    const assetRefs = sceneAssets.map(a => ({
+      id: a.id,
+      effective_description: a.effective_description,
+      image_key_url: a.image_key_url,
+    }));
 
     const results: BulkPromptGenerationResult[] = [];
 
     // Process shots sequentially to avoid rate limits
     for (const shot of shots) {
       try {
-        const promptSet = await this.generatePromptSet(shot, sceneAssets, styleCapsule);
+        // Resolve per-shot overrides from transformation events
+        let shotOverrides: ShotAssetOverride[] | undefined;
+        if (transformationEvents?.length) {
+          const shotRef = shotRefs.find(s => s.id === shot.id);
+          if (shotRef) {
+            shotOverrides = transformationEventService.resolveOverridesForShot(
+              shotRef,
+              assetRefs,
+              transformationEvents,
+              shotRefs
+            );
+          }
+        }
+
+        const promptSet = await this.generatePromptSet(shot, sceneAssets, styleCapsule, shotOverrides);
         results.push({
           shotId: shot.id,
           success: true,
@@ -458,10 +522,15 @@ Write the frame prompt as a single dense paragraph. Describe ONLY what a viewer 
    * Generate video prompt (action/audio focused, NO visual description)
    * Follows the Veo 3.1 Video Prompt formula:
    * [Camera Movement] + [Action/Performance] + [Dialogue] + [Sound Design]
+   *
+   * When transformingAssets is provided (within_shot type at trigger shot),
+   * injects transformation context as an override to the "no appearance" rule.
    */
   private async generateVideoPrompt(
     shot: ShotData,
-    framePrompt: string
+    framePrompt: string,
+    transformingAssets?: ShotAssetOverride[],
+    allSceneAssets?: SceneAssetInstanceData[]
   ): Promise<string> {
     const systemPrompt = `You are a video prompt engineer for Veo 3.1 frame-to-video generation.
 
@@ -483,6 +552,24 @@ RULES:
 - Keep it lean — max 500 characters
 - Output a single paragraph, no JSON, no headers`;
 
+    // Build transformation context for within_shot events
+    let transformationSection = '';
+    if (transformingAssets?.length && allSceneAssets) {
+      const parts = transformingAssets.map(ta => {
+        const asset = allSceneAssets.find(a => a.id === ta.asset_instance_id);
+        const name = asset?.project_asset?.name ?? 'Character';
+        const preSummary = ta.effective_description.substring(0, 150);
+        const postSummary = (ta.post_description ?? '').substring(0, 150);
+        const narrative = ta.transformation_narrative ?? 'visual transformation';
+        return `TRANSFORMATION EVENT: ${name} transforms during this shot.
+Before: ${preSummary}
+After: ${postSummary}
+Transformation: ${narrative}
+OVERRIDE: Describe this visual transformation as it happens.`;
+      });
+      transformationSection = '\n\n' + parts.join('\n\n');
+    }
+
     const userPrompt = `Generate a VIDEO prompt for this shot. Visual truth is locked in the starting frame.
 
 Shot: ${shot.shot_id} | Duration: ${shot.duration}s
@@ -492,7 +579,7 @@ Dialogue: ${shot.dialogue || 'None'}
 Foreground characters: ${shot.characters_foreground.join(', ') || 'None'}
 Background characters: ${shot.characters_background.join(', ') || 'None'}
 
-Camera split guidance: Camera MOVEMENT (pan, dolly, track, crane) goes here. Camera POSITION (shot type, angle, lens) is already in the frame.
+Camera split guidance: Camera MOVEMENT (pan, dolly, track, crane) goes here. Camera POSITION (shot type, angle, lens) is already in the frame.${transformationSection}
 
 Write the video prompt. Focus on action, movement, dialogue delivery, and sound. Output ONLY the prompt text.`;
 
@@ -504,18 +591,45 @@ Write the video prompt. Focus on action, movement, dialogue delivery, and sound.
    * Generate an end frame prompt for a shot.
    * Describes the frozen end-state: same camera, same characters (only pose/expression changes),
    * references the start frame prompt as "before" state, shot action as "what happened".
+   *
+   * When shotOverrides includes a within_shot transformation, the end frame must show
+   * the post-transformation appearance for that asset.
    */
   async generateEndFramePrompt(
     shot: ShotData,
     startFramePrompt: string,
     sceneAssets: SceneAssetInstanceData[],
-    styleCapsule?: StyleCapsule | null
+    styleCapsule?: StyleCapsule | null,
+    shotOverrides?: ShotAssetOverride[]
   ): Promise<string> {
     console.log(`[PromptGeneration] Generating end frame prompt for shot ${shot.shot_id}`);
 
     const enrichedAssets = enrichAssetsWithAngleMatch(sceneAssets, shot.camera);
-    const assetContext = buildAssetContext(enrichedAssets);
+
+    // For end frame: transforming assets should use POST description
+    const endFrameOverrides = shotOverrides?.map(o => {
+      if (o.is_transforming && o.post_description) {
+        return { ...o, effective_description: o.post_description, image_key_url: o.post_image_key_url ?? o.image_key_url };
+      }
+      return o;
+    });
+
+    const assetContext = buildAssetContext(enrichedAssets, endFrameOverrides);
     const styleContext = buildStyleContext(styleCapsule);
+
+    // Build transformation rule overrides for within_shot
+    const transformingAssets = shotOverrides?.filter(o => o.is_transforming) ?? [];
+    let transformationRule = '- Same characters, same clothing, same environment';
+    if (transformingAssets.length && sceneAssets) {
+      const rules = transformingAssets.map(ta => {
+        const asset = sceneAssets.find(a => a.id === ta.asset_instance_id);
+        const name = asset?.project_asset?.name ?? 'Character';
+        const preSummary = ta.effective_description.substring(0, 150);
+        const postSummary = (ta.post_description ?? '').substring(0, 150);
+        return `TRANSFORMATION: ${name} has TRANSFORMED during this shot.\nSTART frame showed: ${preSummary}\nEND frame must show: ${postSummary}\nAll OTHER characters/environment remain the same.`;
+      });
+      transformationRule = rules.join('\n');
+    }
 
     const systemPrompt = `You are a visual prompt engineer for AI image generation (end frames for Veo 3.1 video pipeline).
 
@@ -531,7 +645,7 @@ CONTEXT:
 
 RULES:
 - Same camera position and framing as the start frame
-- Same characters, same clothing, same environment
+${transformationRule}
 - Only change: poses, expressions, positions, and effects of the action
 - NO action verbs, NO dialogue, NO sound, NO movement — this is a still image
 - Reference character appearances EXACTLY from the asset descriptions
