@@ -13,6 +13,39 @@ export type ContinuityRisk = 'safe' | 'risky' | 'broken';
 
 export type PromptType = 'frame' | 'video' | 'system';
 
+export type TransformationType = 'instant' | 'gradual' | 'within_shot';
+
+export interface TransformationFlag {
+  characterName: string;
+  type: TransformationType;
+  description: string;
+  isTrigger: boolean;
+  isCompletion?: boolean;
+}
+
+export interface TransformationEvent {
+  id: string;
+  scene_asset_instance_id: string;
+  scene_id: string;
+  trigger_shot_id: string;
+  transformation_type: TransformationType;
+  completion_shot_id: string | null;
+  pre_description: string;
+  post_description: string;
+  transformation_narrative: string | null;
+  pre_image_key_url: string | null;
+  post_image_key_url: string | null;
+  pre_status_tags: string[];
+  post_status_tags: string[];
+  detected_by: 'stage7_extraction' | 'stage8_relevance' | 'manual';
+  confirmed: boolean;
+  confirmed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  trigger_shot?: { id: string; shot_id: string; shot_order: number };
+  completion_shot?: { id: string; shot_id: string; shot_order: number } | null;
+}
+
 export interface Shot {
   id: string;
   sceneId: string;
@@ -26,6 +59,7 @@ export interface Shot {
   camera: string;
   continuityFlags?: string[];
   beatReference?: string;
+  transformationFlags?: TransformationFlag[];
 }
 
 export interface Scene {
@@ -182,6 +216,12 @@ export interface ReferenceImageOrderEntry {
   type: string;
 }
 
+export interface PromptSetTransformationContext {
+  assetName: string;
+  state: 'pre-transform' | 'post-transform' | 'transforming';
+  transformationType: TransformationType;
+}
+
 export interface PromptSet {
   shotId: string;
   shotUuid?: string; // Database UUID for API calls
@@ -199,6 +239,8 @@ export interface PromptSet {
   action?: string;
   setting?: string;
   camera?: string;
+  // Transformation context (populated when events affect this shot)
+  transformationContext?: PromptSetTransformationContext[];
   // UI state (not persisted)
   isGenerating?: boolean;
   hasChanges?: boolean;
