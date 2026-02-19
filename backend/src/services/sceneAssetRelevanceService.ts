@@ -7,6 +7,7 @@
 
 import { supabase } from '../config/supabase.js';
 import { llmClient } from './llm-client.js';
+import { transformationEventService } from './transformationEventService.js';
 
 /** Result shape returned by detectRelevantAssets; matches frontend SceneAssetRelevanceResult. */
 export interface SceneAssetRelevanceResult {
@@ -58,7 +59,7 @@ export class SceneAssetRelevanceService {
     const { data: instances } = await supabase
       .from('scene_asset_instances')
       .select(
-        'project_asset_id, effective_description, status_tags, inherited_from_instance_id, scene_id'
+        'id, project_asset_id, effective_description, status_tags, inherited_from_instance_id, scene_id'
       )
       .in('scene_id', sceneIds);
 
@@ -74,12 +75,28 @@ export class SceneAssetRelevanceService {
     for (const inst of sorted) {
       if (!byAsset.has(inst.project_asset_id)) {
         const sceneNumber = sceneNumberById.get(inst.scene_id) ?? 0;
-        byAsset.set(inst.project_asset_id, {
-          scene_number: sceneNumber,
-          effective_description: inst.effective_description ?? '',
-          status_tags: inst.status_tags ?? [],
-          inherited_from_instance_id: inst.inherited_from_instance_id ?? null,
-        });
+
+        // Check for transformation events — if asset transformed, use post-state
+        const transformState = await transformationEventService.getLastAssetStateForInheritance(
+          inst.scene_id,
+          inst.id
+        );
+
+        if (transformState) {
+          byAsset.set(inst.project_asset_id, {
+            scene_number: sceneNumber,
+            effective_description: transformState.description,
+            status_tags: transformState.statusTags,
+            inherited_from_instance_id: inst.inherited_from_instance_id ?? null,
+          });
+        } else {
+          byAsset.set(inst.project_asset_id, {
+            scene_number: sceneNumber,
+            effective_description: inst.effective_description ?? '',
+            status_tags: inst.status_tags ?? [],
+            inherited_from_instance_id: inst.inherited_from_instance_id ?? null,
+          });
+        }
       }
     }
     return byAsset;
