@@ -1236,7 +1236,8 @@ router.post('/:id/scenes/:sceneId/shots/extract', async (req, res) => {
       setting: shot.setting,
       camera: shot.camera,
       continuity_flags: shot.continuityFlags,
-      beat_reference: shot.beatReference ?? null
+      beat_reference: shot.beatReference ?? null,
+      transformation_flags: shot.transformationFlags ? JSON.stringify(shot.transformationFlags) : null,
     }));
 
     if (shotsToInsert.length === 0) {
@@ -2255,10 +2256,11 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
       console.warn(`[Stage9] Large asset context (~${estimatedTokens} tokens) — prompt quality may be affected`);
     }
 
-    // Transform shots to service format
-    const shotDataList: ShotData[] = shots.map((shot: any) => ({
+    // Transform shots to service format (include shot_order for transformation resolution)
+    const shotDataList = shots.map((shot: any) => ({
       id: shot.id,
       shot_id: shot.shot_id,
+      shot_order: shot.shot_order ?? 0,
       duration: shot.duration,
       dialogue: shot.dialogue || '',
       action: shot.action,
@@ -2268,13 +2270,35 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
       camera: shot.camera,
       continuity_flags: shot.continuity_flags,
       beat_reference: shot.beat_reference,
+    })) as (ShotData & { shot_order: number })[];
+
+    // Fetch confirmed transformation events for this scene
+    const { data: transformationEventsRaw } = await supabase
+      .from('transformation_events')
+      .select(`
+        *,
+        trigger_shot:shots!trigger_shot_id(id, shot_id, shot_order),
+        completion_shot:shots!completion_shot_id(id, shot_id, shot_order)
+      `)
+      .eq('scene_id', sceneId)
+      .eq('confirmed', true);
+
+    const transformationEvents = (transformationEventsRaw ?? []).map((row: any) => ({
+      ...row,
+      trigger_shot: Array.isArray(row.trigger_shot) ? row.trigger_shot[0] : row.trigger_shot,
+      completion_shot: Array.isArray(row.completion_shot) ? row.completion_shot[0] : row.completion_shot,
     }));
 
-    // Generate prompts using the service
+    if (transformationEvents.length > 0) {
+      console.log(`[Stage9] Found ${transformationEvents.length} confirmed transformation event(s) for scene`);
+    }
+
+    // Generate prompts using the service (with transformation events)
     const results = await promptGenerationService.generateBulkPromptSets(
       shotDataList,
       sceneAssets,
-      styleCapsule
+      styleCapsule,
+      transformationEvents.length > 0 ? transformationEvents : undefined
     );
 
     // Update shots with generated prompts
