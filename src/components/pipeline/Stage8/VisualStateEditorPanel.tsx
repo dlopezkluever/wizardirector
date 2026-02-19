@@ -20,7 +20,10 @@ import { GenerationAttemptCarousel } from '@/components/pipeline/Stage8/Generati
 import { MasterReferenceCarousel } from '@/components/pipeline/Stage8/MasterReferenceCarousel';
 import { SceneAssetImageUpload } from '@/components/pipeline/Stage8/SceneAssetImageUpload';
 import { UseMasterAsIsCheckbox } from '@/components/pipeline/Stage8/UseMasterAsIsCheckbox';
-import type { SceneAssetInstance } from '@/types/scene';
+import { TransformationEventCard } from '@/components/pipeline/Stage8/TransformationEventCard';
+import { AddTransformationDialog } from '@/components/pipeline/Stage8/AddTransformationDialog';
+import { transformationEventService } from '@/lib/services/transformationEventService';
+import type { SceneAssetInstance, TransformationEvent, Shot } from '@/types/scene';
 
 type AssetTypeKey = 'character' | 'location' | 'prop';
 
@@ -45,6 +48,7 @@ export interface VisualStateEditorPanelProps {
   onRemoveFromScene?: (instanceId: string) => void;
   projectId: string;
   sceneId: string;
+  shots?: Shot[];
   isUpdating?: boolean;
   isGeneratingImage?: boolean;
   inheritedFromSceneNumber?: number | null;
@@ -86,6 +90,7 @@ export function VisualStateEditorPanel({
   onRemoveFromScene,
   projectId,
   sceneId,
+  shots = [],
   isUpdating,
   isGeneratingImage,
   inheritedFromSceneNumber,
@@ -93,6 +98,9 @@ export function VisualStateEditorPanel({
   const [editedDescription, setEditedDescription] = useState('');
   const [statusTags, setStatusTags] = useState<string[]>([]);
   const [carryForward, setCarryForward] = useState(true);
+  const [transformationEvents, setTransformationEvents] = useState<TransformationEvent[]>([]);
+  const [isLoadingEvents, setIsLoadingEvents] = useState(false);
+  const [generatingEventId, setGeneratingEventId] = useState<string | null>(null);
 
   useEffect(() => {
     if (selectedAsset) {
@@ -101,6 +109,89 @@ export function VisualStateEditorPanel({
       setCarryForward(selectedAsset.carry_forward ?? true);
     }
   }, [selectedAsset?.id, selectedAsset?.description_override, selectedAsset?.effective_description, selectedAsset?.status_tags, selectedAsset?.carry_forward]);
+
+  // Load transformation events for the selected asset
+  useEffect(() => {
+    if (!selectedAsset || !projectId || !sceneId) {
+      setTransformationEvents([]);
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingEvents(true);
+    transformationEventService.fetchEvents(projectId, sceneId)
+      .then(events => {
+        if (!cancelled) {
+          // Filter to events for the selected asset
+          setTransformationEvents(
+            events.filter(e => e.scene_asset_instance_id === selectedAsset.id)
+          );
+        }
+      })
+      .catch(() => { /* silently fail */ })
+      .finally(() => { if (!cancelled) setIsLoadingEvents(false); });
+    return () => { cancelled = true; };
+  }, [selectedAsset?.id, projectId, sceneId]);
+
+  const handleConfirmEvent = useCallback(async (eventId: string) => {
+    try {
+      const updated = await transformationEventService.confirmEvent(projectId, sceneId, eventId);
+      setTransformationEvents(prev => prev.map(e => e.id === eventId ? updated : e));
+      toast.success('Transformation confirmed');
+    } catch { toast.error('Failed to confirm transformation'); }
+  }, [projectId, sceneId]);
+
+  const handleDismissEvent = useCallback(async (eventId: string) => {
+    try {
+      await transformationEventService.deleteEvent(projectId, sceneId, eventId);
+      setTransformationEvents(prev => prev.filter(e => e.id !== eventId));
+      toast.success('Transformation removed');
+    } catch { toast.error('Failed to remove transformation'); }
+  }, [projectId, sceneId]);
+
+  const handleUpdateEvent = useCallback(async (
+    eventId: string,
+    updates: { post_description?: string; transformation_narrative?: string }
+  ) => {
+    try {
+      const updated = await transformationEventService.updateEvent(projectId, sceneId, eventId, updates);
+      setTransformationEvents(prev => prev.map(e => e.id === eventId ? updated : e));
+    } catch { toast.error('Failed to update transformation'); }
+  }, [projectId, sceneId]);
+
+  const handleGeneratePostDescription = useCallback(async (eventId: string) => {
+    try {
+      setGeneratingEventId(eventId);
+      const postDesc = await transformationEventService.generatePostDescription(projectId, sceneId, eventId);
+      setTransformationEvents(prev => prev.map(e =>
+        e.id === eventId ? { ...e, post_description: postDesc } : e
+      ));
+      toast.success('Post-description generated');
+    } catch { toast.error('Failed to generate post-description'); }
+    finally { setGeneratingEventId(null); }
+  }, [projectId, sceneId]);
+
+  const handleAddTransformation = useCallback(async (data: {
+    trigger_shot_id: string;
+    transformation_type: 'instant' | 'gradual' | 'within_shot';
+    completion_shot_id?: string | null;
+    post_description: string;
+    transformation_narrative?: string;
+  }) => {
+    if (!selectedAsset) return;
+    try {
+      const event = await transformationEventService.createEvent(projectId, sceneId, {
+        scene_asset_instance_id: selectedAsset.id,
+        trigger_shot_id: data.trigger_shot_id,
+        transformation_type: data.transformation_type,
+        completion_shot_id: data.completion_shot_id,
+        post_description: data.post_description,
+        transformation_narrative: data.transformation_narrative,
+        detected_by: 'manual',
+      });
+      setTransformationEvents(prev => [...prev, event]);
+      toast.success('Transformation added');
+    } catch { toast.error('Failed to add transformation'); }
+  }, [selectedAsset, projectId, sceneId]);
 
   const handleSaveDescription = useCallback(() => {
     if (!selectedAsset) return;
@@ -265,9 +356,43 @@ export function VisualStateEditorPanel({
               disabled={isLocked || useMasterAsIs}
               className="resize-y"
             />
-            <p className="text-xs text-muted-foreground">
-              Mid-scene visual changes are handled in Stage 10.
-            </p>
+            {/* Transformation Events Section */}
+            <div className="mt-2 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  Transformations
+                  {transformationEvents.length > 0 && (
+                    <span className="bg-primary/20 text-primary text-[10px] px-1.5 py-0.5 rounded-full">
+                      {transformationEvents.length}
+                    </span>
+                  )}
+                </span>
+                <AddTransformationDialog
+                  shots={shots}
+                  assetInstanceId={selectedAsset.id}
+                  preDescription={editedDescription}
+                  onAdd={handleAddTransformation}
+                  disabled={isLocked}
+                />
+              </div>
+              {transformationEvents.map(event => (
+                <TransformationEventCard
+                  key={event.id}
+                  event={event}
+                  onConfirm={handleConfirmEvent}
+                  onDismiss={handleDismissEvent}
+                  onUpdate={handleUpdateEvent}
+                  onGeneratePostDescription={handleGeneratePostDescription}
+                  isUpdating={isUpdating}
+                  isGenerating={generatingEventId === event.id}
+                />
+              ))}
+              {!isLoadingEvents && transformationEvents.length === 0 && (
+                <p className="text-xs text-muted-foreground italic">
+                  No transformations detected. Add one if this asset changes visually mid-scene.
+                </p>
+              )}
+            </div>
           </div>
 
           <StatusTagsEditor
