@@ -4,6 +4,7 @@ import { frameGenerationService } from '../services/frameGenerationService.js';
 import { promptGenerationService, enrichAssetsWithAngleMatch } from '../services/promptGenerationService.js';
 import type { ShotData, SceneAssetInstanceData } from '../services/promptGenerationService.js';
 import { StyleCapsuleService } from '../services/styleCapsuleService.js';
+import { transformationEventService } from '../services/transformationEventService.js';
 
 const router = Router();
 
@@ -420,12 +421,37 @@ router.post('/:projectId/scenes/:sceneId/shots/:shotId/generate-end-frame-prompt
             beat_reference: shot.beat_reference,
         };
 
-        // Generate end frame prompt
+        // Fetch confirmed transformation events and resolve overrides for this shot
+        const events = await transformationEventService.getTransformationEventsForScene(sceneId);
+        const confirmedEvents = events.filter(e => e.confirmed);
+        let shotOverrides;
+        if (confirmedEvents.length > 0) {
+            const allShots = await supabase
+                .from('shots')
+                .select('id, shot_id, shot_order')
+                .eq('scene_id', sceneId)
+                .order('shot_order');
+            const shotRefs = (allShots.data ?? []).map((s: any) => ({ id: s.id, shot_id: s.shot_id, shot_order: s.shot_order }));
+            const assetRefs = (sceneAssets ?? []).map((a: any) => ({
+                id: a.id,
+                effective_description: a.effective_description ?? '',
+                image_key_url: a.image_key_url,
+            }));
+            const shotRef = shotRefs.find(s => s.id === shotId);
+            if (shotRef) {
+                shotOverrides = transformationEventService.resolveOverridesForShot(
+                    shotRef, assetRefs, confirmedEvents, shotRefs
+                );
+            }
+        }
+
+        // Generate end frame prompt (with transformation context if applicable)
         const endFramePrompt = await promptGenerationService.generateEndFramePrompt(
             shotData,
             shot.frame_prompt,
             (sceneAssets || []) as unknown as SceneAssetInstanceData[],
-            styleCapsule
+            styleCapsule,
+            shotOverrides
         );
 
         // Save to database
