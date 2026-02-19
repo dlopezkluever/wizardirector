@@ -5,6 +5,7 @@
  */
 
 import { supabase } from '../config/supabase.js';
+import { transformationEventService } from './transformationEventService.js';
 
 export interface InheritanceSource {
   priorSceneId: string;
@@ -105,10 +106,13 @@ export class AssetInheritanceService {
     const projectAsset = (inst: { project_asset?: { description?: string; image_key_url?: string | null } | null }) =>
       inst.project_asset;
 
-    return priorInstances.map((instance) => {
+    const results: InheritedAssetState[] = [];
+
+    for (const instance of priorInstances) {
       const pa = projectAsset(instance);
+
       if (instance.carry_forward === false) {
-        return {
+        results.push({
           projectAssetId: instance.project_asset_id,
           descriptionOverride: null,
           imageKeyUrl: pa?.image_key_url ?? null,
@@ -116,18 +120,40 @@ export class AssetInheritanceService {
           carryForward: false,
           sourceInstanceId: instance.id,
           baseDescription: pa?.description ?? null,
-        };
+        });
+        continue;
       }
-      return {
-        projectAssetId: instance.project_asset_id,
-        descriptionOverride: instance.description_override ?? null,
-        imageKeyUrl: instance.image_key_url ?? pa?.image_key_url ?? null,
-        statusTags: (instance.status_tags as string[]) || [],
-        carryForward: instance.carry_forward ?? true,
-        sourceInstanceId: instance.id,
-        baseDescription: pa?.description ?? null,
-      };
-    });
+
+      // Check for transformation events — if asset transformed, inherit the post-state
+      const transformState = await transformationEventService.getLastAssetStateForInheritance(
+        priorSceneId,
+        instance.id
+      );
+
+      if (transformState) {
+        results.push({
+          projectAssetId: instance.project_asset_id,
+          descriptionOverride: transformState.description,
+          imageKeyUrl: transformState.imageKeyUrl ?? instance.image_key_url ?? pa?.image_key_url ?? null,
+          statusTags: transformState.statusTags,
+          carryForward: instance.carry_forward ?? true,
+          sourceInstanceId: instance.id,
+          baseDescription: pa?.description ?? null,
+        });
+      } else {
+        results.push({
+          projectAssetId: instance.project_asset_id,
+          descriptionOverride: instance.description_override ?? null,
+          imageKeyUrl: instance.image_key_url ?? pa?.image_key_url ?? null,
+          statusTags: (instance.status_tags as string[]) || [],
+          carryForward: instance.carry_forward ?? true,
+          sourceInstanceId: instance.id,
+          baseDescription: pa?.description ?? null,
+        });
+      }
+    }
+
+    return results;
   }
 
   /**
