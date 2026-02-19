@@ -60,8 +60,9 @@ import { AssetDrawer } from '@/components/pipeline/AssetDrawer';
 import { sceneAssetService } from '@/lib/services/sceneAssetService';
 import { sceneService } from '@/lib/services/sceneService';
 import { shotService } from '@/lib/services/shotService';
+import { transformationEventService } from '@/lib/services/transformationEventService';
 import { cn, formatSceneHeader } from '@/lib/utils';
-import type { SceneAssetInstance, SceneAssetRelevanceResult, SceneAssetSuggestion } from '@/types/scene';
+import type { SceneAssetInstance, SceneAssetRelevanceResult, SceneAssetSuggestion, TransformationEvent } from '@/types/scene';
 import { LockedStageHeader } from './LockedStageHeader';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
@@ -446,6 +447,15 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
     enabled: Boolean(projectId && sceneId),
   });
 
+  // Transformation events for gatekeeper validation
+  const { data: allTransformationEvents = [] } = useQuery({
+    queryKey: ['transformation-events', projectId, sceneId],
+    queryFn: () => transformationEventService.fetchEvents(projectId, sceneId),
+    enabled: Boolean(projectId && sceneId),
+  });
+  const unconfirmedTransformationCount = allTransformationEvents.filter(e => !e.confirmed).length;
+  const incompleteTransformationCount = allTransformationEvents.filter(e => e.confirmed && !e.post_description?.trim()).length;
+
   const shotPresenceMap = useMemo(() => {
     const map = new Map<string, string[]>();
     if (shots.length === 0 || sceneAssets.length === 0) return map;
@@ -749,7 +759,8 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
     [refetch]
   );
 
-  /** Task 10: Gatekeeper – only allow proceeding to Stage 9 when all assets have visual references. */
+  /** Task 10: Gatekeeper – only allow proceeding to Stage 9 when all assets have visual references
+   *  and all transformation events are resolved (confirmed or dismissed). */
   const handleProceedToStage9 = useCallback(() => {
     const missingImages = sceneAssets.filter(a => !a.image_key_url);
     if (missingImages.length > 0) {
@@ -758,8 +769,22 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
       );
       return;
     }
+    // Check for unconfirmed transformation events
+    if (unconfirmedTransformationCount > 0) {
+      toast.error(
+        `Cannot proceed: ${unconfirmedTransformationCount} unconfirmed transformation event(s). Confirm or dismiss them first.`
+      );
+      return;
+    }
+    // Check for confirmed events missing post_description
+    if (incompleteTransformationCount > 0) {
+      toast.error(
+        `Cannot proceed: ${incompleteTransformationCount} confirmed transformation(s) missing post-description.`
+      );
+      return;
+    }
     onComplete();
-  }, [sceneAssets, onComplete]);
+  }, [sceneAssets, onComplete, unconfirmedTransformationCount, incompleteTransformationCount]);
 
   if (!projectId || !sceneId) {
     return (
@@ -902,6 +927,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           onRemoveFromScene={handleRemoveFromScene}
           projectId={projectId}
           sceneId={sceneId}
+          shots={shots}
           isUpdating={updateMutation.isPending}
           isGeneratingImage={isGeneratingSingle}
           inheritedFromSceneNumber={priorSceneNumber ?? null}
