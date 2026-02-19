@@ -8,6 +8,14 @@
 
 import { llmClient, type LLMRequest, LLMClientError } from './llm-client.js';
 
+export interface TransformationFlag {
+  characterName: string;
+  type: 'instant' | 'within_shot' | 'gradual';
+  description: string;
+  isTrigger: boolean;
+  isCompletion?: boolean;
+}
+
 export interface ExtractedShot {
   shotId: string;
   shotOrder: number;
@@ -20,11 +28,20 @@ export interface ExtractedShot {
   camera: string;
   continuityFlags: string[];
   beatReference?: string;
+  transformationFlags?: TransformationFlag[];
 }
 
 interface LLMShotCharacter {
   name: string;
   prominence: 'foreground' | 'background' | 'off-screen';
+}
+
+interface LLMTransformationFlag {
+  character_name: string;
+  type: 'instant' | 'within_shot' | 'gradual';
+  description: string;
+  is_trigger: boolean;
+  is_completion?: boolean;
 }
 
 interface LLMShotRaw {
@@ -37,6 +54,7 @@ interface LLMShotRaw {
   camera: string;
   continuity_flags?: string[];
   beat_reference?: string;
+  transformation_flags?: LLMTransformationFlag[];
 }
 
 interface ExtractionContext {
@@ -168,6 +186,13 @@ CONTINUITY REQUIREMENTS:
 - Character positions and states must be consistent with prior scene endings.
 - Setting must match or explicitly transition.
 
+TRANSFORMATION DETECTION:
+If a character/asset undergoes a VISUAL TRANSFORMATION in this scene (costume change, physical transformation, injury, disguise, magical change, etc.), flag it:
+- Set transformation_flags on the shot where the change occurs
+- Types: "instant" (cut-based, change happens between shots), "within_shot" (on-camera transformation during the shot), "gradual" (spans multiple shots)
+- For gradual: mark is_trigger=true on the start shot, is_completion=true on the end shot
+- Only flag genuine visual appearance changes, not emotional shifts or dialogue changes
+
 OUTPUT: Return ONLY a valid JSON object with this exact structure (no markdown, no extra text):
 {
   "shots": [
@@ -180,7 +205,8 @@ OUTPUT: Return ONLY a valid JSON object with this exact structure (no markdown, 
       "setting": "specific location with atmosphere and spatial details",
       "camera": "SHOT_TYPE - ANGLE - MOVEMENT (e.g., MS - Eye Level - Static)",
       "continuity_flags": ["optional strings"],
-      "beat_reference": "optional beat id"
+      "beat_reference": "optional beat id",
+      "transformation_flags": [{"character_name": "NAME", "type": "instant|within_shot|gradual", "description": "what changes visually", "is_trigger": true, "is_completion": false}]
     }
   ]
 }`;
@@ -239,6 +265,25 @@ Return ONLY the JSON object with a "shots" array. Each shot must have action, se
         continue;
       }
       const { foreground, background } = mapCharactersToForegroundBackground(raw.characters);
+      // Parse transformation flags with safe defaults
+      let transformationFlags: TransformationFlag[] | undefined;
+      if (Array.isArray(raw.transformation_flags) && raw.transformation_flags.length > 0) {
+        transformationFlags = raw.transformation_flags
+          .filter((tf): tf is LLMTransformationFlag =>
+            typeof tf.character_name === 'string' &&
+            typeof tf.type === 'string' &&
+            ['instant', 'within_shot', 'gradual'].includes(tf.type)
+          )
+          .map(tf => ({
+            characterName: tf.character_name.trim(),
+            type: tf.type as 'instant' | 'within_shot' | 'gradual',
+            description: typeof tf.description === 'string' ? tf.description.trim() : '',
+            isTrigger: tf.is_trigger === true,
+            isCompletion: tf.is_completion === true,
+          }));
+        if (transformationFlags.length === 0) transformationFlags = undefined;
+      }
+
       validated.push({
         shotId: generateShotId(sceneNumber, validated.length),
         shotOrder: validated.length,
@@ -250,7 +295,8 @@ Return ONLY the JSON object with a "shots" array. Each shot must have action, se
         setting: (raw.setting || '').trim(),
         camera: (raw.camera || '').trim(),
         continuityFlags: Array.isArray(raw.continuity_flags) ? raw.continuity_flags : [],
-        beatReference: typeof raw.beat_reference === 'string' ? raw.beat_reference : undefined
+        beatReference: typeof raw.beat_reference === 'string' ? raw.beat_reference : undefined,
+        transformationFlags,
       });
     }
 
