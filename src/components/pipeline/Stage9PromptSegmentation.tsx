@@ -462,6 +462,23 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                           {promptSet.aiRecommendsEndFrame ? 'AI: End Frame' : 'AI: No End Frame'}
                         </Badge>
                       )}
+                      {/* Transformation state badges */}
+                      {promptSet.transformationContext?.map((tc, idx) => (
+                        <Badge
+                          key={idx}
+                          variant="secondary"
+                          className={cn(
+                            'text-xs select-none',
+                            tc.state === 'transforming'
+                              ? 'bg-orange-500/20 text-orange-400'
+                              : tc.state === 'post-transform'
+                                ? 'bg-purple-500/20 text-purple-400'
+                                : 'bg-muted/40 text-muted-foreground'
+                          )}
+                        >
+                          {tc.assetName}: {tc.state === 'transforming' ? 'Transforming' : tc.state === 'post-transform' ? 'Post-Transform' : 'Pre-Transform'}
+                        </Badge>
+                      ))}
                       <div
                         className="flex items-center gap-1.5"
                         onClick={(e) => e.stopPropagation()}
