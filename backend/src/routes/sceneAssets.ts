@@ -368,10 +368,12 @@ router.post('/:projectId/scenes/:sceneId/assets/:instanceId/generate-image', asy
       .order('version', { ascending: false })
       .limit(1);
 
-    const visualStyleId = stage5States?.[0]?.content?.locked_visual_style_capsule_id;
-    if (!visualStyleId) {
+    const stage5Content = stage5States?.[0]?.content;
+    const visualStyleId = stage5Content?.locked_visual_style_capsule_id;
+    const manualVisualTone = stage5Content?.manual_visual_tone;
+    if (!visualStyleId && !manualVisualTone) {
       return res.status(400).json({
-        error: 'Visual style capsule not found. Complete Stage 5 first.',
+        error: 'Visual style not found. Complete Stage 5 first.',
       });
     }
 
@@ -380,7 +382,8 @@ router.post('/:projectId/scenes/:sceneId/assets/:instanceId/generate-image', asy
       instanceId,
       projectId,
       project.active_branch_id,
-      visualStyleId
+      visualStyleId,
+      manualVisualTone
     );
 
     res.json(result);

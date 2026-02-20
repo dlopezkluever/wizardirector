@@ -193,7 +193,8 @@ export class ImageGenerationService {
         sceneInstanceId: string,
         projectId: string,
         branchId: string,
-        visualStyleCapsuleId: string
+        visualStyleCapsuleId?: string,
+        manualVisualTone?: string
     ): Promise<ImageJobResult> {
         const { data: instance, error } = await supabase
             .from('scene_asset_instances')
@@ -223,6 +224,7 @@ export class ImageGenerationService {
             jobType: 'scene_asset',
             prompt,
             visualStyleCapsuleId,
+            manualVisualTone,
             width: dimensions.width,
             height: dimensions.height,
             assetId: instance.project_asset_id,
