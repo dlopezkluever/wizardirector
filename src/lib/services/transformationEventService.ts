@@ -129,18 +129,51 @@ export const transformationEventService = {
     return data.post_description;
   },
 
+  async generatePrefill(
+    projectId: string,
+    sceneId: string,
+    data: {
+      trigger_shot_id: string;
+      scene_asset_instance_id: string;
+      transformation_type: string;
+    }
+  ): Promise<{ post_description: string; transformation_narrative: string }> {
+    const headers = await getAuthHeaders();
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/transformation-events/generate-prefill`,
+      { method: 'POST', headers, body: JSON.stringify(data) }
+    );
+    if (!response.ok) throw new Error('Failed to generate prefill');
+    return response.json();
+  },
+
   async generatePostImage(
     projectId: string,
     sceneId: string,
     eventId: string
-  ): Promise<string> {
+  ): Promise<{ jobId: string; status: string }> {
     const headers = await getAuthHeaders();
     const response = await fetch(
       `/api/projects/${projectId}/scenes/${sceneId}/transformation-events/${eventId}/generate-post-image`,
       { method: 'POST', headers }
     );
-    if (!response.ok) throw new Error('Failed to generate post-image');
-    const data = await response.json();
-    return data.post_image_key_url;
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to generate post-image');
+    }
+    return response.json();
+  },
+
+  async fetchTransformationImages(
+    projectId: string,
+    projectAssetId: string
+  ): Promise<Array<{ imageUrl: string; postDescription: string; sceneNumber: number; eventId: string }>> {
+    const headers = await getAuthHeaders();
+    const response = await fetch(
+      `/api/projects/${projectId}/assets/${projectAssetId}/transformation-images`,
+      { headers }
+    );
+    if (!response.ok) throw new Error('Failed to fetch transformation images');
+    return response.json();
   },
 };
