@@ -276,9 +276,16 @@ function buildStyleContext(styleCapsule?: StyleCapsule | null): string {
 }
 
 /**
- * Determine if shot requires an end frame based on content
+ * Determine if shot requires an end frame based on content.
+ * When shotOverrides are provided, within_shot transformations always require
+ * an end frame — the visual appearance changes dramatically during the shot.
  */
-function determineRequiresEndFrame(shot: ShotData): boolean {
+function determineRequiresEndFrame(shot: ShotData, shotOverrides?: ShotAssetOverride[]): boolean {
+  // Within_shot transformation trigger shots ALWAYS need end frames:
+  // the character's appearance changes during the shot, so the end state
+  // must be captured as a distinct frame.
+  if (shotOverrides?.some(o => o.is_transforming)) return true;
+
   // Shots with significant movement or camera changes typically need end frames
   const cameraLower = shot.camera.toLowerCase();
   const hasMovement =
@@ -379,7 +386,7 @@ export class PromptGenerationService {
     const videoPrompt = await this.generateVideoPrompt(shot, framePrompt, transformingAssets, sceneAssets);
 
     // Determine end frame requirement and model compatibility
-    const requiresEndFrame = determineRequiresEndFrame(shot);
+    const requiresEndFrame = determineRequiresEndFrame(shot, shotOverrides);
     const compatibleModels = determineCompatibleModels(shot, framePrompt);
 
     console.log(`[PromptGeneration] Generated prompts for shot ${shot.shot_id} (endFrame: ${requiresEndFrame}, refs: ${referenceImageOrder.length}, transforming: ${transformingAssets.length})`);
