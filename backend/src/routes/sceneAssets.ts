@@ -1313,10 +1313,11 @@ router.get('/:projectId/scenes/:sceneId/assets/:instanceId/reference-chain', asy
     }
 
     const chain: Array<{
-      source: 'stage5_master' | 'prior_scene_instance';
+      source: 'stage5_master' | 'prior_scene_instance' | 'transformation';
       imageUrl: string;
       sceneNumber: number | null;
       instanceId?: string;
+      transformationDescription?: string;
     }> = [];
 
     // 1. Get Stage 5 master image
@@ -1369,6 +1370,34 @@ router.get('/:projectId/scenes/:sceneId/assets/:instanceId/reference-chain', asy
               instanceId: priorInstance.id,
             });
           }
+        }
+      }
+    }
+
+    // 3. Get confirmed transformation images for this project_asset (across all scenes)
+    const { data: transformationResults } = await supabase
+      .from('transformation_events')
+      .select(`
+        post_image_key_url,
+        post_description,
+        scene:scenes!inner(scene_number),
+        scene_asset_instance:scene_asset_instances!inner(project_asset_id)
+      `)
+      .eq('scene_asset_instance.project_asset_id', instance.project_asset_id)
+      .eq('confirmed', true)
+      .not('post_image_key_url', 'is', null);
+
+    if (transformationResults) {
+      for (const tr of transformationResults) {
+        const sceneNum = (tr.scene as any)?.scene_number ?? null;
+        // Only include transformation images from prior scenes or current scene
+        if (sceneNum !== null && sceneNum <= currentScene.scene_number) {
+          chain.push({
+            source: 'transformation',
+            imageUrl: tr.post_image_key_url!,
+            sceneNumber: sceneNum,
+            transformationDescription: tr.post_description ?? undefined,
+          });
         }
       }
     }
@@ -1712,17 +1741,183 @@ router.post('/:projectId/scenes/:sceneId/transformation-events/:eventId/generate
 });
 
 /**
+ * POST /:projectId/scenes/:sceneId/transformation-events/generate-prefill
+ * LLM-generate pre-fill data (post_description + transformation_narrative) from trigger shot context
+ */
+router.post('/:projectId/scenes/:sceneId/transformation-events/generate-prefill', async (req, res) => {
+  try {
+    const { sceneId } = req.params;
+    const { trigger_shot_id, scene_asset_instance_id, transformation_type } = req.body;
+
+    if (!trigger_shot_id || !scene_asset_instance_id) {
+      return res.status(400).json({ error: 'trigger_shot_id and scene_asset_instance_id are required' });
+    }
+
+    const result = await transformationEventService.generateTransformationPrefill(
+      trigger_shot_id,
+      scene_asset_instance_id,
+      transformation_type || 'instant',
+      sceneId
+    );
+
+    res.json(result);
+  } catch (err) {
+    console.error('[TransformationEvents] Generate prefill error:', err);
+    res.status(500).json({ error: 'Failed to generate prefill' });
+  }
+});
+
+/**
  * POST /:projectId/scenes/:sceneId/transformation-events/:eventId/generate-post-image
- * Placeholder: generate post-state reference image (requires image gen service integration)
+ * Generate post-transformation reference image for a transformation event
  */
 router.post('/:projectId/scenes/:sceneId/transformation-events/:eventId/generate-post-image', async (req, res) => {
   try {
-    // TODO: Integrate with ImageGenerationService to generate post-state image
-    // For now, return a placeholder response
-    res.status(501).json({ error: 'Post-image generation not yet implemented' });
+    const userId = req.user!.id;
+    const { projectId, sceneId, eventId } = req.params;
+
+    // Verify project ownership
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Fetch transformation event with asset details
+    const { data: event, error: eventError } = await supabase
+      .from('transformation_events')
+      .select(`
+        *,
+        scene_asset_instance:scene_asset_instances(
+          id, project_asset_id, image_key_url,
+          project_asset:project_assets(id, asset_type, image_key_url)
+        )
+      `)
+      .eq('id', eventId)
+      .eq('scene_id', sceneId)
+      .single();
+
+    if (eventError || !event) {
+      return res.status(404).json({ error: 'Transformation event not found' });
+    }
+
+    if (!event.post_description?.trim()) {
+      return res.status(400).json({ error: 'Post-description is required before generating an image' });
+    }
+
+    const assetInstance = event.scene_asset_instance as any;
+    const projectAsset = assetInstance?.project_asset;
+    if (!projectAsset) {
+      return res.status(400).json({ error: 'Asset not found for this transformation event' });
+    }
+
+    // Fetch Stage 5 visual style
+    const { data: stage5States } = await supabase
+      .from('stage_states')
+      .select('content')
+      .eq('branch_id', project.active_branch_id)
+      .eq('stage_number', 5)
+      .order('version', { ascending: false })
+      .limit(1);
+
+    const stage5Content = stage5States?.[0]?.content;
+    const visualStyleId = stage5Content?.locked_visual_style_capsule_id;
+    const manualVisualTone = stage5Content?.manual_visual_tone;
+    if (!visualStyleId && !manualVisualTone) {
+      return res.status(400).json({ error: 'Visual style not found. Complete Stage 5 first.' });
+    }
+
+    // Generate image using ImageGenerationService
+    const imageService = new ImageGenerationService();
+
+    // Use the asset's current image as reference for identity
+    const referenceImageUrl = assetInstance?.image_key_url || projectAsset?.image_key_url;
+
+    const result = await imageService.createImageJob({
+      projectId,
+      branchId: project.active_branch_id,
+      jobType: 'scene_asset',
+      prompt: event.post_description,
+      visualStyleCapsuleId: visualStyleId,
+      manualVisualTone,
+      width: projectAsset.asset_type === 'location' ? 1024 : projectAsset.asset_type === 'prop' ? 512 : 512,
+      height: projectAsset.asset_type === 'location' ? 576 : projectAsset.asset_type === 'prop' ? 512 : 768,
+      assetId: assetInstance.project_asset_id,
+      sceneId,
+      idempotencyKey: `post-transform-${eventId}-${Date.now()}`,
+      referenceImageUrl: referenceImageUrl ?? undefined,
+    });
+
+    res.json({ jobId: result.jobId, status: result.status });
   } catch (err) {
     console.error('[TransformationEvents] Generate post-image error:', err);
     res.status(500).json({ error: 'Failed to generate post-image' });
+  }
+});
+
+// ============================================================================
+// TRANSFORMATION IMAGES ENDPOINT (Improvement 4)
+// ============================================================================
+
+/**
+ * GET /:projectId/assets/:projectAssetId/transformation-images
+ * Fetch all confirmed transformation events with post images for a given project asset
+ */
+router.get('/:projectId/assets/:projectAssetId/transformation-images', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, projectAssetId } = req.params;
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const { data: results, error } = await supabase
+      .from('transformation_events')
+      .select(`
+        id,
+        post_description,
+        post_image_key_url,
+        scene_asset_instance:scene_asset_instances!inner(
+          project_asset_id,
+          scene:scenes!inner(scene_number)
+        )
+      `)
+      .eq('scene_asset_instance.project_asset_id', projectAssetId)
+      .eq('confirmed', true)
+      .not('post_image_key_url', 'is', null);
+
+    if (error) {
+      console.error('[TransformationImages] Fetch error:', error);
+      return res.status(500).json({ error: 'Failed to fetch transformation images' });
+    }
+
+    const images = (results ?? []).map((r: any) => ({
+      eventId: r.id,
+      postDescription: r.post_description,
+      imageUrl: r.post_image_key_url,
+      sceneNumber: r.scene_asset_instance?.scene?.scene_number ?? 0,
+    }));
+
+    // Sort by scene number
+    images.sort((a: any, b: any) => a.sceneNumber - b.sceneNumber);
+
+    res.json(images);
+  } catch (err) {
+    console.error('[TransformationImages] Error:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
