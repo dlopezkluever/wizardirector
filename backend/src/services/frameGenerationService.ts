@@ -42,6 +42,7 @@ export interface ShotWithFrames {
     framePrompt: string | null;
     videoPrompt: string | null;
     referenceImageOrder: { label: string; assetName: string; url: string; type: string }[] | null;
+    endFrameReferenceImageOrder: { label: string; assetName: string; url: string; type: string }[] | null;
     endFramePrompt: string | null;
     startFrame: Frame | null;
     endFrame: Frame | null;
@@ -104,6 +105,7 @@ export class FrameGenerationService {
                 frame_prompt,
                 video_prompt,
                 reference_image_order,
+                end_frame_reference_image_order,
                 end_frame_prompt
             `)
             .eq('scene_id', sceneId)
@@ -167,9 +169,50 @@ export class FrameGenerationService {
             }
         }
 
+        // Fetch confirmed within_shot transformation events for the scene
+        const { data: transformEvents } = await supabase
+            .from('transformation_events')
+            .select(`
+                id, post_image_key_url, trigger_shot_id,
+                scene_asset_instance:scene_asset_instances(
+                    project_asset:project_assets(name)
+                )
+            `)
+            .eq('scene_id', sceneId)
+            .eq('confirmed', true)
+            .eq('transformation_type', 'within_shot');
+
         // Transform to response format
         return shots.map((shot: any) => {
             const frameEntry = frameMap.get(shot.id) || { start: null, end: null };
+
+            // Compute end frame reference images
+            let endFrameRefOrder: ShotWithFrames['endFrameReferenceImageOrder'] = null;
+
+            // 1. User override takes priority
+            const userOverride = shot.end_frame_reference_image_order as any[] | null;
+            if (userOverride?.length) {
+                endFrameRefOrder = userOverride;
+            }
+            // 2. Auto-compute from transformation events
+            else if (transformEvents?.length && shot.reference_image_order?.length) {
+                const shotEvents = transformEvents.filter((e: any) => e.trigger_shot_id === shot.id);
+                if (shotEvents.length > 0) {
+                    const refOrder = shot.reference_image_order as Array<{ label: string; assetName: string; url: string; type: string }>;
+                    const computed = refOrder.map((entry: any) => ({ ...entry }));
+                    for (const event of shotEvents) {
+                        if (!event.post_image_key_url) continue;
+                        const name = (event.scene_asset_instance as any)?.project_asset?.name;
+                        if (!name) continue;
+                        const idx = refOrder.findIndex((r: any) => r.assetName?.toUpperCase() === name.toUpperCase());
+                        if (idx !== -1) {
+                            computed[idx] = { ...computed[idx], url: event.post_image_key_url };
+                        }
+                    }
+                    endFrameRefOrder = computed;
+                }
+            }
+
             return {
                 id: shot.id,
                 shotId: shot.shot_id,
@@ -184,6 +227,7 @@ export class FrameGenerationService {
                 framePrompt: shot.frame_prompt,
                 videoPrompt: shot.video_prompt,
                 referenceImageOrder: shot.reference_image_order || null,
+                endFrameReferenceImageOrder: endFrameRefOrder,
                 endFramePrompt: shot.end_frame_prompt || null,
                 startFrame: frameEntry.start,
                 endFrame: frameEntry.end,
@@ -336,58 +380,61 @@ export class FrameGenerationService {
     /**
      * For within_shot transformation trigger shots, swap pre-state reference images
      * with post-transformation images in the end frame reference list.
+     * Uses asset name matching (case-insensitive) instead of URL matching to avoid
+     * mismatches when reference_image_order stores matched_angle_url.
      */
     private async resolveEndFrameReferenceImages(
         shotId: string,
         sceneId: string,
         baseRefImages: ReferenceImage[]
     ): Promise<ReferenceImage[]> {
-        // Get this shot's shot_order
         const { data: shot } = await supabase
             .from('shots')
-            .select('shot_order')
+            .select('reference_image_order, end_frame_reference_image_order')
             .eq('id', shotId)
             .single();
 
-        if (!shot) return baseRefImages;
+        if (!shot) return [...baseRefImages];
 
-        // Find confirmed within_shot transformation events for this scene
-        // where this shot is the trigger shot
+        // If user has manually set end frame refs, use those
+        const endRefOverride = shot.end_frame_reference_image_order as any[] | null;
+        if (endRefOverride?.length) {
+            return endRefOverride.map((e: any) => ({ url: e.url, role: 'identity' as const }));
+        }
+
+        const refOrder = shot.reference_image_order as Array<{ url: string; assetName?: string }> | null;
+        if (!refOrder?.length) return [...baseRefImages];
+
+        // Query within_shot events where this shot is the trigger
         const { data: events } = await supabase
             .from('transformation_events')
             .select(`
-                id,
-                post_image_key_url,
-                transformation_type,
-                trigger_shot:shots!transformation_events_trigger_shot_id_fkey(id, shot_order),
+                id, post_image_key_url,
                 scene_asset_instance:scene_asset_instances(
-                    image_key_url,
-                    project_asset:project_assets(image_key_url)
+                    project_asset:project_assets(name)
                 )
             `)
             .eq('scene_id', sceneId)
             .eq('confirmed', true)
-            .eq('transformation_type', 'within_shot');
+            .eq('transformation_type', 'within_shot')
+            .eq('trigger_shot_id', shotId);
 
-        if (!events || events.length === 0) return baseRefImages;
+        if (!events?.length) return [...baseRefImages];
 
-        const result = [...baseRefImages];
+        const result = refOrder.map(entry => ({ url: entry.url, role: 'identity' as const }));
 
         for (const event of events) {
-            const triggerShot = event.trigger_shot as any;
-            if (!triggerShot || triggerShot.shot_order !== shot.shot_order) continue;
-            if (!event.post_image_key_url) continue;
+            if (!event.post_image_key_url) {
+                console.warn(`[FrameService] within_shot event ${event.id} has no post_image_key_url`);
+                continue;
+            }
+            const name = (event.scene_asset_instance as any)?.project_asset?.name;
+            if (!name) continue;
 
-            // Find the pre-state URL to swap out
-            const instance = event.scene_asset_instance as any;
-            const preStateUrl = instance?.image_key_url || instance?.project_asset?.image_key_url;
-
-            if (preStateUrl) {
-                const idx = result.findIndex(r => r.url === preStateUrl);
-                if (idx !== -1) {
-                    console.log(`[FrameService] Swapping pre-state ref image for within_shot transformation event ${event.id}`);
-                    result[idx] = { url: event.post_image_key_url, role: 'identity' as const };
-                }
+            const idx = refOrder.findIndex(r => r.assetName?.toUpperCase() === name.toUpperCase());
+            if (idx !== -1) {
+                console.log(`[FrameService] Swapping end frame ref for ${name}`);
+                result[idx] = { url: event.post_image_key_url, role: 'identity' as const };
             }
         }
 
