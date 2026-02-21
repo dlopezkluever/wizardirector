@@ -271,8 +271,8 @@ export class FrameGenerationService {
                         ? shot.end_frame_prompt
                         : shot.frame_prompt + ' [End of shot - showing action completion]';
 
-                    // For end frames: prepend approved start frame image as identity reference
-                    const endRefImages = [...shotRefImages];
+                    // For end frames: resolve within_shot transformation images, then prepend start frame
+                    const endRefImages = await this.resolveEndFrameReferenceImages(shot.id, sceneId, shotRefImages);
                     if (startFrame.imageUrl) {
                         endRefImages.unshift({ url: startFrame.imageUrl, role: 'identity' as const });
                     }
@@ -331,6 +331,67 @@ export class FrameGenerationService {
         }
 
         return this.mapFrameFromDb(newFrame);
+    }
+
+    /**
+     * For within_shot transformation trigger shots, swap pre-state reference images
+     * with post-transformation images in the end frame reference list.
+     */
+    private async resolveEndFrameReferenceImages(
+        shotId: string,
+        sceneId: string,
+        baseRefImages: ReferenceImage[]
+    ): Promise<ReferenceImage[]> {
+        // Get this shot's shot_order
+        const { data: shot } = await supabase
+            .from('shots')
+            .select('shot_order')
+            .eq('id', shotId)
+            .single();
+
+        if (!shot) return baseRefImages;
+
+        // Find confirmed within_shot transformation events for this scene
+        // where this shot is the trigger shot
+        const { data: events } = await supabase
+            .from('transformation_events')
+            .select(`
+                id,
+                post_image_key_url,
+                transformation_type,
+                trigger_shot:shots!transformation_events_trigger_shot_id_fkey(id, shot_order),
+                scene_asset_instance:scene_asset_instances(
+                    image_key_url,
+                    project_asset:project_assets(image_key_url)
+                )
+            `)
+            .eq('scene_id', sceneId)
+            .eq('confirmed', true)
+            .eq('transformation_type', 'within_shot');
+
+        if (!events || events.length === 0) return baseRefImages;
+
+        const result = [...baseRefImages];
+
+        for (const event of events) {
+            const triggerShot = event.trigger_shot as any;
+            if (!triggerShot || triggerShot.shot_order !== shot.shot_order) continue;
+            if (!event.post_image_key_url) continue;
+
+            // Find the pre-state URL to swap out
+            const instance = event.scene_asset_instance as any;
+            const preStateUrl = instance?.image_key_url || instance?.project_asset?.image_key_url;
+
+            if (preStateUrl) {
+                const idx = result.findIndex(r => r.url === preStateUrl);
+                if (idx !== -1) {
+                    console.log(`[FrameService] Swapping pre-state ref image for within_shot transformation event ${event.id}`);
+                    result[idx] = { url: event.post_image_key_url, role: 'identity' as const };
+                }
+            }
+        }
+
+        return result;
     }
 
     /**
@@ -523,8 +584,10 @@ export class FrameGenerationService {
         // Fetch reference images for the shot
         const shotRefImages = await this.fetchShotReferenceImages(shot.id);
 
-        // For end frames: prepend start frame image as identity reference
-        const refImages = [...shotRefImages];
+        // For end frames: resolve within_shot transformation images, then prepend start frame
+        const refImages = frame.frame_type === 'end'
+            ? await this.resolveEndFrameReferenceImages(shot.id, sceneId, shotRefImages)
+            : [...shotRefImages];
         if (frame.frame_type === 'end') {
             const { data: startFrame } = await supabase
                 .from('frames')
