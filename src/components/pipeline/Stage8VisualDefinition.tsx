@@ -931,6 +931,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           isUpdating={updateMutation.isPending}
           isGeneratingImage={isGeneratingSingle}
           inheritedFromSceneNumber={priorSceneNumber ?? null}
+          sceneScriptExcerpt={currentScene?.scriptExcerpt}
         />
 
         <AssetDrawerTriggerPanel

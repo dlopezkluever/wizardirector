@@ -22,7 +22,9 @@ import { SceneAssetImageUpload } from '@/components/pipeline/Stage8/SceneAssetIm
 import { UseMasterAsIsCheckbox } from '@/components/pipeline/Stage8/UseMasterAsIsCheckbox';
 import { TransformationEventCard } from '@/components/pipeline/Stage8/TransformationEventCard';
 import { AddTransformationDialog } from '@/components/pipeline/Stage8/AddTransformationDialog';
+import { TransformationImagePicker } from '@/components/pipeline/Stage8/TransformationImagePicker';
 import { transformationEventService } from '@/lib/services/transformationEventService';
+import { sceneAssetService } from '@/lib/services/sceneAssetService';
 import type { SceneAssetInstance, TransformationEvent, Shot } from '@/types/scene';
 
 type AssetTypeKey = 'character' | 'location' | 'prop';
@@ -52,6 +54,7 @@ export interface VisualStateEditorPanelProps {
   isUpdating?: boolean;
   isGeneratingImage?: boolean;
   inheritedFromSceneNumber?: number | null;
+  sceneScriptExcerpt?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -94,6 +97,7 @@ export function VisualStateEditorPanel({
   isUpdating,
   isGeneratingImage,
   inheritedFromSceneNumber,
+  sceneScriptExcerpt,
 }: VisualStateEditorPanelProps) {
   const [editedDescription, setEditedDescription] = useState('');
   const [statusTags, setStatusTags] = useState<string[]>([]);
@@ -101,6 +105,8 @@ export function VisualStateEditorPanel({
   const [transformationEvents, setTransformationEvents] = useState<TransformationEvent[]>([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [generatingEventId, setGeneratingEventId] = useState<string | null>(null);
+  const [generatingImageEventId, setGeneratingImageEventId] = useState<string | null>(null);
+  const [imagePickerEventId, setImagePickerEventId] = useState<string | null>(null);
 
   useEffect(() => {
     if (selectedAsset) {
@@ -168,6 +174,53 @@ export function VisualStateEditorPanel({
       toast.success('Post-description generated');
     } catch { toast.error('Failed to generate post-description'); }
     finally { setGeneratingEventId(null); }
+  }, [projectId, sceneId]);
+
+  const handleGeneratePostImage = useCallback(async (eventId: string) => {
+    try {
+      setGeneratingImageEventId(eventId);
+      const { jobId } = await transformationEventService.generatePostImage(projectId, sceneId, eventId);
+      // Poll for completion
+      const maxAttempts = 60;
+      const pollIntervalMs = 2000;
+      for (let i = 0; i < maxAttempts; i++) {
+        const job = await sceneAssetService.getImageJobStatus(jobId);
+        if (job.status === 'completed') {
+          // Update transformation event with the generated image URL
+          if (job.publicUrl) {
+            const updated = await transformationEventService.updateEvent(projectId, sceneId, eventId, {
+              post_image_key_url: job.publicUrl,
+            });
+            setTransformationEvents(prev => prev.map(e => e.id === eventId ? updated : e));
+          }
+          toast.success('Post-transformation image generated');
+          return;
+        }
+        if (job.status === 'failed') {
+          const msg = job.error?.message ?? 'Image generation failed';
+          throw new Error(typeof msg === 'string' ? msg : 'Image generation failed');
+        }
+        await new Promise(r => setTimeout(r, pollIntervalMs));
+      }
+      throw new Error('Image generation timeout');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to generate post-image');
+    } finally {
+      setGeneratingImageEventId(null);
+    }
+  }, [projectId, sceneId]);
+
+  const handlePickExistingImage = useCallback(async (eventId: string, imageUrl: string) => {
+    try {
+      const updated = await transformationEventService.updateEvent(projectId, sceneId, eventId, {
+        post_image_key_url: imageUrl,
+      });
+      setTransformationEvents(prev => prev.map(e => e.id === eventId ? updated : e));
+      setImagePickerEventId(null);
+      toast.success('Transformation image updated');
+    } catch {
+      toast.error('Failed to update transformation image');
+    }
   }, [projectId, sceneId]);
 
   const handleAddTransformation = useCallback(async (data: {
@@ -373,6 +426,9 @@ export function VisualStateEditorPanel({
                   preDescription={editedDescription}
                   onAdd={handleAddTransformation}
                   disabled={isLocked}
+                  projectId={projectId}
+                  sceneId={sceneId}
+                  sceneScriptExcerpt={sceneScriptExcerpt}
                 />
               </div>
               {transformationEvents.map(event => (
@@ -383,8 +439,11 @@ export function VisualStateEditorPanel({
                   onDismiss={handleDismissEvent}
                   onUpdate={handleUpdateEvent}
                   onGeneratePostDescription={handleGeneratePostDescription}
+                  onGeneratePostImage={handleGeneratePostImage}
+                  onOpenImagePicker={(eventId) => setImagePickerEventId(eventId)}
                   isUpdating={isUpdating}
                   isGenerating={generatingEventId === event.id}
+                  isGeneratingImage={generatingImageEventId === event.id}
                 />
               ))}
               {!isLoadingEvents && transformationEvents.length === 0 && (
@@ -437,6 +496,17 @@ export function VisualStateEditorPanel({
           )}
         </div>
       </ScrollArea>
+
+      {/* Transformation Image Picker (Improvement 4) */}
+      {imagePickerEventId && selectedAsset?.project_asset_id && (
+        <TransformationImagePicker
+          open={!!imagePickerEventId}
+          onClose={() => setImagePickerEventId(null)}
+          projectId={projectId}
+          projectAssetId={selectedAsset.project_asset_id}
+          onSelect={(imageUrl) => handlePickExistingImage(imagePickerEventId, imageUrl)}
+        />
+      )}
     </motion.div>
   );
 }
