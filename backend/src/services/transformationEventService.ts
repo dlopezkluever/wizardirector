@@ -373,6 +373,89 @@ Write the post-transformation visual description. What does ${assetName} look li
   }
 
   // ---------------------------------------------------------------------------
+  // LLM: Generate prefill data from trigger shot context
+  // ---------------------------------------------------------------------------
+
+  async generateTransformationPrefill(
+    triggerShotId: string,
+    sceneAssetInstanceId: string,
+    transformationType: TransformationType,
+    sceneId: string
+  ): Promise<{ post_description: string; transformation_narrative: string }> {
+    // Fetch trigger shot fields
+    const { data: shot, error: shotError } = await supabase
+      .from('shots')
+      .select('action, dialogue, setting, camera, characters_foreground')
+      .eq('id', triggerShotId)
+      .single();
+
+    if (shotError || !shot) throw new Error('Trigger shot not found');
+
+    // Fetch asset details
+    const { data: instance, error: instanceError } = await supabase
+      .from('scene_asset_instances')
+      .select(`
+        effective_description,
+        project_asset:project_assets(name, asset_type)
+      `)
+      .eq('id', sceneAssetInstanceId)
+      .single();
+
+    if (instanceError || !instance) throw new Error('Scene asset instance not found');
+
+    const assetName = (instance.project_asset as any)?.name ?? 'the asset';
+    const currentAppearance = instance.effective_description ?? '';
+
+    // Fetch scene script
+    const { data: scene } = await supabase
+      .from('scenes')
+      .select('script_excerpt')
+      .eq('id', sceneId)
+      .single();
+
+    const typeLabel = transformationType === 'instant'
+      ? 'between-shots (off-camera)'
+      : transformationType === 'within_shot'
+        ? 'within-shot (on-camera)'
+        : 'gradual (spans multiple shots)';
+
+    const response = await llmClient.generate({
+      systemPrompt: `You are a visual description writer for an AI film pipeline. Given an asset's current appearance and what happens in a trigger shot, infer and write:
+1. A concise post-transformation visual description (what the asset looks like AFTER)
+2. A brief transformation narrative (what happens visually during the change)
+Output ONLY valid JSON: { "post_description": "...", "transformation_narrative": "..." }
+No extra text, no markdown fences.`,
+      userPrompt: `Asset: ${assetName}
+Current appearance (before): ${currentAppearance}
+Transformation type: ${typeLabel}
+Trigger shot action: ${shot.action ?? '(none)'}
+Trigger shot dialogue: ${shot.dialogue ?? '(none)'}
+Trigger shot setting: ${shot.setting ?? '(none)'}
+Trigger shot camera: ${shot.camera ?? '(none)'}
+Characters in shot: ${(shot.characters_foreground ?? []).join(', ') || '(none)'}
+Scene script excerpt: ${scene?.script_excerpt?.substring(0, 800) ?? '(none)'}
+
+Based on this context, what transformation does ${assetName} undergo? Write the post-transformation appearance and the transformation narrative.`,
+      temperature: 0.5,
+      maxTokens: 768,
+    });
+
+    try {
+      const parsed = JSON.parse(response.content.trim());
+      return {
+        post_description: (parsed.post_description ?? '').substring(0, 500),
+        transformation_narrative: (parsed.transformation_narrative ?? '').substring(0, 500),
+      };
+    } catch {
+      // If JSON parsing fails, use the raw content as post_description
+      return {
+        post_description: response.content.trim().substring(0, 500),
+        transformation_narrative: '',
+      };
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Cross-scene inheritance helper
   // ---------------------------------------------------------------------------
 
