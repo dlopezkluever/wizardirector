@@ -19,6 +19,11 @@ import {
   DialogContent,
 } from '@/components/ui/dialog';
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
   Carousel,
   CarouselContent,
   CarouselItem,
@@ -33,7 +38,7 @@ import {
 import { cn } from '@/lib/utils';
 import type { Frame, FrameType } from '@/types/scene';
 import { ReferenceImageThumbnail } from './ReferenceImageThumbnail';
-import { frameService, type FrameGeneration } from '@/lib/services/frameService';
+import { frameService, type FrameGeneration, type AvailableReferenceAsset } from '@/lib/services/frameService';
 
 interface ReferenceImageEntry {
   label: string;
@@ -46,6 +51,7 @@ interface FramePanelProps {
   frame: Frame | null;
   frameType: FrameType;
   shotId: string;
+  shotUuid?: string;
   isDisabled?: boolean;
   isGenerateDisabled?: boolean;
   disabledReason?: string;
@@ -58,6 +64,7 @@ interface FramePanelProps {
   onCompare?: () => void;
   showCompare?: boolean;
   referenceImages?: ReferenceImageEntry[];
+  onUpdateReferenceImages?: (refs: ReferenceImageEntry[]) => void;
   hideHeader?: boolean;
   projectId?: string;
   sceneId?: string;
@@ -75,6 +82,7 @@ export function FramePanel({
   frame,
   frameType,
   shotId,
+  shotUuid,
   isDisabled = false,
   isGenerateDisabled = false,
   disabledReason,
@@ -87,6 +95,7 @@ export function FramePanel({
   onCompare,
   showCompare = false,
   referenceImages,
+  onUpdateReferenceImages,
   hideHeader = false,
   projectId,
   sceneId,
@@ -99,6 +108,26 @@ export function FramePanel({
   const [editedPrompt, setEditedPrompt] = useState('');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [replacingRefIndex, setReplacingRefIndex] = useState<number | null>(null);
+
+  // Fetch available references when replacing
+  const { data: availableRefs } = useQuery({
+    queryKey: ['available-references', projectId, sceneId, shotUuid],
+    queryFn: () => frameService.fetchAvailableReferences(projectId!, sceneId!, shotUuid!),
+    enabled: replacingRefIndex !== null && !!projectId && !!sceneId && !!shotUuid,
+  });
+
+  const handleReplaceRef = (index: number) => {
+    setReplacingRefIndex(index);
+  };
+
+  const handleSelectReplacement = (url: string) => {
+    if (replacingRefIndex === null || !referenceImages || !onUpdateReferenceImages) return;
+    const updated = [...referenceImages];
+    updated[replacingRefIndex] = { ...updated[replacingRefIndex], url };
+    onUpdateReferenceImages(updated);
+    setReplacingRefIndex(null);
+  };
 
   const status = frame?.status || 'pending';
   const hasImage = frame?.imageUrl && !imageError;
@@ -413,15 +442,89 @@ export function FramePanel({
       {referenceImages && referenceImages.length > 0 && (
         <div className="flex items-center gap-1.5 mt-2 flex-wrap">
           <span className="text-[10px] text-muted-foreground">Refs:</span>
-          {referenceImages.map((ref, idx) => (
-            <ReferenceImageThumbnail
-              key={idx}
-              url={ref.url}
-              assetName={ref.assetName}
-              type={ref.type}
-              index={idx}
-            />
-          ))}
+          {referenceImages.map((ref, idx) => {
+            const isReplacing = replacingRefIndex === idx;
+            const currentAssetName = ref.assetName;
+            const assetOptions = availableRefs?.find(
+              (a: AvailableReferenceAsset) => a.assetName.toUpperCase() === currentAssetName?.toUpperCase()
+            );
+
+            if (onUpdateReferenceImages && shotUuid) {
+              return (
+                <Popover
+                  key={idx}
+                  open={isReplacing}
+                  onOpenChange={(open) => {
+                    if (!open) setReplacingRefIndex(null);
+                  }}
+                >
+                  <PopoverTrigger asChild>
+                    <span>
+                      <ReferenceImageThumbnail
+                        url={ref.url}
+                        assetName={ref.assetName}
+                        type={ref.type}
+                        index={idx}
+                        onReplace={handleReplaceRef}
+                      />
+                    </span>
+                  </PopoverTrigger>
+                  <PopoverContent side="top" className="w-64 p-2">
+                    <p className="text-xs font-medium text-foreground mb-2">
+                      Replace: {currentAssetName}
+                    </p>
+                    {!assetOptions ? (
+                      <div className="flex items-center justify-center py-3">
+                        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : assetOptions.options.length === 0 ? (
+                      <p className="text-xs text-muted-foreground py-2">No alternatives available</p>
+                    ) : (
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                        {assetOptions.options.map((opt, optIdx) => (
+                          <button
+                            key={optIdx}
+                            className={cn(
+                              'w-full flex items-center gap-2 p-1.5 rounded hover:bg-muted/50 transition-colors text-left',
+                              opt.url === ref.url && 'bg-primary/10 border border-primary/30'
+                            )}
+                            onClick={() => handleSelectReplacement(opt.url)}
+                          >
+                            <img
+                              src={opt.url}
+                              alt={opt.label}
+                              className="w-10 h-10 rounded border border-border/30 object-cover shrink-0"
+                            />
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium text-foreground truncate">
+                                {opt.label}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground">
+                                {opt.source.replace(/_/g, ' ')}
+                              </p>
+                            </div>
+                            {opt.url === ref.url && (
+                              <Check className="w-3 h-3 text-primary shrink-0 ml-auto" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
+              );
+            }
+
+            return (
+              <ReferenceImageThumbnail
+                key={idx}
+                url={ref.url}
+                assetName={ref.assetName}
+                type={ref.type}
+                index={idx}
+              />
+            );
+          })}
         </div>
       )}
 
