@@ -212,6 +212,22 @@ export function Stage10FrameGeneration({
     },
   });
 
+  // Update reference images mutation
+  const updateRefImagesMutation = useMutation({
+    mutationFn: ({
+      shotId,
+      frameType,
+      referenceImages,
+    }: {
+      shotId: string;
+      frameType: 'start' | 'end';
+      referenceImages: { label: string; assetName: string; url: string; type: string }[];
+    }) => frameService.updateReferenceImages(projectId, sceneId, shotId, frameType, referenceImages),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+    },
+  });
+
   // Chain end frame to next shot mutation
   const chainEndFrameMutation = useMutation({
     mutationFn: ({ shotId, endFrameUrl, fromShotId }: { shotId: string; endFrameUrl: string; fromShotId: string }) =>
@@ -602,6 +618,7 @@ export function Stage10FrameGeneration({
                       frame={selectedShot.startFrame}
                       frameType="start"
                       shotId={selectedShot.shotId}
+                      shotUuid={selectedShot.id}
                       projectId={projectId}
                       sceneId={sceneId}
                       onGenerate={() => handleGenerateShot(selectedShot.id, true)}
@@ -635,6 +652,13 @@ export function Stage10FrameGeneration({
                       onCompare={() => handleCompare(selectedShot.id)}
                       showCompare={canCompare(selectedShot.id)}
                       referenceImages={selectedShot.referenceImageOrder ?? undefined}
+                      onUpdateReferenceImages={(refs) =>
+                        updateRefImagesMutation.mutate({
+                          shotId: selectedShot.id,
+                          frameType: 'start',
+                          referenceImages: refs,
+                        })
+                      }
                     />
 
                     {/* Top-right: End Frame */}
@@ -656,6 +680,7 @@ export function Stage10FrameGeneration({
                           frame={selectedShot.endFrame}
                           frameType="end"
                           shotId={selectedShot.shotId}
+                          shotUuid={selectedShot.id}
                           projectId={projectId}
                           sceneId={sceneId}
                           isGenerateDisabled={selectedShot.startFrame?.status !== 'approved' && selectedShot.startFrame?.status !== 'generated'}
@@ -688,7 +713,14 @@ export function Stage10FrameGeneration({
                               'end'
                             )
                           }
-                          referenceImages={selectedShot.referenceImageOrder ?? undefined}
+                          referenceImages={selectedShot.endFrameReferenceImageOrder ?? selectedShot.referenceImageOrder ?? undefined}
+                          onUpdateReferenceImages={(refs) =>
+                            updateRefImagesMutation.mutate({
+                              shotId: selectedShot.id,
+                              frameType: 'end',
+                              referenceImages: refs,
+                            })
+                          }
                           hideHeader
                         />
                         {/* "Use as Next Start" chain button */}
