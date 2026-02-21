@@ -13,7 +13,7 @@ interface VisualStyleContext {
 export interface CreateImageJobRequest {
     projectId: string;
     branchId: string;
-    jobType: 'master_asset' | 'start_frame' | 'end_frame' | 'inpaint' | 'scene_asset' | 'angle_variant';
+    jobType: 'master_asset' | 'start_frame' | 'end_frame' | 'inpaint' | 'scene_asset' | 'angle_variant' | 'transformation_post';
     prompt: string;
     visualStyleCapsuleId?: string;
     manualVisualTone?: string;
@@ -26,6 +26,7 @@ export interface CreateImageJobRequest {
     referenceImageUrl?: string; // Optional reference image URL for merged assets
     referenceImageUrls?: ReferenceImage[]; // Asset reference images (identity refs for frame gen)
     angleVariantId?: string; // For angle_variant jobs: the asset_angle_variants row ID
+    transformationEventId?: string; // For transformation_post jobs: the transformation_events row ID
 }
 
 export interface CreateGlobalAssetImageJobRequest {
@@ -79,7 +80,7 @@ export class ImageGenerationService {
             return prompt;
         }
         // Only inject for asset image jobs, not frames or inpainting
-        if (jobType !== 'master_asset' && jobType !== 'scene_asset' && jobType !== 'angle_variant') {
+        if (jobType !== 'master_asset' && jobType !== 'scene_asset' && jobType !== 'angle_variant' && jobType !== 'transformation_post') {
             return prompt;
         }
         const injection = '. Isolated on a plain white background, no environment, no other characters or objects.';
@@ -135,7 +136,7 @@ export class ImageGenerationService {
 
         // Enforce visual style for Stage 5 master assets and scene asset keys
         // Either visualStyleCapsuleId or manualVisualTone must be provided
-        if ((request.jobType === 'master_asset' || request.jobType === 'scene_asset') && !request.visualStyleCapsuleId && !request.manualVisualTone) {
+        if ((request.jobType === 'master_asset' || request.jobType === 'scene_asset' || request.jobType === 'transformation_post') && !request.visualStyleCapsuleId && !request.manualVisualTone) {
             throw new Error('Visual Style Capsule or Manual Visual Tone is required for master asset and scene asset generation');
         }
 
@@ -359,7 +360,7 @@ export class ImageGenerationService {
             let imageBuffer = await this.artifactToBuffer(result.artifact);
 
             // 3C.1 Placeholder: Post-process background removal for isolatable asset types
-            if (request.assetId && (request.jobType === 'master_asset' || request.jobType === 'scene_asset' || request.jobType === 'angle_variant')) {
+            if (request.assetId && (request.jobType === 'master_asset' || request.jobType === 'scene_asset' || request.jobType === 'angle_variant' || request.jobType === 'transformation_post')) {
                 const assetDetails = await this.getAssetDetails(request.assetId);
                 if (assetDetails) {
                     imageBuffer = await this.postProcessBackground(imageBuffer, assetDetails.asset_type);
@@ -414,6 +415,20 @@ export class ImageGenerationService {
                     } else {
                         console.log(`[ImageService] Fallback: Updated project_assets.image_key_url for asset ${request.assetId}`);
                     }
+                }
+            }
+
+            // If this is a transformation_post job, update transformation_events.post_image_key_url
+            if (request.jobType === 'transformation_post' && request.transformationEventId) {
+                const { error: transformUpdateError } = await supabase
+                    .from('transformation_events')
+                    .update({ post_image_key_url: urlData.publicUrl })
+                    .eq('id', request.transformationEventId);
+
+                if (transformUpdateError) {
+                    console.error(`[ImageService] Failed to update transformation_events.post_image_key_url for event ${request.transformationEventId}:`, transformUpdateError);
+                } else {
+                    console.log(`[ImageService] Updated transformation_events.post_image_key_url for event ${request.transformationEventId}`);
                 }
             }
 
@@ -592,6 +607,9 @@ export class ImageGenerationService {
         }
         if (request.jobType === 'scene_asset' && request.sceneId && request.assetId) {
             return `project_${request.projectId}/branch_${request.branchId}/scene_${request.sceneId}/scene-assets/${request.assetId}_${timestamp}_${random}.png`;
+        }
+        if (request.jobType === 'transformation_post' && request.sceneId && request.transformationEventId) {
+            return `project_${request.projectId}/branch_${request.branchId}/scene_${request.sceneId}/transformations/${request.transformationEventId}_${timestamp}_${random}.png`;
         }
         if (request.shotId) {
             return `project_${request.projectId}/branch_${request.branchId}/scene_${request.sceneId}/shot_${request.shotId}/${request.jobType}_${timestamp}_${random}.png`;
