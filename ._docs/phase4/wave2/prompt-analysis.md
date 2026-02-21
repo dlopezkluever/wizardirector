@@ -107,7 +107,7 @@ Return the response as JSON in this exact format:
 }
 ```
 
-#### User Prompt
+#### User Prompt `Streamline_will_need_to_enhance_this`
 
 ```
 INPUT MODE: {input_mode}

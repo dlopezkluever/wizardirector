@@ -159,3 +159,5 @@ Testing:
 
   After Test 2f (confirmed event), go back and delete the event → try proceeding to Stage 9. It should succeed with no    
   events. This validates the dismiss/delete path.
+
+  I almost got l
