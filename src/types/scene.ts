@@ -294,6 +294,7 @@ export interface ShotWithFrames {
   framePrompt: string | null;
   videoPrompt: string | null;
   referenceImageOrder?: ReferenceImageOrderEntry[] | null;
+  endFrameReferenceImageOrder?: ReferenceImageOrderEntry[] | null;
   endFramePrompt?: string | null;
   startFrame: Frame | null;
   endFrame: Frame | null;
