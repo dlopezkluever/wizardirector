@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { User, MapPin, Package, Edit3, Lock, Sparkles, Loader2, History, Trash2 } from 'lucide-react';
@@ -107,6 +108,7 @@ export function VisualStateEditorPanel({
   const [generatingEventId, setGeneratingEventId] = useState<string | null>(null);
   const [generatingImageEventId, setGeneratingImageEventId] = useState<string | null>(null);
   const [imagePickerEventId, setImagePickerEventId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (selectedAsset) {
@@ -193,6 +195,9 @@ export function VisualStateEditorPanel({
             });
             setTransformationEvents(prev => prev.map(e => e.id === eventId ? updated : e));
           }
+          // Invalidate scene asset queries so UI picks up backend-set post_image_key_url
+          queryClient.invalidateQueries({ queryKey: ['transformation-events', projectId, sceneId] });
+          queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
           toast.success('Post-transformation image generated');
           return;
         }
@@ -208,7 +213,7 @@ export function VisualStateEditorPanel({
     } finally {
       setGeneratingImageEventId(null);
     }
-  }, [projectId, sceneId]);
+  }, [projectId, sceneId, queryClient]);
 
   const handlePickExistingImage = useCallback(async (eventId: string, imageUrl: string) => {
     try {
