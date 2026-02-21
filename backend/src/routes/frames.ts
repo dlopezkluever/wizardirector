@@ -979,4 +979,178 @@ router.delete('/:projectId/scenes/:sceneId/frames/:frameId/generations/:jobId', 
     }
 });
 
+/**
+ * PUT /api/projects/:projectId/scenes/:sceneId/shots/:shotId/reference-images
+ * Update reference images for a shot (start or end frame)
+ */
+router.put('/:projectId/scenes/:sceneId/shots/:shotId/reference-images', async (req, res) => {
+    try {
+        const { projectId, sceneId, shotId } = req.params;
+        const { frameType, referenceImages } = req.body;
+        const userId = req.user!.id;
+
+        if (!frameType || !['start', 'end'].includes(frameType)) {
+            return res.status(400).json({ error: 'frameType must be "start" or "end"' });
+        }
+        if (!Array.isArray(referenceImages)) {
+            return res.status(400).json({ error: 'referenceImages must be an array' });
+        }
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Update the appropriate column
+        const column = frameType === 'start' ? 'reference_image_order' : 'end_frame_reference_image_order';
+        const { error: updateError } = await supabase
+            .from('shots')
+            .update({ [column]: referenceImages, updated_at: new Date().toISOString() })
+            .eq('id', shotId)
+            .eq('scene_id', sceneId);
+
+        if (updateError) {
+            throw new Error(`Failed to update reference images: ${updateError.message}`);
+        }
+
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error('Error in PUT reference-images:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
+/**
+ * GET /api/projects/:projectId/scenes/:sceneId/shots/:shotId/available-references
+ * Fetch all available reference images for a shot, grouped by asset
+ */
+router.get('/:projectId/scenes/:sceneId/shots/:shotId/available-references', async (req, res) => {
+    try {
+        const { projectId, sceneId, shotId } = req.params;
+        const userId = req.user!.id;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Fetch scene asset instances with project_asset data
+        const { data: instances } = await supabase
+            .from('scene_asset_instances')
+            .select(`
+                id,
+                image_key_url,
+                project_asset:project_assets(id, name, asset_type, image_key_url)
+            `)
+            .eq('scene_id', sceneId);
+
+        if (!instances) {
+            return res.json({ assets: [] });
+        }
+
+        // Fetch transformation events for this scene
+        const { data: transformEvents } = await supabase
+            .from('transformation_events')
+            .select(`
+                id, post_image_key_url, scene_asset_instance_id, trigger_shot_id,
+                transformation_type, pre_description, post_description
+            `)
+            .eq('scene_id', sceneId)
+            .eq('confirmed', true);
+
+        // Fetch angle variants for all project assets in this scene
+        const projectAssetIds = instances
+            .map((i: any) => i.project_asset?.id)
+            .filter(Boolean);
+
+        let angleVariants: any[] = [];
+        if (projectAssetIds.length > 0) {
+            const { data: variants } = await supabase
+                .from('asset_angle_variants')
+                .select('id, project_asset_id, angle_type, image_url')
+                .in('project_asset_id', projectAssetIds);
+            angleVariants = variants || [];
+        }
+
+        // Build grouped result
+        const assets = instances.map((inst: any) => {
+            const pa = inst.project_asset;
+            if (!pa) return null;
+
+            const options: any[] = [];
+
+            // Scene instance image
+            if (inst.image_key_url) {
+                options.push({
+                    url: inst.image_key_url,
+                    source: 'scene_instance',
+                    label: 'Scene Asset',
+                });
+            }
+
+            // Master asset image
+            if (pa.image_key_url && pa.image_key_url !== inst.image_key_url) {
+                options.push({
+                    url: pa.image_key_url,
+                    source: 'master',
+                    label: 'Master Asset',
+                });
+            }
+
+            // Transformation post images
+            if (transformEvents) {
+                for (const event of transformEvents) {
+                    if (event.scene_asset_instance_id === inst.id && event.post_image_key_url) {
+                        options.push({
+                            url: event.post_image_key_url,
+                            source: 'transformation_post',
+                            label: `Post: ${event.post_description?.substring(0, 40) || 'Transformation'}`,
+                            eventId: event.id,
+                        });
+                    }
+                }
+            }
+
+            // Angle variants
+            for (const variant of angleVariants) {
+                if (variant.project_asset_id === pa.id && variant.image_url) {
+                    options.push({
+                        url: variant.image_url,
+                        source: 'angle_variant',
+                        label: `${variant.angle_type} Angle`,
+                        angleType: variant.angle_type,
+                    });
+                }
+            }
+
+            if (options.length === 0) return null;
+
+            return {
+                assetName: pa.name,
+                assetType: pa.asset_type,
+                options,
+            };
+        }).filter(Boolean);
+
+        res.json({ assets });
+    } catch (error: any) {
+        console.error('Error in GET available-references:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
 export const framesRouter = router;
