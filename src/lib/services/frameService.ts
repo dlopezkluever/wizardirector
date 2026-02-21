@@ -51,6 +51,20 @@ export interface FrameGeneration {
   isCurrent: boolean;
 }
 
+export interface ReferenceImageOption {
+  url: string;
+  source: 'scene_instance' | 'master' | 'transformation_post' | 'angle_variant';
+  label: string;
+  eventId?: string;
+  angleType?: string;
+}
+
+export interface AvailableReferenceAsset {
+  assetName: string;
+  assetType: string;
+  options: ReferenceImageOption[];
+}
+
 class FrameService {
   private async getAuthHeaders(): Promise<HeadersInit> {
     const { data: { session } } = await supabase.auth.getSession();
@@ -431,6 +445,59 @@ class FrameService {
     }
 
     return response.json();
+  }
+
+  /**
+   * Update reference images for a shot (start or end frame)
+   */
+  async updateReferenceImages(
+    projectId: string,
+    sceneId: string,
+    shotId: string,
+    frameType: 'start' | 'end',
+    referenceImages: { label: string; assetName: string; url: string; type: string }[]
+  ): Promise<{ success: boolean }> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/shots/${shotId}/reference-images`,
+      {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ frameType, referenceImages }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to update reference images');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Fetch available reference images for a shot, grouped by asset
+   */
+  async fetchAvailableReferences(
+    projectId: string,
+    sceneId: string,
+    shotId: string
+  ): Promise<AvailableReferenceAsset[]> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/shots/${shotId}/available-references`,
+      { headers }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch available references');
+    }
+
+    const data = await response.json();
+    return data.assets;
   }
 
   /**
