@@ -31,6 +31,7 @@ interface MasterReferenceCarouselProps {
 
 function referenceLabel(item: MasterReferenceItem): string {
   if (item.source === 'stage5_master') return 'Stage 5 Master';
+  if (item.source === 'transformation') return `Transformed (Scene ${item.sceneNumber})`;
   return `Scene ${item.sceneNumber}`;
 }
 
@@ -144,7 +145,13 @@ export function MasterReferenceCarousel({
                   {/* Label badge */}
                   <Badge
                     variant="secondary"
-                    className="absolute top-1 left-1 z-10 text-[10px] bg-background/80 backdrop-blur-sm"
+                    className={cn(
+                      'absolute top-1 left-1 z-10 text-[10px] bg-background/80 backdrop-blur-sm',
+                      item.source === 'transformation' && 'bg-purple-500/80 text-white'
+                    )}
+                    title={item.source === 'transformation' && item.transformationDescription
+                      ? item.transformationDescription
+                      : undefined}
                   >
                     {referenceLabel(item)}
                   </Badge>
