@@ -2,17 +2,19 @@
  * TransformationEventCard
  * Displays a single transformation event in the Visual State Editor panel.
  * Unconfirmed events have yellow borders; confirmed have green.
+ * Includes post-transformation image generation (Improvement 3) and
+ * "Use Existing" picker trigger (Improvement 4).
  */
 
 import { useState } from 'react';
-import { Check, X, Sparkles, Loader2, Trash2, ArrowRight } from 'lucide-react';
+import { Check, X, Sparkles, Loader2, Trash2, ArrowRight, Image as ImageIcon, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import type { TransformationEvent } from '@/types/scene';
 
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
-  instant: { label: 'Instant', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
+  instant: { label: 'Between Shots', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
   gradual: { label: 'Gradual', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
   within_shot: { label: 'Within Shot', color: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
 };
@@ -23,8 +25,11 @@ export interface TransformationEventCardProps {
   onDismiss: (eventId: string) => void;
   onUpdate: (eventId: string, updates: { post_description?: string; transformation_narrative?: string }) => void;
   onGeneratePostDescription: (eventId: string) => void;
+  onGeneratePostImage?: (eventId: string) => void;
+  onOpenImagePicker?: (eventId: string) => void;
   isUpdating?: boolean;
   isGenerating?: boolean;
+  isGeneratingImage?: boolean;
 }
 
 export function TransformationEventCard({
@@ -33,11 +38,15 @@ export function TransformationEventCard({
   onDismiss,
   onUpdate,
   onGeneratePostDescription,
+  onGeneratePostImage,
+  onOpenImagePicker,
   isUpdating,
   isGenerating,
+  isGeneratingImage,
 }: TransformationEventCardProps) {
   const [postDesc, setPostDesc] = useState(event.post_description);
   const [narrative, setNarrative] = useState(event.transformation_narrative ?? '');
+  const [showFullImage, setShowFullImage] = useState(false);
 
   const typeInfo = TYPE_LABELS[event.transformation_type] ?? TYPE_LABELS.instant;
   const isConfirmed = event.confirmed;
@@ -144,6 +153,80 @@ export function TransformationEventCard({
         </div>
       )}
 
+      {/* Post-transformation image (Improvement 3) */}
+      {isConfirmed && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground flex items-center gap-1">
+              <ImageIcon className="w-3 h-3" />
+              Post-transformation Image
+            </Label>
+            {!event.post_image_key_url && (
+              <span className="text-[10px] text-amber-400 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                No reference image
+              </span>
+            )}
+          </div>
+
+          {event.post_image_key_url ? (
+            <div
+              className="relative w-24 h-24 rounded-lg border border-border/30 overflow-hidden cursor-pointer group"
+              onClick={() => setShowFullImage(!showFullImage)}
+            >
+              <img
+                src={event.post_image_key_url}
+                alt="Post-transformation"
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <span className="text-[10px] text-white">Click to {showFullImage ? 'hide' : 'enlarge'}</span>
+              </div>
+            </div>
+          ) : null}
+
+          {showFullImage && event.post_image_key_url && (
+            <div className="rounded-lg border border-border/30 overflow-hidden">
+              <img
+                src={event.post_image_key_url}
+                alt="Post-transformation (full)"
+                className="w-full h-auto max-h-64 object-contain bg-muted/20"
+              />
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            {onGeneratePostImage && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onGeneratePostImage(event.id)}
+                disabled={isGeneratingImage || !postDesc.trim()}
+                className="text-xs h-7"
+              >
+                {isGeneratingImage ? (
+                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                ) : (
+                  <Sparkles className="w-3 h-3 mr-1" />
+                )}
+                Generate Image
+              </Button>
+            )}
+            {onOpenImagePicker && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onOpenImagePicker(event.id)}
+                className="text-xs h-7"
+              >
+                <ImageIcon className="w-3 h-3 mr-1" />
+                Use Existing
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Actions */}
       {!isConfirmed && (
         <div className="flex items-center gap-2 pt-1">
@@ -171,17 +254,24 @@ export function TransformationEventCard({
       )}
 
       {isConfirmed && (
-        <div className="flex items-center gap-2 pt-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onDismiss(event.id)}
-            disabled={isUpdating}
-            className="text-muted-foreground hover:text-destructive"
-          >
-            <Trash2 className="w-3 h-3 mr-1" />
-            Delete
-          </Button>
+        <div className="space-y-2 pt-1">
+          <p className="text-xs text-muted-foreground/70 italic">
+            {event.transformation_type === 'gradual' && completionLabel
+              ? `This transformation applies from Shot ${completionLabel} onward for the rest of the scene.`
+              : `This transformation applies from Shot ${triggerLabel} onward for the rest of the scene.`}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onDismiss(event.id)}
+              disabled={isUpdating}
+              className="text-muted-foreground hover:text-destructive"
+            >
+              <Trash2 className="w-3 h-3 mr-1" />
+              Delete
+            </Button>
+          </div>
         </div>
       )}
     </div>
