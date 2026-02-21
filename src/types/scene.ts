@@ -150,10 +150,11 @@ export interface SceneAssetGenerationAttempt {
 
 /** A single item in the master reference chain (3B.2). */
 export interface MasterReferenceItem {
-  source: 'stage5_master' | 'prior_scene_instance';
+  source: 'stage5_master' | 'prior_scene_instance' | 'transformation';
   imageUrl: string;
   sceneNumber: number | null;
   instanceId?: string;
+  transformationDescription?: string;
 }
 
 /** 3B.8: A persisted AI suggestion for a new asset in a scene. */
