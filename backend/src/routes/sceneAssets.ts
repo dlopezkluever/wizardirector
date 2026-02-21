@@ -1841,7 +1841,7 @@ router.post('/:projectId/scenes/:sceneId/transformation-events/:eventId/generate
     const result = await imageService.createImageJob({
       projectId,
       branchId: project.active_branch_id,
-      jobType: 'scene_asset',
+      jobType: 'transformation_post',
       prompt: event.post_description,
       visualStyleCapsuleId: visualStyleId,
       manualVisualTone,
@@ -1849,6 +1849,7 @@ router.post('/:projectId/scenes/:sceneId/transformation-events/:eventId/generate
       height: projectAsset.asset_type === 'location' ? 576 : projectAsset.asset_type === 'prop' ? 512 : 768,
       assetId: assetInstance.project_asset_id,
       sceneId,
+      transformationEventId: eventId,
       idempotencyKey: `post-transform-${eventId}-${Date.now()}`,
       referenceImageUrl: referenceImageUrl ?? undefined,
     });
