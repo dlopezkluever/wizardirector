@@ -134,6 +134,9 @@ export function FramePanel({
   const isGenerating = status === 'generating';
   const canRegenerate = status === 'generated' || status === 'rejected' || status === 'approved';
   const needsGeneration = status === 'pending' || status === 'rejected';
+  // A frame record may exist with 'pending' status (created during start-only generation)
+  // but has never actually been generated — treat it as needing first generation, not regeneration
+  const hasBeenGenerated = frame != null && status !== 'pending';
 
   const statusStyle = STATUS_STYLES[status] || STATUS_STYLES.pending;
 
@@ -535,10 +538,10 @@ export function FramePanel({
             variant="gold"
             className="w-full"
             disabled={isDisabled || isGenerateDisabled || isGenerating}
-            onClick={frame ? handleRegenClick : onGenerate}
+            onClick={hasBeenGenerated ? handleRegenClick : onGenerate}
           >
             <ImageIcon className="w-4 h-4 mr-2" />
-            {frame ? 'Regenerate' : 'Generate'} {frameType} Frame
+            {hasBeenGenerated ? 'Regenerate' : 'Generate'} {frameType} Frame
           </Button>
         ) : isGenerating ? (
           <Button variant="outline" className="w-full" disabled>
