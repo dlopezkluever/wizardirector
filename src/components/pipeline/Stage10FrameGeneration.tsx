@@ -14,6 +14,7 @@ import {
   Save,
   Loader2,
   Link2,
+  Camera,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -31,7 +32,7 @@ import { sceneService } from '@/lib/services/sceneService';
 import { promptService } from '@/lib/services/promptService';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import type { ShotWithFrames, GenerationMode, Frame } from '@/types/scene';
+import type { ShotWithFrames, GenerationMode, Frame, ContinuityMode } from '@/types/scene';
 import { LockedStageHeader } from './LockedStageHeader';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
@@ -242,6 +243,19 @@ export function Stage10FrameGeneration({
     },
   });
 
+  // Copy frame mutation (continuity)
+  const copyFrameMutation = useMutation({
+    mutationFn: ({ shotId, sourceFrameId, targetFrameType }: {
+      shotId: string;
+      sourceFrameId: string;
+      targetFrameType: 'start' | 'end';
+    }) => frameService.copyFrame(projectId, sceneId, shotId, sourceFrameId, targetFrameType),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+      toast({ title: 'Frame copied', description: 'Frame copied from adjacent shot (zero cost)' });
+    },
+  });
+
   // Toggle requiresEndFrame for selected shot
   const handleToggleEndFrame = useCallback(async (shot: ShotWithFrames, newValue: boolean) => {
     // Optimistic update via query cache
@@ -309,6 +323,45 @@ export function Stage10FrameGeneration({
     },
     [shots]
   );
+
+  // Compute continuity status for a shot
+  const getContinuityInfo = useCallback((shot: ShotWithFrames) => {
+    const prevShot = getPreviousShot(shot.id);
+    if (!prevShot) return { mode: 'none' as ContinuityMode, sourceShot: undefined };
+    return {
+      mode: (shot.startContinuity || 'none') as ContinuityMode,
+      sourceShot: prevShot.shotId,
+    };
+  }, [getPreviousShot]);
+
+  // Build copySource info for FramePanel
+  const getCopySource = useCallback((shot: ShotWithFrames) => {
+    if (!shot.startFrame?.previousFrameId) return undefined;
+    // Find the source frame in all shots
+    for (const s of shots) {
+      if (s.endFrame?.id === shot.startFrame.previousFrameId) {
+        const isStale = s.endFrame.generatedAt && shot.startFrame.generatedAt
+          && new Date(s.endFrame.generatedAt) > new Date(shot.startFrame.generatedAt);
+        return { sourceShotId: s.shotId, sourceFrameType: 'end' as const, isStale: !!isStale };
+      }
+      if (s.startFrame?.id === shot.startFrame.previousFrameId) {
+        const isStale = s.startFrame.generatedAt && shot.startFrame.generatedAt
+          && new Date(s.startFrame.generatedAt) > new Date(shot.startFrame.generatedAt);
+        return { sourceShotId: s.shotId, sourceFrameType: 'start' as const, isStale: !!isStale };
+      }
+    }
+    return undefined;
+  }, [shots]);
+
+  // Continuity summary for sidebar
+  const continuitySummary = useMemo(() => {
+    const linked = shots.filter((s, i) => i > 0 && s.startContinuity && s.startContinuity !== 'none').length;
+    const total = Math.max(shots.length - 1, 0);
+    if (total === 0) return null;
+    if (linked === total) return 'Fully continuous scene';
+    if (linked === 0) return 'No continuity links';
+    return `${linked} of ${total} shots linked`;
+  }, [shots]);
 
   // Handle compare click
   const handleCompare = useCallback(
@@ -525,6 +578,49 @@ export function Stage10FrameGeneration({
           >
             <ScrollArea className="h-full">
               <div className="p-2">
+                {/* Continuity controls */}
+                {shots.length > 1 && (
+                  <div className="mb-3 p-2 rounded-lg bg-muted/20 border border-border/20">
+                    {continuitySummary && (
+                      <p className="text-[10px] text-muted-foreground mb-2">{continuitySummary}</p>
+                    )}
+                    <div className="flex gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-[10px] px-2 flex-1"
+                        onClick={async () => {
+                          for (const shot of shots.slice(1)) {
+                            await promptService.updatePrompt(projectId, sceneId, shot.id, {
+                              startContinuity: 'match',
+                            });
+                          }
+                          queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+                          toast({ title: 'All shots linked', description: 'Frames will match at boundaries' });
+                        }}
+                      >
+                        <Link2 className="w-3 h-3 mr-1" />
+                        Link All
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-[10px] px-2"
+                        onClick={async () => {
+                          for (const shot of shots.slice(1)) {
+                            await promptService.updatePrompt(projectId, sceneId, shot.id, {
+                              startContinuity: 'none',
+                            });
+                          }
+                          queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+                          toast({ title: 'Shots unlinked', description: 'All continuity links removed' });
+                        }}
+                      >
+                        Unlink
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 {shots.map((shot) => {
                   const isSelected = selectedShotId === shot.id;
 
@@ -534,16 +630,37 @@ export function Stage10FrameGeneration({
                       onClick={() => setSelectedShotId(shot.id)}
                       whileHover={{ scale: 1.01 }}
                       className={cn(
-                        'w-full p-3 rounded-lg mb-2 text-left transition-all',
+                        'w-full p-3 rounded-lg mb-2 text-left transition-all relative',
                         isSelected
                           ? 'bg-primary/10 border border-primary/30'
                           : 'bg-card/50 border border-border/30 hover:border-border'
                       )}
                     >
+                      {/* Continuity line connecting to previous shot */}
+                      {(() => {
+                        const idx = shots.findIndex(s => s.id === shot.id);
+                        if (idx <= 0) return null;
+                        const cMode = shot.startContinuity || 'none';
+                        if (cMode === 'none') return null;
+                        return (
+                          <div className={cn(
+                            'absolute -top-2 left-1/2 w-0.5 h-2',
+                            cMode === 'match' ? 'bg-primary/40' : 'bg-purple-500/40 border-dashed'
+                          )} style={{ transform: 'translateX(-50%)' }} />
+                        );
+                      })()}
                       <div className="flex items-center justify-between mb-2">
                         <Badge variant="outline" className="font-mono">
                           Shot {shot.shotId}
                         </Badge>
+                        {(() => {
+                          const cMode = shot.startContinuity || 'none';
+                          const idx = shots.findIndex(s => s.id === shot.id);
+                          if (idx <= 0 || cMode === 'none') return null;
+                          return cMode === 'match'
+                            ? <Link2 className="w-3 h-3 text-primary/60" />
+                            : <Camera className="w-3 h-3 text-purple-400/60" />;
+                        })()}
                         <ChevronRight
                           className={cn(
                             'w-4 h-4',
@@ -659,6 +776,18 @@ export function Stage10FrameGeneration({
                           referenceImages: refs,
                         })
                       }
+                      continuityInfo={getContinuityInfo(selectedShot)}
+                      copySource={getCopySource(selectedShot)}
+                      onCopyFrame={() => {
+                        const prevShot = getPreviousShot(selectedShot.id);
+                        if (prevShot?.endFrame?.id) {
+                          copyFrameMutation.mutate({
+                            shotId: selectedShot.id,
+                            sourceFrameId: prevShot.endFrame.id,
+                            targetFrameType: 'start',
+                          });
+                        }
+                      }}
                     />
 
                     {/* Top-right: End Frame */}
@@ -789,6 +918,23 @@ export function Stage10FrameGeneration({
                             <span className="text-foreground text-xs">
                               {selectedShot.framePrompt}
                             </span>
+                          </div>
+                        )}
+                        {selectedShot.startContinuity === 'camera_change' && selectedShot.continuityFramePrompt && (
+                          <div>
+                            <span className="text-muted-foreground flex items-center gap-1">
+                              <Camera className="w-3 h-3 text-purple-400" />
+                              Continuity Prompt (active):
+                            </span>
+                            <span className="text-foreground text-xs">
+                              {selectedShot.continuityFramePrompt}
+                            </span>
+                          </div>
+                        )}
+                        {selectedShot.startContinuity === 'match' && (
+                          <div className="text-xs text-blue-300 flex items-center gap-1">
+                            <Link2 className="w-3 h-3" />
+                            Start frame will be copied from previous shot's end frame
                           </div>
                         )}
                       </div>
