@@ -1153,4 +1153,282 @@ router.get('/:projectId/scenes/:sceneId/shots/:shotId/available-references', asy
     }
 });
 
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/shots/:shotId/copy-frame
+ * Copy a frame from one shot to another (zero cost, pixel-identical)
+ */
+router.post('/:projectId/scenes/:sceneId/shots/:shotId/copy-frame', async (req, res) => {
+    try {
+        const { projectId, sceneId, shotId } = req.params;
+        const { sourceFrameId, targetFrameType } = req.body;
+        const userId = req.user!.id;
+
+        if (!sourceFrameId || typeof sourceFrameId !== 'string') {
+            return res.status(400).json({ error: 'sourceFrameId is required' });
+        }
+        if (!targetFrameType || !['start', 'end'].includes(targetFrameType)) {
+            return res.status(400).json({ error: 'targetFrameType must be "start" or "end"' });
+        }
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Fetch source frame
+        const { data: sourceFrame, error: sourceError } = await supabase
+            .from('frames')
+            .select('*')
+            .eq('id', sourceFrameId)
+            .single();
+
+        if (sourceError || !sourceFrame) {
+            return res.status(404).json({ error: 'Source frame not found' });
+        }
+
+        if (!sourceFrame.image_url) {
+            return res.status(400).json({ error: 'Source frame has no image to copy' });
+        }
+
+        if (!['generated', 'approved'].includes(sourceFrame.status)) {
+            return res.status(400).json({ error: 'Source frame must be generated or approved' });
+        }
+
+        // Get source shot info for prompt snapshot
+        const { data: sourceShot } = await supabase
+            .from('shots')
+            .select('shot_id')
+            .eq('id', sourceFrame.shot_id)
+            .single();
+
+        // Check if target frame already exists
+        const { data: existingFrame } = await supabase
+            .from('frames')
+            .select('id')
+            .eq('shot_id', shotId)
+            .eq('frame_type', targetFrameType)
+            .single();
+
+        const now = new Date().toISOString();
+        const frameData = {
+            image_url: sourceFrame.image_url,
+            storage_path: sourceFrame.storage_path,
+            status: 'generated',
+            prompt_snapshot: `[Copied from Shot ${sourceShot?.shot_id || 'unknown'} ${sourceFrame.frame_type} frame]`,
+            generated_at: now,
+            previous_frame_id: sourceFrameId,
+            updated_at: now,
+        };
+
+        let targetFrame;
+        if (existingFrame) {
+            // Update existing frame
+            const { data, error } = await supabase
+                .from('frames')
+                .update(frameData)
+                .eq('id', existingFrame.id)
+                .select()
+                .single();
+            if (error) throw new Error(`Failed to update frame: ${error.message}`);
+            targetFrame = data;
+        } else {
+            // Create new frame
+            const { data, error } = await supabase
+                .from('frames')
+                .insert({
+                    shot_id: shotId,
+                    frame_type: targetFrameType,
+                    ...frameData,
+                })
+                .select()
+                .single();
+            if (error) throw new Error(`Failed to create frame: ${error.message}`);
+            targetFrame = data;
+        }
+
+        // Create a zero-cost job record for audit trail
+        const { data: job } = await supabase
+            .from('image_generation_jobs')
+            .insert({
+                project_id: projectId,
+                branch_id: (await supabase.from('projects').select('active_branch_id').eq('id', projectId).single()).data?.active_branch_id,
+                scene_id: sceneId,
+                shot_id: shotId,
+                job_type: targetFrameType === 'start' ? 'start_frame' : 'end_frame',
+                status: 'completed',
+                cost_credits: 0,
+                prompt: '[Frame copy — zero cost]',
+                public_url: sourceFrame.image_url,
+                completed_at: now,
+            })
+            .select('id')
+            .single();
+
+        // Update frame with job ID
+        if (job) {
+            await supabase
+                .from('frames')
+                .update({ current_job_id: job.id })
+                .eq('id', targetFrame.id);
+        }
+
+        res.json({
+            success: true,
+            frame: {
+                id: targetFrame.id,
+                shotId: targetFrame.shot_id,
+                frameType: targetFrame.frame_type,
+                status: targetFrame.status,
+                imageUrl: targetFrame.image_url,
+                storagePath: targetFrame.storage_path,
+                currentJobId: job?.id || targetFrame.current_job_id,
+                generationCount: targetFrame.generation_count || 0,
+                totalCostCredits: parseFloat(targetFrame.total_cost_credits) || 0,
+                previousFrameId: targetFrame.previous_frame_id,
+                promptSnapshot: targetFrame.prompt_snapshot,
+                inpaintCount: targetFrame.inpaint_count || 0,
+                lastInpaintMaskPath: targetFrame.last_inpaint_mask_path,
+                createdAt: targetFrame.created_at,
+                updatedAt: targetFrame.updated_at,
+                generatedAt: targetFrame.generated_at,
+                approvedAt: targetFrame.approved_at,
+            },
+        });
+    } catch (error: any) {
+        console.error('Error in POST copy-frame:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/shots/:shotId/generate-continuity-prompt
+ * Generate or regenerate the continuity frame prompt for a shot
+ */
+router.post('/:projectId/scenes/:sceneId/shots/:shotId/generate-continuity-prompt', async (req, res) => {
+    try {
+        const { projectId, sceneId, shotId } = req.params;
+        const userId = req.user!.id;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id, visual_style_capsule_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Fetch all shots in scene to find previous shot
+        const { data: allShots, error: shotsError } = await supabase
+            .from('shots')
+            .select('*')
+            .eq('scene_id', sceneId)
+            .order('shot_order', { ascending: true });
+
+        if (shotsError || !allShots) {
+            return res.status(500).json({ error: 'Failed to fetch shots' });
+        }
+
+        const shotIndex = allShots.findIndex((s: any) => s.id === shotId);
+        if (shotIndex === -1) {
+            return res.status(404).json({ error: 'Shot not found' });
+        }
+        if (shotIndex === 0) {
+            return res.status(400).json({ error: 'First shot cannot have continuity prompt' });
+        }
+
+        const currentShot = allShots[shotIndex];
+        const previousShot = allShots[shotIndex - 1];
+
+        // Build ShotData for current and previous
+        const buildShotData = (shot: any) => ({
+            id: shot.id,
+            shot_id: shot.shot_id,
+            duration: shot.duration,
+            dialogue: shot.dialogue || '',
+            action: shot.action,
+            characters_foreground: shot.characters_foreground || [],
+            characters_background: shot.characters_background || [],
+            setting: shot.setting,
+            camera: shot.camera,
+            continuity_flags: shot.continuity_flags,
+            beat_reference: shot.beat_reference,
+        });
+
+        // Fetch scene assets
+        const { data: sceneAssets } = await supabase
+            .from('scene_asset_instances')
+            .select(`
+                id,
+                description_override,
+                effective_description,
+                status_tags,
+                image_key_url,
+                carry_forward,
+                inherited_from_instance_id,
+                project_asset:project_assets(id, name, asset_type, description, image_key_url)
+            `)
+            .eq('scene_id', sceneId);
+
+        // Fetch style capsule
+        let styleCapsule = null;
+        if (project.visual_style_capsule_id) {
+            try {
+                const styleCapsuleService = new StyleCapsuleService();
+                styleCapsule = await styleCapsuleService.getCapsuleById(project.visual_style_capsule_id, userId);
+            } catch {
+                // Continue without
+            }
+        }
+
+        // Transform assets
+        const assets = (sceneAssets || []).map((instance: any) => ({
+            id: instance.id,
+            project_asset: instance.project_asset ? {
+                id: instance.project_asset.id,
+                name: instance.project_asset.name,
+                asset_type: instance.project_asset.asset_type,
+                description: instance.project_asset.description,
+                image_key_url: instance.project_asset.image_key_url || undefined,
+            } : undefined,
+            description_override: instance.description_override,
+            effective_description: instance.effective_description || '',
+            status_tags: instance.status_tags || [],
+            image_key_url: instance.image_key_url || undefined,
+        }));
+
+        // Generate continuity prompt
+        const continuityPrompt = await promptGenerationService.generateContinuityFramePrompt(
+            buildShotData(currentShot),
+            buildShotData(previousShot),
+            assets,
+            styleCapsule
+        );
+
+        // Save to database
+        await supabase
+            .from('shots')
+            .update({
+                continuity_frame_prompt: continuityPrompt,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', shotId);
+
+        res.json({ continuityFramePrompt: continuityPrompt });
+    } catch (error: any) {
+        console.error('Error in POST generate-continuity-prompt:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
 export const framesRouter = router;
