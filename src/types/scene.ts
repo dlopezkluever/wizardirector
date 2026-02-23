@@ -223,6 +223,8 @@ export interface PromptSetTransformationContext {
   transformationType: TransformationType;
 }
 
+export type ContinuityMode = 'none' | 'match' | 'camera_change';
+
 export interface PromptSet {
   shotId: string;
   shotUuid?: string; // Database UUID for API calls
@@ -240,6 +242,10 @@ export interface PromptSet {
   action?: string;
   setting?: string;
   camera?: string;
+  // Continuity linking (Stage 9/10)
+  startContinuity?: ContinuityMode;
+  aiStartContinuity?: ContinuityMode | null;
+  continuityFramePrompt?: string | null;
   // Transformation context (populated when events affect this shot)
   transformationContext?: PromptSetTransformationContext[];
   // UI state (not persisted)
@@ -296,6 +302,10 @@ export interface ShotWithFrames {
   referenceImageOrder?: ReferenceImageOrderEntry[] | null;
   endFrameReferenceImageOrder?: ReferenceImageOrderEntry[] | null;
   endFramePrompt?: string | null;
+  // Continuity linking (Stage 9/10)
+  startContinuity?: ContinuityMode;
+  aiStartContinuity?: ContinuityMode | null;
+  continuityFramePrompt?: string | null;
   startFrame: Frame | null;
   endFrame: Frame | null;
 }
