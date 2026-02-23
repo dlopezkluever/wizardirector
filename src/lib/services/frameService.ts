@@ -668,6 +668,34 @@ class FrameService {
       readyFrames: approvedFrames + generatedFrames,
     };
   }
+  /**
+   * Copy a frame to a target frame type (start or end) within the same shot
+   */
+  async copyFrame(
+    projectId: string,
+    sceneId: string,
+    shotId: string,
+    sourceFrameId: string,
+    targetFrameType: 'start' | 'end'
+  ): Promise<{ success: boolean; frame: Frame }> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/shots/${shotId}/copy-frame`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ sourceFrameId, targetFrameType }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Failed to copy frame' }));
+      throw new Error(error.error || 'Failed to copy frame');
+    }
+
+    return response.json();
+  }
 }
 
 export const frameService = new FrameService();
