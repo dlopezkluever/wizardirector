@@ -1971,7 +1971,10 @@ router.get('/:id/scenes/:sceneId/prompts', async (req, res) => {
         ai_recommends_end_frame,
         compatible_models,
         reference_image_order,
-        prompts_generated_at
+        prompts_generated_at,
+        start_continuity,
+        ai_start_continuity,
+        continuity_frame_prompt
       `)
       .eq('scene_id', sceneId)
       .order('shot_order', { ascending: true });
@@ -1998,6 +2001,9 @@ router.get('/:id/scenes/:sceneId/prompts', async (req, res) => {
       action: shot.action,
       setting: shot.setting,
       camera: shot.camera,
+      startContinuity: shot.start_continuity || 'none',
+      aiStartContinuity: shot.ai_start_continuity || null,
+      continuityFramePrompt: shot.continuity_frame_prompt || null,
     }));
 
     res.json({ prompts: promptSets, sceneNumber: scene.scene_number });
@@ -2011,7 +2017,7 @@ router.get('/:id/scenes/:sceneId/prompts', async (req, res) => {
 router.put('/:id/scenes/:sceneId/shots/:shotId/prompts', async (req, res) => {
   try {
     const { id: projectId, sceneId, shotId } = req.params;
-    const { framePrompt, videoPrompt, requiresEndFrame, compatibleModels } = req.body;
+    const { framePrompt, videoPrompt, requiresEndFrame, compatibleModels, startContinuity } = req.body;
     const userId = req.user!.id;
 
     // Verify project ownership
@@ -2075,6 +2081,17 @@ router.put('/:id/scenes/:sceneId/shots/:shotId/prompts', async (req, res) => {
       updateData.compatible_models = compatibleModels;
     }
 
+    if (startContinuity !== undefined) {
+      if (!['none', 'match', 'camera_change'].includes(startContinuity)) {
+        return res.status(400).json({ error: 'startContinuity must be none, match, or camera_change' });
+      }
+      updateData.start_continuity = startContinuity;
+      // Clear continuity prompt when switching to 'none'
+      if (startContinuity === 'none') {
+        updateData.continuity_frame_prompt = null;
+      }
+    }
+
     // Update the shot
     const { data: updatedShot, error: updateError } = await supabase
       .from('shots')
@@ -2099,6 +2116,9 @@ router.put('/:id/scenes/:sceneId/shots/:shotId/prompts', async (req, res) => {
         requiresEndFrame: updatedShot.requires_end_frame ?? true,
         compatibleModels: updatedShot.compatible_models || ['Veo3'],
         promptsGeneratedAt: updatedShot.prompts_generated_at,
+        startContinuity: updatedShot.start_continuity || 'none',
+        aiStartContinuity: updatedShot.ai_start_continuity || null,
+        continuityFramePrompt: updatedShot.continuity_frame_prompt || null,
       },
     });
   } catch (error) {
@@ -2315,6 +2335,8 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
             ai_recommends_end_frame: r.aiRecommendsEndFrame ?? r.requiresEndFrame,
             compatible_models: r.compatibleModels,
             reference_image_order: r.referenceImageOrder || null,
+            ai_start_continuity: r.aiStartContinuity || null,
+            start_continuity: r.aiStartContinuity || 'none',
             prompts_generated_at: now,
             updated_at: now,
           })
@@ -2340,7 +2362,10 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
         dialogue,
         action,
         setting,
-        camera
+        camera,
+        start_continuity,
+        ai_start_continuity,
+        continuity_frame_prompt
       `)
       .eq('scene_id', sceneId)
       .order('shot_order', { ascending: true });
@@ -2361,6 +2386,9 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
       action: shot.action,
       setting: shot.setting,
       camera: shot.camera,
+      startContinuity: shot.start_continuity || 'none',
+      aiStartContinuity: shot.ai_start_continuity || null,
+      continuityFramePrompt: shot.continuity_frame_prompt || null,
     }));
 
     const successCount = results.filter(r => r.success).length;
