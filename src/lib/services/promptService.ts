@@ -17,6 +17,7 @@ export interface UpdatePromptRequest {
   videoPrompt?: string;
   requiresEndFrame?: boolean;
   compatibleModels?: string[];
+  startContinuity?: 'none' | 'match' | 'camera_change';
 }
 
 export interface GeneratePromptsResponse {
@@ -146,6 +147,37 @@ class PromptService {
     }
 
     return prompt;
+  }
+  /**
+   * Generate a continuity frame prompt for a shot using LLM
+   */
+  async generateContinuityPrompt(
+    projectId: string,
+    sceneId: string,
+    shotUuid: string
+  ): Promise<{ continuityFramePrompt: string }> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/shots/${shotUuid}/generate-continuity-prompt`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Failed to generate continuity prompt' }));
+      throw new Error(error.error || 'Failed to generate continuity prompt');
+    }
+
+    return response.json();
   }
 }
 
