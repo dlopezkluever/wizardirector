@@ -1,4 +1,8 @@
-## 1‘
+## 1.
+
+This product is aimed to targe the pre-production workflow for AI video in the immediate, with later goals for the full production cycle. The most synonyms application in th emarket today is studiobinder, but it lacks ai automation, and a pipeline to directly feed the created script and nnarrative doucments, like character descriptions and story beat shets and treaments, into optimized frame and video prompts to be generated using the existing models. 
+
+
 
 This comprehensive outline details the product vision, technical workflow, and creative philosophy for the AI-narrative pipeline, integrating all specific details and nuance from the provided recordings.
 
