@@ -44,6 +44,9 @@ export interface ShotWithFrames {
     referenceImageOrder: { label: string; assetName: string; url: string; type: string }[] | null;
     endFrameReferenceImageOrder: { label: string; assetName: string; url: string; type: string }[] | null;
     endFramePrompt: string | null;
+    startContinuity: 'none' | 'match' | 'camera_change';
+    aiStartContinuity: 'none' | 'match' | 'camera_change' | null;
+    continuityFramePrompt: string | null;
     startFrame: Frame | null;
     endFrame: Frame | null;
 }
@@ -106,7 +109,10 @@ export class FrameGenerationService {
                 video_prompt,
                 reference_image_order,
                 end_frame_reference_image_order,
-                end_frame_prompt
+                end_frame_prompt,
+                start_continuity,
+                ai_start_continuity,
+                continuity_frame_prompt
             `)
             .eq('scene_id', sceneId)
             .order('shot_order', { ascending: true });
@@ -229,6 +235,9 @@ export class FrameGenerationService {
                 referenceImageOrder: shot.reference_image_order || null,
                 endFrameReferenceImageOrder: endFrameRefOrder,
                 endFramePrompt: shot.end_frame_prompt || null,
+                startContinuity: shot.start_continuity || 'none',
+                aiStartContinuity: shot.ai_start_continuity || null,
+                continuityFramePrompt: shot.continuity_frame_prompt || null,
                 startFrame: frameEntry.start,
                 endFrame: frameEntry.end,
             };
@@ -281,21 +290,65 @@ export class FrameGenerationService {
             // Fetch asset reference images for this shot
             const shotRefImages = await this.fetchShotReferenceImages(shot.id);
 
-            // Generate start frame
+            // Generate start frame (with continuity handling)
             const startFrame = await this.ensureFrame(shot.id, 'start', previousEndFrameId);
             if (startFrame.status === 'pending' || startFrame.status === 'rejected') {
-                await this.startFrameGeneration(
-                    startFrame.id,
-                    projectId,
-                    branchId,
-                    sceneId,
-                    shot.id,
-                    shot.frame_prompt,
-                    visualStyleCapsuleId,
-                    aspectRatio,
-                    shotRefImages
-                );
-                jobsCreated++;
+                if (shot.start_continuity === 'match' && previousEndFrameId) {
+                    // Match mode: copy from previous shot's end frame
+                    const { data: prevEndFrame } = await supabase
+                        .from('frames')
+                        .select('image_url, storage_path')
+                        .eq('id', previousEndFrameId)
+                        .single();
+
+                    if (prevEndFrame?.image_url) {
+                        await supabase
+                            .from('frames')
+                            .update({
+                                image_url: prevEndFrame.image_url,
+                                storage_path: prevEndFrame.storage_path,
+                                status: 'generated',
+                                prompt_snapshot: '[Copied from previous shot end frame — match continuity]',
+                                generated_at: new Date().toISOString(),
+                                previous_frame_id: previousEndFrameId,
+                            })
+                            .eq('id', startFrame.id);
+                        // No jobsCreated++ — zero cost
+                    } else {
+                        // Fallback to normal generation if no image
+                        await this.startFrameGeneration(
+                            startFrame.id, projectId, branchId, sceneId, shot.id,
+                            shot.frame_prompt, visualStyleCapsuleId, aspectRatio, shotRefImages
+                        );
+                        jobsCreated++;
+                    }
+                } else if (shot.start_continuity === 'camera_change' && previousEndFrameId) {
+                    // Camera change mode: use continuity prompt + previous end frame as primary reference
+                    const prompt = shot.continuity_frame_prompt || shot.frame_prompt;
+                    const { data: prevEndFrame } = await supabase
+                        .from('frames')
+                        .select('image_url')
+                        .eq('id', previousEndFrameId)
+                        .single();
+
+                    const refs = [...shotRefImages];
+                    if (prevEndFrame?.image_url) {
+                        refs.unshift({ url: prevEndFrame.image_url, role: 'identity' as const });
+                    }
+
+                    await this.startFrameGeneration(
+                        startFrame.id, projectId, branchId, sceneId, shot.id,
+                        prompt, visualStyleCapsuleId, aspectRatio, refs
+                    );
+                    jobsCreated++;
+                } else {
+                    // Normal generation
+                    await this.startFrameGeneration(
+                        startFrame.id, projectId, branchId, sceneId, shot.id,
+                        shot.frame_prompt, visualStyleCapsuleId, aspectRatio, shotRefImages
+                    );
+                    jobsCreated++;
+                }
             }
             createdFrames.push(startFrame);
 
