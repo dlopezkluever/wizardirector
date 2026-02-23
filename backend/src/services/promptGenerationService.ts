@@ -76,6 +76,7 @@ export interface BulkPromptGenerationResult {
   compatibleModels?: string[];
   referenceImageOrder?: ReferenceImageOrderEntry[];
   error?: string;
+  aiStartContinuity?: 'none' | 'match' | 'camera_change';
 }
 
 const PROMPT_GENERATION_TIMEOUT_MS = 30000;
@@ -336,6 +337,34 @@ function determineCompatibleModels(shot: ShotData, framePrompt: string): string[
   return models;
 }
 
+/**
+ * Parse a free-text camera field to extract shot type and angle.
+ * Used by continuity detection to compare adjacent shots.
+ */
+export function parseCameraField(camera: string): { shotType: string; angle: string } {
+  const lower = camera.toLowerCase();
+
+  // Extract shot type
+  let shotType = 'unknown';
+  if (/\becw?s\b|extreme\s*wide/.test(lower)) shotType = 'EWS';
+  else if (/\bws\b|wide\s*shot/.test(lower)) shotType = 'WS';
+  else if (/\bms\b|medium\s*shot|mid[\s-]*shot/.test(lower)) shotType = 'MS';
+  else if (/\bmcu\b|medium\s*close[\s-]*up/.test(lower)) shotType = 'MCU';
+  else if (/\becu\b|extreme\s*close[\s-]*up/.test(lower)) shotType = 'ECU';
+  else if (/\bcu\b|close[\s-]*up/.test(lower)) shotType = 'CU';
+  else if (/\btwo[\s-]*shot/.test(lower)) shotType = 'TWO';
+  else if (/\bover[\s-]*the[\s-]*shoulder\b|\bots\b/.test(lower)) shotType = 'OTS';
+
+  // Extract angle
+  let angle = 'eye-level';
+  if (/low[\s-]*angle/.test(lower)) angle = 'low';
+  else if (/high[\s-]*angle|bird/.test(lower)) angle = 'high';
+  else if (/dutch|canted|tilted/.test(lower)) angle = 'dutch';
+  else if (/overhead|top[\s-]*down/.test(lower)) angle = 'overhead';
+
+  return { shotType, angle };
+}
+
 export class PromptGenerationService {
   /**
    * Generate frame and video prompts for a single shot.
@@ -346,7 +375,8 @@ export class PromptGenerationService {
     shot: ShotData,
     sceneAssets: SceneAssetInstanceData[],
     styleCapsule?: StyleCapsule | null,
-    shotOverrides?: ShotAssetOverride[]
+    shotOverrides?: ShotAssetOverride[],
+    continuityContext?: { mode: 'none' | 'match' | 'camera_change'; previousCamera?: string }
   ): Promise<GeneratedPromptSet> {
     console.log(`[PromptGeneration] Generating prompts for shot ${shot.shot_id}`);
 
@@ -380,7 +410,7 @@ export class PromptGenerationService {
     const transformingAssets = shotOverrides?.filter(o => o.is_transforming) ?? [];
 
     // Generate frame prompt (visual/spatial focus)
-    const framePrompt = await this.generateFramePrompt(shot, assetContext, styleContext, imageManifest);
+    const framePrompt = await this.generateFramePrompt(shot, assetContext, styleContext, imageManifest, continuityContext);
 
     // Generate video prompt (action/audio focus) — inject transformation context for within_shot
     const videoPrompt = await this.generateVideoPrompt(shot, framePrompt, transformingAssets, sceneAssets);
@@ -399,6 +429,39 @@ export class PromptGenerationService {
       compatibleModels,
       referenceImageOrder,
     };
+  }
+
+  /**
+   * Determine continuity link between this shot and the previous shot.
+   * Purely deterministic — no LLM. Fast and free.
+   */
+  private determineContinuityLink(
+    currentShot: ShotData,
+    previousShot: ShotData | null,
+  ): 'none' | 'match' | 'camera_change' {
+    if (!previousShot) return 'none'; // First shot in scene
+
+    // Check continuity flags for explicit cuts / scene breaks
+    const hasExplicitCut = currentShot.continuity_flags?.some(f =>
+      /cut|jump|transition|time.?skip|new.?scene|later/i.test(f)
+    );
+    if (hasExplicitCut) return 'none';
+
+    // Check if setting changed (implies location change → no auto-continuity)
+    const settingChanged = currentShot.setting?.toLowerCase().trim() !== previousShot.setting?.toLowerCase().trim();
+    if (settingChanged) return 'none';
+
+    // Parse camera fields
+    const currCamera = parseCameraField(currentShot.camera);
+    const prevCamera = parseCameraField(previousShot.camera);
+
+    // Same camera setup → match (pixel-identical boundary)
+    if (currCamera.shotType === prevCamera.shotType && currCamera.angle === prevCamera.angle) {
+      return 'match';
+    }
+
+    // Different camera in same setting → camera_change (recomposition)
+    return 'camera_change';
   }
 
   /**
@@ -441,7 +504,15 @@ export class PromptGenerationService {
           }
         }
 
-        const promptSet = await this.generatePromptSet(shot, sceneAssets, styleCapsule, shotOverrides);
+        // Determine continuity link with previous shot
+        const shotIndex = shots.indexOf(shot);
+        const previousShot = shotIndex > 0 ? shots[shotIndex - 1] : null;
+        const aiStartContinuity = this.determineContinuityLink(shot, previousShot);
+
+        const contCtx = aiStartContinuity !== 'none'
+          ? { mode: aiStartContinuity, previousCamera: previousShot?.camera }
+          : undefined;
+        const promptSet = await this.generatePromptSet(shot, sceneAssets, styleCapsule, shotOverrides, contCtx);
         results.push({
           shotId: shot.id,
           success: true,
@@ -451,6 +522,7 @@ export class PromptGenerationService {
           aiRecommendsEndFrame: promptSet.aiRecommendsEndFrame,
           compatibleModels: promptSet.compatibleModels,
           referenceImageOrder: promptSet.referenceImageOrder,
+          aiStartContinuity,
         });
       } catch (error) {
         console.error(`[PromptGeneration] Failed to generate prompts for shot ${shot.shot_id}:`, error);
@@ -477,7 +549,8 @@ export class PromptGenerationService {
     shot: ShotData,
     assetContext: string,
     styleContext: string,
-    imageManifest: string = ''
+    imageManifest: string = '',
+    continuityContext?: { mode: 'none' | 'match' | 'camera_change'; previousCamera?: string }
   ): Promise<string> {
     const systemPrompt = `You are a visual prompt engineer for AI image generation (starting frames for Veo 3.1 video pipeline).
 
@@ -504,7 +577,17 @@ ${styleContext}${imageManifest ? `
 
 ${imageManifest}
 
-IMPORTANT: The reference images above will be attached during generation. Write vivid descriptions INFORMED by knowing these refs exist. Do NOT include "Image #N" in your output text.` : ''}`;
+IMPORTANT: The reference images above will be attached during generation. Write vivid descriptions INFORMED by knowing these refs exist. Do NOT include "Image #N" in your output text.` : ''}${continuityContext && continuityContext.mode === 'match' ? `
+
+CONTINUITY CONTEXT:
+This shot's start frame will be a pixel-identical copy of the previous shot's end frame.
+Your frame prompt should describe the same visual state as the previous shot's end state.
+Do not introduce visual differences from the previous shot's end.` : ''}${continuityContext && continuityContext.mode === 'camera_change' ? `
+
+CONTINUITY CONTEXT:
+This shot is a camera angle change from the previous shot (${continuityContext.previousCamera || 'unknown'}).
+A separate recomposition prompt will be generated for continuity. Your standard frame prompt should
+still describe the scene independently (as a fallback).` : ''}`;
 
     // Extract static camera info (shot type + angle) vs movement for routing guidance
     const userPrompt = `Generate a STARTING FRAME prompt for this shot:
@@ -607,7 +690,8 @@ Write the video prompt. Focus on action, movement, dialogue delivery, and sound.
     startFramePrompt: string,
     sceneAssets: SceneAssetInstanceData[],
     styleCapsule?: StyleCapsule | null,
-    shotOverrides?: ShotAssetOverride[]
+    shotOverrides?: ShotAssetOverride[],
+    nextShotContinuity?: { startContinuity: string; camera?: string }
   ): Promise<string> {
     console.log(`[PromptGeneration] Generating end frame prompt for shot ${shot.shot_id}`);
 
@@ -676,9 +760,85 @@ Background characters: ${shot.characters_background.join(', ') || 'None'}
 START FRAME (the "before" state):
 ${startFramePrompt}
 
-Describe the RESULTING end state — what does the scene look like AFTER the action is complete? Same camera, same environment, only poses/expressions/positions changed. Output ONLY the prompt text.`;
+Describe the RESULTING end state — what does the scene look like AFTER the action is complete? Same camera, same environment, only poses/expressions/positions changed.${nextShotContinuity?.startContinuity === 'match' ? `
+
+CONTINUITY NOTE: The next shot's start frame will be copied from THIS shot's end frame.
+Ensure this end frame can serve as a clean starting point for the next shot.
+The next shot's camera is: ${nextShotContinuity.camera || 'same'}` : ''} Output ONLY the prompt text.`;
 
     const response = await this.callLLM(systemPrompt, userPrompt, 'end_frame_prompt');
+    return this.cleanPromptOutput(response, 1200);
+  }
+
+  /**
+   * Generate a recomposition frame prompt for camera angle change continuity.
+   * Uses the previous shot's end frame as a strong reference to maintain visual
+   * continuity while recomposing from a different camera angle.
+   */
+  async generateContinuityFramePrompt(
+    shot: ShotData,
+    previousShot: ShotData,
+    sceneAssets: SceneAssetInstanceData[],
+    styleCapsule?: StyleCapsule | null
+  ): Promise<string> {
+    console.log(`[PromptGeneration] Generating continuity frame prompt for shot ${shot.shot_id}`);
+
+    const enrichedAssets = enrichAssetsWithAngleMatch(sceneAssets, shot.camera);
+    const assetContext = buildAssetContext(enrichedAssets);
+    const styleContext = buildStyleContext(styleCapsule);
+
+    const currCamera = parseCameraField(shot.camera);
+    const prevCamera = parseCameraField(previousShot.camera);
+
+    const systemPrompt = `You are a visual prompt engineer for AI image generation. You are generating a RECOMPOSITION FRAME — a new camera angle of an existing scene moment.
+
+A reference image (the previous shot's end frame) will be provided during generation. Your prompt must direct the image generator to RECOMPOSE that scene from a different camera angle while preserving all visual continuity.
+
+YOUR TASK: Describe a FROZEN VISUAL SNAPSHOT recomposed from the reference image.
+
+WHAT MUST BE PRESERVED FROM THE REFERENCE:
+- Exact facial expressions, emotional states
+- Clothing, accessories, hair styling
+- Lighting quality and color temperature
+- Background elements and atmospheric conditions
+- Prop positions and states
+- Time of day and weather
+
+WHAT CHANGES:
+- Camera position: from ${prevCamera.shotType} ${prevCamera.angle} to ${currCamera.shotType} ${currCamera.angle}
+- Framing/composition adjusted for new focal distance
+- Depth of field adjusted for new camera position
+
+STRUCTURE (5-part formula):
+1. CAMERA POSITION & FRAMING: New shot type, angle, lens. State explicitly this is recomposed from a wider/tighter/different angle.
+2. SUBJECT APPEARANCE: Reference the continuity image — describe subjects with emphasis on maintaining exact appearance from reference.
+3. SPATIAL PLACEMENT & POSE: Same poses/positions but reframed for new composition.
+4. ENVIRONMENT & PROPS: Same environment, now seen from new perspective.
+5. LIGHTING, COLOR & STYLE: Identical lighting setup, adjusted for new camera position.
+
+RULES:
+- NO action verbs, NO dialogue, NO sound, NO movement — still image
+- Explicitly reference that this maintains continuity from the previous angle
+- Max 1200 characters, single paragraph, no formatting
+
+ASSET DESCRIPTIONS:
+${assetContext}
+
+${styleContext}`;
+
+    const userPrompt = `Generate a RECOMPOSITION FRAME prompt for this shot:
+
+Shot: ${shot.shot_id} | Duration: ${shot.duration}s
+Camera: ${shot.camera}
+Previous shot camera: ${previousShot.camera}
+Action context (for understanding, NOT inclusion): ${shot.action}
+Setting: ${shot.setting}
+Foreground characters: ${shot.characters_foreground.join(', ') || 'None'}
+Background characters: ${shot.characters_background.join(', ') || 'None'}
+
+The previous shot's end frame will be provided as a reference image during generation. Describe the same scene moment recomposed for the new camera angle. Output ONLY the prompt text.`;
+
+    const response = await this.callLLM(systemPrompt, userPrompt, 'continuity_frame_prompt');
     return this.cleanPromptOutput(response, 1200);
   }
 
