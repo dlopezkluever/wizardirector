@@ -10,6 +10,9 @@ import {
   Loader2,
   Pencil,
   Trash2,
+  Link2,
+  Camera,
+  AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -68,6 +71,16 @@ interface FramePanelProps {
   hideHeader?: boolean;
   projectId?: string;
   sceneId?: string;
+  copySource?: {
+    sourceShotId: string;
+    sourceFrameType: 'start' | 'end';
+    isStale: boolean;
+  };
+  continuityInfo?: {
+    mode: 'none' | 'match' | 'camera_change';
+    sourceShot?: string;
+  };
+  onCopyFrame?: () => void;
 }
 
 const STATUS_STYLES: Record<string, { badge: string; label: string }> = {
@@ -99,6 +112,9 @@ export function FramePanel({
   hideHeader = false,
   projectId,
   sceneId,
+  copySource,
+  continuityInfo,
+  onCopyFrame,
 }: FramePanelProps) {
   const queryClient = useQueryClient();
   const [imageError, setImageError] = useState(false);
@@ -408,13 +424,51 @@ export function FramePanel({
       {/* Header */}
       {!hideHeader && (
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium text-foreground capitalize">
-            {frameType} Frame
-          </h3>
-          <Badge variant="secondary" className={statusStyle.badge}>
-            {isGenerating && <RefreshCw className="w-3 h-3 mr-1 animate-spin" />}
-            {statusStyle.label}
-          </Badge>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <h3 className="text-sm font-medium text-foreground capitalize">
+              {frameType} Frame
+            </h3>
+            {/* Continuity mode badge */}
+            {continuityInfo && continuityInfo.mode !== 'none' && (
+              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                continuityInfo.mode === 'match'
+                  ? 'bg-blue-500/20 text-blue-300'
+                  : 'bg-purple-500/20 text-purple-300'
+              }`}>
+                {continuityInfo.mode === 'match' ? (
+                  <><Link2 className="w-3 h-3" /> Match from {continuityInfo.sourceShot}</>
+                ) : (
+                  <><Camera className="w-3 h-3" /> Angle from {continuityInfo.sourceShot}</>
+                )}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Badge variant="secondary" className={statusStyle.badge}>
+              {isGenerating && <RefreshCw className="w-3 h-3 mr-1 animate-spin" />}
+              {statusStyle.label}
+            </Badge>
+            {/* Copied frame badge */}
+            {copySource && (
+              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                copySource.isStale
+                  ? 'bg-amber-500/20 text-amber-400'
+                  : 'bg-blue-500/20 text-blue-300'
+              }`}>
+                {copySource.isStale ? (
+                  <>
+                    <AlertTriangle className="w-3 h-3" />
+                    Source changed
+                  </>
+                ) : (
+                  <>
+                    <Link2 className="w-3 h-3" />
+                    Copied from {copySource.sourceShotId}
+                  </>
+                )}
+              </span>
+            )}
+          </div>
         </div>
       )}
 
@@ -533,6 +587,30 @@ export function FramePanel({
 
       {/* Action buttons */}
       <div className="flex gap-2 mt-3">
+        {/* Copy frame button for match continuity */}
+        {continuityInfo?.mode === 'match' && onCopyFrame && !hasImage && (
+          <Button
+            variant="default"
+            size="sm"
+            onClick={onCopyFrame}
+            className="bg-amber-600 hover:bg-amber-700"
+          >
+            <Link2 className="w-4 h-4 mr-1" />
+            Copy from {continuityInfo.sourceShot} End
+          </Button>
+        )}
+        {/* Re-copy stale frame */}
+        {copySource?.isStale && onCopyFrame && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onCopyFrame}
+            className="border-amber-500/40 text-amber-400 hover:bg-amber-500/10"
+          >
+            <Link2 className="w-4 h-4 mr-1" />
+            Re-copy
+          </Button>
+        )}
         {needsGeneration && !isGenerating ? (
           <Button
             variant="gold"
