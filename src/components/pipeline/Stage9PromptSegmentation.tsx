@@ -16,17 +16,21 @@ import {
   RefreshCw,
   Sparkles,
   Save,
-  Unlock
+  Unlock,
+  Link2,
+  Camera
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { promptService } from '@/lib/services/promptService';
-import type { PromptSet } from '@/types/scene';
+import type { PromptSet, ContinuityMode } from '@/types/scene';
 import { LockedStageHeader } from './LockedStageHeader';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
@@ -462,6 +466,24 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                           {promptSet.aiRecommendsEndFrame ? 'AI: End Frame' : 'AI: No End Frame'}
                         </Badge>
                       )}
+                      {index > 0 && promptSet.aiStartContinuity === 'match' && (
+                        <Badge
+                          variant="secondary"
+                          className="text-[10px] select-none bg-blue-500/20 text-blue-300"
+                        >
+                          <Link2 className="w-3 h-3 mr-1" />
+                          AI: Match &larr;
+                        </Badge>
+                      )}
+                      {index > 0 && promptSet.aiStartContinuity === 'camera_change' && (
+                        <Badge
+                          variant="secondary"
+                          className="text-[10px] select-none bg-purple-500/20 text-purple-300"
+                        >
+                          <Camera className="w-3 h-3 mr-1" />
+                          AI: Angle &larr;
+                        </Badge>
+                      )}
                       {/* Transformation state badges */}
                       {promptSet.transformationContext?.map((tc, idx) => (
                         <Badge
@@ -573,6 +595,49 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                           </div>
                         )}
 
+                        {/* Continuity Mode Selector */}
+                        {index > 0 && (
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">Continuity:</span>
+                            <Select
+                              value={promptSet.startContinuity || 'none'}
+                              onValueChange={(value: string) => {
+                                const updated = [...promptSets];
+                                updated[index] = { ...updated[index], startContinuity: value as ContinuityMode };
+                                setPromptSets(updated);
+                                if (promptSet.shotUuid) {
+                                  promptService.updatePrompt(projectId, sceneId, promptSet.shotUuid, {
+                                    startContinuity: value as ContinuityMode,
+                                  }).catch(() => {
+                                    toast({
+                                      title: 'Error',
+                                      description: 'Failed to update continuity mode',
+                                      variant: 'destructive',
+                                    });
+                                  });
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-7 w-[180px] text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">None (Independent)</SelectItem>
+                                <SelectItem value="match">
+                                  <span className="flex items-center gap-1">
+                                    <Link2 className="w-3 h-3" /> Match &larr;
+                                  </span>
+                                </SelectItem>
+                                <SelectItem value="camera_change">
+                                  <span className="flex items-center gap-1">
+                                    <Camera className="w-3 h-3" /> Angle Change &larr;
+                                  </span>
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+
                         {/* Frame Prompt */}
                         <div>
                           <div className="flex items-center justify-between mb-2">
@@ -651,6 +716,53 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                             )}
                           </div>
                         </div>
+
+                        {/* Continuity Prompt (camera_change only) */}
+                        {promptSet.startContinuity === 'camera_change' && (
+                          <div className="mt-3 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-xs flex items-center gap-1.5">
+                                <Camera className="w-3.5 h-3.5 text-purple-400" />
+                                Continuity Prompt (Recomposition)
+                              </Label>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-[10px] px-2"
+                                disabled={regeneratingShots.has(promptSet.shotId)}
+                                onClick={async () => {
+                                  if (!promptSet.shotUuid) return;
+                                  setRegeneratingShots(prev => new Set([...prev, promptSet.shotId]));
+                                  try {
+                                    const result = await promptService.generateContinuityPrompt(projectId, sceneId, promptSet.shotUuid);
+                                    const updated = [...promptSets];
+                                    updated[index] = { ...updated[index], continuityFramePrompt: result.continuityFramePrompt };
+                                    setPromptSets(updated);
+                                  } catch (err) {
+                                    console.error('Failed to generate continuity prompt:', err);
+                                  } finally {
+                                    setRegeneratingShots(prev => {
+                                      const next = new Set(prev);
+                                      next.delete(promptSet.shotId);
+                                      return next;
+                                    });
+                                  }
+                                }}
+                              >
+                                {regeneratingShots.has(promptSet.shotId) ? 'Generating...' : 'Regenerate'}
+                              </Button>
+                            </div>
+                            <Textarea
+                              value={promptSet.continuityFramePrompt || ''}
+                              readOnly
+                              className="text-xs min-h-[60px] bg-purple-500/5 border-purple-500/20"
+                              placeholder="Continuity prompt will be generated when prompts are generated..."
+                            />
+                            <p className="text-[10px] text-muted-foreground">
+                              This prompt will be used instead of the Frame Prompt when generating with camera change continuity.
+                            </p>
+                          </div>
+                        )}
 
                         {/* Video Prompt */}
                         <div>
