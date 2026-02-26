@@ -13,7 +13,7 @@
 .ProseMirror [data-type="scene-heading"] {
   font-weight: bold;
   text-transform: uppercase;
-  color: rgb(251, 191, 36); /* amber-400 */
+  color: hsl(var(--screenplay-heading));
   margin-top: 1rem;
   margin-bottom: 0.25rem;
 }
@@ -27,7 +27,7 @@
 /* Transition */
 .ProseMirror [data-type="transition"] {
   text-transform: uppercase;
-  color: rgb(251, 191, 36); /* amber-400 */
+  color: hsl(var(--screenplay-heading));
   text-align: right;
   margin-top: 1rem;
   margin-bottom: 1rem;
@@ -43,13 +43,13 @@
 
 /* Decoration classes applied by DialogueLineDecorations plugin */
 .ProseMirror .dialogue-char {
-  color: rgb(147, 197, 253); /* blue-300 */
+  color: hsl(var(--screenplay-char));
   font-weight: bold;
   text-transform: uppercase;
 }
 
 .ProseMirror .dialogue-paren {
-  color: rgb(156, 163, 175); /* gray-400 */
+  color: hsl(var(--screenplay-paren));
   font-style: italic;
 }
 
