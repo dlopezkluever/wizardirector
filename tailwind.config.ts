@@ -111,8 +111,8 @@ export default {
           to: { opacity: "1", transform: "scale(1)" },
         },
         "pulse-glow": {
-          "0%, 100%": { boxShadow: "0 0 20px hsl(38, 90%, 55% / 0.15)" },
-          "50%": { boxShadow: "0 0 30px hsl(38, 90%, 55% / 0.3)" },
+          "0%, 100%": { boxShadow: "var(--shadow-gold)" },
+          "50%": { boxShadow: "var(--shadow-glow)" },
         },
       },
       animation: {
