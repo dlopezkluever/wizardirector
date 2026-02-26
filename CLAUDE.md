@@ -2,23 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Development Commands
-
-**Start development server:**
-```bash
-npm run dev
-```
-Server runs on http://localhost:8080 with proxy to backend API at http://localhost:3001
-
-**Build and quality commands:**
-```bash
-npm run build          # Production build
-npm run build:dev      # Development build
-npm run lint           # ESLint check
-npm run preview        # Preview production build
-```
-
 **Run linting after code changes:**
+### Additionally: Never use the token '&&' in commands when attempting to do multi-step commands, as The token '&&' is not a valid statement separator in these versions of powershell & bash.
+
+### Never run supabase commands; Supabase CLI is not active. Never run SQL migrations automatically. Always prompt the user to do it themselves.
+
+## DO NOT MAKE IMPLEMENTATION SUMMARY DOCUMENTS ONCE YOUR FINISHED WITH A TASK, UNLESS IT'S EXPLICTLY ASKED FOR BY THE USER. 
+
 Always run `npm run lint` after making code changes to ensure code quality.
 - NEVER RUN: `npm run migrate` - NEVER Run database migrations
 - Always run commands using the full file location path:

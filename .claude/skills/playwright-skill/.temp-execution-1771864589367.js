@@ -1,10 +1,10 @@
 const { chromium } = require('playwright');
 
 const TARGET_URL = 'http://localhost:8080';
-const PROJECT_ID = '_';
-const SCENE_ID = '_';
-const EMAIL = '_';
-const PASSWORD = '_';
+const PROJECT_ID = '517a4cda-618b-4216-b105-42dbc68103cf';
+const SCENE_ID = '6b26f0c0-d511-4f9f-b298-1faeef6925e3';
+const EMAIL = '';
+const PASSWORD = '';
 
 (async () => {
   const browser = await chromium.launch({ headless: false, slowMo: 60 });
