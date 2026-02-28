@@ -20,7 +20,7 @@ const stageIcons: Record<StageStatus, React.ElementType> = {
 
 export function PhaseTimeline({ stages, currentStage, onStageClick, showReturnToPhaseB, onReturnToPhaseB }: PhaseTimelineProps) {
   return (
-    <div className="flex items-center gap-2 px-6 py-4 bg-card border-b border-border overflow-x-auto">
+    <div className="flex items-center gap-2 px-6 py-4 bg-card border-b border-border overflow-x-auto shadow-sm">
       {stages.map((stage, index) => {
         const Icon = stageIcons[stage.status];
         const isLast = index === stages.length - 1;
@@ -75,7 +75,7 @@ export function PhaseTimeline({ stages, currentStage, onStageClick, showReturnTo
             {!isLast && (
               <div
                 className={cn(
-                  'w-8 h-0.5 mx-2',
+                  'w-8 h-[3px] mx-2 rounded-full',
                   index < currentStage - 1
                     ? 'bg-success'
                     : 'bg-border'
