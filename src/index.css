@@ -38,7 +38,7 @@
 
     /* Muted - subtle backgrounds and disabled states */
     --muted: 220 15% 13%;
-    --muted-foreground: 220 10% 55%;
+    --muted-foreground: 220 10% 62%;
 
     /* Accent - complementary warm tone */
     --accent: 25 85% 50%;
@@ -49,7 +49,7 @@
     --destructive-foreground: 0 0% 100%;
 
     /* Borders and inputs */
-    --border: 220 15% 18%;
+    --border: 220 15% 20%;
     --input: 220 15% 14%;
     --ring: 38 90% 55%;
 
@@ -111,7 +111,7 @@
 
   /* Light mode override - keeping dark as primary */
   .light {
-    --background: 40 30% 97%;
+    --background: 220 15% 95%;
     --foreground: 220 20% 10%;
     --card: 0 0% 100%;
     --card-foreground: 220 20% 10%;
@@ -122,11 +122,11 @@
     --secondary: 220 15% 92%;
     --secondary-foreground: 220 20% 20%;
     --muted: 220 15% 95%;
-    --muted-foreground: 220 10% 45%;
+    --muted-foreground: 220 12% 38%;
     --accent: 25 85% 45%;
     --accent-foreground: 0 0% 100%;
-    --border: 220 15% 88%;
-    --input: 220 15% 92%;
+    --border: 220 15% 80%;
+    --input: 220 15% 88%;
     --ring: 38 90% 45%;
 
     --destructive: 0 72% 45%;
@@ -139,7 +139,7 @@
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 220 15% 93%;
     --sidebar-accent-foreground: 220 20% 15%;
-    --sidebar-border: 220 15% 90%;
+    --sidebar-border: 220 15% 84%;
     --sidebar-ring: 38 90% 45%;
 
     /* Status colors */
@@ -162,10 +162,10 @@
     --gradient-sidebar: linear-gradient(180deg, hsl(220, 20%, 98%) 0%, hsl(220, 20%, 95%) 100%);
     --gradient-hero: linear-gradient(135deg, hsl(40, 30%, 97%) 0%, hsl(220, 15%, 96%) 50%, hsl(40, 25%, 98%) 100%);
 
-    /* Shadows - lighter for light mode */
-    --shadow-sm: 0 1px 2px 0 hsl(220, 15%, 60% / 0.1);
-    --shadow-md: 0 4px 6px -1px hsl(220, 15%, 60% / 0.1), 0 2px 4px -2px hsl(220, 15%, 60% / 0.08);
-    --shadow-lg: 0 10px 15px -3px hsl(220, 15%, 60% / 0.12), 0 4px 6px -4px hsl(220, 15%, 60% / 0.08);
+    /* Shadows - visible for light mode */
+    --shadow-sm: 0 1px 3px 0 hsl(220, 15%, 50% / 0.08), 0 1px 2px -1px hsl(220, 15%, 50% / 0.06);
+    --shadow-md: 0 4px 8px -2px hsl(220, 15%, 50% / 0.1), 0 2px 4px -2px hsl(220, 15%, 50% / 0.06);
+    --shadow-lg: 0 12px 20px -4px hsl(220, 15%, 50% / 0.12), 0 4px 8px -4px hsl(220, 15%, 50% / 0.08);
     --shadow-gold: 0 0 20px hsl(38, 90%, 45% / 0.12);
     --shadow-glow: 0 0 40px hsl(38, 90%, 45% / 0.15);
 
