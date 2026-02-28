@@ -33,6 +33,8 @@ import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
 import { ContentAccessCarousel } from './ContentAccessCarousel';
 import { ReferenceImageThumbnail } from './ReferenceImageThumbnail';
+import { SceneIndicator } from './SceneIndicator';
+import { useSceneInfo } from '@/hooks/useSceneInfo';
 
 interface Stage9PromptSegmentationProps {
   projectId: string;
@@ -64,6 +66,7 @@ const VIDEO_PROMPT_MAX = 800;
 const VIDEO_PROMPT_WARN = 400;
 
 export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBack, onNext }: Stage9PromptSegmentationProps) {
+  const { slug: sceneSlug } = useSceneInfo(sceneId);
   const { isLocked: isStageLocked, isOutdated: isStageOutdated, lockStage, unlockStage, confirmUnlock, relockStage } = useSceneStageLock({ projectId, sceneId });
   const [showUnlockWarning, setShowUnlockWarning] = useState(false);
   const [unlockImpact, setUnlockImpact] = useState<UnlockImpact | null>(null);
@@ -351,7 +354,7 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
           <h2 className="font-display text-lg font-semibold text-foreground flex items-center gap-2">
             <MessageSquare className="w-5 h-5 text-primary" />
             Prompt Segmentation
-            <Badge variant="outline" className="ml-2">Scene {sceneNumber}</Badge>
+            <SceneIndicator sceneNumber={sceneNumber} slug={sceneSlug} />
           </h2>
           <p className="text-xs text-muted-foreground mt-1">
             Review and edit prompts for frame and video generation

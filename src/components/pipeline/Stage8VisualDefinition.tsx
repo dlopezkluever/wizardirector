@@ -61,12 +61,13 @@ import { sceneAssetService } from '@/lib/services/sceneAssetService';
 import { sceneService } from '@/lib/services/sceneService';
 import { shotService } from '@/lib/services/shotService';
 import { transformationEventService } from '@/lib/services/transformationEventService';
-import { cn, formatSceneHeader } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import type { SceneAssetInstance, SceneAssetRelevanceResult, SceneAssetSuggestion, TransformationEvent } from '@/types/scene';
 import { LockedStageHeader } from './LockedStageHeader';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
+
 
 const typeIcons = {
   character: Users,
@@ -805,26 +806,6 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
   if (sceneAssets.length === 0) {
     return (
       <div className="flex-1 flex flex-col overflow-hidden">
-        {currentScene && (
-          <div className="px-6 py-3 border-b border-border/50 bg-card/30 backdrop-blur-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Badge variant="secondary" className="text-sm font-mono">
-                  Scene {currentScene.sceneNumber}
-                </Badge>
-                <h2 className="text-lg font-semibold">
-                  {currentScene.slug}
-                </h2>
-              </div>
-              <Badge
-                variant={currentScene.status === 'shot_list_ready' ? 'default' : 'outline'}
-                className="text-xs"
-              >
-                {currentScene.status.replace(/_/g, ' ')}
-              </Badge>
-            </div>
-          </div>
-        )}
         <ContentAccessCarousel
           projectId={projectId}
           sceneId={sceneId}
@@ -862,26 +843,6 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           lockAndProceedLabel="Lock & Proceed"
         />
       )}
-      {currentScene && (
-        <div className="px-6 py-3 border-b border-border/50 bg-card/30 backdrop-blur-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Badge variant="secondary" className="text-sm font-mono">
-                Scene {currentScene.sceneNumber}
-              </Badge>
-              <h2 className="text-lg font-semibold">
-                {formatSceneHeader(currentScene.slug).formatted}
-              </h2>
-            </div>
-            <Badge
-              variant={currentScene.status === 'shot_list_ready' ? 'default' : 'outline'}
-              className="text-xs"
-            >
-              {currentScene.status.replace(/_/g, ' ')}
-            </Badge>
-          </div>
-        </div>
-      )}
       <ContentAccessCarousel
         projectId={projectId}
         sceneId={sceneId}
@@ -899,6 +860,8 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           isGenerating={isGenerating}
           bulkProgress={bulkProgress}
           newAssetsRequired={suggestionsAsNewAssets.length > 0 ? suggestionsAsNewAssets : newAssetsRequired}
+          sceneNumber={currentScene?.sceneNumber}
+          sceneSlug={currentScene?.slug}
           onOpenAssetDrawer={() => setAssetDrawerOpen(true)}
           onIgnoreSuggested={index => {
             const items = suggestionsAsNewAssets.length > 0 ? suggestionsAsNewAssets : newAssetsRequired;

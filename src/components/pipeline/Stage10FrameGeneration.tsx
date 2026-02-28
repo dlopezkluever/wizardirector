@@ -36,6 +36,8 @@ import { LockedStageHeader } from './LockedStageHeader';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
+import { SceneIndicator } from './SceneIndicator';
+import { useSceneInfo } from '@/hooks/useSceneInfo';
 
 interface Stage10FrameGenerationProps {
   projectId: string;
@@ -52,6 +54,7 @@ export function Stage10FrameGeneration({
   onBack,
   onNext,
 }: Stage10FrameGenerationProps) {
+  const { sceneNumber, slug: sceneSlug } = useSceneInfo(sceneId);
   const { isLocked: isStageLocked, isOutdated: isStageOutdated, lockStage, unlockStage, confirmUnlock, relockStage } = useSceneStageLock({ projectId, sceneId });
   const [showUnlockWarning, setShowUnlockWarning] = useState(false);
   const [unlockImpact, setUnlockImpact] = useState<UnlockImpact | null>(null);
@@ -469,6 +472,7 @@ export function Stage10FrameGeneration({
           <h2 className="font-display text-lg font-semibold text-foreground flex items-center gap-2">
             <ImageIcon className="w-5 h-5 text-primary" />
             Frame Generation
+            <SceneIndicator sceneNumber={sceneNumber} slug={sceneSlug} />
           </h2>
 
           <div className="flex items-center gap-2 bg-card/50 rounded-lg p-1">

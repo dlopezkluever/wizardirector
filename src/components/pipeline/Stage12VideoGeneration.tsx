@@ -15,6 +15,8 @@ import { checkoutService } from '@/lib/services/checkoutService';
 import { LockedStageHeader } from './LockedStageHeader';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import { ContentAccessCarousel } from './ContentAccessCarousel';
+import { SceneIndicator } from './SceneIndicator';
+import { useSceneInfo } from '@/hooks/useSceneInfo';
 import { VideoPlayer } from './Stage12/VideoPlayer';
 import { TimelineBar } from './Stage12/TimelineBar';
 import { ShotListPanel } from './Stage12/ShotListPanel';
@@ -36,6 +38,7 @@ export function Stage12VideoGeneration({
   onBack,
   onReturnToStage,
 }: Stage12VideoGenerationProps) {
+  const { sceneNumber, slug: sceneSlug } = useSceneInfo(sceneId);
   const { isLocked: isStageLocked, lockStage } = useSceneStageLock({ projectId, sceneId });
   const stage12Locked = isStageLocked(12);
 
@@ -249,8 +252,9 @@ export function Stage12VideoGeneration({
             <Video className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h2 className="font-display text-lg font-semibold text-foreground">
+            <h2 className="font-display text-lg font-semibold text-foreground flex items-center gap-2">
               Video Generation
+              <SceneIndicator sceneNumber={sceneNumber} slug={sceneSlug} />
             </h2>
             <p className="text-xs text-muted-foreground">
               {allComplete

@@ -30,6 +30,8 @@ import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
 import { ContentAccessCarousel } from './ContentAccessCarousel';
+import { SceneIndicator } from './SceneIndicator';
+import { useSceneInfo } from '@/hooks/useSceneInfo';
 
 interface Stage11ConfirmationProps {
   projectId: string;
@@ -46,6 +48,7 @@ export function Stage11Confirmation({
   onBack,
   onNext,
 }: Stage11ConfirmationProps) {
+  const { sceneNumber, slug: sceneSlug } = useSceneInfo(sceneId);
   const { isLocked: isStageLocked, isOutdated: isStageOutdated, lockStage, unlockStage, confirmUnlock, relockStage } = useSceneStageLock({ projectId, sceneId });
   const [showUnlockWarning, setShowUnlockWarning] = useState(false);
   const [unlockImpact, setUnlockImpact] = useState<UnlockImpact | null>(null);
@@ -170,11 +173,12 @@ export function Stage11Confirmation({
             <CreditCard className="w-6 h-6 text-primary" />
           </div>
           <div>
-            <h2 className="font-display text-xl font-bold text-foreground">
+            <h2 className="font-display text-xl font-bold text-foreground flex items-center gap-2">
               Confirm & Render
+              <SceneIndicator sceneNumber={sceneNumber} slug={sceneSlug} />
             </h2>
             <p className="text-sm text-muted-foreground">
-              {checkoutData.sceneName} - Review before video generation
+              Review before video generation
             </p>
           </div>
         </div>

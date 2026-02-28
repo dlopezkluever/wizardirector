@@ -40,6 +40,8 @@ import { LockedStageHeader } from './LockedStageHeader';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
+import { SceneIndicator } from './SceneIndicator';
+import { useSceneInfo } from '@/hooks/useSceneInfo';
 
 export interface ValidationError {
   shotId: string;
@@ -74,6 +76,8 @@ function useDebounce<T>(value: T, delay: number): T {
 }
 
 export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext }: Stage7ShotListProps) {
+
+  const { sceneNumber, slug } = useSceneInfo(sceneId);
 
   // Scene stage lock hook
   const {
@@ -720,7 +724,10 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
           <div className="p-4 border-b border-border/50">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <h2 className="font-display text-lg font-semibold text-foreground">Shot List</h2>
+                <h2 className="font-display text-lg font-semibold text-foreground flex items-center gap-2">
+                  Shot List
+                  <SceneIndicator sceneNumber={sceneNumber} slug={slug} />
+                </h2>
                 <p className="text-xs text-muted-foreground">
                   {shots.length} shots • {totalDuration}s total
                 </p>
