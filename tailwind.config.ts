@@ -86,6 +86,9 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       boxShadow: {
+        sm: "var(--shadow-sm)",
+        md: "var(--shadow-md)",
+        lg: "var(--shadow-lg)",
         gold: "0 0 20px hsl(38, 90%, 55% / 0.15)",
         "gold-lg": "0 0 40px hsl(38, 90%, 55% / 0.2)",
       },
