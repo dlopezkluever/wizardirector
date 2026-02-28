@@ -102,7 +102,7 @@ function SortableBeatItem({
         isDragging ? 'opacity-50 scale-105 shadow-lg' : '',
         isEditing
           ? 'bg-primary/10 border-primary shadow-gold'
-          : 'bg-card border-border hover:border-primary/30'
+          : 'bg-card border-border shadow-sm hover:border-primary/30 hover:shadow-md'
       )}
     >
       <div className="flex items-start gap-3 p-4">
