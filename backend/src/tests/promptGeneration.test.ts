@@ -7,6 +7,7 @@ import { describe, it, expect } from '@jest/globals';
 import {
   buildFrameReferenceManifests,
   buildNumberedImageManifest,
+  extractTraitSummary,
   type SceneAssetInstanceData,
   type ShotAssetAssignmentForPrompt,
 } from '../services/promptGenerationService.js';
@@ -220,10 +221,70 @@ describe('buildNumberedImageManifest', () => {
     expect(imageOrder[0].assetName).toBe('Alice');
   });
 
-  it('should generate manifest text with header', () => {
+  it('should generate manifest text with header and trait summary', () => {
     const { manifest } = buildNumberedImageManifest([characterAlice]);
 
     expect(manifest).toContain('REFERENCE IMAGES');
     expect(manifest).toContain('Image #1: Alice (character)');
+    // Trait summary from effective_description
+    expect(manifest).toContain('— Alice, 30s, red hair');
+  });
+
+  it('should omit trait summary when effective_description is empty', () => {
+    const noDescAsset = makeAsset({
+      id: 'blank',
+      effective_description: '',
+      project_asset: { id: 'pa-blank', name: 'Blank', asset_type: 'character' },
+    });
+    const { manifest } = buildNumberedImageManifest([noDescAsset]);
+
+    expect(manifest).toContain('Image #1: Blank (character)');
+    expect(manifest).not.toContain('—');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractTraitSummary
+// ---------------------------------------------------------------------------
+
+describe('extractTraitSummary', () => {
+  it('should return the first sentence from a description', () => {
+    const result = extractTraitSummary('Red-haired woman in blue dress. Mid-20s with freckles.');
+    expect(result).toBe('Red-haired woman in blue dress.');
+  });
+
+  it('should truncate at word boundary when first sentence exceeds maxLen', () => {
+    const long = 'A tall red-haired woman wearing an elaborate Victorian-era blue silk dress with ornate golden embroidery and pearl accessories throughout.';
+    const result = extractTraitSummary(long, 60);
+    expect(result.length).toBeLessThanOrEqual(64); // 60 + '...'
+    expect(result.endsWith('...')).toBe(true);
+  });
+
+  it('should return empty string for undefined input', () => {
+    expect(extractTraitSummary(undefined)).toBe('');
+  });
+
+  it('should return empty string for empty/whitespace input', () => {
+    expect(extractTraitSummary('')).toBe('');
+    expect(extractTraitSummary('   ')).toBe('');
+  });
+
+  it('should handle short descriptions without truncation', () => {
+    expect(extractTraitSummary('Bob, 40s, suit')).toBe('Bob, 40s, suit');
+  });
+
+  it('should respect custom maxLen', () => {
+    const result = extractTraitSummary('A very long detailed description that goes on and on about many things', 20);
+    expect(result.length).toBeLessThanOrEqual(24); // 20 + '...'
+  });
+
+  it('should handle descriptions with exclamation marks', () => {
+    const result = extractTraitSummary('Fiery warrior! Battle-scarred veteran of many wars.');
+    expect(result).toBe('Fiery warrior!');
+  });
+
+  it('should handle descriptions with question marks', () => {
+    const result = extractTraitSummary('Who is this mysterious stranger? Nobody knows.');
+    expect(result).toBe('Who is this mysterious stranger?');
   });
 });
