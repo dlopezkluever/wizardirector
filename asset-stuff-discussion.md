@@ -369,6 +369,386 @@
 
 
   -------------------
+# Recommendation 1: 
   We also need to concern ourselves with um, Miss, uh, assigned, uh, asset types. For example, in a scene that I'm working with just in testing, uh, the character in the shot transforms into a garden gnome. Yeah, in the asset extraction, both the character and the garden gnome were extracted of 2 separate assets for the garden gnome being a mere prop. So, as you can see with this example, it would be ideal to be able to combine, uh, you know, the garden gnome into the character. Uh, like, basically treated them as one character asset, but that there is a kind of a transformation that occurs. Um, I hope that kind of clarifies what we're going for. But in a very common in these large extractions of assets done from a script, you will see just, again, miss assigned items. You see character designed as pops. Um, you know, props signed as characters, uh, you know, in the script when a character is only addressed by maybe the 1st name, it's attributed to something different or either a different character or as a problem. Again, there needs to just be a way that, for the user to kind of consolidate them all into one. You know, so, for instance, if you have, like, John Smith, that gets extracted as one character as it, and then later in the script, you know, they refer to John doing something. very calm. John wouldn't be extracted as a new asset instead of being attributed as part of that greater just John Smith character. So again, we just need the ability to kind of take multiple different aspects that are most directed on. bring them into just one entity. Uh, and again, the ability to do that, not just to character assets, but instead it could also be combining a character with annotate pops, that, again, might have just been diagnosed as such because of, you know, misunderstanding in the extraction process.
 
+# Recommendation 2: 
 Okay, so you work around that may work for the, uh, image generation when there is a myriad of assholes that need to be put into a frame. Is it have basically a multi-pass system? I believe, uh, the location, uh, asset and then main, uh, characters should take priority, location taking, uh, the highest priority, then, uh, the character assets. And then lastly, the uh, or pops. But again, when there's, let's say, 8 assets, it may be difficult to spend it all under one pass to a image generator and get a reliable product. So instead, if you broke it up into multiple generations, Again, with the goal, getting the location and the key characters in the frame, in the correct position, in the 1st run, and then doing a subsequent run with the other assets. Until you get ultimately everything needs to be in the frame, in the final solution. You know why? Final product.
+
+
+
+                                                        
+  Lopez/Desktop/Aiuteur/wizardirector/._docs/shot-asset-assignment-system.md'. please do it methodically, following the implementation     
+   order: (                                                                                                                                
+  | Phase | Section | What | Depends On |                                                                                                  
+  |-------|---------|------|------------|                                                                                                  
+  | **1** | §2 | SQL migration — create `shot_asset_assignments` table | Nothing |                                                         
+  | **2** | §3 | Backend service + routes for assignment CRUD | §1 |                                                                       
+  | **3** | §7 | Frontend types + service layer | §2 |                                                                                     
+  | **4** | §10 | Auto-population logic (backend + frontend trigger) | §1, §2 |                                                            
+  | **5** | §8 | Stage 8 Asset Drawer shot checklist | §3, §4 |                                                                            
+  | **6** | §9 | Stage 9 per-shot asset panel UI | §3, §4 |                                                                                
+  | **7** | §4 | Prompt generation rework (presence-aware manifests) | §1, §3 |                                                            
+  | **8** | §5 | Frame generation rework (start/end frame filtering) | §7 |                                                                
+  | **9** | §6 | Invalidation integration | §2 |                                                                                           
+  )                                                                                                                                        
+  ⎿  ⧉ Selected 12 lines from ._docs\shot-asset-assignment-system.md in Cursor
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+● Let me start by reading the full spec document to understand the complete system.
+
+● Read 1 file (ctrl+o to expand)
+
+● Now let me explore the existing codebase to understand the current state before we begin.
+
+● Explore(Explore existing codebase structure) Sonnet 4.6
+  ⎿  Done (40 tool uses · 95.8k tokens · 2m 28s)
+  (ctrl+o to expand)
+
+● Excellent. I now have a comprehensive understanding of the codebase. Let me create the task list and begin Phase 1.
+
+● Good, all tasks created with proper dependencies. Let me start Phase 1: SQL Migration.
+
+● Let me check the existing migration patterns and the fn_update_timestamp function.
+
+● Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+● Good, I can see the RLS and trigger patterns. Now let me also check if there's a reusable fn_update_timestamp function or if each table  
+  has its own.
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● Each table has its own trigger function. I'll follow that pattern. Let me also check the shots table RLS since we need to go through     
+  shots.
+
+● Read 1 file (ctrl+o to expand)
+
+● Now I have the full pattern. Let me create the migration.
+
+● Write(backend\migrations\033_shot_asset_assignments.sql)
+  ⎿  Wrote 102 lines to backend\migrations\033_shot_asset_assignments.sql
+     -- Migration 033: Shot Asset Assignments
+     -- Purpose: Per-shot asset assignment with presence_type control
+     -- Replaces implicit "all assets → all shots" with explicit, deterministic assignment model
+
+     -- ============================================================================
+     -- SHOT ASSET ASSIGNMENTS TABLE
+     -- ============================================================================
+
+     CREATE TABLE shot_asset_assignments (
+         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     … +92 lines (ctrl+o to expand)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+● Phase 1 complete. You'll need to run this migration yourself in Supabase SQL editor.
+
+● Now Phase 2: Backend service + routes. Let me read the existing patterns first.
+
+● Read 2 files (ctrl+o to expand)
+
+● Good. Now let me create the backend service and routes.
+
+● Write(backend\src\services\shotAssetAssignmentService.ts)
+  ⎿  Wrote 287 lines to backend\src\services\shotAssetAssignmentService.ts
+     /**
+      * Shot Asset Assignment Service
+      * CRUD and auto-population for per-shot asset assignments with presence_type control.
+      */
+
+     import { supabase } from '../config/supabase.js';
+
+     export type PresenceType = 'throughout' | 'enters' | 'exits' | 'passes_through';
+
+     export interface ShotAssetAssignment {
+
+
+
+
+● Now create the routes file.
+
+● Write(backend\src\routes\shotAssignments.ts)
+  ⎿  Wrote 245 lines to backend\src\routes\shotAssignments.ts
+     /**
+      * Shot Asset Assignment Routes
+      * Per-shot asset assignment CRUD with presence_type control.
+      * Mounted at /api/projects/:projectId/scenes/:sceneId/shot-assignments
+      */
+
+     import { Router } from 'express';
+     import { z } from 'zod';
+     import { supabase } from '../config/supabase.js';
+     import { shotAssetAssignmentService } from '../services/shotAssetAssignmentService.js';
+     … +235 lines (ctrl+o to expand)
+
+● Now register the router in server.ts.
+
+● Update(backend\src\server.ts)
+  ⎿  Added 1 line
+      13  import { assetsRouter } from './routes/assets.js';
+      14  import { projectAssetsRouter } from './routes/projectAssets.js';
+      15  import { sceneAssetsRouter } from './routes/sceneAssets.js';
+      16 +import { shotAssignmentsRouter } from './routes/shotAssignments.js';                                                             
+      17  import { framesRouter } from './routes/frames.js';
+      18  import { checkoutRouter } from './routes/checkout.js';
+      19  import { sceneStageLockRouter } from './routes/sceneStageLocks.js';
+
+
+● Update(backend\src\server.ts)
+  ⎿  Added 3 lines
+      52  // Scene asset instances / inheritance (protected, nested under projects)
+      53  app.use('/api/projects', authenticateUser, sceneAssetsRouter);
+      54  
+      55 +// Shot asset assignments (protected, nested under projects)                                                                     
+      56 +app.use('/api/projects', authenticateUser, shotAssignmentsRouter);                                                               
+      57 +                                                                                                                                 
+      58  // Frames routes (protected, nested under projects)
+      59  app.use('/api/projects', authenticateUser, framesRouter);
+      60  
+
+● Let me lint the backend.
+
+● Bash(cd "C:\Users\Daniel Lopez\Desktop\Aiuteur\wizardirector\backend" ; npx tsc --noEmit --pretty 2>&1 | head -50)
+  ⎿  (No output)
+  ⎿  (timeout 30s)
+
+● Bash(cd "C:\Users\Daniel Lopez\Desktop\Aiuteur\wizardirector\backend" ; npx tsc --noEmit --pretty 2>&1 | tail -30)
+  ⎿  (No output)
+  ⎿  (timeout 30s)
+
+
+
+
+● No type errors. Phase 2 complete.
+
+
+
+
+---
+
+
+
+
+
+
+
+
+● Phase 3: Frontend types + service layer. Let me read the relevant files.
+
+● Read 2 files (ctrl+o to expand)
+
+● Good. Now I'll add the frontend types to scene.ts and create the frontend service.
+
+● Update(src\types\scene.ts)
+  ⎿  Added 14 lines
+      210    }>;
+      211  }
+      212  
+      213 +// Shot Asset Assignment types (migration 033)                                                                                  
+      214 +export type PresenceType = 'throughout' | 'enters' | 'exits' | 'passes_through';                                                
+      215 +                                                                                                                                
+      216 +export interface ShotAssetAssignment {                                                                                          
+      217 +  id: string;                                                                                                                   
+      218 +  shot_id: string;                                                                                                              
+      219 +  scene_asset_instance_id: string;                                                                                              
+      220 +  presence_type: PresenceType;                                                                                                  
+      221 +  created_at: string;                                                                                                           
+      222 +  updated_at: string;                                                                                                           
+      223 +  // Joined data (from API response)                                                                                            
+      224 +  scene_asset_instance?: SceneAssetInstance;                                                                                    
+      225 +}                                                                                                                               
+      226 +                                                                                                                                
+      227  export interface ReferenceImageOrderEntry {
+      228    label: string;
+      229    assetName: string;
+
+● Now create the frontend service.
+
+● Read 1 file (ctrl+o to expand)
+
+● Good, I see the pattern. Let me create the frontend service.
+
+● Write(src\lib\services\shotAssetAssignmentService.ts)
+  ⎿  Wrote 160 lines to ..\src\lib\services\shotAssetAssignmentService.ts
+     /**
+      * Shot Asset Assignment Service
+      * Frontend API client for per-shot asset assignments with presence_type control.
+      */
+
+     import { supabase } from '@/lib/supabase';
+     import type { ShotAssetAssignment, PresenceType } from '@/types/scene';
+
+     class ShotAssetAssignmentService {
+       private async getAuthHeaders(): Promise<Record<string, string>> {
+     … +150 lines (ctrl+o to expand)
+
+
+● Let me lint to check for errors.
+
+● Bash(cd "C:\Users\Daniel Lopez\Desktop\Aiuteur\wizardirector" ; npx tsc --noEmit --pretty 2>&1 | grep -i "shotAssetAssignment\|scene\.ts"       | head -20)
+  ⎿  (No output)
+  ⎿  (timeout 30s)
+
+
+
+
+● Bash(cd "C:\Users\Daniel Lopez\Desktop\Aiuteur\wizardirector" ; npx tsc --noEmit --pretty 2>&1 | tail -5)
+  ⎿  (No output)
+  ⎿  (timeout 30s)
+
+
+
+
+● Clean. Phase 3 complete.
+
+
+
+
+
+● Phase 4: Auto-population logic. The backend autoPopulate method is already implemented in the service (Phase 2). The route POST
+  /auto-populate is already there. Now I need to add the frontend trigger: when Stage 8 or Stage 9 loads, if no assignments exist,
+  auto-populate and show a toast.
+
+  Let me first read the Stage 8 and Stage 9 components to understand where the trigger should go.
+
+● Searched for 2 patterns, read 2 files (ctrl+o to expand)
+
+● I need to understand the Stage 8 component's structure more to see where auto-population should be triggered. Let me look at the data    
+  loading pattern.
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Good, I can see Stage 8 already fetches shots (line 444) and sceneAssets (line 417). The auto-population trigger belongs in Stage 9's    
+  load flow (since that's where assignments matter most) and optionally in Stage 8. Per the spec §10A, the trigger fires when Stage 8 or   
+  Stage 9 loads and hasAssignments returns false.
+
+  Let me implement the auto-population trigger as a reusable hook, then integrate it into Stage 9 (Phase 6 will add it there). For now let 
+  me add the hook and integrate it into Stage 8.
+
+● Read 2 files (ctrl+o to expand)
+
+● I'll create a custom hook for auto-population that can be used by both Stage 8 and Stage 9.
+
+● Write(src\lib\hooks\useShotAssetAutoPopulate.ts)
+  ⎿  Wrote 64 lines to src\lib\hooks\useShotAssetAutoPopulate.ts
+     /**
+      * Hook: Auto-populate shot-asset assignments when none exist.
+      * Fires once per scene load — creates 'throughout' assignments for all (shot × asset) pairs.
+      */
+
+     import { useState, useEffect, useRef } from 'react';
+     import { shotAssetAssignmentService } from '@/lib/services/shotAssetAssignmentService';
+
+     interface UseShotAssetAutoPopulateOptions {
+       projectId: string;
+     … +54 lines (ctrl+o to expand)
+
+
+● Now integrate it into Stage 8. The auto-populate should trigger after shots and scene assets have loaded.
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(src\components\pipeline\Stage8VisualDefinition.tsx)
+  ⎿  Added 1 line
+      61  import { sceneService } from '@/lib/services/sceneService';
+      62  import { shotService } from '@/lib/services/shotService';
+      63  import { transformationEventService } from '@/lib/services/transformationEventService';
+      64 +import { useShotAssetAutoPopulate } from '@/lib/hooks/useShotAssetAutoPopulate';                                                 
+      65  import { cn, formatSceneHeader } from '@/lib/utils';
+      66  import type { SceneAssetInstance, SceneAssetRelevanceResult, SceneAssetSuggestion, TransformationEvent } from
+          '@/types/scene';
+      67  import { LockedStageHeader } from './LockedStageHeader';
+
+
+
+
+● Now add the hook call after the existing shots query in Stage 8.
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(src\components\pipeline\Stage8VisualDefinition.tsx)
+  ⎿  Added 12 lines
+      448      enabled: Boolean(projectId && sceneId),
+      449    });
+      450  
+      451 +  // Auto-populate shot-asset assignments if none exist (§10A)                                                                  
+      452 +  useShotAssetAutoPopulate({                                                                                                    
+      453 +    projectId,                                                                                                                  
+      454 +    sceneId,                                                                                                                    
+      455 +    enabled: shots.length > 0 && sceneAssets.length > 0,                                                                        
+      456 +    onPopulated: (result) => {
+      457 +      if (result.created > 0) {                                                                                                 
+      458 +        toast.success(`Asset assignments initialized for all ${shots.length} shots.`);                                          
+      459 +      }                                                                                                                         
+      460 +    },                                                                                                                          
+      461 +  });                                                                                                                           
+      462 +                                                                                                                                
+      463    // Transformation events for gatekeeper validation
+      464    const { data: allTransformationEvents = [] } = useQuery({
+      465      queryKey: ['transformation-events', projectId, sceneId],
+
+
+
+● Now let me also handle the legacy fallback in the backend prompt generation endpoint. Per §10B, if no shot_asset_assignments exist during   prompt generation, fall back to current behavior. Let me first read the generate-prompts endpoint.
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Good. The legacy fallback is already implicitly handled: if a scene has no assignments, the existing code path (lines 2180-2220 fetching 
+  all scene_asset_instances) still works. The actual switchover to per-shot assignments happens in Phase 7 when we rework the
+  generate-prompts endpoint. For now, the legacy behavior is intact.
+
+  Phase 4 is complete — the auto-populate service method, route, frontend hook, and Stage 8 integration are all in place.
