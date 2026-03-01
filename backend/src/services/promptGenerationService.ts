@@ -57,6 +57,13 @@ export interface ReferenceImageOrderEntry {
   type: string;
 }
 
+export type PresenceType = 'throughout' | 'enters' | 'exits' | 'passes_through';
+
+export interface ShotAssetAssignmentForPrompt {
+  scene_asset_instance_id: string;
+  presence_type: PresenceType;
+}
+
 export interface GeneratedPromptSet {
   framePrompt: string;
   videoPrompt: string;
@@ -64,6 +71,7 @@ export interface GeneratedPromptSet {
   aiRecommendsEndFrame: boolean;
   compatibleModels: string[];
   referenceImageOrder: ReferenceImageOrderEntry[];
+  endFrameReferenceImageOrder?: ReferenceImageOrderEntry[];
 }
 
 export interface BulkPromptGenerationResult {
@@ -75,6 +83,7 @@ export interface BulkPromptGenerationResult {
   aiRecommendsEndFrame?: boolean;
   compatibleModels?: string[];
   referenceImageOrder?: ReferenceImageOrderEntry[];
+  endFrameReferenceImageOrder?: ReferenceImageOrderEntry[];
   error?: string;
   aiStartContinuity?: 'none' | 'match' | 'camera_change';
 }
@@ -173,6 +182,60 @@ export function buildNumberedImageManifest(
   const manifest = `REFERENCE IMAGES (attached alongside this prompt during image generation):\n${lines.join('\n')}`;
 
   return { manifest, imageOrder };
+}
+
+/**
+ * Build presence-aware start/end frame reference manifests from shot assignments.
+ * - throughout → both start + end
+ * - enters → end only
+ * - exits → start only
+ * - passes_through → neither (text-only in video prompt)
+ */
+export function buildFrameReferenceManifests(
+  assets: SceneAssetInstanceData[],
+  assignments: ShotAssetAssignmentForPrompt[]
+): {
+  startFrameManifest: string;
+  startFrameImageOrder: ReferenceImageOrderEntry[];
+  endFrameManifest: string;
+  endFrameImageOrder: ReferenceImageOrderEntry[];
+  videoOnlyAssets: SceneAssetInstanceData[];
+} {
+  const assignmentMap = new Map(assignments.map(a => [a.scene_asset_instance_id, a.presence_type]));
+
+  const startAssets: SceneAssetInstanceData[] = [];
+  const endAssets: SceneAssetInstanceData[] = [];
+  const videoOnlyAssets: SceneAssetInstanceData[] = [];
+
+  for (const asset of assets) {
+    const presence = assignmentMap.get(asset.id) || 'throughout';
+    switch (presence) {
+      case 'throughout':
+        startAssets.push(asset);
+        endAssets.push(asset);
+        break;
+      case 'enters':
+        endAssets.push(asset);
+        break;
+      case 'exits':
+        startAssets.push(asset);
+        break;
+      case 'passes_through':
+        videoOnlyAssets.push(asset);
+        break;
+    }
+  }
+
+  const startResult = buildNumberedImageManifest(startAssets);
+  const endResult = buildNumberedImageManifest(endAssets);
+
+  return {
+    startFrameManifest: startResult.manifest,
+    startFrameImageOrder: startResult.imageOrder,
+    endFrameManifest: endResult.manifest,
+    endFrameImageOrder: endResult.imageOrder,
+    videoOnlyAssets,
+  };
 }
 
 /**
@@ -376,7 +439,8 @@ export class PromptGenerationService {
     sceneAssets: SceneAssetInstanceData[],
     styleCapsule?: StyleCapsule | null,
     shotOverrides?: ShotAssetOverride[],
-    continuityContext?: { mode: 'none' | 'match' | 'camera_change'; previousCamera?: string }
+    continuityContext?: { mode: 'none' | 'match' | 'camera_change'; previousCamera?: string },
+    shotAssignments?: ShotAssetAssignmentForPrompt[]
   ): Promise<GeneratedPromptSet> {
     console.log(`[PromptGeneration] Generating prompts for shot ${shot.shot_id}`);
 
@@ -400,8 +464,27 @@ export class PromptGenerationService {
     const assetContext = buildAssetContext(enrichedAssets, shotOverrides);
     const styleContext = buildStyleContext(styleCapsule);
 
-    // 4D.2: Build numbered image manifest for LLM context + API reference ordering
-    const { manifest: imageManifest, imageOrder: referenceImageOrder } = buildNumberedImageManifest(enrichedAssets);
+    // Build reference manifests — presence-aware if assignments available, else legacy
+    let referenceImageOrder: ReferenceImageOrderEntry[];
+    let endFrameReferenceImageOrder: ReferenceImageOrderEntry[] | undefined;
+    let imageManifest: string;
+    let videoOnlyAssets: SceneAssetInstanceData[] = [];
+
+    if (shotAssignments && shotAssignments.length > 0) {
+      // Presence-aware: split into start/end manifests
+      const manifests = buildFrameReferenceManifests(enrichedAssets, shotAssignments);
+      referenceImageOrder = manifests.startFrameImageOrder;
+      endFrameReferenceImageOrder = manifests.endFrameImageOrder;
+      imageManifest = manifests.startFrameManifest;
+      videoOnlyAssets = manifests.videoOnlyAssets;
+      console.log(`[PromptGeneration] Presence-aware manifests: start=${referenceImageOrder.length}, end=${endFrameReferenceImageOrder.length}, video-only=${videoOnlyAssets.length} for shot ${shot.shot_id}`);
+    } else {
+      // Legacy: single manifest for all assets
+      const result = buildNumberedImageManifest(enrichedAssets);
+      referenceImageOrder = result.imageOrder;
+      imageManifest = result.manifest;
+    }
+
     if (referenceImageOrder.length > 0) {
       console.log(`[PromptGeneration] Built image manifest with ${referenceImageOrder.length} reference(s) for shot ${shot.shot_id}`);
     }
@@ -409,11 +492,14 @@ export class PromptGenerationService {
     // Identify assets transforming in this shot (for video prompt injection)
     const transformingAssets = shotOverrides?.filter(o => o.is_transforming) ?? [];
 
+    // Build presence context for video prompt (enters/exits/passes_through)
+    const presenceContext = shotAssignments ? this.buildPresenceVideoContext(shotAssignments, enrichedAssets) : '';
+
     // Generate frame prompt (visual/spatial focus)
     const framePrompt = await this.generateFramePrompt(shot, assetContext, styleContext, imageManifest, continuityContext);
 
-    // Generate video prompt (action/audio focus) — inject transformation context for within_shot
-    const videoPrompt = await this.generateVideoPrompt(shot, framePrompt, transformingAssets, sceneAssets);
+    // Generate video prompt (action/audio focus) — inject transformation + presence context
+    const videoPrompt = await this.generateVideoPrompt(shot, framePrompt, transformingAssets, sceneAssets, presenceContext);
 
     // Determine end frame requirement and model compatibility
     const requiresEndFrame = determineRequiresEndFrame(shot, shotOverrides);
@@ -428,7 +514,40 @@ export class PromptGenerationService {
       aiRecommendsEndFrame: requiresEndFrame,
       compatibleModels,
       referenceImageOrder,
+      endFrameReferenceImageOrder,
     };
+  }
+
+  /**
+   * Build presence-type video prompt context for enters/exits/passes_through assets.
+   */
+  private buildPresenceVideoContext(
+    assignments: ShotAssetAssignmentForPrompt[],
+    assets: SceneAssetInstanceData[]
+  ): string {
+    const assetMap = new Map(assets.map(a => [a.id, a]));
+    const lines: string[] = [];
+
+    for (const assignment of assignments) {
+      const asset = assetMap.get(assignment.scene_asset_instance_id);
+      if (!asset) continue;
+      const name = asset.project_asset?.name ?? 'Unknown';
+
+      switch (assignment.presence_type) {
+        case 'enters':
+          lines.push(`${name} enters the frame during this shot.`);
+          break;
+        case 'exits':
+          lines.push(`${name} exits the frame during this shot.`);
+          break;
+        case 'passes_through':
+          lines.push(`Briefly during this shot, ${name} (${asset.effective_description}) passes through the scene.`);
+          break;
+        // 'throughout' — no special video context needed
+      }
+    }
+
+    return lines.length > 0 ? '\nTEMPORAL PRESENCE NOTES:\n' + lines.join('\n') : '';
   }
 
   /**
@@ -473,7 +592,8 @@ export class PromptGenerationService {
     shots: ShotData[],
     sceneAssets: SceneAssetInstanceData[],
     styleCapsule?: StyleCapsule | null,
-    transformationEvents?: TransformationEvent[]
+    transformationEvents?: TransformationEvent[],
+    shotAssignmentMap?: Map<string, ShotAssetAssignmentForPrompt[]>
   ): Promise<BulkPromptGenerationResult[]> {
     console.log(`[PromptGeneration] Bulk generating prompts for ${shots.length} shots`);
 
@@ -512,7 +632,15 @@ export class PromptGenerationService {
         const contCtx = aiStartContinuity !== 'none'
           ? { mode: aiStartContinuity, previousCamera: previousShot?.camera }
           : undefined;
-        const promptSet = await this.generatePromptSet(shot, sceneAssets, styleCapsule, shotOverrides, contCtx);
+        // Per-shot assignments (§4): filter scene assets to only those assigned to this shot
+        const shotAssignments = shotAssignmentMap?.get(shot.id);
+        let shotScopeAssets = sceneAssets;
+        if (shotAssignments && shotAssignments.length > 0) {
+          const assignedIds = new Set(shotAssignments.map(a => a.scene_asset_instance_id));
+          shotScopeAssets = sceneAssets.filter(a => assignedIds.has(a.id));
+        }
+
+        const promptSet = await this.generatePromptSet(shot, shotScopeAssets, styleCapsule, shotOverrides, contCtx, shotAssignments);
         results.push({
           shotId: shot.id,
           success: true,
@@ -522,6 +650,7 @@ export class PromptGenerationService {
           aiRecommendsEndFrame: promptSet.aiRecommendsEndFrame,
           compatibleModels: promptSet.compatibleModels,
           referenceImageOrder: promptSet.referenceImageOrder,
+          endFrameReferenceImageOrder: promptSet.endFrameReferenceImageOrder,
           aiStartContinuity,
         });
       } catch (error) {
@@ -620,7 +749,8 @@ Write the frame prompt as a single dense paragraph. Describe ONLY what a viewer 
     shot: ShotData,
     framePrompt: string,
     transformingAssets?: ShotAssetOverride[],
-    allSceneAssets?: SceneAssetInstanceData[]
+    allSceneAssets?: SceneAssetInstanceData[],
+    presenceContext?: string
   ): Promise<string> {
     const systemPrompt = `You are a video prompt engineer for Veo 3.1 frame-to-video generation.
 
@@ -669,7 +799,7 @@ Dialogue: ${shot.dialogue || 'None'}
 Foreground characters: ${shot.characters_foreground.join(', ') || 'None'}
 Background characters: ${shot.characters_background.join(', ') || 'None'}
 
-Camera split guidance: Camera MOVEMENT (pan, dolly, track, crane) goes here. Camera POSITION (shot type, angle, lens) is already in the frame.${transformationSection}
+Camera split guidance: Camera MOVEMENT (pan, dolly, track, crane) goes here. Camera POSITION (shot type, angle, lens) is already in the frame.${transformationSection}${presenceContext || ''}
 
 Write the video prompt. Focus on action, movement, dialogue delivery, and sound. Output ONLY the prompt text.`;
 
