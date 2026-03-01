@@ -217,6 +217,34 @@ router.delete('/:projectId/scenes/:sceneId/shot-assignments/:assignmentId', asyn
 });
 
 /**
+ * DELETE /api/projects/:projectId/scenes/:sceneId/shot-assignments/all
+ * Delete ALL assignments for a scene (used by bulk templates)
+ */
+router.delete('/:projectId/scenes/:sceneId/shot-assignments/all', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId } = req.params;
+
+    const ownership = await verifyProjectOwnership(userId, projectId, sceneId);
+    if (!ownership.valid) {
+      return res.status(404).json({ error: ownership.error });
+    }
+
+    const deleted = await shotAssetAssignmentService.deleteAllForScene(sceneId);
+
+    // Invalidate Stage 9+ after bulk delete
+    shotAssetAssignmentService.invalidateStage9AndDownstream(sceneId).catch(err => {
+      console.warn('Failed to invalidate stages after bulk delete:', err);
+    });
+
+    return res.json({ success: true, deleted });
+  } catch (error: any) {
+    console.error('Error deleting all shot assignments:', error);
+    return res.status(500).json({ error: error.message || 'Failed to delete all assignments' });
+  }
+});
+
+/**
  * POST /api/projects/:projectId/scenes/:sceneId/shot-assignments/auto-populate
  * Trigger auto-population for the scene
  */
