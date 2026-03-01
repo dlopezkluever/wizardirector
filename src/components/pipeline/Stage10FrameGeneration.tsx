@@ -15,12 +15,14 @@ import {
   Loader2,
   Link2,
   Camera,
+  Unlink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ContentAccessCarousel } from './ContentAccessCarousel';
 import { FramePanel } from './FramePanel';
 import { CostDisplay } from './CostDisplay';
@@ -253,6 +255,52 @@ export function Stage10FrameGeneration({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
       toast({ title: 'Frame copied', description: 'Frame copied from adjacent shot (zero cost)' });
+    },
+  });
+
+  // Update continuity mode for a shot (from Stage 10)
+  const updateContinuityMutation = useMutation({
+    mutationFn: async ({ shotId, startContinuity }: { shotId: string; startContinuity: ContinuityMode }) => {
+      await promptService.updatePrompt(projectId, sceneId, shotId, { startContinuity });
+    },
+    onSuccess: (_data, variables) => {
+      // Optimistic update
+      queryClient.setQueryData<FetchFramesResponse | undefined>(['frames', projectId, sceneId], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          shots: old.shots.map((s: ShotWithFrames) =>
+            s.id === variables.shotId ? { ...s, startContinuity: variables.startContinuity, continuityFramePrompt: variables.startContinuity === 'none' ? null : s.continuityFramePrompt } : s
+          ),
+        };
+      });
+      queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+      toast({
+        title: variables.startContinuity === 'none' ? 'Continuity link removed' : 'Continuity updated',
+        description: variables.startContinuity === 'none'
+          ? 'Shot will generate independently'
+          : `Shot set to ${variables.startContinuity === 'match' ? 'match previous end' : 'camera change continuity'}`,
+      });
+    },
+  });
+
+  // Regenerate continuity prompt for a shot
+  const regenerateContinuityPromptMutation = useMutation({
+    mutationFn: async (shotId: string) => {
+      return promptService.generateContinuityPrompt(projectId, sceneId, shotId);
+    },
+    onSuccess: (data, shotId) => {
+      queryClient.setQueryData<FetchFramesResponse | undefined>(['frames', projectId, sceneId], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          shots: old.shots.map((s: ShotWithFrames) =>
+            s.id === shotId ? { ...s, continuityFramePrompt: data.continuityFramePrompt } : s
+          ),
+        };
+      });
+      queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+      toast({ title: 'Continuity prompt regenerated' });
     },
   });
 
@@ -912,31 +960,118 @@ export function Stage10FrameGeneration({
                           <span className="text-muted-foreground">Action: </span>
                           <span className="text-foreground">{selectedShot.action}</span>
                         </div>
-                        {selectedShot.framePrompt && (
+                        {/* Frame Prompt — tabbed view when camera_change continuity is active */}
+                        {selectedShot.startContinuity === 'camera_change' && selectedShot.framePrompt ? (
+                          <div>
+                            <Tabs defaultValue="continuity" className="w-full">
+                              <TabsList className="h-8 w-full">
+                                <TabsTrigger value="continuity" className="text-xs flex-1 gap-1">
+                                  <Camera className="w-3 h-3 text-purple-400" />
+                                  Continuity Prompt
+                                  <Check className="w-3 h-3 text-emerald-400 ml-0.5" />
+                                </TabsTrigger>
+                                <TabsTrigger value="original" className="text-xs flex-1">
+                                  Original Prompt
+                                </TabsTrigger>
+                              </TabsList>
+                              <TabsContent value="continuity">
+                                {selectedShot.continuityFramePrompt ? (
+                                  <div className="space-y-2">
+                                    <p className="text-foreground text-xs leading-relaxed rounded-md bg-purple-500/5 border border-purple-500/20 p-2">
+                                      {selectedShot.continuityFramePrompt}
+                                    </p>
+                                    <div className="flex gap-2">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-xs h-7"
+                                        onClick={() => regenerateContinuityPromptMutation.mutate(selectedShot.id)}
+                                        disabled={regenerateContinuityPromptMutation.isPending}
+                                      >
+                                        {regenerateContinuityPromptMutation.isPending ? (
+                                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                        ) : (
+                                          <RefreshCw className="w-3 h-3 mr-1" />
+                                        )}
+                                        Regenerate
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-xs h-7 text-muted-foreground hover:text-destructive"
+                                        onClick={() => updateContinuityMutation.mutate({ shotId: selectedShot.id, startContinuity: 'none' })}
+                                        disabled={updateContinuityMutation.isPending}
+                                      >
+                                        <Unlink className="w-3 h-3 mr-1" />
+                                        Remove Link
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-muted-foreground p-2 rounded-md border border-dashed border-border/50">
+                                    No continuity prompt generated yet.
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="text-xs h-7 ml-2"
+                                      onClick={() => regenerateContinuityPromptMutation.mutate(selectedShot.id)}
+                                      disabled={regenerateContinuityPromptMutation.isPending}
+                                    >
+                                      {regenerateContinuityPromptMutation.isPending ? (
+                                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                      ) : (
+                                        <Sparkles className="w-3 h-3 mr-1" />
+                                      )}
+                                      Generate
+                                    </Button>
+                                  </div>
+                                )}
+                              </TabsContent>
+                              <TabsContent value="original">
+                                <p className="text-foreground text-xs leading-relaxed rounded-md bg-muted/20 border border-border/30 p-2">
+                                  {selectedShot.framePrompt}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  This prompt is used as fallback if continuity is removed.
+                                </p>
+                              </TabsContent>
+                            </Tabs>
+                          </div>
+                        ) : selectedShot.startContinuity === 'match' ? (
+                          <div className="space-y-2">
+                            <div className="text-xs text-blue-300 flex items-center gap-1 rounded-md bg-blue-500/5 border border-blue-500/20 p-2">
+                              <Link2 className="w-3 h-3" />
+                              Start frame will be copied from previous shot's end frame
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs h-7 text-muted-foreground hover:text-destructive"
+                                onClick={() => updateContinuityMutation.mutate({ shotId: selectedShot.id, startContinuity: 'none' })}
+                                disabled={updateContinuityMutation.isPending}
+                              >
+                                <Unlink className="w-3 h-3 mr-1" />
+                                Remove Link
+                              </Button>
+                            </div>
+                            {selectedShot.framePrompt && (
+                              <div>
+                                <span className="text-muted-foreground text-xs">Original Prompt (fallback): </span>
+                                <span className="text-foreground text-xs opacity-60">
+                                  {selectedShot.framePrompt}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        ) : selectedShot.framePrompt ? (
                           <div>
                             <span className="text-muted-foreground">Frame Prompt: </span>
                             <span className="text-foreground text-xs">
                               {selectedShot.framePrompt}
                             </span>
                           </div>
-                        )}
-                        {selectedShot.startContinuity === 'camera_change' && selectedShot.continuityFramePrompt && (
-                          <div>
-                            <span className="text-muted-foreground flex items-center gap-1">
-                              <Camera className="w-3 h-3 text-purple-400" />
-                              Continuity Prompt (active):
-                            </span>
-                            <span className="text-foreground text-xs">
-                              {selectedShot.continuityFramePrompt}
-                            </span>
-                          </div>
-                        )}
-                        {selectedShot.startContinuity === 'match' && (
-                          <div className="text-xs text-blue-300 flex items-center gap-1">
-                            <Link2 className="w-3 h-3" />
-                            Start frame will be copied from previous shot's end frame
-                          </div>
-                        )}
+                        ) : null}
                       </div>
                     </div>
 
