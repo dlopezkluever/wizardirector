@@ -240,10 +240,11 @@ export class TransformationEventService {
     if (!preDescription) {
       const { data: instance } = await supabase
         .from('scene_asset_instances')
-        .select('effective_description')
+        .select('effective_description, project_asset:project_assets(description)')
         .eq('id', input.scene_asset_instance_id)
         .single();
-      preDescription = instance?.effective_description ?? '';
+      const projectAsset = instance?.project_asset as { description?: string } | null;
+      preDescription = instance?.effective_description ?? projectAsset?.description ?? '';
     }
 
     const { data, error } = await supabase
@@ -441,7 +442,12 @@ Based on this context, what transformation does ${assetName} undergo? Write the 
     });
 
     try {
-      const parsed = JSON.parse(response.content.trim());
+      let raw = response.content.trim();
+      // Strip markdown code fences if present
+      const fenceMatch = raw.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
+      if (fenceMatch) raw = fenceMatch[1].trim();
+
+      const parsed = JSON.parse(raw);
       return {
         post_description: (parsed.post_description ?? '').substring(0, 500),
         transformation_narrative: (parsed.transformation_narrative ?? '').substring(0, 500),
