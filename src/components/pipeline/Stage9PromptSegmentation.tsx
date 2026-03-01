@@ -18,7 +18,9 @@ import {
   Save,
   Unlock,
   Link2,
-  Camera
+  Camera,
+  List,
+  Grid3x3
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -41,6 +43,10 @@ import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
 import { ContentAccessCarousel } from './ContentAccessCarousel';
 import { ReferenceImageThumbnail } from './ReferenceImageThumbnail';
 import { ShotAssetPanel } from './Stage9/ShotAssetPanel';
+import { BulkPresenceTemplates } from './Stage9/BulkPresenceTemplates';
+import { ShotAssetTimeline } from './Stage9/ShotAssetTimeline';
+import { shotService } from '@/lib/services/shotService';
+import type { Shot } from '@/types/scene';
 
 interface Stage9PromptSegmentationProps {
   projectId: string;
@@ -99,20 +105,28 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
   const [sceneAssets, setSceneAssets] = useState<SceneAssetInstance[]>([]);
   const [assignmentsVersion, setAssignmentsVersion] = useState(0);
 
+  // Shots data for bulk templates
+  const [sceneShotsData, setSceneShotsData] = useState<Shot[]>([]);
+
+  // View mode: card (default) or timeline matrix
+  const [viewMode, setViewMode] = useState<'cards' | 'timeline'>('cards');
+
   // Track initial load
   const hasLoadedRef = useRef(false);
 
-  // Load assignments + scene assets
+  // Load assignments + scene assets + shots
   useEffect(() => {
     if (!projectId || !sceneId) return;
     (async () => {
       try {
-        const [assignments, assets] = await Promise.all([
+        const [assignments, assets, shots] = await Promise.all([
           shotAssetAssignmentService.listForScene(projectId, sceneId),
           sceneAssetService.listSceneAssets(projectId, sceneId),
+          shotService.fetchShots(projectId, sceneId),
         ]);
         setShotAssignments(assignments);
         setSceneAssets(assets);
+        setSceneShotsData(shots);
       } catch (err) {
         console.error('Failed to load shot assignments:', err);
       }
@@ -426,6 +440,28 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
             </div>
           )}
 
+          {/* Cards / Timeline toggle */}
+          <div className="flex gap-1 border rounded-md">
+            <Button
+              variant={viewMode === 'cards' ? 'secondary' : 'ghost'}
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setViewMode('cards')}
+              title="Card view"
+            >
+              <List className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={viewMode === 'timeline' ? 'secondary' : 'ghost'}
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setViewMode('timeline')}
+              title="Timeline view"
+            >
+              <Grid3x3 className="h-4 w-4" />
+            </Button>
+          </div>
+
           {/* Generate button */}
           <Button
             variant="gold"
@@ -450,16 +486,43 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
 
       {/* Info banner */}
       <div className="px-6 py-3 bg-blue-500/10 border-b border-blue-500/20">
-        <div className="flex items-center gap-2 text-xs text-blue-400">
-          <Info className="w-4 h-4 flex-shrink-0" />
-          <span>
-            Frame prompts are read-only by default to preserve AI-generated precision.
-            Video prompts are always editable for audio/dialogue tuning.
-          </span>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 text-xs text-blue-400">
+            <Info className="w-4 h-4 flex-shrink-0" />
+            <span>
+              Frame prompts are read-only by default to preserve AI-generated precision.
+              Video prompts are always editable for audio/dialogue tuning.
+            </span>
+          </div>
+          {/* Bulk Template Selector */}
+          {sceneShotsData.length > 0 && sceneAssets.length > 0 && (
+            <BulkPresenceTemplates
+              projectId={projectId}
+              sceneId={sceneId}
+              sceneAssets={sceneAssets}
+              shots={sceneShotsData}
+              onApplied={() => setAssignmentsVersion(v => v + 1)}
+            />
+          )}
         </div>
       </div>
 
+      {/* Timeline View */}
+      {viewMode === 'timeline' && (
+        <div className="p-6">
+          <ShotAssetTimeline
+            projectId={projectId}
+            sceneId={sceneId}
+            promptSets={promptSets}
+            assignments={shotAssignments}
+            sceneAssets={sceneAssets}
+            onAssignmentsChanged={() => setAssignmentsVersion(v => v + 1)}
+          />
+        </div>
+      )}
+
       {/* Prompt Cards */}
+      {viewMode === 'cards' && (
       <ScrollArea className="flex-1">
         <div className="p-6 space-y-4">
           {promptSets.map((promptSet, index) => {
@@ -635,6 +698,7 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                             assignments={assignmentsByShot[promptSet.shotUuid] || []}
                             sceneAssets={sceneAssets}
                             onAssignmentsChanged={() => setAssignmentsVersion(v => v + 1)}
+                            startContinuity={promptSet.startContinuity}
                           />
                         )}
 
@@ -889,6 +953,7 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
           })}
         </div>
       </ScrollArea>
+      )}
 
       {/* Footer — hidden when locked */}
       {!stage9Locked && !stage9Outdated && (
