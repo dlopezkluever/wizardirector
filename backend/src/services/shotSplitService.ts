@@ -89,16 +89,16 @@ function toShotForInsert(
 
 export class ShotSplitService {
   /**
-   * Split one shot into two coherent shots using LLM.
-   * Returns two ShotForInsert objects with shot_id set to {originalShotId}-1 and {originalShotId}-2.
+   * Split one shot into `splitCount` coherent shots using LLM.
+   * Returns ShotForInsert objects with shot_id set to {originalShotId}-1, {originalShotId}-2, etc.
    */
   async splitShot(
     originalShot: OriginalShotRow,
-    userGuidance?: string
+    userGuidance?: string,
+    splitCount: 2 | 3 = 2
   ): Promise<ShotForInsert[]> {
     const originalShotId = originalShot.shot_id;
-    const baseId1 = `${originalShotId}-1`;
-    const baseId2 = `${originalShotId}-2`;
+    const baseIds = Array.from({ length: splitCount }, (_, i) => `${originalShotId}-${i + 1}`);
 
     const originalJson = JSON.stringify({
       shot_id: originalShot.shot_id,
@@ -114,22 +114,7 @@ export class ShotSplitService {
       continuity_flags: originalShot.continuity_flags || []
     }, null, 2);
 
-    const systemPrompt = `You are a shot segmentation specialist. Your role is to divide a single shot into two new shots while preserving narrative coherence. Each new shot will be given the same duration as the original (set server-side), so that each clip can use the full generator time limit (e.g. for Veo3/Sora).
-
-ORIGINAL SHOT CONTEXT:
-${originalJson}
-
-SPLIT REQUIREMENTS:
-1. The two new shots must collectively cover the same narrative content as the original.
-2. The split point must be a natural action or dialogue break.
-3. Camera specs must be adjusted appropriately for each new shot.
-4. Continuity flags must be preserved or refined.
-5. Do not invent new narrative content. Duration is set server-side to the original shot's duration for both new shots.
-
-OUTPUT: Return ONLY a valid JSON object (no markdown). Omit "duration" or use any placeholder; it will be overwritten server-side.
-{
-  "new_shots": [
-    {
+    const shotSlotTemplate = `{
       "dialogue": "",
       "action": "atomic description",
       "characters": [{"name": "CHARACTER", "prominence": "foreground"|"background"}],
@@ -137,28 +122,36 @@ OUTPUT: Return ONLY a valid JSON object (no markdown). Omit "duration" or use an
       "camera": "...",
       "continuity_flags": [],
       "split_rationale": "optional"
-    },
-    {
-      "dialogue": "",
-      "action": "atomic description",
-      "characters": [],
-      "setting": "...",
-      "camera": "...",
-      "continuity_flags": [],
-      "split_rationale": "optional"
-    }
+    }`;
+
+    const systemPrompt = `You are a shot segmentation specialist. Your role is to divide a single shot into ${splitCount} new shots while preserving narrative coherence. Each new shot will be given the same duration as the original (set server-side), so that each clip can use the full generator time limit (e.g. for Veo3/Sora).
+
+ORIGINAL SHOT CONTEXT:
+${originalJson}
+
+SPLIT REQUIREMENTS:
+1. The ${splitCount} new shots must collectively cover the same narrative content as the original.
+2. The split point${splitCount === 3 ? 's' : ''} must be at natural action or dialogue break${splitCount === 3 ? 's' : ''}.
+3. Camera specs must be adjusted appropriately for each new shot.
+4. Continuity flags must be preserved or refined.
+5. Do not invent new narrative content. Duration is set server-side to the original shot's duration for all new shots.
+
+OUTPUT: Return ONLY a valid JSON object (no markdown). Omit "duration" or use any placeholder; it will be overwritten server-side.
+{
+  "new_shots": [
+${Array.from({ length: splitCount }, () => `    ${shotSlotTemplate}`).join(',\n')}
   ]
 }`;
 
     const userPrompt = userGuidance
-      ? `Split the shot according to this guidance: ${userGuidance}\n\nReturn ONLY the JSON object with "new_shots" array.`
-      : `Split the shot at a natural action or dialogue break. Return ONLY the JSON object with "new_shots" array.`;
+      ? `Split the shot into ${splitCount} parts according to this guidance: ${userGuidance}\n\nReturn ONLY the JSON object with "new_shots" array of exactly ${splitCount} shots.`
+      : `Split the shot into ${splitCount} parts at natural action or dialogue break${splitCount === 3 ? 's' : ''}. Return ONLY the JSON object with "new_shots" array of exactly ${splitCount} shots.`;
 
     const request: LLMRequest = {
       systemPrompt,
       userPrompt,
       temperature: 0.3,
-      maxTokens: 2048,
+      maxTokens: splitCount === 3 ? 3072 : 2048,
       metadata: { operation: 'shot_split', stage: 7 }
     };
 
@@ -176,19 +169,17 @@ OUTPUT: Return ONLY a valid JSON object (no markdown). Omit "duration" or use an
       throw new Error('Failed to parse shot split response');
     }
 
-    if (!parsed.new_shots || !Array.isArray(parsed.new_shots) || parsed.new_shots.length < 2) {
-      throw new Error('Shot split response must contain exactly two shots');
+    if (!parsed.new_shots || !Array.isArray(parsed.new_shots) || parsed.new_shots.length < splitCount) {
+      throw new Error(`Shot split response must contain exactly ${splitCount} shots`);
     }
 
-    const [first, second] = parsed.new_shots;
-    const result = [
-      toShotForInsert(first, baseId1),
-      toShotForInsert(second, baseId2)
-    ];
     // Stretch semantics: each new shot gets the same duration as the original (for per-clip generator limits).
     const originalDuration = originalShot.duration;
-    result[0].duration = originalDuration;
-    result[1].duration = originalDuration;
+    const result = parsed.new_shots.slice(0, splitCount).map((shot, i) => {
+      const insert = toShotForInsert(shot, baseIds[i]);
+      insert.duration = originalDuration;
+      return insert;
+    });
     return result;
   }
 }
