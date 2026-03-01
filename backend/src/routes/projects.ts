@@ -6,7 +6,8 @@ import { ShotExtractionService } from '../services/shotExtractionService.js';
 import { ShotSplitService } from '../services/shotSplitService.js';
 import { ShotMergeService } from '../services/shotMergeService.js';
 import { shotValidationService } from '../services/shotValidationService.js';
-import { promptGenerationService, type ShotData, type SceneAssetInstanceData } from '../services/promptGenerationService.js';
+import { promptGenerationService, type ShotData, type SceneAssetInstanceData, type ShotAssetAssignmentForPrompt } from '../services/promptGenerationService.js';
+import { shotAssetAssignmentService } from '../services/shotAssetAssignmentService.js';
 import { StyleCapsuleService } from '../services/styleCapsuleService.js';
 import { ContextManager } from '../services/contextManager.js';
 
@@ -2313,12 +2314,36 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
       console.log(`[Stage9] Found ${transformationEvents.length} confirmed transformation event(s) for scene`);
     }
 
-    // Generate prompts using the service (with transformation events)
+    // Fetch per-shot asset assignments (§4: presence-aware manifests)
+    let shotAssignmentMap: Map<string, ShotAssetAssignmentForPrompt[]> | undefined;
+    try {
+      const hasAssignments = await shotAssetAssignmentService.hasAssignments(sceneId);
+      if (hasAssignments) {
+        const allAssignments = await shotAssetAssignmentService.getAssignmentsForScene(sceneId);
+        shotAssignmentMap = new Map<string, ShotAssetAssignmentForPrompt[]>();
+        for (const a of allAssignments) {
+          const list = shotAssignmentMap.get(a.shot_id) || [];
+          list.push({
+            scene_asset_instance_id: a.scene_asset_instance_id,
+            presence_type: a.presence_type as ShotAssetAssignmentForPrompt['presence_type'],
+          });
+          shotAssignmentMap.set(a.shot_id, list);
+        }
+        console.log(`[Stage9] Using per-shot asset assignments for ${shotAssignmentMap.size} shot(s)`);
+      } else {
+        console.log(`[Stage9] No shot assignments found — using legacy all-assets-per-shot behavior`);
+      }
+    } catch (assignErr) {
+      console.warn('[Stage9] Failed to fetch shot assignments, falling back to legacy:', assignErr);
+    }
+
+    // Generate prompts using the service (with transformation events + assignments)
     const results = await promptGenerationService.generateBulkPromptSets(
       shotDataList,
       sceneAssets,
       styleCapsule,
-      transformationEvents.length > 0 ? transformationEvents : undefined
+      transformationEvents.length > 0 ? transformationEvents : undefined,
+      shotAssignmentMap
     );
 
     // Update shots with generated prompts
@@ -2335,6 +2360,7 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
             ai_recommends_end_frame: r.aiRecommendsEndFrame ?? r.requiresEndFrame,
             compatible_models: r.compatibleModels,
             reference_image_order: r.referenceImageOrder || null,
+            end_frame_reference_image_order: r.endFrameReferenceImageOrder || null,
             ai_start_continuity: r.aiStartContinuity || null,
             start_continuity: r.aiStartContinuity || 'none',
             prompts_generated_at: now,
