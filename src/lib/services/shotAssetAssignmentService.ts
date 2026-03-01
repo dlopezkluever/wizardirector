@@ -139,6 +139,26 @@ class ShotAssetAssignmentService {
     return response.json();
   }
 
+  /** Delete ALL assignments for a scene (used by bulk templates) */
+  async deleteAllForScene(projectId: string, sceneId: string): Promise<number> {
+    const headers = await this.getAuthHeaders();
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/shot-assignments/all`,
+      {
+        method: 'DELETE',
+        headers,
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to delete all assignments');
+    }
+
+    const result = await response.json();
+    return result.deleted;
+  }
+
   /** Check if a scene has any assignments */
   async hasAssignments(projectId: string, sceneId: string): Promise<boolean> {
     const headers = await this.getAuthHeaders();
