@@ -850,7 +850,7 @@ router.post('/:projectId/scenes/:sceneId/assets/populate-from-dependencies', asy
     // Fetch all project_assets for this branch
     const { data: projectAssets, error: assetsError } = await supabase
       .from('project_assets')
-      .select('id, name, asset_type')
+      .select('id, name, asset_type, description')
       .eq('branch_id', project.active_branch_id);
 
     if (assetsError || !projectAssets) {
@@ -879,6 +879,7 @@ router.post('/:projectId/scenes/:sceneId/assets/populate-from-dependencies', asy
       project_asset_id: string;
       carry_forward: boolean;
       status_tags: string[];
+      effective_description: string;
     }> = [];
 
     for (const charName of expectedChars) {
@@ -889,6 +890,7 @@ router.post('/:projectId/scenes/:sceneId/assets/populate-from-dependencies', asy
           project_asset_id: asset.id,
           carry_forward: true,
           status_tags: [],
+          effective_description: asset.description ?? '',
         });
         existingAssetIds.add(asset.id);
       }
@@ -902,6 +904,7 @@ router.post('/:projectId/scenes/:sceneId/assets/populate-from-dependencies', asy
           project_asset_id: asset.id,
           carry_forward: true,
           status_tags: [],
+          effective_description: asset.description ?? '',
         });
         existingAssetIds.add(asset.id);
       }
@@ -915,6 +918,7 @@ router.post('/:projectId/scenes/:sceneId/assets/populate-from-dependencies', asy
           project_asset_id: asset.id,
           carry_forward: true,
           status_tags: [],
+          effective_description: asset.description ?? '',
         });
         existingAssetIds.add(asset.id);
       }
@@ -1856,8 +1860,9 @@ router.post('/:projectId/scenes/:sceneId/transformation-events/:eventId/generate
 
     res.json({ jobId: result.jobId, status: result.status });
   } catch (err) {
-    console.error('[TransformationEvents] Generate post-image error:', err);
-    res.status(500).json({ error: 'Failed to generate post-image' });
+    const message = err instanceof Error ? err.message : 'Failed to generate post-image';
+    console.error('[TransformationEvents] Generate post-image error:', message, err);
+    res.status(500).json({ error: message });
   }
 });
 
