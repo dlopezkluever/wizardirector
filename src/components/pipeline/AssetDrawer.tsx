@@ -128,7 +128,6 @@ export const AssetDrawer = ({
       const instance = await sceneAssetService.createSceneAsset(projectId, {
         sceneId,
         projectAssetId: asset.id,
-        descriptionOverride: null,
         statusTags: [],
         carryForward: true,
       });
@@ -148,7 +147,6 @@ export const AssetDrawer = ({
       const instance = await sceneAssetService.createSceneAsset(projectId, {
         sceneId,
         projectAssetId: projectAsset.id,
-        descriptionOverride: null,
         statusTags: [],
         carryForward: true,
       });
