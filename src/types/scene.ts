@@ -210,6 +210,20 @@ export interface SceneAssetRelevanceResult {
   }>;
 }
 
+// Shot Asset Assignment types (migration 033)
+export type PresenceType = 'throughout' | 'enters' | 'exits' | 'passes_through';
+
+export interface ShotAssetAssignment {
+  id: string;
+  shot_id: string;
+  scene_asset_instance_id: string;
+  presence_type: PresenceType;
+  created_at: string;
+  updated_at: string;
+  // Joined data (from API response)
+  scene_asset_instance?: SceneAssetInstance;
+}
+
 export interface ReferenceImageOrderEntry {
   label: string;
   assetName: string;
