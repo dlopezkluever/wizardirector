@@ -112,7 +112,7 @@ export function VisualStateEditorPanel({
 
   useEffect(() => {
     if (selectedAsset) {
-      setEditedDescription(selectedAsset.description_override ?? selectedAsset.effective_description ?? '');
+      setEditedDescription(selectedAsset.description_override ?? selectedAsset.effective_description ?? selectedAsset.project_asset?.description ?? '');
       setStatusTags(selectedAsset.status_tags ?? []);
       setCarryForward(selectedAsset.carry_forward ?? true);
     }
@@ -242,6 +242,7 @@ export function VisualStateEditorPanel({
         trigger_shot_id: data.trigger_shot_id,
         transformation_type: data.transformation_type,
         completion_shot_id: data.completion_shot_id,
+        pre_description: editedDescription || undefined,
         post_description: data.post_description,
         transformation_narrative: data.transformation_narrative,
         detected_by: 'manual',
