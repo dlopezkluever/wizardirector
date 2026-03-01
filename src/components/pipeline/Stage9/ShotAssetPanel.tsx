@@ -4,7 +4,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { Users, MapPin, Package, Plus, Trash2, Loader2, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
+import { Users, MapPin, Package, Plus, Trash2, Loader2, AlertTriangle, Info, Scissors, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -24,8 +24,9 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { shotAssetAssignmentService } from '@/lib/services/shotAssetAssignmentService';
+import { shotService } from '@/lib/services/shotService';
 import { cn } from '@/lib/utils';
-import type { ShotAssetAssignment, PresenceType, SceneAssetInstance } from '@/types/scene';
+import type { ShotAssetAssignment, PresenceType, ContinuityMode, SceneAssetInstance } from '@/types/scene';
 
 const PRESENCE_LABELS: Record<PresenceType, string> = {
   throughout: 'Throughout',
@@ -48,6 +49,10 @@ interface ShotAssetPanelProps {
   assignments: ShotAssetAssignment[];
   sceneAssets: SceneAssetInstance[];
   onAssignmentsChanged: () => void;
+  /** Start-frame continuity mode for this shot (from prompt set). */
+  startContinuity?: ContinuityMode;
+  /** Called after a shot split to refresh the shot list. */
+  onShotSplit?: () => void;
 }
 
 export function ShotAssetPanel({
@@ -58,6 +63,8 @@ export function ShotAssetPanel({
   assignments,
   sceneAssets,
   onAssignmentsChanged,
+  startContinuity,
+  onShotSplit,
 }: ShotAssetPanelProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -65,6 +72,24 @@ export function ShotAssetPanel({
   const [isRemoving, setIsRemoving] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [addPickerOpen, setAddPickerOpen] = useState(false);
+  const [isSplitting, setIsSplitting] = useState(false);
+  const [showSplitConfirm, setShowSplitConfirm] = useState(false);
+
+  const hasPassesThrough = assignments.some(a => a.presence_type === 'passes_through');
+
+  const handleSplitShot = useCallback(async () => {
+    setIsSplitting(true);
+    try {
+      await shotService.splitShot(projectId, sceneId, shotId);
+      onAssignmentsChanged();
+      onShotSplit?.();
+    } catch (err) {
+      console.error('Failed to split shot:', err);
+    } finally {
+      setIsSplitting(false);
+      setShowSplitConfirm(false);
+    }
+  }, [projectId, sceneId, shotId, onAssignmentsChanged, onShotSplit]);
 
   // Assets not yet assigned to this shot
   const assignedInstanceIds = new Set(assignments.map(a => a.scene_asset_instance_id));
@@ -187,12 +212,38 @@ export function ShotAssetPanel({
             })
           )}
 
-          {/* Passes-through warning */}
-          {assignments.some(a => a.presence_type === 'passes_through') && (
+          {/* Passes-through warning + split button */}
+          {hasPassesThrough && (
             <div className="flex items-start gap-1.5 p-2 rounded-md bg-amber-500/10 text-amber-400 text-[10px]">
               <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <span>
+                  &ldquo;Passes Through&rdquo; assets won&apos;t appear in start or end frame images. Visual accuracy depends on the video model.
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-1.5 h-6 text-[10px] border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                  disabled={isSplitting}
+                  onClick={(e) => { e.stopPropagation(); setShowSplitConfirm(true); }}
+                >
+                  {isSplitting ? (
+                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                  ) : (
+                    <Scissors className="w-3 h-3 mr-1" />
+                  )}
+                  Split Shot
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Continuity + enters info banner */}
+          {startContinuity === 'match' && assignments.some(a => a.presence_type === 'enters') && (
+            <div className="flex items-start gap-1.5 p-2 rounded-md bg-blue-500/10 text-blue-400 text-[10px]">
+              <Info className="w-3 h-3 shrink-0 mt-0.5" />
               <span>
-                &ldquo;Passes Through&rdquo; assets won&apos;t appear in start or end frame images. Visual accuracy depends on the video model.
+                &ldquo;Enters&rdquo; means the reference image is excluded from the <strong>start frame</strong> (which copies the previous shot&apos;s end frame for continuity). The asset may still be <em>visible</em> in the start frame via the continuity match.
               </span>
             </div>
           )}
@@ -243,6 +294,25 @@ export function ShotAssetPanel({
             <AlertDialogAction onClick={handleRemove} disabled={isRemoving}>
               {isRemoving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
               Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Split confirmation */}
+      <AlertDialog open={showSplitConfirm} onOpenChange={setShowSplitConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Split Shot {shotLabel}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will split the shot into two sub-shots using AI. Asset assignments will be cloned to both new shots. This helps handle &ldquo;Passes Through&rdquo; assets by giving each sub-shot clearer enter/exit boundaries.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSplitting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSplitShot} disabled={isSplitting}>
+              {isSplitting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Scissors className="w-4 h-4 mr-1" />}
+              Split Shot
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
