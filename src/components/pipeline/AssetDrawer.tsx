@@ -37,6 +37,7 @@ import { AssetMatchModal } from './AssetMatchModal';
 import type { GlobalAsset, AssetType, ProjectAsset } from '@/types/asset';
 import type { SceneAssetInstance, Shot } from '@/types/scene';
 import { cn } from '@/lib/utils';
+import { matchAssetToShots, type ShotMatchResult } from '@/lib/utils/shotAssetMatcher';
 
 interface AssetDrawerProps {
   projectId: string;
@@ -100,22 +101,35 @@ export const AssetDrawer = ({
   const [pendingAsset, setPendingAsset] = useState<ProjectAsset | null>(null);
   const [selectedShotIds, setSelectedShotIds] = useState<Set<string>>(new Set());
   const [isAddingToShots, setIsAddingToShots] = useState(false);
+  const [shotMatchResults, setShotMatchResults] = useState<ShotMatchResult[]>([]);
 
   const resetChecklist = useCallback(() => {
     setStep('browse');
     setPendingAsset(null);
     setSelectedShotIds(new Set());
     setIsAddingToShots(false);
+    setShotMatchResults([]);
   }, []);
 
-  /** Show shot checklist if shots exist, otherwise add directly */
+  /** Show shot checklist if shots exist, otherwise add directly.
+   *  Uses heuristic matcher to pre-check only matching shots (§4). */
   const startShotChecklist = useCallback((asset: ProjectAsset) => {
     if (shots.length === 0) {
       // No shots yet — skip checklist, add directly
       return false;
     }
     setPendingAsset(asset);
-    setSelectedShotIds(new Set(shots.map(s => s.id)));
+
+    // Heuristic matching: pre-select only matching shots
+    const matchResults = matchAssetToShots(
+      { name: asset.name, asset_type: asset.asset_type, description: asset.description },
+      shots
+    );
+    setShotMatchResults(matchResults);
+
+    const matchedIds = matchResults.filter(r => r.matched).map(r => r.shotId);
+    // If no heuristic matches found, fall back to all shots selected
+    setSelectedShotIds(new Set(matchedIds.length > 0 ? matchedIds : shots.map(s => s.id)));
     setStep('shot-checklist');
     return true;
   }, [shots]);
@@ -336,6 +350,8 @@ export const AssetDrawer = ({
               <div className="space-y-2">
                 {shots.map(shot => {
                   const checked = selectedShotIds.has(shot.id);
+                  const matchResult = shotMatchResults.find(r => r.shotId === shot.id);
+                  const isSuggested = matchResult?.matched;
                   return (
                     <label
                       key={shot.id}
@@ -356,13 +372,21 @@ export const AssetDrawer = ({
                         }}
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm">
+                        <div className="font-medium text-sm flex items-center gap-2">
                           Shot {shot.shotId}
-                          <span className="text-muted-foreground font-normal ml-2">— {shot.setting}</span>
-                          <span className="text-muted-foreground font-normal ml-1">({shot.duration}s)</span>
+                          <span className="text-muted-foreground font-normal">— {shot.setting}</span>
+                          <span className="text-muted-foreground font-normal">({shot.duration}s)</span>
+                          {isSuggested && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
+                              Suggested
+                            </Badge>
+                          )}
                         </div>
                         {shot.action && (
                           <p className="text-xs text-muted-foreground truncate mt-0.5">{shot.action}</p>
+                        )}
+                        {isSuggested && matchResult.matchReason && (
+                          <p className="text-[10px] text-emerald-400/70 mt-0.5">{matchResult.matchReason}</p>
                         )}
                       </div>
                     </label>
