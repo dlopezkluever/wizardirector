@@ -61,6 +61,7 @@ import { sceneAssetService } from '@/lib/services/sceneAssetService';
 import { sceneService } from '@/lib/services/sceneService';
 import { shotService } from '@/lib/services/shotService';
 import { transformationEventService } from '@/lib/services/transformationEventService';
+import { useShotAssetAutoPopulate } from '@/lib/hooks/useShotAssetAutoPopulate';
 import { cn, formatSceneHeader } from '@/lib/utils';
 import type { SceneAssetInstance, SceneAssetRelevanceResult, SceneAssetSuggestion, TransformationEvent } from '@/types/scene';
 import { LockedStageHeader } from './LockedStageHeader';
@@ -445,6 +446,18 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
     queryKey: ['shots', projectId, sceneId],
     queryFn: () => shotService.fetchShots(projectId, sceneId),
     enabled: Boolean(projectId && sceneId),
+  });
+
+  // Auto-populate shot-asset assignments if none exist (§10A)
+  useShotAssetAutoPopulate({
+    projectId,
+    sceneId,
+    enabled: shots.length > 0 && sceneAssets.length > 0,
+    onPopulated: (result) => {
+      if (result.created > 0) {
+        toast.success(`Asset assignments initialized for all ${shots.length} shots.`);
+      }
+    },
   });
 
   // Transformation events for gatekeeper validation
@@ -841,6 +854,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           isOpen={assetDrawerOpen}
           onClose={() => setAssetDrawerOpen(false)}
           onSceneInstanceCreated={handleSceneInstanceCreated}
+          shots={shots}
         />
       </div>
     );
