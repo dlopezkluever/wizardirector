@@ -1371,8 +1371,9 @@ router.put('/:id/scenes/:sceneId/shots/:shotId', async (req, res) => {
 router.post('/:id/scenes/:sceneId/shots/:shotId/split', async (req, res) => {
   try {
     const { id: projectId, sceneId, shotId } = req.params;
-    const { userGuidance } = req.body || {};
+    const { userGuidance, splitCount } = req.body || {};
     const userId = req.user!.id;
+    const count = splitCount === 3 ? 3 : 2;
 
     const { data: project } = await supabase
       .from('projects')
@@ -1390,8 +1391,14 @@ router.post('/:id/scenes/:sceneId/shots/:shotId/split', async (req, res) => {
       .single();
     if (!originalShot) return res.status(404).json({ error: 'Shot not found' });
 
+    // §6: Save existing assignments BEFORE deleting the original shot (they cascade-delete)
+    const { data: existingAssignments } = await supabase
+      .from('shot_asset_assignments')
+      .select('scene_asset_instance_id, presence_type')
+      .eq('shot_id', shotId);
+
     const shotSplitService = new ShotSplitService();
-    const newShotsPayload = await shotSplitService.splitShot(originalShot, userGuidance);
+    const newShotsPayload = await shotSplitService.splitShot(originalShot, userGuidance, count);
 
     const { error: deleteError } = await supabase
       .from('shots')
@@ -1399,6 +1406,7 @@ router.post('/:id/scenes/:sceneId/shots/:shotId/split', async (req, res) => {
       .eq('id', shotId);
     if (deleteError) return res.status(500).json({ error: 'Failed to delete original shot' });
 
+    // Shift shot_order for downstream shots to make room for (count - 1) additional shots
     const { data: shotsAfterDelete } = await supabase
       .from('shots')
       .select('id, shot_order')
@@ -1406,7 +1414,7 @@ router.post('/:id/scenes/:sceneId/shots/:shotId/split', async (req, res) => {
       .gt('shot_order', originalShot.shot_order);
     if (shotsAfterDelete?.length) {
       for (const s of shotsAfterDelete) {
-        await supabase.from('shots').update({ shot_order: s.shot_order + 1 }).eq('id', s.id);
+        await supabase.from('shots').update({ shot_order: s.shot_order + (count - 1) }).eq('id', s.id);
       }
     }
 
@@ -1430,6 +1438,28 @@ router.post('/:id/scenes/:sceneId/shots/:shotId/split', async (req, res) => {
       .insert(insertRows)
       .select('*');
     if (insertError) return res.status(500).json({ error: 'Failed to insert split shots' });
+
+    // §6: Clone saved assignments to all new sub-shots
+    if (existingAssignments && existingAssignments.length > 0 && insertedShots) {
+      const assignmentRows = insertedShots.flatMap((newShot: any) =>
+        existingAssignments.map((a: any) => ({
+          shot_id: newShot.id,
+          scene_asset_instance_id: a.scene_asset_instance_id,
+          presence_type: a.presence_type,
+        }))
+      );
+      const { error: assignError } = await supabase
+        .from('shot_asset_assignments')
+        .insert(assignmentRows);
+      if (assignError) {
+        console.warn('Failed to clone assignments to split shots:', assignError);
+      }
+    }
+
+    // §6: Invalidate Stage 9 and downstream after split
+    shotAssetAssignmentService.invalidateStage9AndDownstream(sceneId).catch(err => {
+      console.warn('Failed to invalidate stages after shot split:', err);
+    });
 
     res.json({ success: true, newShots: insertedShots });
   } catch (error: any) {
