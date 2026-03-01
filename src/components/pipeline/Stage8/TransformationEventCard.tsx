@@ -108,20 +108,22 @@ export function TransformationEventCard({
       <div className="space-y-1">
         <div className="flex items-center justify-between">
           <Label className="text-xs text-muted-foreground">After</Label>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onGeneratePostDescription(event.id)}
-            disabled={isGenerating}
-            className="h-6 text-xs"
-          >
-            {isGenerating ? (
-              <Loader2 className="w-3 h-3 animate-spin mr-1" />
-            ) : (
-              <Sparkles className="w-3 h-3 mr-1" />
-            )}
-            Generate with AI
-          </Button>
+          {!isConfirmed && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onGeneratePostDescription(event.id)}
+              disabled={isGenerating}
+              className="h-6 text-xs"
+            >
+              {isGenerating ? (
+                <Loader2 className="w-3 h-3 animate-spin mr-1" />
+              ) : (
+                <Sparkles className="w-3 h-3 mr-1" />
+              )}
+              Generate with AI
+            </Button>
+          )}
         </div>
         <Textarea
           value={postDesc}
