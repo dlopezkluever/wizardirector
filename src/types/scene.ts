@@ -175,14 +175,14 @@ export interface SceneAssetSuggestion {
 export interface CreateSceneAssetInstanceRequest {
   sceneId: string;
   projectAssetId: string;
-  descriptionOverride?: string;
+  descriptionOverride?: string | null;
   statusTags?: string[];
   carryForward?: boolean;
   inheritedFromInstanceId?: string;
 }
 
 export interface UpdateSceneAssetInstanceRequest {
-  descriptionOverride?: string;
+  descriptionOverride?: string | null;
   imageKeyUrl?: string;
   statusTags?: string[];
   carryForward?: boolean;
