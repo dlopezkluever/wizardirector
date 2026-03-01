@@ -39,7 +39,7 @@ const router = Router();
 
 const CreateSceneAssetInstanceSchema = z.object({
   projectAssetId: z.string().uuid(),
-  descriptionOverride: z.string().optional(),
+  descriptionOverride: z.string().optional().nullable(),
   statusTags: z.array(z.string()).optional(),
   carryForward: z.boolean().optional(),
   inheritedFromInstanceId: z.string().uuid().optional(),
