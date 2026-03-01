@@ -421,17 +421,20 @@ router.post('/:projectId/scenes/:sceneId/shots/:shotId/generate-end-frame-prompt
             beat_reference: shot.beat_reference,
         };
 
+        // Fetch all shots in scene (needed for transformation overrides + next shot continuity)
+        const allShotsResult = await supabase
+            .from('shots')
+            .select('id, shot_id, shot_order, start_continuity, camera')
+            .eq('scene_id', sceneId)
+            .order('shot_order');
+        const allShotRows = allShotsResult.data ?? [];
+
         // Fetch confirmed transformation events and resolve overrides for this shot
         const events = await transformationEventService.getTransformationEventsForScene(sceneId);
         const confirmedEvents = events.filter(e => e.confirmed);
         let shotOverrides;
         if (confirmedEvents.length > 0) {
-            const allShots = await supabase
-                .from('shots')
-                .select('id, shot_id, shot_order')
-                .eq('scene_id', sceneId)
-                .order('shot_order');
-            const shotRefs = (allShots.data ?? []).map((s: any) => ({ id: s.id, shot_id: s.shot_id, shot_order: s.shot_order }));
+            const shotRefs = allShotRows.map((s: any) => ({ id: s.id, shot_id: s.shot_id, shot_order: s.shot_order }));
             const assetRefs = (sceneAssets ?? []).map((a: any) => ({
                 id: a.id,
                 effective_description: a.effective_description ?? '',
@@ -445,13 +448,23 @@ router.post('/:projectId/scenes/:sceneId/shots/:shotId/generate-end-frame-prompt
             }
         }
 
+        // Find next shot's continuity info for end frame prompt awareness
+        const currentIdx = allShotRows.findIndex((s: any) => s.id === shotId);
+        const nextShotRow = currentIdx >= 0 && currentIdx < allShotRows.length - 1
+            ? allShotRows[currentIdx + 1]
+            : null;
+        const nextShotContinuity = nextShotRow
+            ? { startContinuity: nextShotRow.start_continuity || 'none', camera: nextShotRow.camera }
+            : undefined;
+
         // Generate end frame prompt (with transformation context if applicable)
         const endFramePrompt = await promptGenerationService.generateEndFramePrompt(
             shotData,
             shot.frame_prompt,
             (sceneAssets || []) as unknown as SceneAssetInstanceData[],
             styleCapsule,
-            shotOverrides
+            shotOverrides,
+            nextShotContinuity
         );
 
         // Save to database
