@@ -674,6 +674,10 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
         maxAttempts: 60,
         onProgress: (completed, total) => setBulkProgress({ completed, total }),
       });
+      // Invalidate attempt carousels for each generated instance so images display without refresh
+      for (const instanceId of selectedForGeneration) {
+        queryClient.invalidateQueries({ queryKey: ['scene-asset-attempts', projectId, sceneId, instanceId] });
+      }
       await queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
       const completedCount = statuses.filter(s => s.status === 'completed').length;
       const failedCount = statuses.filter(s => s.status === 'failed').length;
@@ -706,6 +710,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
       try {
         const result = await sceneAssetService.generateSceneAssetImage(projectId, sceneId, instanceId);
         await pollSingleImageJob(result.jobId);
+        await queryClient.invalidateQueries({ queryKey: ['scene-asset-attempts', projectId, sceneId, instanceId] });
         await queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
         toast.success('Image generated successfully');
       } catch (e) {
