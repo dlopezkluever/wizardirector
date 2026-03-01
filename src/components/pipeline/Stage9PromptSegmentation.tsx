@@ -30,13 +30,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { promptService } from '@/lib/services/promptService';
-import type { PromptSet, ContinuityMode } from '@/types/scene';
+import { shotAssetAssignmentService } from '@/lib/services/shotAssetAssignmentService';
+import { sceneAssetService } from '@/lib/services/sceneAssetService';
+import { useShotAssetAutoPopulate } from '@/lib/hooks/useShotAssetAutoPopulate';
+import type { PromptSet, ContinuityMode, ShotAssetAssignment, SceneAssetInstance } from '@/types/scene';
 import { LockedStageHeader } from './LockedStageHeader';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
 import { ContentAccessCarousel } from './ContentAccessCarousel';
 import { ReferenceImageThumbnail } from './ReferenceImageThumbnail';
+import { ShotAssetPanel } from './Stage9/ShotAssetPanel';
 
 interface Stage9PromptSegmentationProps {
   projectId: string;
@@ -90,8 +94,50 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
   const [isSaving, setIsSaving] = useState(false);
   const debouncedUpdates = useDebounce(pendingUpdates, 500);
 
+  // Shot asset assignments state (§9)
+  const [shotAssignments, setShotAssignments] = useState<ShotAssetAssignment[]>([]);
+  const [sceneAssets, setSceneAssets] = useState<SceneAssetInstance[]>([]);
+  const [assignmentsVersion, setAssignmentsVersion] = useState(0);
+
   // Track initial load
   const hasLoadedRef = useRef(false);
+
+  // Load assignments + scene assets
+  useEffect(() => {
+    if (!projectId || !sceneId) return;
+    (async () => {
+      try {
+        const [assignments, assets] = await Promise.all([
+          shotAssetAssignmentService.listForScene(projectId, sceneId),
+          sceneAssetService.listSceneAssets(projectId, sceneId),
+        ]);
+        setShotAssignments(assignments);
+        setSceneAssets(assets);
+      } catch (err) {
+        console.error('Failed to load shot assignments:', err);
+      }
+    })();
+  }, [projectId, sceneId, assignmentsVersion]);
+
+  // Auto-populate if no assignments (§10A)
+  useShotAssetAutoPopulate({
+    projectId,
+    sceneId,
+    enabled: sceneAssets.length > 0 && shotAssignments.length === 0 && assignmentsVersion === 0,
+    onPopulated: (result) => {
+      if (result.created > 0) {
+        toast({ title: 'Assignments initialized', description: `Created assignments for all shots.` });
+        setAssignmentsVersion(v => v + 1);
+      }
+    },
+  });
+
+  // Group assignments by shot UUID
+  const assignmentsByShot = shotAssignments.reduce<Record<string, ShotAssetAssignment[]>>((acc, a) => {
+    if (!acc[a.shot_id]) acc[a.shot_id] = [];
+    acc[a.shot_id].push(a);
+    return acc;
+  }, {});
 
   // Load prompts on mount
   useEffect(() => {
@@ -577,6 +623,19 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                               <p><span className="text-muted-foreground">Camera:</span> {promptSet.camera}</p>
                             )}
                           </div>
+                        )}
+
+                        {/* Per-Shot Asset Panel (§9A) */}
+                        {promptSet.shotUuid && (
+                          <ShotAssetPanel
+                            projectId={projectId}
+                            sceneId={sceneId}
+                            shotId={promptSet.shotUuid}
+                            shotLabel={promptSet.shotId}
+                            assignments={assignmentsByShot[promptSet.shotUuid] || []}
+                            sceneAssets={sceneAssets}
+                            onAssignmentsChanged={() => setAssignmentsVersion(v => v + 1)}
+                          />
                         )}
 
                         {/* Reference Image Thumbnails */}
