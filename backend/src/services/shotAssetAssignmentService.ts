@@ -29,9 +29,9 @@ export interface ShotAssetAssignmentWithData extends ShotAssetAssignment {
     project_asset?: {
       id: string;
       name: string;
-      type: string;
+      asset_type: string;
       description: string;
-      master_image_url?: string | null;
+      image_key_url?: string | null;
       angle_variants?: { angle_type: string; image_url: string }[];
     };
   };
@@ -56,9 +56,9 @@ class ShotAssetAssignmentService {
           project_asset:project_assets (
             id,
             name,
-            type,
+            asset_type,
             description,
-            master_image_url,
+            image_key_url,
             angle_variants:asset_angle_variants (
               angle_type,
               image_url
@@ -101,9 +101,9 @@ class ShotAssetAssignmentService {
           project_asset:project_assets (
             id,
             name,
-            type,
+            asset_type,
             description,
-            master_image_url,
+            image_key_url,
             angle_variants:asset_angle_variants (
               angle_type,
               image_url
