@@ -139,7 +139,7 @@ export function ShotAssetPanel({
           ) : (
             assignments.map(assignment => {
               const instance = assignment.scene_asset_instance;
-              const assetType = instance?.project_asset?.type || 'prop';
+              const assetType = instance?.project_asset?.asset_type || 'prop';
               const Icon = typeIcons[assetType] || Package;
               const assetName = instance?.project_asset?.name || 'Unknown';
               const isPassThrough = assignment.presence_type === 'passes_through';
