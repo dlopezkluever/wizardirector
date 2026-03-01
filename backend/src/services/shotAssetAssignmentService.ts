@@ -240,6 +240,34 @@ class ShotAssetAssignmentService {
     return { created: newRows.length, existing: existingSet.size };
   }
 
+  /** Delete ALL assignments for a scene (used by bulk templates before re-applying) */
+  async deleteAllForScene(sceneId: string): Promise<number> {
+    // Get all shot IDs for the scene
+    const { data: shots, error: shotsError } = await supabase
+      .from('shots')
+      .select('id')
+      .eq('scene_id', sceneId);
+
+    if (shotsError) throw new Error(`Failed to get shots: ${shotsError.message}`);
+    if (!shots || shots.length === 0) return 0;
+
+    const shotIds = shots.map(s => s.id);
+
+    // Count before delete
+    const { count } = await supabase
+      .from('shot_asset_assignments')
+      .select('id', { count: 'exact', head: true })
+      .in('shot_id', shotIds);
+
+    const { error } = await supabase
+      .from('shot_asset_assignments')
+      .delete()
+      .in('shot_id', shotIds);
+
+    if (error) throw new Error(`Failed to delete all assignments: ${error.message}`);
+    return count || 0;
+  }
+
   /** Check if a scene has any assignments */
   async hasAssignments(sceneId: string): Promise<boolean> {
     const { data: shots, error: shotsError } = await supabase
