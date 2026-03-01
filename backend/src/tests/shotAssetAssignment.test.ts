@@ -385,4 +385,71 @@ describe('ShotAssetAssignmentService', () => {
       expect(mockFrom).toHaveBeenCalledTimes(2);
     });
   });
+
+  // =========================================================================
+  // deleteAllForScene
+  // =========================================================================
+
+  describe('deleteAllForScene', () => {
+    it('should return 0 when scene has no shots', async () => {
+      mockFrom.mockReturnValueOnce(mockChain({ data: [], error: null }));
+
+      const result = await shotAssetAssignmentService.deleteAllForScene('scene-1');
+      expect(result).toBe(0);
+    });
+
+    it('should return 0 when scene has shots but no assignments', async () => {
+      // shots query
+      mockFrom.mockReturnValueOnce(
+        mockChain({ data: [{ id: 's1' }, { id: 's2' }], error: null })
+      );
+      // count query
+      mockFrom.mockReturnValueOnce(mockChain({ data: null, error: null, count: 0 }));
+      // delete query
+      mockFrom.mockReturnValueOnce(mockChain({ data: null, error: null }));
+
+      const result = await shotAssetAssignmentService.deleteAllForScene('scene-1');
+      expect(result).toBe(0);
+    });
+
+    it('should delete all assignments and return count', async () => {
+      // shots query
+      mockFrom.mockReturnValueOnce(
+        mockChain({ data: [{ id: 's1' }, { id: 's2' }], error: null })
+      );
+      // count query — 5 assignments exist
+      mockFrom.mockReturnValueOnce(mockChain({ data: null, error: null, count: 5 }));
+      // delete query
+      mockFrom.mockReturnValueOnce(mockChain({ data: null, error: null }));
+
+      const result = await shotAssetAssignmentService.deleteAllForScene('scene-1');
+      expect(result).toBe(5);
+      expect(mockFrom).toHaveBeenCalledTimes(3);
+    });
+
+    it('should throw on shots query error', async () => {
+      mockFrom.mockReturnValueOnce(
+        mockChain({ data: null, error: { message: 'Shots query failed' } })
+      );
+
+      await expect(shotAssetAssignmentService.deleteAllForScene('scene-1'))
+        .rejects.toThrow('Failed to get shots: Shots query failed');
+    });
+
+    it('should throw on delete error', async () => {
+      // shots
+      mockFrom.mockReturnValueOnce(
+        mockChain({ data: [{ id: 's1' }], error: null })
+      );
+      // count
+      mockFrom.mockReturnValueOnce(mockChain({ data: null, error: null, count: 2 }));
+      // delete fails
+      mockFrom.mockReturnValueOnce(
+        mockChain({ data: null, error: { message: 'Delete failed' } })
+      );
+
+      await expect(shotAssetAssignmentService.deleteAllForScene('scene-1'))
+        .rejects.toThrow('Failed to delete all assignments: Delete failed');
+    });
+  });
 });
