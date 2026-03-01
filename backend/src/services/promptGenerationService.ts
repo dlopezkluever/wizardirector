@@ -139,12 +139,32 @@ export function enrichAssetsWithAngleMatch(
 }
 
 /**
+ * Extract a concise trait summary from an asset's effective_description.
+ * Takes the first sentence or clause (up to `maxLen` chars), truncated at a word boundary.
+ */
+export function extractTraitSummary(description: string | undefined, maxLen = 80): string {
+  if (!description || description.trim().length === 0) return '';
+  const trimmed = description.trim();
+  // Take up to first sentence-ending punctuation
+  const sentenceMatch = trimmed.match(/^[^.!?\n]+[.!?]?/);
+  let snippet = sentenceMatch ? sentenceMatch[0].trim() : trimmed;
+  if (snippet.length <= maxLen) return snippet;
+  // Truncate at word boundary
+  const truncated = snippet.slice(0, maxLen);
+  const lastSpace = truncated.lastIndexOf(' ');
+  return (lastSpace > 0 ? truncated.slice(0, lastSpace) : truncated) + '...';
+}
+
+/**
  * 4D.2: Build a numbered image manifest for the LLM system prompt and an ordered
  * list of reference images for the image generation API.
  *
  * Sorts assets: characters → locations → props.
  * For each asset with an image, picks the best URL:
  *   matched_angle_url > image_key_url (scene instance) > master_image_url
+ *
+ * Manifest lines include a trait summary from effective_description for better
+ * character-to-reference image anchoring.
  */
 export function buildNumberedImageManifest(
   assets: SceneAssetInstanceData[]
@@ -157,6 +177,7 @@ export function buildNumberedImageManifest(
   });
 
   const imageOrder: ReferenceImageOrderEntry[] = [];
+  const lines: string[] = [];
   let index = 1;
 
   for (const asset of sorted) {
@@ -171,6 +192,14 @@ export function buildNumberedImageManifest(
       url,
       type,
     });
+
+    // Build manifest line with trait summary for better LLM anchoring
+    let line = `Image #${index}: ${name} (${type})`;
+    const traitSummary = extractTraitSummary(asset.effective_description);
+    if (traitSummary) {
+      line += ` — ${traitSummary}`;
+    }
+    lines.push(line);
     index++;
   }
 
@@ -178,7 +207,6 @@ export function buildNumberedImageManifest(
     return { manifest: '', imageOrder: [] };
   }
 
-  const lines = imageOrder.map(entry => `${entry.label}: ${entry.assetName} (${entry.type})`);
   const manifest = `REFERENCE IMAGES (attached alongside this prompt during image generation):\n${lines.join('\n')}`;
 
   return { manifest, imageOrder };
@@ -554,6 +582,16 @@ export class PromptGenerationService {
    * Determine continuity link between this shot and the previous shot.
    * Purely deterministic — no LLM. Fast and free.
    */
+  /**
+   * DESIGN NOTE — Presence-type "enters" vs continuity "match":
+   *
+   * When startContinuity is 'match', the start frame is a pixel-identical copy
+   * of the previous shot's end frame. An "enters" asset is excluded from the
+   * start frame's *reference image set* (so the image generator won't anchor it),
+   * but the asset may still be VISIBLE in the start frame if it was already on
+   * screen in the previous shot's end frame. "enters" means "reference image
+   * excluded from start frame", not "asset invisible in start frame".
+   */
   private determineContinuityLink(
     currentShot: ShotData,
     previousShot: ShotData | null,
@@ -696,6 +734,7 @@ RULES:
 - NO action verbs, NO dialogue, NO sound, NO movement — this is a still image
 - Reference character appearances EXACTLY from the asset descriptions
 - If a character has a reference image noted, describe them with extra precision
+- When reference images are listed, ANCHOR each character to their reference image using the trait summary (e.g., 'the red-haired woman from Image #1')
 - Output ONLY the prompt text as a single paragraph, max 1200 characters
 - No JSON, no headers, no formatting
 
