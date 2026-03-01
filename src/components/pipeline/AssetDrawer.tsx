@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  User, MapPin, Package, Search, X, Loader2, 
-  Grid3x3, List, Copy, Check, Frown
+import {
+  User, MapPin, Package, Search, X, Loader2,
+  Grid3x3, List, Copy, Check, Frown, ArrowLeft, Film
 } from 'lucide-react';
 
 import {
@@ -27,12 +27,15 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { assetService } from '@/lib/services/assetService';
 import { projectAssetService } from '@/lib/services/projectAssetService';
 import { sceneAssetService } from '@/lib/services/sceneAssetService';
+import { shotAssetAssignmentService } from '@/lib/services/shotAssetAssignmentService';
 import { AssetMatchModal } from './AssetMatchModal';
 import type { GlobalAsset, AssetType, ProjectAsset } from '@/types/asset';
-import type { SceneAssetInstance } from '@/types/scene';
+import type { SceneAssetInstance, Shot } from '@/types/scene';
 import { cn } from '@/lib/utils';
 
 interface AssetDrawerProps {
@@ -44,7 +47,11 @@ interface AssetDrawerProps {
   /** Optional scene context: after cloning, create a scene_asset_instance and call onSceneInstanceCreated */
   sceneId?: string;
   onSceneInstanceCreated?: (instance: SceneAssetInstance) => void;
+  /** Optional shot list for shot checklist step (§8A) */
+  shots?: Shot[];
 }
+
+type DrawerStep = 'browse' | 'shot-checklist';
 
 type AssetSource = 'project' | 'global';
 
@@ -77,6 +84,7 @@ export const AssetDrawer = ({
   filterType,
   sceneId,
   onSceneInstanceCreated,
+  shots = [],
 }: AssetDrawerProps) => {
   const [source, setSource] = useState<AssetSource>('project');
   const [searchQuery, setSearchQuery] = useState('');
@@ -86,6 +94,66 @@ export const AssetDrawer = ({
   const [matchModalOpen, setMatchModalOpen] = useState(false);
   const [selectedGlobalAsset, setSelectedGlobalAsset] = useState<GlobalAsset | null>(null);
   const [extractedAssets, setExtractedAssets] = useState<ProjectAsset[]>([]);
+
+  // Shot checklist state (§8A)
+  const [step, setStep] = useState<DrawerStep>('browse');
+  const [pendingAsset, setPendingAsset] = useState<ProjectAsset | null>(null);
+  const [selectedShotIds, setSelectedShotIds] = useState<Set<string>>(new Set());
+  const [isAddingToShots, setIsAddingToShots] = useState(false);
+
+  const resetChecklist = useCallback(() => {
+    setStep('browse');
+    setPendingAsset(null);
+    setSelectedShotIds(new Set());
+    setIsAddingToShots(false);
+  }, []);
+
+  /** Show shot checklist if shots exist, otherwise add directly */
+  const startShotChecklist = useCallback((asset: ProjectAsset) => {
+    if (shots.length === 0) {
+      // No shots yet — skip checklist, add directly
+      return false;
+    }
+    setPendingAsset(asset);
+    setSelectedShotIds(new Set(shots.map(s => s.id)));
+    setStep('shot-checklist');
+    return true;
+  }, [shots]);
+
+  /** Confirm shot checklist: create scene instance + assignments */
+  const confirmShotChecklist = useCallback(async () => {
+    if (!pendingAsset || !sceneId || !onSceneInstanceCreated) return;
+    setIsAddingToShots(true);
+    try {
+      // 1. Create the scene asset instance
+      const instance = await sceneAssetService.createSceneAsset(projectId, {
+        sceneId,
+        projectAssetId: pendingAsset.id,
+        statusTags: [],
+        carryForward: true,
+      });
+
+      // 2. Create shot assignments for selected shots
+      if (selectedShotIds.size > 0) {
+        const assignments = Array.from(selectedShotIds).map(shotId => ({
+          shotId,
+          instanceId: instance.id,
+          presenceType: 'throughout' as const,
+        }));
+        await shotAssetAssignmentService.createAssignments(projectId, sceneId, assignments);
+      }
+
+      onSceneInstanceCreated(instance);
+      toast.success(`Added "${pendingAsset.name}" to ${selectedShotIds.size} shot${selectedShotIds.size !== 1 ? 's' : ''}`);
+      resetChecklist();
+      onClose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to add asset';
+      toast.error(msg);
+    } finally {
+      setIsAddingToShots(false);
+    }
+  }, [pendingAsset, sceneId, projectId, selectedShotIds, onSceneInstanceCreated, resetChecklist, onClose]);
 
   const { data: projectAssets = [], isLoading: loadingProject } = useQuery({
     queryKey: ['project-assets', projectId],
@@ -124,6 +192,10 @@ export const AssetDrawer = ({
       onClose();
       return;
     }
+    // If shots exist, show checklist first
+    if (startShotChecklist(asset)) return;
+
+    // No shots — add directly
     try {
       const instance = await sceneAssetService.createSceneAsset(projectId, {
         sceneId,
@@ -140,9 +212,13 @@ export const AssetDrawer = ({
     }
   };
 
-  /** When scene context is provided, create a scene_asset_instance after we have a project asset. */
+  /** When scene context is provided, create a scene_asset_instance after we have a project asset.
+   *  Routes through shot checklist if shots are available. */
   const ensureSceneInstanceIfNeeded = async (projectAsset: ProjectAsset): Promise<SceneAssetInstance | null> => {
     if (!sceneId || !onSceneInstanceCreated) return null;
+    // If shots exist, route to checklist step instead of creating immediately
+    if (startShotChecklist(projectAsset)) return null;
+
     try {
       const instance = await sceneAssetService.createSceneAsset(projectId, {
         sceneId,
@@ -234,8 +310,93 @@ export const AssetDrawer = ({
   };
 
   return (
-    <Drawer open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Drawer open={isOpen} onOpenChange={(open) => { if (!open) { resetChecklist(); onClose(); } }}>
       <DrawerContent className="h-[90vh]">
+
+        {/* ── Shot Checklist Step (§8A) ── */}
+        {step === 'shot-checklist' && pendingAsset && (
+          <>
+            <DrawerHeader className="border-b">
+              <div className="flex items-center justify-between">
+                <div className="flex-1 min-w-0">
+                  <DrawerTitle className="flex items-center gap-2">
+                    <Film className="h-5 w-5 text-primary" />
+                    Add &ldquo;{pendingAsset.name}&rdquo; to Scene
+                  </DrawerTitle>
+                  <DrawerDescription>
+                    Select which shots this asset appears in. Presence type defaults to &ldquo;Throughout&rdquo; (editable per-shot in Stage 9).
+                  </DrawerDescription>
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => { resetChecklist(); onClose(); }} className="shrink-0">
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </DrawerHeader>
+            <ScrollArea className="flex-1 p-4">
+              <div className="space-y-2">
+                {shots.map(shot => {
+                  const checked = selectedShotIds.has(shot.id);
+                  return (
+                    <label
+                      key={shot.id}
+                      className={cn(
+                        'flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
+                        checked ? 'border-primary/50 bg-primary/5' : 'border-border hover:bg-muted/50'
+                      )}
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(val) => {
+                          setSelectedShotIds(prev => {
+                            const next = new Set(prev);
+                            if (val) next.add(shot.id);
+                            else next.delete(shot.id);
+                            return next;
+                          });
+                        }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm">
+                          Shot {shot.shotId}
+                          <span className="text-muted-foreground font-normal ml-2">— {shot.setting}</span>
+                          <span className="text-muted-foreground font-normal ml-1">({shot.duration}s)</span>
+                        </div>
+                        {shot.action && (
+                          <p className="text-xs text-muted-foreground truncate mt-0.5">{shot.action}</p>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+            <div className="border-t p-4 flex items-center justify-between gap-3">
+              <Button variant="ghost" size="sm" onClick={resetChecklist} disabled={isAddingToShots}>
+                <ArrowLeft className="h-4 w-4 mr-1" />
+                Back
+              </Button>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">{selectedShotIds.size} of {shots.length} shots</span>
+                <Button
+                  size="sm"
+                  disabled={isAddingToShots}
+                  onClick={confirmShotChecklist}
+                >
+                  {isAddingToShots ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                  ) : (
+                    <Check className="h-4 w-4 mr-1" />
+                  )}
+                  Add to {selectedShotIds.size} shot{selectedShotIds.size !== 1 ? 's' : ''}
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ── Browse Step (default) ── */}
+        {step === 'browse' && (
+        <>
         <DrawerHeader className="border-b">
           <div className="flex items-center justify-between">
             <div className="flex-1 min-w-0">
@@ -471,6 +632,8 @@ export const AssetDrawer = ({
             )}
           </div>
         </div>
+        </>
+        )}
       </DrawerContent>
 
       {/* Asset Match Modal */}
