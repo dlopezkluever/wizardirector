@@ -8,7 +8,8 @@ import {
   Play,
   Check,
   Lock,
-  AlertTriangle
+  AlertTriangle,
+  ArrowLeft
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { StageLockStatus } from '@/lib/services/sceneStageLockService';
@@ -19,6 +20,7 @@ interface SceneWorkflowSidebarProps {
   currentStage: SceneStage;
   completedStages: SceneStage[];
   onStageSelect: (stage: SceneStage) => void;
+  onBackToScriptHub: () => void;
   stageLockStatuses?: Record<number, StageLockStatus>;
 }
 
@@ -35,6 +37,7 @@ export function SceneWorkflowSidebar({
   currentStage,
   completedStages,
   onStageSelect,
+  onBackToScriptHub,
   stageLockStatuses,
 }: SceneWorkflowSidebarProps) {
   return (
@@ -43,6 +46,20 @@ export function SceneWorkflowSidebar({
       animate={{ opacity: 1, x: 0 }}
       className="w-20 border-l border-border/50 bg-card/30 backdrop-blur-sm flex flex-col items-center py-6 gap-2"
     >
+      {/* Back to Script Hub button */}
+      <motion.button
+        onClick={onBackToScriptHub}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        className="w-14 h-14 rounded-xl flex flex-col items-center justify-center gap-1 transition-all bg-card hover:bg-card/80 text-muted-foreground hover:text-primary mb-1"
+        title="Back to Script Hub"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        <span className="text-[10px] font-medium">Scripts</span>
+      </motion.button>
+
+      <div className="w-8 border-t border-border/50" />
+
       {sceneStages.map(({ stage, label, icon: Icon }) => {
         const lockStatus = stageLockStatuses?.[stage];
         const isCurrent = currentStage === stage;
