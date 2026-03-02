@@ -12,6 +12,7 @@ import { ProjectView } from "@/pages/ProjectView";
 import StyleCapsuleLibrary from "@/pages/StyleCapsuleLibrary";
 import AssetLibrary from "@/pages/AssetLibrary";
 import { MainLayout } from "@/components/layout/MainLayout";
+import { Landing } from "@/pages/Landing";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -25,6 +26,25 @@ function AuthInitializer() {
   }, [initialize]);
 
   return null;
+}
+
+// Root route: landing for unauthenticated, dashboard for authenticated
+function LandingOrDashboard() {
+  const { user, initialized } = useAuthStore();
+
+  if (!initialized) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <Landing />;
 }
 
 // Dashboard wrapper component with navigation
@@ -101,8 +121,11 @@ const App = () => (
             }
           />
 
-          {/* Redirect root to dashboard for authenticated users, auth for others */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          {/* Public landing page */}
+          <Route path="/landing" element={<Landing />} />
+
+          {/* Root: landing for unauthenticated, dashboard redirect for authenticated */}
+          <Route path="/" element={<LandingOrDashboard />} />
 
           {/* Catch-all route */}
           <Route path="*" element={<NotFound />} />
