@@ -21,6 +21,7 @@ import { stageStateService } from '@/lib/services/stageStateService';
 import { inputProcessingService, type ProcessedInput } from '@/lib/services/inputProcessingService';
 import type { StageStatus } from '@/types/project';
 import { LockedStageHeader } from './LockedStageHeader';
+import { StageInfoButton } from './StageInfoButton';
 
 interface Stage2Content {
   variations: TreatmentVariation[];
@@ -880,6 +881,8 @@ export function Stage2Treatment({ projectId, onComplete, onBack, stageStatus, on
           </motion.div>
         )}
       </AnimatePresence>
+
+      <StageInfoButton infoKey="stage-2" />
     </div>
   );
 }

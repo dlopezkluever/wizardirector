@@ -37,6 +37,7 @@ import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import type { Shot } from '@/types/scene';
 import { LockedStageHeader } from './LockedStageHeader';
+import { StageInfoButton } from './StageInfoButton';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
@@ -1335,6 +1336,8 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <StageInfoButton infoKey="stage-7" />
     </div>
   );
 }

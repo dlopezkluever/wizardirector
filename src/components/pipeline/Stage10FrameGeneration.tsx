@@ -36,6 +36,7 @@ import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import type { ShotWithFrames, GenerationMode, Frame, ContinuityMode } from '@/types/scene';
 import { LockedStageHeader } from './LockedStageHeader';
+import { StageInfoButton } from './StageInfoButton';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
@@ -1233,6 +1234,8 @@ export function Stage10FrameGeneration({
         }}
         isConfirming={isConfirmingUnlock}
       />
+
+      <StageInfoButton infoKey="stage-10" />
     </div>
   );
 }

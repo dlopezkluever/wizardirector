@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { checkoutService } from '@/lib/services/checkoutService';
 import { LockedStageHeader } from './LockedStageHeader';
+import { StageInfoButton } from './StageInfoButton';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import { ContentAccessCarousel } from './ContentAccessCarousel';
 import { VideoPlayer } from './Stage12/VideoPlayer';
@@ -332,6 +333,8 @@ export function Stage12VideoGeneration({
           </Button>
         </div>
       )}
+
+      <StageInfoButton infoKey="stage-12" />
     </div>
   );
 }

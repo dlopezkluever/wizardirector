@@ -11,7 +11,6 @@ import {
   Edit3,
   Lock,
   AlertTriangle,
-  Info,
   Loader2,
   RefreshCw,
   Sparkles,
@@ -37,6 +36,7 @@ import { sceneAssetService } from '@/lib/services/sceneAssetService';
 import { useShotAssetAutoPopulate } from '@/lib/hooks/useShotAssetAutoPopulate';
 import type { PromptSet, ContinuityMode, ShotAssetAssignment, SceneAssetInstance } from '@/types/scene';
 import { LockedStageHeader } from './LockedStageHeader';
+import { StageInfoButton } from './StageInfoButton';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
@@ -462,6 +462,17 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
             </Button>
           </div>
 
+          {/* Bulk Template Selector */}
+          {sceneShotsData.length > 0 && sceneAssets.length > 0 && (
+            <BulkPresenceTemplates
+              projectId={projectId}
+              sceneId={sceneId}
+              sceneAssets={sceneAssets}
+              shots={sceneShotsData}
+              onApplied={() => setAssignmentsVersion(v => v + 1)}
+            />
+          )}
+
           {/* Generate button */}
           <Button
             variant="gold"
@@ -481,29 +492,6 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
               </>
             )}
           </Button>
-        </div>
-      </div>
-
-      {/* Info banner */}
-      <div className="px-6 py-3 bg-blue-500/10 border-b border-blue-500/20">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-xs text-blue-400">
-            <Info className="w-4 h-4 flex-shrink-0" />
-            <span>
-              Frame prompts are read-only by default to preserve AI-generated precision.
-              Video prompts are always editable for audio/dialogue tuning.
-            </span>
-          </div>
-          {/* Bulk Template Selector */}
-          {sceneShotsData.length > 0 && sceneAssets.length > 0 && (
-            <BulkPresenceTemplates
-              projectId={projectId}
-              sceneId={sceneId}
-              sceneAssets={sceneAssets}
-              shots={sceneShotsData}
-              onApplied={() => setAssignmentsVersion(v => v + 1)}
-            />
-          )}
         </div>
       </div>
 
@@ -1001,6 +989,8 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
         }}
         isConfirming={isConfirmingUnlock}
       />
+
+      <StageInfoButton infoKey="stage-9" />
     </div>
   );
 }

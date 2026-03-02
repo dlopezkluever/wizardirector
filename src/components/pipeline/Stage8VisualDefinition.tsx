@@ -66,6 +66,7 @@ import { useShotAssetAutoPopulate } from '@/lib/hooks/useShotAssetAutoPopulate';
 import { cn, formatSceneHeader } from '@/lib/utils';
 import type { SceneAssetInstance, SceneAssetRelevanceResult, SceneAssetSuggestion, TransformationEvent } from '@/types/scene';
 import { LockedStageHeader } from './LockedStageHeader';
+import { StageInfoButton } from './StageInfoButton';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
@@ -1047,6 +1048,8 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           }}
         />
       )}
+
+      <StageInfoButton infoKey="stage-8" />
     </div>
   );
 }

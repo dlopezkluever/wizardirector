@@ -63,6 +63,7 @@ import { SplitWizard } from './SplitWizard';
 import type { ProjectAsset, AssetPreviewEntity, AssetType, AssetDecision } from '@/types/asset';
 import type { StageStatus } from '@/types/project';
 import { LockedStageHeader } from './LockedStageHeader';
+import { StageInfoButton } from './StageInfoButton';
 
 interface Stage5AssetsProps {
   projectId: string;
@@ -1559,6 +1560,8 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
           </div>
         </TooltipProvider>
       )}
+
+      <StageInfoButton infoKey="stage-5" />
     </div>
   );
 }

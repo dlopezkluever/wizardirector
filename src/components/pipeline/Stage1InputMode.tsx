@@ -27,6 +27,7 @@ import { inputProcessingService, type ProcessedInput } from '@/lib/services/inpu
 import type { Project } from '@/types/project';
 import { StyleCapsuleSelector } from '@/components/styleCapsules/StyleCapsuleSelector';
 import { LockedStageHeader } from './LockedStageHeader';
+import { StageInfoButton } from './StageInfoButton';
 
 interface InputModeOption {
   id: InputMode;
@@ -627,6 +628,8 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
         )}
       </motion.div>
       </div>
+
+      <StageInfoButton infoKey="stage-1" />
     </div>
   );
 }
