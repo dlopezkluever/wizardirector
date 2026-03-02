@@ -26,6 +26,7 @@ export interface UpdateProjectAssetRequest {
   description?: string;
   image_prompt?: string;
   deferred?: boolean;
+  asset_type?: 'character' | 'prop' | 'location' | 'extra_archetype';
 }
 
 export interface ImageGenerationJobResponse {
@@ -775,6 +776,34 @@ class ProjectAssetService {
     }
 
     return response.json();
+  }
+
+  /**
+   * AI-merge multiple asset descriptions into a single coherent description
+   */
+  async mergeDescriptions(projectId: string, descriptions: string[]): Promise<string> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/merge-descriptions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ descriptions }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to merge descriptions');
+    }
+
+    const result = await response.json();
+    return result.mergedDescription;
   }
 
   // ============================================================================
