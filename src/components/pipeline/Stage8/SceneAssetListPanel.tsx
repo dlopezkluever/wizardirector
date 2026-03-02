@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { User, MapPin, Package, Lock, RefreshCw, Sparkles, Plus, X, Link2, Search, Filter, Copy } from 'lucide-react';
+import { User, MapPin, Package, Lock, RefreshCw, Sparkles, Plus, X, Link2, Search, Filter, Copy, MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuCheckboxItem,
+  DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -92,6 +93,8 @@ export interface SceneAssetListPanelProps {
   onRemoveAsset?: (instanceId: string) => void;
   /** 3B.9: Map of project_asset_id → shot IDs where asset appears */
   shotPresenceMap?: Map<string, string[]>;
+  /** Convert asset to transformation on another asset */
+  onConvertToTransformation?: (instance: SceneAssetInstance) => void;
 }
 
 function AssetTypeGroup({
@@ -103,6 +106,7 @@ function AssetTypeGroup({
   onToggleSelection,
   onRemoveAsset,
   shotPresenceMap,
+  onConvertToTransformation,
 }: {
   type: AssetTypeKey;
   assets: SceneAssetInstance[];
@@ -112,6 +116,7 @@ function AssetTypeGroup({
   onToggleSelection: (instanceId: string) => void;
   onRemoveAsset?: (instanceId: string) => void;
   shotPresenceMap?: Map<string, string[]>;
+  onConvertToTransformation?: (instance: SceneAssetInstance) => void;
 }) {
   const Icon = typeIcons[type];
   if (assets.length === 0) return null;
@@ -140,16 +145,39 @@ function AssetTypeGroup({
             )}
             onClick={() => onSelectAsset(instance)}
           >
-            {/* 3B.7: Remove icon on hover */}
-            {onRemoveAsset && (
-              <button
-                type="button"
-                className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive"
-                onClick={e => { e.stopPropagation(); onRemoveAsset(instance.id); }}
-                aria-label={`Remove ${name} from scene`}
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
+            {/* Context menu (visible on hover) */}
+            {(onRemoveAsset || onConvertToTransformation) && (
+              <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="p-0.5 rounded hover:bg-muted text-muted-foreground"
+                      onClick={e => e.stopPropagation()}
+                      aria-label={`Actions for ${name}`}
+                    >
+                      <MoreVertical className="w-3.5 h-3.5" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    {onConvertToTransformation && (
+                      <DropdownMenuItem onClick={e => { e.stopPropagation(); onConvertToTransformation(instance); }}>
+                        <RefreshCw className="w-3.5 h-3.5 mr-2" />
+                        Convert to Transformation...
+                      </DropdownMenuItem>
+                    )}
+                    {onRemoveAsset && (
+                      <DropdownMenuItem
+                        onClick={e => { e.stopPropagation(); onRemoveAsset(instance.id); }}
+                        className="text-destructive"
+                      >
+                        <X className="w-3.5 h-3.5 mr-2" />
+                        Remove from scene
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             )}
             <div className="flex items-center gap-2">
               <Checkbox
@@ -260,6 +288,7 @@ export function SceneAssetListPanel({
   sceneId,
   onRemoveAsset,
   shotPresenceMap,
+  onConvertToTransformation,
 }: SceneAssetListPanelProps) {
   const [filters, setFilters] = useState<AssetFilters>(defaultFilters);
   const queryClient = useQueryClient();
@@ -491,6 +520,7 @@ export function SceneAssetListPanel({
               onToggleSelection={onToggleSelection}
               onRemoveAsset={onRemoveAsset}
               shotPresenceMap={shotPresenceMap}
+              onConvertToTransformation={onConvertToTransformation}
             />
           ))}
 
