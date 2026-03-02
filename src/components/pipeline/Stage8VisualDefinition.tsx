@@ -24,6 +24,7 @@ import { Card } from '@/components/ui/card';
 import { SceneAssetListPanel, type AssetFilters } from '@/components/pipeline/Stage8/SceneAssetListPanel';
 import { VisualStateEditorPanel } from '@/components/pipeline/Stage8/VisualStateEditorPanel';
 import { TagCarryForwardPrompt, type TagCarryForwardDecision } from '@/components/pipeline/Stage8/TagCarryForwardPrompt';
+import { ConvertToTransformationDialog } from '@/components/pipeline/Stage8/ConvertToTransformationDialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -396,6 +397,8 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
   const [rightPanelMode, setRightPanelMode] = useState<RightPanelMode>('default');
   // 3B.7: Remove asset confirmation
   const [removeConfirmAssetId, setRemoveConfirmAssetId] = useState<string | null>(null);
+  // Convert to transformation state
+  const [convertingAsset, setConvertingAsset] = useState<SceneAssetInstance | null>(null);
 
   // Prior scene data for Continuity Header
   // Tag carry-forward prompt (Task 5, Feature 5.3)
@@ -937,6 +940,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           sceneId={sceneId}
           onRemoveAsset={handleRemoveFromScene}
           shotPresenceMap={shotPresenceMap}
+          onConvertToTransformation={setConvertingAsset}
         />
 
         <VisualStateEditorPanel
@@ -1024,6 +1028,25 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Convert to Transformation Dialog */}
+      {convertingAsset && (
+        <ConvertToTransformationDialog
+          open={!!convertingAsset}
+          onOpenChange={open => { if (!open) setConvertingAsset(null); }}
+          absorbedAsset={convertingAsset}
+          sceneAssets={sceneAssets}
+          projectId={projectId}
+          sceneId={sceneId}
+          shots={shots}
+          sceneScriptExcerpt={currentScene?.scriptExcerpt}
+          onComplete={() => {
+            setConvertingAsset(null);
+            refetch();
+            queryClient.invalidateQueries({ queryKey: ['transformation-events', projectId, sceneId] });
+          }}
+        />
+      )}
     </div>
   );
 }
