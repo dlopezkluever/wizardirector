@@ -381,8 +381,15 @@ Write the post-transformation visual description. What does ${assetName} look li
     triggerShotId: string,
     sceneAssetInstanceId: string,
     transformationType: TransformationType,
-    sceneId: string
-  ): Promise<{ post_description: string; transformation_narrative: string }> {
+    sceneId: string,
+    absorbedInstanceId?: string
+  ): Promise<{
+    post_description: string;
+    transformation_narrative: string;
+    trigger_shot_id?: string;
+    transformation_type?: TransformationType;
+    completion_shot_id?: string;
+  }> {
     // Fetch trigger shot fields
     const { data: shot, error: shotError } = await supabase
       .from('shots')
@@ -414,6 +421,48 @@ Write the post-transformation visual description. What does ${assetName} look li
       .eq('id', sceneId)
       .single();
 
+    // Handle absorbed instance context for convert-to-transformation flow
+    let absorbedContext = '';
+    let inferredTriggerShotId: string | undefined;
+    let inferredType: TransformationType | undefined;
+    let inferredCompletionShotId: string | undefined;
+
+    if (absorbedInstanceId) {
+      // Fetch absorbed instance details
+      const { data: absorbedInst } = await supabase
+        .from('scene_asset_instances')
+        .select(`
+          effective_description,
+          image_key_url,
+          project_asset:project_assets(name, asset_type)
+        `)
+        .eq('id', absorbedInstanceId)
+        .single();
+
+      if (absorbedInst) {
+        const absorbedName = (absorbedInst.project_asset as any)?.name ?? 'absorbed asset';
+        absorbedContext = `\n\nAbsorbed asset "${absorbedName}" description: ${absorbedInst.effective_description ?? '(none)'}`;
+      }
+
+      // Infer trigger shot from absorbed instance's shot assignments
+      const { data: absorbedAssignments } = await supabase
+        .from('shot_asset_assignments')
+        .select('shot_id, shots!inner(shot_order)')
+        .eq('scene_asset_instance_id', absorbedInstanceId)
+        .order('shots(shot_order)', { ascending: true });
+
+      if (absorbedAssignments && absorbedAssignments.length > 0) {
+        // First assigned shot = trigger
+        inferredTriggerShotId = absorbedAssignments[0].shot_id;
+        if (absorbedAssignments.length === 1) {
+          inferredType = 'instant';
+        } else {
+          inferredType = 'gradual';
+          inferredCompletionShotId = absorbedAssignments[absorbedAssignments.length - 1].shot_id;
+        }
+      }
+    }
+
     const typeLabel = transformationType === 'instant'
       ? 'between-shots (off-camera)'
       : transformationType === 'within_shot'
@@ -434,7 +483,7 @@ Trigger shot dialogue: ${shot.dialogue ?? '(none)'}
 Trigger shot setting: ${shot.setting ?? '(none)'}
 Trigger shot camera: ${shot.camera ?? '(none)'}
 Characters in shot: ${(shot.characters_foreground ?? []).join(', ') || '(none)'}
-Scene script excerpt: ${scene?.script_excerpt?.substring(0, 800) ?? '(none)'}
+Scene script excerpt: ${scene?.script_excerpt?.substring(0, 800) ?? '(none)'}${absorbedContext}
 
 Based on this context, what transformation does ${assetName} undergo? Write the post-transformation appearance and the transformation narrative.`,
       temperature: 0.5,
@@ -451,12 +500,18 @@ Based on this context, what transformation does ${assetName} undergo? Write the 
       return {
         post_description: (parsed.post_description ?? '').substring(0, 500),
         transformation_narrative: (parsed.transformation_narrative ?? '').substring(0, 500),
+        ...(inferredTriggerShotId && { trigger_shot_id: inferredTriggerShotId }),
+        ...(inferredType && { transformation_type: inferredType }),
+        ...(inferredCompletionShotId && { completion_shot_id: inferredCompletionShotId }),
       };
     } catch {
       // If JSON parsing fails, use the raw content as post_description
       return {
         post_description: response.content.trim().substring(0, 500),
         transformation_narrative: '',
+        ...(inferredTriggerShotId && { trigger_shot_id: inferredTriggerShotId }),
+        ...(inferredType && { transformation_type: inferredType }),
+        ...(inferredCompletionShotId && { completion_shot_id: inferredCompletionShotId }),
       };
     }
   }
