@@ -554,7 +554,7 @@ router.put('/:projectId/assets/:assetId', async (req, res) => {
     try {
         const userId = req.user!.id;
         const { projectId, assetId } = req.params;
-        const { name, description, image_prompt, deferred } = req.body;
+        const { name, description, image_prompt, deferred, asset_type } = req.body;
 
         // Verify project ownership
         const { data: project, error: projectError } = await supabase
@@ -582,7 +582,7 @@ router.put('/:projectId/assets/:assetId', async (req, res) => {
 
         // Allow deferred toggling regardless of lock state
         // For other fields, check locked status
-        const isOnlyDeferredUpdate = deferred !== undefined && name === undefined && description === undefined && image_prompt === undefined;
+        const isOnlyDeferredUpdate = deferred !== undefined && name === undefined && description === undefined && image_prompt === undefined && asset_type === undefined;
         if (existingAsset.locked && !isOnlyDeferredUpdate) {
             return res.status(400).json({
                 error: 'Cannot modify locked asset'
@@ -613,6 +613,16 @@ router.put('/:projectId/assets/:assetId', async (req, res) => {
             updates.image_prompt = image_prompt;
             if (existingAsset.global_asset_id) {
                 fieldsToTrack.push('image_prompt');
+            }
+        }
+        if (asset_type !== undefined) {
+            const validTypes = ['character', 'prop', 'location', 'extra_archetype'];
+            if (!validTypes.includes(asset_type)) {
+                return res.status(400).json({ error: `Invalid asset type: ${asset_type}` });
+            }
+            updates.asset_type = asset_type;
+            if (existingAsset.global_asset_id) {
+                fieldsToTrack.push('asset_type');
             }
         }
 
@@ -709,7 +719,7 @@ router.post('/:projectId/assets/merge', async (req, res) => {
     try {
         const userId = req.user!.id;
         const { projectId } = req.params;
-        const { survivorAssetId, absorbedAssetIds, updatedName } = req.body;
+        const { survivorAssetId, absorbedAssetIds, updatedName, updatedDescription } = req.body;
 
         if (!survivorAssetId || !Array.isArray(absorbedAssetIds) || absorbedAssetIds.length === 0) {
             return res.status(400).json({
@@ -749,26 +759,21 @@ router.post('/:projectId/assets/merge', async (req, res) => {
             });
         }
 
-        // Validate: all same asset_type
         const survivor = assets.find((a: any) => a.id === survivorAssetId) as any;
-        const differentType = assets.find((a: any) => a.asset_type !== survivor.asset_type);
-        if (differentType) {
-            return res.status(400).json({
-                error: `All assets must be the same type. "${(differentType as any).name}" is ${(differentType as any).asset_type}, survivor is ${survivor.asset_type}`
-            });
-        }
 
         // 1. Re-point scene_asset_instances from absorbed → survivor
         //    Handle duplicates: if survivor already has an instance for the same scene,
         //    delete the absorbed instance instead of re-pointing.
         let instancesRepointed = 0;
+        let assignmentsMigrated = 0;
 
         // Get existing survivor instances (to detect duplicates)
         const { data: survivorInstances } = await supabase
             .from('scene_asset_instances')
-            .select('scene_id')
+            .select('id, scene_id')
             .eq('project_asset_id', survivorAssetId);
 
+        const survivorSceneMap = new Map((survivorInstances || []).map((i: any) => [i.scene_id, i.id]));
         const survivorSceneIds = new Set((survivorInstances || []).map((i: any) => i.scene_id));
 
         // Get absorbed instances
@@ -796,6 +801,53 @@ router.post('/:projectId/assets/merge', async (req, res) => {
                 instancesRepointed = toRepoint.length;
             }
 
+            // Migrate shot_asset_assignments from absorbed duplicate instances before deleting
+            for (const absorbedInst of toDelete) {
+                const survivorInstId = survivorSceneMap.get(absorbedInst.scene_id);
+                if (!survivorInstId) continue;
+
+                // Fetch absorbed instance's shot assignments
+                const { data: absorbedAssignments } = await supabase
+                    .from('shot_asset_assignments')
+                    .select('id, shot_id, presence_type')
+                    .eq('scene_asset_instance_id', absorbedInst.id);
+
+                if (!absorbedAssignments?.length) continue;
+
+                // Fetch survivor instance's shot assignments for conflict detection
+                const { data: survivorAssignments } = await supabase
+                    .from('shot_asset_assignments')
+                    .select('id, shot_id, presence_type')
+                    .eq('scene_asset_instance_id', survivorInstId);
+
+                const survivorByShot = new Map((survivorAssignments || []).map((a: any) => [a.shot_id, a]));
+
+                for (const absorbed of absorbedAssignments) {
+                    const existing = survivorByShot.get(absorbed.shot_id);
+                    if (!existing) {
+                        // No conflict: re-point to survivor instance
+                        await supabase.from('shot_asset_assignments')
+                            .update({ scene_asset_instance_id: survivorInstId })
+                            .eq('id', absorbed.id);
+                        assignmentsMigrated++;
+                    } else {
+                        // Conflict: compare specificity
+                        const specificity = (t: string) =>
+                            ['enters', 'exits', 'passes_through'].includes(t) ? 3 : 1;
+                        if (specificity(absorbed.presence_type) > specificity(existing.presence_type)) {
+                            // Absorbed is more specific — update survivor's assignment
+                            await supabase.from('shot_asset_assignments')
+                                .update({ presence_type: absorbed.presence_type })
+                                .eq('id', existing.id);
+                            assignmentsMigrated++;
+                        }
+                        // Delete absorbed assignment (cascade will also handle it, but explicit is cleaner)
+                        await supabase.from('shot_asset_assignments')
+                            .delete().eq('id', absorbed.id);
+                    }
+                }
+            }
+
             // Delete duplicate instances
             if (toDelete.length > 0) {
                 const deleteIds = toDelete.map((i: any) => i.id);
@@ -816,10 +868,13 @@ router.post('/:projectId/assets/merge', async (req, res) => {
         }
         const unionedScenes = Array.from(allSceneNumbers).sort((a, b) => a - b);
 
-        // 3. Update survivor: scene_numbers + optional name
+        // 3. Update survivor: scene_numbers + optional name/description
         const updatePayload: any = { scene_numbers: unionedScenes };
         if (updatedName && updatedName.trim()) {
             updatePayload.name = updatedName.trim();
+        }
+        if (updatedDescription !== undefined) {
+            updatePayload.description = updatedDescription;
         }
 
         const { data: updatedSurvivor, error: updateError } = await supabase
@@ -854,10 +909,55 @@ router.post('/:projectId/assets/merge', async (req, res) => {
             survivor: updatedSurvivor,
             instancesRepointed,
             assetsAbsorbed: absorbedAssetIds.length,
+            assignmentsMigrated,
         });
     } catch (error) {
         console.error('[ProjectAssets] Merge error:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/assets/merge-descriptions
+ * Use LLM to intelligently merge multiple asset descriptions into one.
+ */
+router.post('/:projectId/assets/merge-descriptions', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId } = req.params;
+        const { descriptions } = req.body;
+
+        if (!Array.isArray(descriptions) || descriptions.length < 2) {
+            return res.status(400).json({ error: 'descriptions must be an array of at least 2 strings' });
+        }
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Use existing mergeDescriptions — combine all absorbed into one, then merge with survivor
+        // First description is treated as the "base" (survivor), rest are merged in
+        const [survivorDesc, ...absorbedDescs] = descriptions;
+        const combinedAbsorbed = absorbedDescs.filter(Boolean).join('\n\n');
+
+        const mergedDescription = await mergeDescriptions(
+            survivorDesc || '',
+            combinedAbsorbed,
+            'merge'
+        );
+
+        res.json({ mergedDescription });
+    } catch (error) {
+        console.error('[ProjectAssets] Merge descriptions error:', error);
+        res.status(500).json({ error: 'Failed to merge descriptions' });
     }
 });
 
