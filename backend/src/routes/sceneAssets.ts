@@ -1751,7 +1751,7 @@ router.post('/:projectId/scenes/:sceneId/transformation-events/:eventId/generate
 router.post('/:projectId/scenes/:sceneId/transformation-events/generate-prefill', async (req, res) => {
   try {
     const { sceneId } = req.params;
-    const { trigger_shot_id, scene_asset_instance_id, transformation_type } = req.body;
+    const { trigger_shot_id, scene_asset_instance_id, transformation_type, absorbed_instance_id } = req.body;
 
     if (!trigger_shot_id || !scene_asset_instance_id) {
       return res.status(400).json({ error: 'trigger_shot_id and scene_asset_instance_id are required' });
@@ -1761,7 +1761,8 @@ router.post('/:projectId/scenes/:sceneId/transformation-events/generate-prefill'
       trigger_shot_id,
       scene_asset_instance_id,
       transformation_type || 'instant',
-      sceneId
+      sceneId,
+      absorbed_instance_id
     );
 
     res.json(result);
