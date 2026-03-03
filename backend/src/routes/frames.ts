@@ -1,10 +1,28 @@
 import { Router } from 'express';
+import multer from 'multer';
+import path from 'path';
 import { supabase } from '../config/supabase.js';
 import { frameGenerationService } from '../services/frameGenerationService.js';
 import { promptGenerationService, enrichAssetsWithAngleMatch } from '../services/promptGenerationService.js';
 import type { ShotData, SceneAssetInstanceData } from '../services/promptGenerationService.js';
 import { StyleCapsuleService } from '../services/styleCapsuleService.js';
 import { transformationEventService } from '../services/transformationEventService.js';
+
+// Configure multer for frame image uploads
+const frameStorage = multer.memoryStorage();
+const frameUpload = multer({
+    storage: frameStorage,
+    limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB limit
+    },
+    fileFilter: (_req, file, cb) => {
+        const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
+        if (!allowedTypes.includes(file.mimetype)) {
+            return cb(new Error('Invalid file type. Only PNG, JPEG, and WebP are allowed.'));
+        }
+        cb(null, true);
+    },
+});
 
 const router = Router();
 
@@ -751,6 +769,265 @@ router.post('/:projectId/scenes/:sceneId/shots/:shotId/chain-from-end-frame', as
 });
 
 /**
+ * POST /api/projects/:projectId/scenes/:sceneId/shots/:shotId/add-frame-as-reference
+ * Add a frame image as a continuity reference for a shot's start or end frame
+ */
+router.post('/:projectId/scenes/:sceneId/shots/:shotId/add-frame-as-reference', async (req, res) => {
+    try {
+        const { projectId, sceneId, shotId } = req.params;
+        const { sourceFrameId, targetFrameType } = req.body;
+        const userId = req.user!.id;
+
+        if (!sourceFrameId || typeof sourceFrameId !== 'string') {
+            return res.status(400).json({ error: 'sourceFrameId is required' });
+        }
+        if (!targetFrameType || !['start', 'end'].includes(targetFrameType)) {
+            return res.status(400).json({ error: 'targetFrameType must be "start" or "end"' });
+        }
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Fetch source frame
+        const { data: sourceFrame, error: sourceError } = await supabase
+            .from('frames')
+            .select('id, image_url, shot_id')
+            .eq('id', sourceFrameId)
+            .single();
+
+        if (sourceError || !sourceFrame || !sourceFrame.image_url) {
+            return res.status(404).json({ error: 'Source frame not found or has no image' });
+        }
+
+        // Get source shot label
+        const { data: sourceShot } = await supabase
+            .from('shots')
+            .select('shot_id')
+            .eq('id', sourceFrame.shot_id)
+            .single();
+
+        // Get current reference_image_order for the target shot
+        const column = targetFrameType === 'start' ? 'reference_image_order' : 'end_frame_reference_image_order';
+        const { data: shot, error: shotError } = await supabase
+            .from('shots')
+            .select(column)
+            .eq('id', shotId)
+            .eq('scene_id', sceneId)
+            .single();
+
+        if (shotError || !shot) {
+            return res.status(404).json({ error: 'Shot not found' });
+        }
+
+        const existingOrder = Array.isArray((shot as any)[column]) ? (shot as any)[column] : [];
+
+        // Remove any existing continuity reference, then prepend the new one
+        const filtered = existingOrder.filter((entry: any) => entry.type !== 'continuity');
+        const newOrder = [
+            {
+                label: 'Continuity',
+                assetName: `Shot ${sourceShot?.shot_id || 'unknown'} Frame`,
+                url: sourceFrame.image_url,
+                type: 'continuity',
+            },
+            ...filtered,
+        ];
+
+        await supabase
+            .from('shots')
+            .update({ [column]: newOrder, updated_at: new Date().toISOString() })
+            .eq('id', shotId);
+
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error('Error in POST add-frame-as-reference:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/shots/:shotId/upload-frame-image
+ * Upload an image as a frame variant or reference
+ */
+router.post('/:projectId/scenes/:sceneId/shots/:shotId/upload-frame-image', frameUpload.single('image'), async (req, res) => {
+    try {
+        const { projectId, sceneId, shotId } = req.params;
+        const { frameType, usage } = req.body; // frameType: 'start'|'end', usage: 'variant'|'reference'
+        const userId = req.user!.id;
+
+        if (!req.file) {
+            return res.status(400).json({ error: 'No image file provided' });
+        }
+        if (!frameType || !['start', 'end'].includes(frameType)) {
+            return res.status(400).json({ error: 'frameType must be "start" or "end"' });
+        }
+        if (!usage || !['variant', 'reference'].includes(usage)) {
+            return res.status(400).json({ error: 'usage must be "variant" or "reference"' });
+        }
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Verify shot exists
+        const { data: shot, error: shotError } = await supabase
+            .from('shots')
+            .select('id, reference_image_order, end_frame_reference_image_order')
+            .eq('id', shotId)
+            .eq('scene_id', sceneId)
+            .single();
+
+        if (shotError || !shot) {
+            return res.status(404).json({ error: 'Shot not found' });
+        }
+
+        // Upload to Supabase Storage
+        const fileExt = path.extname(req.file.originalname);
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).substring(2, 9);
+        const storagePath = `project_${projectId}/branch_${project.active_branch_id}/scene_${sceneId}/frames/uploads/${shotId}_${frameType}_${timestamp}_${random}${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+            .from('asset-images')
+            .upload(storagePath, req.file.buffer, {
+                contentType: req.file.mimetype,
+                upsert: false,
+            });
+
+        if (uploadError) {
+            console.error('[Frames] Upload error:', uploadError);
+            return res.status(500).json({ error: 'Failed to upload image' });
+        }
+
+        const { data: urlData } = supabase.storage
+            .from('asset-images')
+            .getPublicUrl(storagePath);
+
+        const now = new Date().toISOString();
+        const publicUrl = urlData.publicUrl;
+
+        if (usage === 'variant') {
+            // Use as frame variant: create job record, update frame
+            const jobType = frameType === 'start' ? 'start_frame' : 'end_frame';
+
+            // Check if target frame exists
+            const { data: existingFrame } = await supabase
+                .from('frames')
+                .select('id, generation_count')
+                .eq('shot_id', shotId)
+                .eq('frame_type', frameType)
+                .single();
+
+            let targetFrameId: string;
+
+            if (existingFrame) {
+                // Update existing frame
+                await supabase
+                    .from('frames')
+                    .update({
+                        image_url: publicUrl,
+                        storage_path: storagePath,
+                        status: 'generated',
+                        prompt_snapshot: '[User upload]',
+                        generated_at: now,
+                        generation_count: (existingFrame.generation_count || 0) + 1,
+                        updated_at: now,
+                    })
+                    .eq('id', existingFrame.id);
+                targetFrameId = existingFrame.id;
+            } else {
+                // Create new frame
+                const { data: newFrame, error: frameErr } = await supabase
+                    .from('frames')
+                    .insert({
+                        shot_id: shotId,
+                        frame_type: frameType,
+                        image_url: publicUrl,
+                        storage_path: storagePath,
+                        status: 'generated',
+                        prompt_snapshot: '[User upload]',
+                        generated_at: now,
+                        generation_count: 1,
+                    })
+                    .select('id')
+                    .single();
+                if (frameErr || !newFrame) throw new Error('Failed to create frame');
+                targetFrameId = newFrame.id;
+            }
+
+            // Create zero-cost job record for audit trail
+            const { data: job } = await supabase
+                .from('image_generation_jobs')
+                .insert({
+                    project_id: projectId,
+                    branch_id: project.active_branch_id,
+                    scene_id: sceneId,
+                    shot_id: shotId,
+                    job_type: jobType,
+                    status: 'completed',
+                    cost_credits: 0,
+                    prompt: '[User upload — zero cost]',
+                    public_url: publicUrl,
+                    storage_path: storagePath,
+                    completed_at: now,
+                })
+                .select('id')
+                .single();
+
+            if (job) {
+                await supabase
+                    .from('frames')
+                    .update({ current_job_id: job.id })
+                    .eq('id', targetFrameId);
+            }
+
+            res.json({ success: true, imageUrl: publicUrl, frameId: targetFrameId });
+        } else {
+            // Use as reference: add to reference image order
+            const column = frameType === 'start' ? 'reference_image_order' : 'end_frame_reference_image_order';
+            const existingOrder = Array.isArray((shot as any)[column]) ? (shot as any)[column] : [];
+
+            const newOrder = [
+                ...existingOrder,
+                {
+                    label: 'User Upload',
+                    assetName: req.file.originalname || 'Upload',
+                    url: publicUrl,
+                    type: 'user_upload',
+                },
+            ];
+
+            await supabase
+                .from('shots')
+                .update({ [column]: newOrder, updated_at: now })
+                .eq('id', shotId);
+
+            res.json({ success: true, imageUrl: publicUrl });
+        }
+    } catch (error: any) {
+        console.error('Error in POST upload-frame-image:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
+/**
  * GET /api/projects/:projectId/scenes/:sceneId/frames/:frameId/generations
  * Fetch all completed generation attempts for a frame
  */
@@ -1167,6 +1444,150 @@ router.get('/:projectId/scenes/:sceneId/shots/:shotId/available-references', asy
 });
 
 /**
+ * POST /api/projects/:projectId/scenes/:sceneId/batch-link-copy
+ * Batch set match mode for all non-first shots AND copy available end frames into next start carousels
+ */
+router.post('/:projectId/scenes/:sceneId/batch-link-copy', async (req, res) => {
+    try {
+        const { projectId, sceneId } = req.params;
+        const userId = req.user!.id;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Get all shots ordered
+        const { data: allShots, error: shotsError } = await supabase
+            .from('shots')
+            .select('id, shot_id, shot_order, start_continuity')
+            .eq('scene_id', sceneId)
+            .order('shot_order', { ascending: true });
+
+        if (shotsError || !allShots || allShots.length < 2) {
+            return res.json({ copied: 0, modeSet: 0 });
+        }
+
+        let copied = 0;
+        let modeSet = 0;
+
+        for (let i = 1; i < allShots.length; i++) {
+            const currentShot = allShots[i];
+            const prevShot = allShots[i - 1];
+
+            // Set match mode
+            if (currentShot.start_continuity !== 'match') {
+                await supabase
+                    .from('shots')
+                    .update({ start_continuity: 'match', updated_at: new Date().toISOString() })
+                    .eq('id', currentShot.id);
+                modeSet++;
+            }
+
+            // Get prev shot's end frame
+            const { data: prevEndFrame } = await supabase
+                .from('frames')
+                .select('id, image_url, storage_path, status')
+                .eq('shot_id', prevShot.id)
+                .eq('frame_type', 'end')
+                .in('status', ['generated', 'approved'])
+                .single();
+
+            if (!prevEndFrame?.image_url) continue;
+
+            // Check if current shot has a start frame
+            const { data: existingStart } = await supabase
+                .from('frames')
+                .select('id, generation_count')
+                .eq('shot_id', currentShot.id)
+                .eq('frame_type', 'start')
+                .single();
+
+            const now = new Date().toISOString();
+            let targetFrameId: string;
+            let genCount: number;
+
+            if (existingStart) {
+                targetFrameId = existingStart.id;
+                genCount = existingStart.generation_count || 0;
+                await supabase
+                    .from('frames')
+                    .update({
+                        image_url: prevEndFrame.image_url,
+                        storage_path: prevEndFrame.storage_path,
+                        status: 'generated',
+                        prompt_snapshot: `[Batch copy from Shot ${prevShot.shot_id} end frame]`,
+                        generated_at: now,
+                        previous_frame_id: prevEndFrame.id,
+                        generation_count: genCount + 1,
+                        updated_at: now,
+                    })
+                    .eq('id', existingStart.id);
+            } else {
+                genCount = 0;
+                const { data: newFrame, error: frameErr } = await supabase
+                    .from('frames')
+                    .insert({
+                        shot_id: currentShot.id,
+                        frame_type: 'start',
+                        image_url: prevEndFrame.image_url,
+                        storage_path: prevEndFrame.storage_path,
+                        status: 'generated',
+                        prompt_snapshot: `[Batch copy from Shot ${prevShot.shot_id} end frame]`,
+                        generated_at: now,
+                        previous_frame_id: prevEndFrame.id,
+                        generation_count: 1,
+                    })
+                    .select('id')
+                    .single();
+                if (frameErr || !newFrame) continue;
+                targetFrameId = newFrame.id;
+            }
+
+            // Create zero-cost job
+            const { data: job } = await supabase
+                .from('image_generation_jobs')
+                .insert({
+                    project_id: projectId,
+                    branch_id: project.active_branch_id,
+                    scene_id: sceneId,
+                    shot_id: currentShot.id,
+                    job_type: 'start_frame',
+                    status: 'completed',
+                    cost_credits: 0,
+                    prompt: '[Batch link copy — zero cost]',
+                    public_url: prevEndFrame.image_url,
+                    storage_path: prevEndFrame.storage_path,
+                    completed_at: now,
+                })
+                .select('id')
+                .single();
+
+            if (job) {
+                await supabase
+                    .from('frames')
+                    .update({ current_job_id: job.id })
+                    .eq('id', targetFrameId);
+            }
+
+            copied++;
+        }
+
+        res.json({ copied, modeSet });
+    } catch (error: any) {
+        console.error('Error in POST batch-link-copy:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
+/**
  * POST /api/projects/:projectId/scenes/:sceneId/shots/:shotId/copy-frame
  * Copy a frame from one shot to another (zero cost, pixel-identical)
  */
@@ -1267,11 +1688,12 @@ router.post('/:projectId/scenes/:sceneId/shots/:shotId/copy-frame', async (req, 
         }
 
         // Create a zero-cost job record for audit trail
+        const branchResult = await supabase.from('projects').select('active_branch_id').eq('id', projectId).single();
         const { data: job } = await supabase
             .from('image_generation_jobs')
             .insert({
                 project_id: projectId,
-                branch_id: (await supabase.from('projects').select('active_branch_id').eq('id', projectId).single()).data?.active_branch_id,
+                branch_id: branchResult.data?.active_branch_id,
                 scene_id: sceneId,
                 shot_id: shotId,
                 job_type: targetFrameType === 'start' ? 'start_frame' : 'end_frame',
@@ -1279,16 +1701,20 @@ router.post('/:projectId/scenes/:sceneId/shots/:shotId/copy-frame', async (req, 
                 cost_credits: 0,
                 prompt: '[Frame copy — zero cost]',
                 public_url: sourceFrame.image_url,
+                storage_path: sourceFrame.storage_path,
                 completed_at: now,
             })
             .select('id')
             .single();
 
-        // Update frame with job ID
+        // Update frame with job ID and increment generation_count so carousel works
         if (job) {
             await supabase
                 .from('frames')
-                .update({ current_job_id: job.id })
+                .update({
+                    current_job_id: job.id,
+                    generation_count: (targetFrame.generation_count || 0) + 1,
+                })
                 .eq('id', targetFrame.id);
         }
 
