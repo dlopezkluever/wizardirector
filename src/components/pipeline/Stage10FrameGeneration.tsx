@@ -15,8 +15,8 @@ import {
   Loader2,
   Link2,
   Camera,
-  Unlink,
   Info,
+  Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -35,12 +35,13 @@ import { CostDisplay } from './CostDisplay';
 import { SliderComparison } from './SliderComparison';
 import { InpaintingModal } from './InpaintingModal';
 import { FrameGrid } from './FrameGrid';
+import { FrameUploadModal } from './FrameUploadModal';
 import { frameService, type FetchFramesResponse } from '@/lib/services/frameService';
 import { sceneService } from '@/lib/services/sceneService';
 import { promptService } from '@/lib/services/promptService';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import type { ShotWithFrames, GenerationMode, Frame, ContinuityMode } from '@/types/scene';
+import type { ShotWithFrames, GenerationMode, Frame, ContinuityMode, FrameLink } from '@/types/scene';
 import { LockedStageHeader } from './LockedStageHeader';
 import { StageInfoButton } from './StageInfoButton';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
@@ -92,6 +93,7 @@ export function Stage10FrameGeneration({
 
   // End frame prompt editor state
   const [editedEndPrompt, setEditedEndPrompt] = useState('');
+  const [showEndUploadModal, setShowEndUploadModal] = useState(false);
 
   // Prior scene data (for comparison feature — display handled by ContentAccessCarousel)
   const { data: allScenes } = useQuery({
@@ -127,6 +129,7 @@ export function Stage10FrameGeneration({
   });
 
   const shots = useMemo(() => framesData?.shots || [], [framesData?.shots]);
+  const frameLinks = useMemo(() => framesData?.links || [], [framesData?.links]);
   const costSummary = framesData?.costSummary || { totalCredits: 0, frameCount: 0 };
   const allFramesApproved = framesData?.allFramesApproved || false;
 
@@ -293,6 +296,15 @@ export function Stage10FrameGeneration({
     },
   });
 
+  // Break reactive frame link mutation
+  const breakFrameLinkMutation = useMutation({
+    mutationFn: (linkId: string) => frameService.breakFrameLink(projectId, sceneId, linkId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+      toast({ title: 'Link broken', description: 'Reactive link removed' });
+    },
+  });
+
   // Update continuity mode for a shot (from Stage 10)
   const updateContinuityMutation = useMutation({
     mutationFn: async ({ shotId, startContinuity }: { shotId: string; startContinuity: ContinuityMode }) => {
@@ -417,24 +429,48 @@ export function Stage10FrameGeneration({
     };
   }, [getPreviousShot]);
 
-  // Build copySource info for FramePanel
-  const getCopySource = useCallback((shot: ShotWithFrames) => {
-    if (!shot.startFrame?.previousFrameId) return undefined;
-    // Find the source frame in all shots
+  // Check if a frame is a link source (some other shot's frame was copied from it)
+  const getLinkTarget = useCallback((frame: Frame | null) => {
+    if (!frame) return undefined;
     for (const s of shots) {
-      if (s.endFrame?.id === shot.startFrame.previousFrameId) {
-        const isStale = s.endFrame.generatedAt && shot.startFrame.generatedAt
-          && new Date(s.endFrame.generatedAt) > new Date(shot.startFrame.generatedAt);
-        return { sourceShotId: s.shotId, sourceFrameType: 'end' as const, isStale: !!isStale };
+      if (s.startFrame?.previousFrameId === frame.id && s.startFrame.id !== frame.id) {
+        return { targetShotLabel: s.shotId, targetFrameType: 'start' as const };
       }
-      if (s.startFrame?.id === shot.startFrame.previousFrameId) {
-        const isStale = s.startFrame.generatedAt && shot.startFrame.generatedAt
-          && new Date(s.startFrame.generatedAt) > new Date(shot.startFrame.generatedAt);
-        return { sourceShotId: s.shotId, sourceFrameType: 'start' as const, isStale: !!isStale };
+      if (s.endFrame?.previousFrameId === frame.id && s.endFrame.id !== frame.id) {
+        return { targetShotLabel: s.shotId, targetFrameType: 'end' as const };
       }
     }
     return undefined;
   }, [shots]);
+
+  // Compute reactive link for a frame from frame_links data
+  const getReactiveLink = useCallback((frame: Frame | null): { role: 'source' | 'target'; linkId: string; otherShotLabel: string } | undefined => {
+    if (!frame || frameLinks.length === 0) return undefined;
+
+    // Check if this frame is a target
+    const asTarget = frameLinks.find((l: FrameLink) => l.targetFrameId === frame.id);
+    if (asTarget) {
+      // Find source shot label
+      for (const s of shots) {
+        if (s.startFrame?.id === asTarget.sourceFrameId || s.endFrame?.id === asTarget.sourceFrameId) {
+          return { role: 'target', linkId: asTarget.id, otherShotLabel: s.shotId };
+        }
+      }
+    }
+
+    // Check if this frame is a source
+    const asSource = frameLinks.find((l: FrameLink) => l.sourceFrameId === frame.id);
+    if (asSource) {
+      // Find target shot label
+      for (const s of shots) {
+        if (s.startFrame?.id === asSource.targetFrameId || s.endFrame?.id === asSource.targetFrameId) {
+          return { role: 'source', linkId: asSource.id, otherShotLabel: s.shotId };
+        }
+      }
+    }
+
+    return undefined;
+  }, [frameLinks, shots]);
 
   // Build adjacentFrames prop for FramePanel
   const getAdjacentFrames = useCallback((shot: ShotWithFrames, frameType: 'start' | 'end') => {
@@ -446,34 +482,17 @@ export function Stage10FrameGeneration({
     } = {};
 
     if (frameType === 'start') {
-      // Start frame: adjacent is prev shot's end
+      // Start frame: only adjacent is prev shot's end
       if (prev?.endFrame) {
         result.prevEnd = {
           shotId: prev.id,
           frameId: prev.endFrame.id,
           imageUrl: prev.endFrame.imageUrl,
           shotLabel: prev.shotId,
-        };
-      }
-      // And next shot's start (for reverse matching)
-      if (next?.startFrame) {
-        result.nextStart = {
-          shotId: next.id,
-          frameId: next.startFrame.id,
-          imageUrl: next.startFrame.imageUrl,
-          shotLabel: next.shotId,
         };
       }
     } else {
-      // End frame: adjacent is prev shot's end (for reverse) and next shot's start
-      if (prev?.endFrame) {
-        result.prevEnd = {
-          shotId: prev.id,
-          frameId: prev.endFrame.id,
-          imageUrl: prev.endFrame.imageUrl,
-          shotLabel: prev.shotId,
-        };
-      }
+      // End frame: only adjacent is next shot's start
       if (next?.startFrame) {
         result.nextStart = {
           shotId: next.id,
@@ -908,7 +927,14 @@ export function Stage10FrameGeneration({
                         })
                       }
                       continuityInfo={getContinuityInfo(selectedShot)}
-                      copySource={getCopySource(selectedShot)}
+                      onRemoveLink={
+                        selectedShot.startContinuity && selectedShot.startContinuity !== 'none'
+                          ? () => updateContinuityMutation.mutate({ shotId: selectedShot.id, startContinuity: 'none' })
+                          : undefined
+                      }
+                      linkTarget={getLinkTarget(selectedShot.startFrame)}
+                      reactiveLink={getReactiveLink(selectedShot.startFrame)}
+                      onBreakLink={(linkId) => breakFrameLinkMutation.mutate(linkId)}
                       adjacentFrames={getAdjacentFrames(selectedShot, 'start')}
                       onMatchFromFrame={(sourceFrameId) =>
                         copyFrameMutation.mutate({
@@ -924,6 +950,26 @@ export function Stage10FrameGeneration({
                           targetFrameType: 'start',
                         })
                       }
+                      onPushMatchToFrame={() => {
+                        const prev = getPreviousShot(selectedShot.id);
+                        if (prev && selectedShot.startFrame) {
+                          copyFrameMutation.mutate({
+                            shotId: prev.id,
+                            sourceFrameId: selectedShot.startFrame.id,
+                            targetFrameType: 'end',
+                          });
+                        }
+                      }}
+                      onPushRefToFrame={() => {
+                        const prev = getPreviousShot(selectedShot.id);
+                        if (prev && selectedShot.startFrame) {
+                          refFromFrameMutation.mutate({
+                            shotId: prev.id,
+                            sourceFrameId: selectedShot.startFrame.id,
+                            targetFrameType: 'end',
+                          });
+                        }
+                      }}
                       onUploadFrame={(file, usage) =>
                         uploadFrameMutation.mutate({
                           shotId: selectedShot.id,
@@ -941,6 +987,12 @@ export function Stage10FrameGeneration({
                         <div className="flex items-center justify-between mb-3">
                           <h3 className="text-sm font-medium text-foreground">End Frame</h3>
                           <div className="flex items-center gap-2">
+                            <button
+                              className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+                              onClick={() => setShowEndUploadModal(true)}
+                            >
+                              <Upload className="w-3.5 h-3.5" />
+                            </button>
                             <span className="text-xs text-muted-foreground">
                               {selectedShot.requiresEndFrame ? 'On' : 'Off'}
                             </span>
@@ -950,6 +1002,20 @@ export function Stage10FrameGeneration({
                             />
                           </div>
                         </div>
+                        <FrameUploadModal
+                          open={showEndUploadModal}
+                          onOpenChange={setShowEndUploadModal}
+                          onUpload={(file, usage) => {
+                            uploadFrameMutation.mutate({
+                              shotId: selectedShot.id,
+                              file,
+                              frameType: 'end',
+                              usage,
+                            });
+                            setShowEndUploadModal(false);
+                          }}
+                          isUploading={uploadFrameMutation.isPending}
+                        />
                         <FramePanel
                           frame={selectedShot.endFrame}
                           frameType="end"
@@ -996,6 +1062,9 @@ export function Stage10FrameGeneration({
                             })
                           }
                           hideHeader
+                          linkTarget={getLinkTarget(selectedShot.endFrame)}
+                          reactiveLink={getReactiveLink(selectedShot.endFrame)}
+                          onBreakLink={(linkId) => breakFrameLinkMutation.mutate(linkId)}
                           adjacentFrames={getAdjacentFrames(selectedShot, 'end')}
                           onMatchFromFrame={(sourceFrameId) =>
                             copyFrameMutation.mutate({
@@ -1011,6 +1080,26 @@ export function Stage10FrameGeneration({
                               targetFrameType: 'end',
                             })
                           }
+                          onPushMatchToFrame={() => {
+                            const next = getNextShot(selectedShot.id);
+                            if (next && selectedShot.endFrame) {
+                              copyFrameMutation.mutate({
+                                shotId: next.id,
+                                sourceFrameId: selectedShot.endFrame.id,
+                                targetFrameType: 'start',
+                              });
+                            }
+                          }}
+                          onPushRefToFrame={() => {
+                            const next = getNextShot(selectedShot.id);
+                            if (next && selectedShot.endFrame) {
+                              refFromFrameMutation.mutate({
+                                shotId: next.id,
+                                sourceFrameId: selectedShot.endFrame.id,
+                                targetFrameType: 'start',
+                              });
+                            }
+                          }}
                           onUploadFrame={(file, usage) =>
                             uploadFrameMutation.mutate({
                               shotId: selectedShot.id,
@@ -1091,16 +1180,6 @@ export function Stage10FrameGeneration({
                                         )}
                                         Regenerate
                                       </Button>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="text-xs h-7 text-muted-foreground hover:text-destructive"
-                                        onClick={() => updateContinuityMutation.mutate({ shotId: selectedShot.id, startContinuity: 'none' })}
-                                        disabled={updateContinuityMutation.isPending}
-                                      >
-                                        <Unlink className="w-3 h-3 mr-1" />
-                                        Remove Link
-                                      </Button>
                                     </div>
                                   </div>
                                 ) : (
@@ -1152,27 +1231,8 @@ export function Stage10FrameGeneration({
                                     Use the "Match" buttons on the start frame to pixel-copy an adjacent frame into the carousel.
                                     Regenerating will re-copy from the previous shot's end frame.
                                   </p>
-                                  {getCopySource(selectedShot) && (
-                                    <p className={getCopySource(selectedShot)?.isStale ? 'text-amber-400' : 'text-blue-300'}>
-                                      {getCopySource(selectedShot)?.isStale
-                                        ? 'Source has changed — consider re-matching.'
-                                        : `Currently copied from ${getCopySource(selectedShot)?.sourceShotId}.`}
-                                    </p>
-                                  )}
                                 </PopoverContent>
                               </Popover>
-                            </div>
-                            <div className="flex gap-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-xs h-7 text-muted-foreground hover:text-destructive"
-                                onClick={() => updateContinuityMutation.mutate({ shotId: selectedShot.id, startContinuity: 'none' })}
-                                disabled={updateContinuityMutation.isPending}
-                              >
-                                <Unlink className="w-3 h-3 mr-1" />
-                                Remove Link
-                              </Button>
                             </div>
                             {selectedShot.framePrompt && (
                               <div>
