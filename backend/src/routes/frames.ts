@@ -68,11 +68,37 @@ router.get('/:projectId/scenes/:sceneId/frames', async (req, res) => {
         // Check completion status
         const allApproved = await frameGenerationService.areAllFramesApproved(sceneId);
 
+        // Fetch reactive frame links for all frames in this scene
+        const allFrameIds: string[] = [];
+        for (const shot of shotsWithFrames) {
+            if (shot.startFrame) allFrameIds.push(shot.startFrame.id);
+            if (shot.endFrame) allFrameIds.push(shot.endFrame.id);
+        }
+
+        let links: Array<{ id: string; sourceFrameId: string; targetFrameId: string; linkType: string; createdAt: string }> = [];
+        if (allFrameIds.length > 0) {
+            const { data: rawLinks } = await supabase
+                .from('frame_links')
+                .select('id, source_frame_id, target_frame_id, link_type, created_at')
+                .or(`source_frame_id.in.(${allFrameIds.join(',')}),target_frame_id.in.(${allFrameIds.join(',')})`);
+
+            if (rawLinks) {
+                links = rawLinks.map(l => ({
+                    id: l.id,
+                    sourceFrameId: l.source_frame_id,
+                    targetFrameId: l.target_frame_id,
+                    linkType: l.link_type,
+                    createdAt: l.created_at,
+                }));
+            }
+        }
+
         res.json({
             shots: shotsWithFrames,
             sceneNumber: scene.scene_number,
             costSummary,
             allFramesApproved: allApproved,
+            links,
         });
     } catch (error) {
         console.error('Error in GET /api/projects/:projectId/scenes/:sceneId/frames:', error);
@@ -249,6 +275,9 @@ router.post('/:projectId/scenes/:sceneId/frames/:frameId/regenerate', async (req
 
         const visualStyleCapsuleId = stageState?.state_data?.visualStyleCapsuleId;
 
+        // Break any incoming reactive link (this frame is regenerating independently)
+        await supabase.from('frame_links').delete().eq('target_frame_id', frameId);
+
         // Regenerate frame
         const frame = await frameGenerationService.regenerateFrame(
             frameId,
@@ -258,6 +287,9 @@ router.post('/:projectId/scenes/:sceneId/frames/:frameId/regenerate', async (req
             visualStyleCapsuleId,
             project.aspect_ratio || '16:9'
         );
+
+        // If this frame is a SOURCE, propagate to linked targets
+        await frameGenerationService.propagateFrameLinks(frameId);
 
         res.json({
             success: true,
@@ -315,6 +347,9 @@ router.post('/:projectId/scenes/:sceneId/frames/:frameId/inpaint', async (req, r
             visualStyleCapsuleId,
             project.aspect_ratio || '16:9'
         );
+
+        // If this frame is a SOURCE, propagate to linked targets
+        await frameGenerationService.propagateFrameLinks(frameId);
 
         res.json({
             success: true,
@@ -927,6 +962,17 @@ router.post('/:projectId/scenes/:sceneId/shots/:shotId/upload-frame-image', fram
             // Use as frame variant: create job record, update frame
             const jobType = frameType === 'start' ? 'start_frame' : 'end_frame';
 
+            // Break any incoming reactive link (user is uploading independently)
+            const { data: existingFrameForLink } = await supabase
+                .from('frames')
+                .select('id')
+                .eq('shot_id', shotId)
+                .eq('frame_type', frameType)
+                .single();
+            if (existingFrameForLink) {
+                await supabase.from('frame_links').delete().eq('target_frame_id', existingFrameForLink.id);
+            }
+
             // Check if target frame exists
             const { data: existingFrame } = await supabase
                 .from('frames')
@@ -997,6 +1043,9 @@ router.post('/:projectId/scenes/:sceneId/shots/:shotId/upload-frame-image', fram
                     .update({ current_job_id: job.id })
                     .eq('id', targetFrameId);
             }
+
+            // If this frame is a SOURCE, propagate to linked targets
+            await frameGenerationService.propagateFrameLinks(targetFrameId);
 
             res.json({ success: true, imageUrl: publicUrl, frameId: targetFrameId });
         } else {
@@ -1130,6 +1179,9 @@ router.put('/:projectId/scenes/:sceneId/frames/:frameId/select-generation', asyn
             return res.status(404).json({ error: 'Generation job not found' });
         }
 
+        // Break any incoming reactive link (this frame is choosing independently)
+        await supabase.from('frame_links').delete().eq('target_frame_id', frameId);
+
         // Update the frame to point to this job
         const { data: frame, error: updateError } = await supabase
             .from('frames')
@@ -1148,6 +1200,9 @@ router.put('/:projectId/scenes/:sceneId/frames/:frameId/select-generation', asyn
         if (updateError || !frame) {
             throw new Error(`Failed to update frame: ${updateError?.message}`);
         }
+
+        // If this frame is a SOURCE, propagate to linked targets
+        await frameGenerationService.propagateFrameLinks(frameId);
 
         res.json({
             success: true,
@@ -1577,6 +1632,13 @@ router.post('/:projectId/scenes/:sceneId/batch-link-copy', async (req, res) => {
                     .eq('id', targetFrameId);
             }
 
+            // Create reactive frame link
+            await supabase.from('frame_links').upsert({
+                source_frame_id: prevEndFrame.id,
+                target_frame_id: targetFrameId,
+                link_type: 'match',
+            }, { onConflict: 'target_frame_id,link_type' });
+
             copied++;
         }
 
@@ -1717,6 +1779,13 @@ router.post('/:projectId/scenes/:sceneId/shots/:shotId/copy-frame', async (req, 
                 })
                 .eq('id', targetFrame.id);
         }
+
+        // Create/update reactive frame link (match type)
+        await supabase.from('frame_links').upsert({
+            source_frame_id: sourceFrameId,
+            target_frame_id: targetFrame.id,
+            link_type: 'match',
+        }, { onConflict: 'target_frame_id,link_type' });
 
         res.json({
             success: true,
@@ -1866,6 +1935,43 @@ router.post('/:projectId/scenes/:sceneId/shots/:shotId/generate-continuity-promp
         res.json({ continuityFramePrompt: continuityPrompt });
     } catch (error: any) {
         console.error('Error in POST generate-continuity-prompt:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
+/**
+ * DELETE /api/projects/:projectId/scenes/:sceneId/frame-links/:linkId
+ * Break a reactive frame link
+ */
+router.delete('/:projectId/scenes/:sceneId/frame-links/:linkId', async (req, res) => {
+    try {
+        const { projectId, linkId } = req.params;
+        const userId = req.user!.id;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const { error: deleteError } = await supabase
+            .from('frame_links')
+            .delete()
+            .eq('id', linkId);
+
+        if (deleteError) {
+            throw new Error(`Failed to delete link: ${deleteError.message}`);
+        }
+
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error('Error in DELETE frame-links:', error);
         res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });
