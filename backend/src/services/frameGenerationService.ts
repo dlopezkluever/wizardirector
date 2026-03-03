@@ -1093,6 +1093,64 @@ export class FrameGenerationService {
 
         return true;
     }
+
+    /**
+     * Propagate reactive frame links: when a source frame changes,
+     * update all target frames that are linked to it.
+     * Only 'match' links are reactive.
+     */
+    async propagateFrameLinks(frameId: string, propagating = false): Promise<void> {
+        // Guard against infinite loops
+        if (propagating) return;
+
+        try {
+            // Find all links where this frame is the source
+            const { data: links, error: linksError } = await supabase
+                .from('frame_links')
+                .select('id, target_frame_id')
+                .eq('source_frame_id', frameId)
+                .eq('link_type', 'match');
+
+            if (linksError || !links || links.length === 0) return;
+
+            // Get source frame's current image
+            const { data: sourceFrame } = await supabase
+                .from('frames')
+                .select('image_url, storage_path, shot_id')
+                .eq('id', frameId)
+                .single();
+
+            if (!sourceFrame?.image_url) return;
+
+            // Get source shot label for audit trail
+            const { data: sourceShot } = await supabase
+                .from('shots')
+                .select('shot_id')
+                .eq('id', sourceFrame.shot_id)
+                .single();
+
+            const now = new Date().toISOString();
+
+            for (const link of links) {
+                // Update target frame
+                await supabase
+                    .from('frames')
+                    .update({
+                        image_url: sourceFrame.image_url,
+                        storage_path: sourceFrame.storage_path,
+                        generated_at: now,
+                        prompt_snapshot: `[Auto-propagated from linked source ${sourceShot?.shot_id || 'unknown'}]`,
+                        updated_at: now,
+                    })
+                    .eq('id', link.target_frame_id);
+            }
+
+            console.log(`[FrameLinks] Propagated frame ${frameId} to ${links.length} target(s)`);
+        } catch (error) {
+            console.error('[FrameLinks] Propagation error:', error);
+            // Don't throw — propagation failure shouldn't block the original operation
+        }
+    }
 }
 
 // Export singleton instance
