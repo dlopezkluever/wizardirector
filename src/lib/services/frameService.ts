@@ -10,6 +10,7 @@ import type {
   ShotWithFrames,
   FrameCostSummary,
   FrameJobStatus,
+  FrameLink,
   GenerationMode,
 } from '@/types/scene';
 
@@ -18,6 +19,7 @@ export interface FetchFramesResponse {
   sceneNumber: number;
   costSummary: FrameCostSummary;
   allFramesApproved: boolean;
+  links?: FrameLink[];
 }
 
 export interface GenerateFramesRequest {
@@ -795,6 +797,32 @@ class FrameService {
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Failed to copy frame' }));
       throw new Error(error.error || 'Failed to copy frame');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Break a reactive frame link
+   */
+  async breakFrameLink(
+    projectId: string,
+    sceneId: string,
+    linkId: string
+  ): Promise<{ success: boolean }> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/frame-links/${linkId}`,
+      {
+        method: 'DELETE',
+        headers,
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Failed to break link' }));
+      throw new Error(error.error || 'Failed to break link');
     }
 
     return response.json();
