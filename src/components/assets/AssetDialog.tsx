@@ -485,11 +485,11 @@ export const AssetDialog = ({ open, onOpenChange, asset, onSaved, onAssetUpdated
             </Label>
             {imageUrl ? (
               <div className="relative">
-                <div className="relative w-full h-48 rounded-lg border overflow-hidden bg-muted">
+                <div className="relative w-full rounded-lg border overflow-hidden bg-muted">
                   <img
                     src={imageUrl}
                     alt="Asset preview"
-                    className="w-full h-full object-cover"
+                    className="w-full max-h-80 object-contain"
                   />
                   <Button
                     type="button"

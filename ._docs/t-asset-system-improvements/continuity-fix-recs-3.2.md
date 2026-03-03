@@ -1,11 +1,278 @@
+
 Quick dubs:
 
-fix image shown in modal (asset library when adding editing an asset make it so the images appear not cut off like they are now, see: asset-lib-modal.PNG)
+fix how the image uploaded/generated is shown in the modal in the global asset library. (the modal that apears when adding/editing an asset make it so the images appear not cut off like they are now) see: asset-lib-modal.PNG
+
+----------
+
+
+
+
+
+## **1\. Immediate Focus: Fix the Continuity System**
+
+The main priority tonight is solving the continuity issue. It does not seem conceptually complex, but it requires clearly defining how it currently works, fully understanding it, and then restructuring it properly.
+
+### **Ideal User Experience**
+
+In the ideal flow:
+
+* A user enters a scene, for example Stage 8\.
+
+* They create or upload an asset.
+
+* There are multiple shots in the scene.
+
+* The asset may transform during the scene, for example changing form and changing back.
+
+Right now, when the user moves into Stage 9, they see all shots laid out and are prompted to generate frame prompts. However, it is unclear how continuity is being established between shots.
+
+What should happen instead:
+
+* The user should be able to explicitly link shots.
+
+* The UI should visually show that the end frame of Shot A becomes the starting frame of Shot B.
+
+* If two frames are matched, only one frame needs to be generated, not both.
+
+* This avoids duplicate generation and reduces cost.
+
+Continuity should guarantee that:
+
+* The end frame of one shot becomes the start frame of the next.
+
+* Only one frame needs to be generated if they are matched.
+
+---
+
+## **2\. Bidirectional Matching Flexibility**
+
+A key issue discovered during testing:
+
+Sometimes the user generates a shot out of order. For example:
+
+* They generate Shot 3 first, including both start and end frames.
+
+* Later they realize Shot 2 should match Shot 3\.
+
+In that case, the system should allow:
+
+* Taking the starting frame of Shot 3
+
+* Converting it into the ending frame of Shot 2
+
+Continuity matching must work in both directions. It cannot assume a strictly linear workflow.
+
+---
+
+## **3\. Reference Frame Problem**
+
+Another issue involves angle changes and reference frames.
+
+Current generators struggle with requests like:  
+ “Take this frame and now imagine it from a different angle.”
+
+This is a difficult prompt because the model lacks real spatial understanding. So instead of directly asking it to reinterpret the frame visually, the better approach is:
+
+* Analyze the reference frame.
+
+* Extract a detailed, structured description of everything in the scene.
+
+For example:
+
+* Hero is on the left.
+
+* Facing right.
+
+* Frowning.
+
+* Wearing specific clothing.
+
+* Positioned two-thirds up in the frame.
+
+* Environmental context clearly described.
+
+Then:
+
+* Use that structured description to generate the new angle.
+
+* Impose the new camera angle using the described spatial relationships.
+
+This requires the system to provide context, not just a loose visual reference.
+
+----
+## **How the Continuity System Works Today**
+
+  Three Modes (per shot)
+
+  ┌─────────┬─────────────────────┬────────────────────────────────────────────┐   
+  │  Mode   │      DB value       │      What happens at generation time       │   
+  ├─────────┼─────────────────────┼────────────────────────────────────────────┤   
+  │ None    │ start_continuity =  │ Normal generation from frame_prompt +      │   
+  │         │ 'none'              │ asset references                           │   
+  ├─────────┼─────────────────────┼────────────────────────────────────────────┤   
+  │ Match   │ start_continuity =  │ Pixel-copies previous shot's end frame     │   
+  │         │ 'match'             │ image. Zero cost. No generation.           │   
+  ├─────────┼─────────────────────┼────────────────────────────────────────────┤   
+  │ Camera  │ start_continuity =  │ Uses previous end frame as a reference     │   
+  │ Change  │ 'camera_change'     │ image + a special continuity_frame_prompt. │   
+  │         │                     │  Generates a NEW image (costs credits).    │   
+  └─────────┴─────────────────────┴────────────────────────────────────────────┘   
+
+  Two Separate Mechanisms That Are Confusingly Named
+
+  Mechanism A — "Match mode" (pixel copy)
+  - Set via the continuity dropdown (Stage 9) or "Link All" button (Stage 10)      
+  - During batch generation only, the backend copies the previous end frame's      
+  actual image URL to the current start frame
+  - The start frame becomes literally the same image file
+
+  Mechanism B — "Use as Next Start" button
+  - Adds the end frame URL as a reference image entry (type: 'continuity') in the  
+  next shot's reference_image_order JSONB column
+  - Does NOT copy the image. Does NOT change the start frame's actual image        
+  - It's just a soft influence for the next generation — the AI "sees" it as a     
+  reference
+
+  This is the core source of your frustration — these two mechanisms look similar  
+  in the UI but do completely different things, and neither one is clearly
+  communicated.
+
+  ---
+  Problems Identified
+
+  1. "Use as Next Start" is misleading
+
+  It says "use as next start" but it doesn't make it the next start frame. It just 
+  adds it as a reference image. The user expects the button to either (a) literally   copy the image or (b) at minimum be very clear that it's only a reference. Right   now it does (b) silently with no feedback about what actually happened.
+
+  2. No reverse linking
+
+  You can copy a previous end frame → current start frame, but you cannot copy a   
+  current start frame → previous end frame. There's no technical reason for this   
+  limitation — the copy-frame endpoint is generic enough to copy any frame to any  
+  other frame, but the UI only exposes one direction.
+
+  3. "Link All" sets match mode but doesn't immediately copy frames
+
+  "Link All" just sets start_continuity = 'match' on every shot. The actual        
+  pixel-copy only happens when you run batch frame generation. If you click "Link  
+  All" and then look at the frames, nothing visually changes until you generate.   
+  This is confusing.
+
+  4. Match-copy only works during batch generation
+
+  If you individually regenerate a start frame that's in match mode, it ignores the   match mode and generates a new image from the prompt. The match-copy logic only 
+  runs inside generateFrames() (the batch path). This is a bug.
+
+  5. No way to upload a custom image as a frame
+
+  There's no upload capability. You can only: (a) generate via AI, (b) pixel-copy  
+  from adjacent shot, or (c) use references for generation. If you have a perfect  
+  frame from elsewhere, you can't use it.
+
+  6. No frame carousel for manually placed images
+
+  The carousel only shows AI-generated variants (from image_generation_jobs). A    
+  manually copied or uploaded frame isn't part of the carousel — it just replaces  
+  whatever was there.
+
+  7. "Start frame will be copied from previous shot's end frame" text is wrong     
+
+  It's shown as a static message for linked shots, but it's not necessarily true.  
+  The copy only happens during batch generation, and if you've since regenerated or   manually changed things, the text is stale/misleading.
+
+  8. Stale detection is fragile
+
+  The "Source changed" badge compares timestamps in the frontend. No backend       
+  notification. If you regenerate an end frame, all downstream copies are silently 
+  stale.
+
+
+*B*: (: Refactored Copy/Replace System (recommended)
+
+  Redesign the frame interaction model around two clear concepts:
+
+  Concept 1: Frame Sources — Every frame slot (start or end) can receive an image  
+  from multiple sources:
+  - AI generation (current)
+  - Pixel-copy from adjacent shot frame (streamlined)
+  - Upload from disk (new)
+
+  All sources feed into the same carousel. The user picks which one to use.        
+
+  Concept 2: Continuity Actions — Clear, direct buttons on each frame:
+
+  ┌────────────────┬────────────────┬─────────────────────────────────────────┐    
+  │     Button     │    Location    │              What it does               │    
+  ├────────────────┼────────────────┼─────────────────────────────────────────┤    
+  │ "Copy Previous │ Start frame    │ Literally copies the image into this    │    
+  │  End"          │ header         │ frame's carousel as a variant           │    
+  ├────────────────┼────────────────┼─────────────────────────────────────────┤    
+  │ "Copy Next     │ End frame      │ Literally copies the image into this    │    
+  │ Start"         │ header         │ frame's carousel as a variant           │    
+  ├────────────────┼────────────────┼─────────────────────────────────────────┤    
+  │ "Upload Image" │ Frame header   │ Opens file picker → modal asking "Use   │    
+  │                │ (small icon)   │ as frame variant" or "Use as reference" │    
+  ├────────────────┼────────────────┼─────────────────────────────────────────┤    
+  │ "Use as        │ Adjacent to    │ Adds as reference image (current "Use   │    
+  │ Reference      │ copy buttons   │ as Next Start" behavior, but clearly    │    
+  │ Only"          │                │ labeled)                                │    
+  └────────────────┴────────────────┴─────────────────────────────────────────┘    
+
+  Key change: Copied/uploaded images become carousel entries alongside AI
+  generations. The user picks which variant to lock in. This means:
+  - Copy doesn't overwrite — it adds an option
+  - Upload doesn't overwrite — it adds an option
+  - The user always has control over the final selection
+
+  The info popover (bottom-right) contains:
+  - Current continuity mode and what it means
+  - Which frame this was copied from (if any)
+  - Stale warnings
+  - All the flags about what buttons do
+
+  "Link All" becomes "Match All (copy end→start)" and immediately executes the     
+  copies (adding them as carousel variants, not overwriting).
+
+  Pros: Flexible, non-destructive, clear mental model
+  Cons: More work — needs carousel modification to support non-AI-generated        
+  entries, upload endpoint, modal component)
+
+
+*Additions to Continuity Spec*:
+  Option C: Full Continuity Overhaul
+
+  Everything in Option B, plus:
+
+  1. Bidirectional linking UI — A visual "link" between two adjacent shots shown as   a connection widget between them. Click the connection to see options: "Match   
+  (copy)", "Camera Change (reference + generate)", "Independent (none)". This      
+  replaces the per-shot dropdown.
+  2. Cross-scene continuity — Link the last shot of Scene N to the first shot of   
+  Scene N+1, using the same mechanisms.
+  3. Drag-and-drop frames — Drag any frame thumbnail onto any other frame slot to  
+  copy it. Drag from file explorer to upload.
+  4. Frame library — A sidebar/drawer showing all generated frames across the      
+  scene. Drag from library to any frame slot.
+  5. Auto-cascade — When an end frame is regenerated, automatically mark all       
+  downstream copies as stale and offer a one-click "re-copy all" action.
+
+  Pros: Maximum flexibility, professional-grade workflow
+  Cons: Significant engineering effort, risks over-engineering for current needs   
+
+
+--------
+
+*Continuity*:
 
 Better should have used: 
 
 Feature Request: Continuity System Redesign (Bidirectional & Multimodal)1. Problem StatementThe current continuity system is functionally opaque and limited to forward-only "soft" linking. While the UI implies frame-copying (e.g., "Start frame will be copied from previous shot's end frame"), it often fails to actually populate the frame, instead only creating a metadata link or adding a reference asset. We need a robust system that handles both Literal Continuity and Reference Continuity in both forward and reverse directions.2. Core Concepts: Two Forms of ContinuityWe must distinguish between these two behaviors in the UI and the backend:Literal Continuity (Hard Copy): The exact pixels from the End Frame of Shot A are copied to the Start Frame of Shot B (or vice versa). No generation occurs; it is a 1:1 file duplication.Reference Continuity (Soft Link): The End Frame of Shot A is used as a visual prompt/seed for the Start Frame of Shot B to ensure character/environmental consistency, but allows for camera angle changes (e.g., Medium Shot to Close-up).3. Required Functional ImprovementsA. Bidirectional "Push/Pull" LogicContinuity should not be a one-way street. I need the ability to:Forward Link: Set a Shot $N$ End Frame as the Shot $N+1$ Start Frame.Reverse Link: Set a Shot $N$ Start Frame as the Shot $N-1$ End Frame.Action: These should be "One-Click" buttons that literally replace the target image in the frame carousel, not just add it as a side-panel reference.B. Frame Upload & Carousel ManagementThe current "Asset Reference" system is separate from the "Actual Frame" system. I want to bridge them:Upload Button: Add an upload button to the right side of the frame area.Intent Modal: When an image is uploaded, a modal must ask:"Use as Reference Asset?" (Moves to the left-side reference panel)."Use as Active Frame?" (Injects it into the frame carousel and enables inpainting/editing).Carousel Integration: Any copied or uploaded frame should be added to the shot’s Carousel, allowing the user to toggle between different versions before finalizing.C. UI/UX Clean-upRemove Text Clutter: Remove the status text "Start frame will be copied..." from the main workspace.Continuity Info Badge: Move all continuity flags, link statuses, and logic descriptions into an Information Indicator (Popover) located in the bottom right of the frame container.Link All Clarification: We need to define exactly what "Link All" does. Does it perform a Soft Reference link or a Literal Copy? (Ideally, it should be a configurable global sync).4. Analysis Request for ClaudeBefore coding, please perform the following:Current State Audit: Describe how the continuity and Link All logic currently functions in the codebase. Does it actually move image data, or just update metadata?Gap Analysis: Identify why the "Use as next start" button currently fails to populate the frame carousel.Redesign Proposal: * How can we implement a Literal Copy button that injects an image directly into the carousel state?How do we implement Reverse Continuity (updating the previous shot from the current one)?Propose a schema for the Information Popover that tracks the "Source" of a frame (e.g., "Source: Uploaded", "Source: Shot 4 End").DO NOT WRITE CODE YET. Please provide the analysis and options for implementation first.Why this works for Claude Code:Separation of Concerns: It separates UI issues from logic issues.Definitions: It defines "Literal" vs "Reference" so the AI doesn't get confused by what you mean by "copy."Actionable Steps: It gives the AI a clear "Audit -> Analyze -> Propose" workflow.
 
+
+
+
+-
 Raw prompt:
 ❯ okay lets focus on the continuity functionality between end and start            
   frames, currently when a user presses (use as next start) for an  end frame,     
