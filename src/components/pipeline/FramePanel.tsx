@@ -12,9 +12,11 @@ import {
   Trash2,
   Link2,
   Camera,
-  AlertTriangle,
   Upload,
   BookmarkPlus,
+  X,
+  ArrowDownToLine,
+  ArrowUpFromLine,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +25,17 @@ import {
   Dialog,
   DialogContent,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Popover,
   PopoverContent,
@@ -81,15 +94,18 @@ interface FramePanelProps {
   hideHeader?: boolean;
   projectId?: string;
   sceneId?: string;
-  copySource?: {
-    sourceShotId: string;
-    sourceFrameType: 'start' | 'end';
-    isStale: boolean;
-  };
   continuityInfo?: {
     mode: 'none' | 'match' | 'camera_change';
     sourceShot?: string;
   };
+  onRemoveLink?: () => void;
+  linkTarget?: { targetShotLabel: string; targetFrameType: 'start' | 'end' };
+  reactiveLink?: {
+    role: 'source' | 'target';
+    linkId: string;
+    otherShotLabel: string;
+  };
+  onBreakLink?: (linkId: string) => void;
   // Bidirectional continuity props
   adjacentFrames?: {
     prevEnd?: AdjacentFrameInfo;
@@ -97,6 +113,8 @@ interface FramePanelProps {
   };
   onMatchFromFrame?: (sourceFrameId: string) => void;
   onRefFromFrame?: (sourceFrameId: string) => void;
+  onPushMatchToFrame?: (targetFrameId: string) => void;
+  onPushRefToFrame?: (targetFrameId: string) => void;
   onUploadFrame?: (file: File, usage: 'variant' | 'reference') => void;
   isUploadPending?: boolean;
 }
@@ -130,11 +148,16 @@ export function FramePanel({
   hideHeader = false,
   projectId,
   sceneId,
-  copySource,
   continuityInfo,
+  onRemoveLink,
+  linkTarget,
+  reactiveLink,
+  onBreakLink,
   adjacentFrames,
   onMatchFromFrame,
   onRefFromFrame,
+  onPushMatchToFrame,
+  onPushRefToFrame,
   onUploadFrame,
   isUploadPending = false,
 }: FramePanelProps) {
@@ -144,6 +167,8 @@ export function FramePanel({
   const [showRegenOptions, setShowRegenOptions] = useState(false);
   const [correctionText, setCorrectionText] = useState('');
   const [showManualEdit, setShowManualEdit] = useState(false);
+  const [pendingSelectJobId, setPendingSelectJobId] = useState<string | null>(null);
+  const [dontShowBreakConfirm, setDontShowBreakConfirm] = useState(false);
   const [editedPrompt, setEditedPrompt] = useState('');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -397,7 +422,17 @@ export function FramePanel({
                         className="bg-amber-400 hover:bg-amber-500 text-amber-900"
                         onClick={(e) => {
                           e.stopPropagation();
-                          selectMutation.mutate(gen.jobId);
+                          // If this frame is a reactive link target, confirm before selecting
+                          if (reactiveLink?.role === 'target') {
+                            const skip = localStorage.getItem('skipContinuityBreakConfirm') === 'true';
+                            if (skip) {
+                              selectMutation.mutate(gen.jobId);
+                            } else {
+                              setPendingSelectJobId(gen.jobId);
+                            }
+                          } else {
+                            selectMutation.mutate(gen.jobId);
+                          }
                         }}
                         disabled={selectMutation.isPending}
                       >
@@ -465,7 +500,7 @@ export function FramePanel({
             <h3 className="text-sm font-medium text-foreground capitalize">
               {frameType} Frame
             </h3>
-            {/* Continuity mode badge */}
+            {/* Continuity mode badge + inline remove */}
             {continuityInfo && continuityInfo.mode !== 'none' && (
               <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${
                 continuityInfo.mode === 'match'
@@ -476,6 +511,44 @@ export function FramePanel({
                   <><Link2 className="w-3 h-3" /> Match from {continuityInfo.sourceShot}</>
                 ) : (
                   <><Camera className="w-3 h-3" /> Angle from {continuityInfo.sourceShot}</>
+                )}
+                {onRemoveLink && (
+                  <button
+                    onClick={onRemoveLink}
+                    className="ml-0.5 hover:text-red-400 transition-colors"
+                    title="Remove link"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </span>
+            )}
+            {/* Source-side link indicator (legacy previousFrameId) */}
+            {linkTarget && !reactiveLink && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/20 text-blue-300">
+                <Link2 className="w-3 h-3" />
+                Pushing to {linkTarget.targetShotLabel}
+              </span>
+            )}
+            {/* Reactive link indicator */}
+            {reactiveLink && reactiveLink.role === 'source' && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/20 text-blue-300">
+                <Link2 className="w-3 h-3" />
+                {`Linked \u2192 ${reactiveLink.otherShotLabel}`}
+              </span>
+            )}
+            {reactiveLink && reactiveLink.role === 'target' && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/20 text-blue-300">
+                <Link2 className="w-3 h-3" />
+                {`Linked \u2190 ${reactiveLink.otherShotLabel}`}
+                {onBreakLink && (
+                  <button
+                    onClick={() => onBreakLink(reactiveLink.linkId)}
+                    className="ml-0.5 hover:text-red-400 transition-colors"
+                    title="Break reactive link"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
                 )}
               </span>
             )}
@@ -500,26 +573,6 @@ export function FramePanel({
               {isGenerating && <RefreshCw className="w-3 h-3 mr-1 animate-spin" />}
               {statusStyle.label}
             </Badge>
-            {/* Copied frame badge */}
-            {copySource && (
-              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                copySource.isStale
-                  ? 'bg-amber-500/20 text-amber-400'
-                  : 'bg-blue-500/20 text-blue-300'
-              }`}>
-                {copySource.isStale ? (
-                  <>
-                    <AlertTriangle className="w-3 h-3" />
-                    Source changed
-                  </>
-                ) : (
-                  <>
-                    <Link2 className="w-3 h-3" />
-                    Copied from {copySource.sourceShotId}
-                  </>
-                )}
-              </span>
-            )}
           </div>
         </div>
       )}
@@ -669,66 +722,108 @@ export function FramePanel({
           ) : null}
         </div>
 
-        {/* Bidirectional continuity buttons (2×2 grid) */}
-        {(adjacentFrames?.prevEnd || adjacentFrames?.nextStart) && (onMatchFromFrame || onRefFromFrame) && (
+        {/* Continuity buttons — 4-button grid per adjacent frame */}
+        {adjacentFrames?.prevEnd && (
           <div className="grid grid-cols-2 gap-1.5">
-            {/* Row 1: Previous shot's end frame → this frame */}
-            {adjacentFrames?.prevEnd && (
-              <>
-                {onMatchFromFrame && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-xs h-7"
-                    onClick={() => onMatchFromFrame(adjacentFrames.prevEnd!.frameId)}
-                    disabled={!adjacentFrames.prevEnd.imageUrl || isDisabled}
-                  >
-                    <Link2 className="w-3 h-3 mr-1" />
-                    Match {adjacentFrames.prevEnd.shotLabel} End
-                  </Button>
-                )}
-                {onRefFromFrame && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs h-7 text-muted-foreground"
-                    onClick={() => onRefFromFrame(adjacentFrames.prevEnd!.frameId)}
-                    disabled={!adjacentFrames.prevEnd.imageUrl || isDisabled}
-                  >
-                    <BookmarkPlus className="w-3 h-3 mr-1" />
-                    Ref {adjacentFrames.prevEnd.shotLabel} End
-                  </Button>
-                )}
-              </>
+            {onMatchFromFrame && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs h-7"
+                onClick={() => onMatchFromFrame(adjacentFrames.prevEnd!.frameId)}
+                disabled={!adjacentFrames.prevEnd.imageUrl || isDisabled}
+              >
+                <ArrowDownToLine className="w-3 h-3 mr-1" />
+                Pull match {adjacentFrames.prevEnd.shotLabel}
+              </Button>
             )}
-            {/* Row 2: Next shot's start frame → this frame */}
-            {adjacentFrames?.nextStart && (
-              <>
-                {onMatchFromFrame && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-xs h-7"
-                    onClick={() => onMatchFromFrame(adjacentFrames.nextStart!.frameId)}
-                    disabled={!adjacentFrames.nextStart.imageUrl || isDisabled}
-                  >
-                    <Link2 className="w-3 h-3 mr-1" />
-                    Match {adjacentFrames.nextStart.shotLabel} Start
-                  </Button>
-                )}
-                {onRefFromFrame && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs h-7 text-muted-foreground"
-                    onClick={() => onRefFromFrame(adjacentFrames.nextStart!.frameId)}
-                    disabled={!adjacentFrames.nextStart.imageUrl || isDisabled}
-                  >
-                    <BookmarkPlus className="w-3 h-3 mr-1" />
-                    Ref {adjacentFrames.nextStart.shotLabel} Start
-                  </Button>
-                )}
-              </>
+            {onRefFromFrame && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs h-7 text-muted-foreground"
+                onClick={() => onRefFromFrame(adjacentFrames.prevEnd!.frameId)}
+                disabled={!adjacentFrames.prevEnd.imageUrl || isDisabled}
+              >
+                <ArrowDownToLine className="w-3 h-3 mr-1" />
+                Pull ref {adjacentFrames.prevEnd.shotLabel}
+              </Button>
+            )}
+            {onPushMatchToFrame && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs h-7"
+                onClick={() => onPushMatchToFrame(adjacentFrames.prevEnd!.frameId)}
+                disabled={!hasImage || isDisabled}
+              >
+                <ArrowUpFromLine className="w-3 h-3 mr-1" />
+                Push match {adjacentFrames.prevEnd.shotLabel}
+              </Button>
+            )}
+            {onPushRefToFrame && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs h-7 text-muted-foreground"
+                onClick={() => onPushRefToFrame(adjacentFrames.prevEnd!.frameId)}
+                disabled={!hasImage || isDisabled}
+              >
+                <ArrowUpFromLine className="w-3 h-3 mr-1" />
+                Push ref {adjacentFrames.prevEnd.shotLabel}
+              </Button>
+            )}
+          </div>
+        )}
+        {adjacentFrames?.nextStart && (
+          <div className="grid grid-cols-2 gap-1.5">
+            {onMatchFromFrame && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs h-7"
+                onClick={() => onMatchFromFrame(adjacentFrames.nextStart!.frameId)}
+                disabled={!adjacentFrames.nextStart.imageUrl || isDisabled}
+              >
+                <ArrowDownToLine className="w-3 h-3 mr-1" />
+                Pull match {adjacentFrames.nextStart.shotLabel}
+              </Button>
+            )}
+            {onRefFromFrame && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs h-7 text-muted-foreground"
+                onClick={() => onRefFromFrame(adjacentFrames.nextStart!.frameId)}
+                disabled={!adjacentFrames.nextStart.imageUrl || isDisabled}
+              >
+                <ArrowDownToLine className="w-3 h-3 mr-1" />
+                Pull ref {adjacentFrames.nextStart.shotLabel}
+              </Button>
+            )}
+            {onPushMatchToFrame && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs h-7"
+                onClick={() => onPushMatchToFrame(adjacentFrames.nextStart!.frameId)}
+                disabled={!hasImage || isDisabled}
+              >
+                <ArrowUpFromLine className="w-3 h-3 mr-1" />
+                Push match {adjacentFrames.nextStart.shotLabel}
+              </Button>
+            )}
+            {onPushRefToFrame && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs h-7 text-muted-foreground"
+                onClick={() => onPushRefToFrame(adjacentFrames.nextStart!.frameId)}
+                disabled={!hasImage || isDisabled}
+              >
+                <ArrowUpFromLine className="w-3 h-3 mr-1" />
+                Push ref {adjacentFrames.nextStart.shotLabel}
+              </Button>
             )}
           </div>
         )}
@@ -848,6 +943,44 @@ export function FramePanel({
           isUploading={isUploadPending}
         />
       )}
+
+      {/* Break continuity link confirmation dialog */}
+      <AlertDialog open={!!pendingSelectJobId} onOpenChange={(open) => { if (!open) setPendingSelectJobId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Break continuity link?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Selecting a different image will break the link from {reactiveLink?.otherShotLabel || 'the source shot'}. This frame will no longer auto-update when the source changes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex items-center gap-2 py-2">
+            <Checkbox
+              id="dontShowAgain"
+              checked={dontShowBreakConfirm}
+              onCheckedChange={(checked) => setDontShowBreakConfirm(!!checked)}
+            />
+            <label htmlFor="dontShowAgain" className="text-sm text-muted-foreground cursor-pointer">
+              Don&apos;t show this again
+            </label>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (dontShowBreakConfirm) {
+                  localStorage.setItem('skipContinuityBreakConfirm', 'true');
+                }
+                if (pendingSelectJobId) {
+                  selectMutation.mutate(pendingSelectJobId);
+                }
+                setPendingSelectJobId(null);
+              }}
+            >
+              Break Link &amp; Select
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
