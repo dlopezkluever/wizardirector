@@ -324,6 +324,14 @@ export interface ShotWithFrames {
   endFrame: Frame | null;
 }
 
+export interface FrameLink {
+  id: string;
+  sourceFrameId: string;
+  targetFrameId: string;
+  linkType: 'match';
+  createdAt: string;
+}
+
 export interface FrameCostSummary {
   totalCredits: number;
   frameCount: number;
