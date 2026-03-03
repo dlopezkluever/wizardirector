@@ -359,3 +359,71 @@ The plan covers all 7 issues you raised, organized into 6 phases with clear depe
  link removed
  9. "Don't show again": Checkbox persists in localStorage, skips modal next time
  10. npm run lint + npm test + cd backend && npm test
+
+ --
+
+ Test Results Summary
+
+  Unit Tests
+
+  - Frontend: 150/150 passed
+  - Backend: 203/210 passed (7 pre-existing failures in image-generation.test.ts, unrelated)    
+
+  Playwright E2E Functional Tests
+
+  ┌──────────────────────────┬────────┬──────────────────────────────────────────────────────┐  
+  │          Check           │ Result │                        Notes                         │  
+  ├──────────────────────────┼────────┼──────────────────────────────────────────────────────┤  
+  │ Login + Navigation       │ PASS   │ Auth flow works, navigates to Stage 10 correctly     │  
+  ├──────────────────────────┼────────┼──────────────────────────────────────────────────────┤  
+  │ End Frame Upload Icon    │ PASS   │ Upload icon visible in End Frame header (SVG         │  
+  │                          │        │ confirmed)                                           │  
+  ├──────────────────────────┼────────┼──────────────────────────────────────────────────────┤  
+  │ 4-Button Grid            │ PASS   │ Pull match, Pull ref, Push match, Push ref all       │  
+  │                          │        │ render                                               │  
+  ├──────────────────────────┼────────┼──────────────────────────────────────────────────────┤  
+  │ Directional Correctness  │ PASS   │ Start frame: NO buttons (no prev shot). End frame: 4 │  
+  │ (2A - first)             │        │  buttons targeting 2B                                │  
+  ├──────────────────────────┼────────┼──────────────────────────────────────────────────────┤  
+  │ Directional Correctness  │ PASS   │ Start frame: no buttons (2A has no generated end     │  
+  │ (2B - middle)            │        │ frame yet). End frame: 4 buttons targeting 2C        │  
+  ├──────────────────────────┼────────┼──────────────────────────────────────────────────────┤  
+  │ Directional Correctness  │ PASS   │ Start frame: 4 buttons targeting 2B. End frame: NO   │  
+  │ (2C - last)              │        │ buttons (no next shot)                               │  
+  ├──────────────────────────┼────────┼──────────────────────────────────────────────────────┤  
+  │ Source-Side Indicator    │ PASS   │ "Pushing to 2B" badge visible on Shot 2C's start     │  
+  │                          │        │ frame                                                │  
+  ├──────────────────────────┼────────┼──────────────────────────────────────────────────────┤  
+  │ Target-Side Indicator    │ PASS   │ "Match from 2B" badge with X button visible on Shot  │  
+  │                          │        │ 2C's start frame                                     │  
+  ├──────────────────────────┼────────┼──────────────────────────────────────────────────────┤  
+  │ Remove Link (X button)   │ PASS   │ Inline X next to "Match from 2B" badge visible       │  
+  ├──────────────────────────┼────────┼──────────────────────────────────────────────────────┤  
+  │ Old Remove Link buttons  │ PASS   │ No old "Remove Link" buttons in Shot Context area    │  
+  │ gone                     │        │                                                      │  
+  ├──────────────────────────┼────────┼──────────────────────────────────────────────────────┤  
+  │ Carousel with "Selected" │ PASS   │ End frame shows "Selected" green badge on active     │  
+  │  badge                   │        │ carousel item                                        │  
+  └──────────────────────────┴────────┴──────────────────────────────────────────────────────┘  
+
+  Design Review
+
+  Working well:
+  - Dark amber/gold theme is consistent across all elements
+  - Button grid is cleanly laid out in 2x2 format with appropriate icons (down-arrow for Pull,  
+  up-arrow for Push)
+  - Badges use appropriate semantic colors: blue for continuity indicators, green for
+  "Selected"/"Ready"
+  - Frame panels are well-proportioned side-by-side with clear visual separation
+  - Shot sidebar shows thumbnails with link indicators (chain icons on 2B, 2C)
+  - "On" toggle for End Frame is clearly visible with upload icon
+
+  Minor observations (not blockers):
+  - Match buttons take ~60% width, Ref buttons ~40% — slight visual asymmetry in the grid       
+  (functional, not broken)
+  - When adjacent frame has no image generated (Shot 2A's end), the button grid correctly hides 
+  (good empty-state handling)
+
+  All 6 phases of the continuity revamp are working correctly end-to-end. The migration
+  034_frame_links.sql needs to be run for the reactive link features (Phase 4) to work in       
+  production.
