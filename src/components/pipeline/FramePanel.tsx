@@ -13,6 +13,8 @@ import {
   Link2,
   Camera,
   AlertTriangle,
+  Upload,
+  BookmarkPlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -41,6 +43,7 @@ import {
 import { cn } from '@/lib/utils';
 import type { Frame, FrameType } from '@/types/scene';
 import { ReferenceImageThumbnail } from './ReferenceImageThumbnail';
+import { FrameUploadModal } from './FrameUploadModal';
 import { frameService, type FrameGeneration, type AvailableReferenceAsset } from '@/lib/services/frameService';
 
 interface ReferenceImageEntry {
@@ -48,6 +51,13 @@ interface ReferenceImageEntry {
   assetName: string;
   url: string;
   type: string;
+}
+
+interface AdjacentFrameInfo {
+  shotId: string;
+  frameId: string;
+  imageUrl: string | null;
+  shotLabel: string;
 }
 
 interface FramePanelProps {
@@ -80,7 +90,15 @@ interface FramePanelProps {
     mode: 'none' | 'match' | 'camera_change';
     sourceShot?: string;
   };
-  onCopyFrame?: () => void;
+  // Bidirectional continuity props
+  adjacentFrames?: {
+    prevEnd?: AdjacentFrameInfo;
+    nextStart?: AdjacentFrameInfo;
+  };
+  onMatchFromFrame?: (sourceFrameId: string) => void;
+  onRefFromFrame?: (sourceFrameId: string) => void;
+  onUploadFrame?: (file: File, usage: 'variant' | 'reference') => void;
+  isUploadPending?: boolean;
 }
 
 const STATUS_STYLES: Record<string, { badge: string; label: string }> = {
@@ -114,10 +132,15 @@ export function FramePanel({
   sceneId,
   copySource,
   continuityInfo,
-  onCopyFrame,
+  adjacentFrames,
+  onMatchFromFrame,
+  onRefFromFrame,
+  onUploadFrame,
+  isUploadPending = false,
 }: FramePanelProps) {
   const queryClient = useQueryClient();
   const [imageError, setImageError] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const [showRegenOptions, setShowRegenOptions] = useState(false);
   const [correctionText, setCorrectionText] = useState('');
   const [showManualEdit, setShowManualEdit] = useState(false);
@@ -324,6 +347,20 @@ export function FramePanel({
                     {new Date(gen.createdAt).toLocaleDateString()}
                   </Badge>
 
+                  {/* Source badge - bottom left */}
+                  {gen.source === 'copy' && (
+                    <Badge className="absolute bottom-1 left-1 z-10 text-[10px] bg-blue-500/80 text-white gap-0.5">
+                      <Link2 className="w-2.5 h-2.5" />
+                      copy
+                    </Badge>
+                  )}
+                  {gen.source === 'upload' && (
+                    <Badge className="absolute bottom-1 left-1 z-10 text-[10px] bg-emerald-500/80 text-white gap-0.5">
+                      <Upload className="w-2.5 h-2.5" />
+                      upload
+                    </Badge>
+                  )}
+
                   {/* Counter badge - bottom right */}
                   <Badge
                     variant="secondary"
@@ -444,6 +481,21 @@ export function FramePanel({
             )}
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
+            {/* Upload icon */}
+            {onUploadFrame && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setShowUploadModal(true)}
+                    disabled={isDisabled}
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs">Upload image</TooltipContent>
+              </Tooltip>
+            )}
             <Badge variant="secondary" className={statusStyle.badge}>
               {isGenerating && <RefreshCw className="w-3 h-3 mr-1 animate-spin" />}
               {statusStyle.label}
@@ -586,57 +638,100 @@ export function FramePanel({
       )}
 
       {/* Action buttons */}
-      <div className="flex gap-2 mt-3">
-        {/* Copy frame button for match continuity */}
-        {continuityInfo?.mode === 'match' && onCopyFrame && !hasImage && (
-          <Button
-            variant="default"
-            size="sm"
-            onClick={onCopyFrame}
-            className="bg-amber-600 hover:bg-amber-700"
-          >
-            <Link2 className="w-4 h-4 mr-1" />
-            Copy from {continuityInfo.sourceShot} End
-          </Button>
+      <div className="flex flex-col gap-2 mt-3">
+        {/* Generate / Regenerate row */}
+        <div className="flex gap-2">
+          {needsGeneration && !isGenerating ? (
+            <Button
+              variant="gold"
+              className="w-full"
+              disabled={isDisabled || isGenerateDisabled || isGenerating}
+              onClick={hasBeenGenerated ? handleRegenClick : onGenerate}
+            >
+              <ImageIcon className="w-4 h-4 mr-2" />
+              {hasBeenGenerated ? 'Regenerate' : 'Generate'} {frameType} Frame
+            </Button>
+          ) : isGenerating ? (
+            <Button variant="outline" className="w-full" disabled>
+              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              Generating...
+            </Button>
+          ) : hasImage && !isGenerating ? (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={handleRegenClick}
+              disabled={isDisabled || isGenerateDisabled}
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Regenerate
+            </Button>
+          ) : null}
+        </div>
+
+        {/* Bidirectional continuity buttons (2×2 grid) */}
+        {(adjacentFrames?.prevEnd || adjacentFrames?.nextStart) && (onMatchFromFrame || onRefFromFrame) && (
+          <div className="grid grid-cols-2 gap-1.5">
+            {/* Row 1: Previous shot's end frame → this frame */}
+            {adjacentFrames?.prevEnd && (
+              <>
+                {onMatchFromFrame && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-7"
+                    onClick={() => onMatchFromFrame(adjacentFrames.prevEnd!.frameId)}
+                    disabled={!adjacentFrames.prevEnd.imageUrl || isDisabled}
+                  >
+                    <Link2 className="w-3 h-3 mr-1" />
+                    Match {adjacentFrames.prevEnd.shotLabel} End
+                  </Button>
+                )}
+                {onRefFromFrame && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs h-7 text-muted-foreground"
+                    onClick={() => onRefFromFrame(adjacentFrames.prevEnd!.frameId)}
+                    disabled={!adjacentFrames.prevEnd.imageUrl || isDisabled}
+                  >
+                    <BookmarkPlus className="w-3 h-3 mr-1" />
+                    Ref {adjacentFrames.prevEnd.shotLabel} End
+                  </Button>
+                )}
+              </>
+            )}
+            {/* Row 2: Next shot's start frame → this frame */}
+            {adjacentFrames?.nextStart && (
+              <>
+                {onMatchFromFrame && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-7"
+                    onClick={() => onMatchFromFrame(adjacentFrames.nextStart!.frameId)}
+                    disabled={!adjacentFrames.nextStart.imageUrl || isDisabled}
+                  >
+                    <Link2 className="w-3 h-3 mr-1" />
+                    Match {adjacentFrames.nextStart.shotLabel} Start
+                  </Button>
+                )}
+                {onRefFromFrame && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs h-7 text-muted-foreground"
+                    onClick={() => onRefFromFrame(adjacentFrames.nextStart!.frameId)}
+                    disabled={!adjacentFrames.nextStart.imageUrl || isDisabled}
+                  >
+                    <BookmarkPlus className="w-3 h-3 mr-1" />
+                    Ref {adjacentFrames.nextStart.shotLabel} Start
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
         )}
-        {/* Re-copy stale frame */}
-        {copySource?.isStale && onCopyFrame && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onCopyFrame}
-            className="border-amber-500/40 text-amber-400 hover:bg-amber-500/10"
-          >
-            <Link2 className="w-4 h-4 mr-1" />
-            Re-copy
-          </Button>
-        )}
-        {needsGeneration && !isGenerating ? (
-          <Button
-            variant="gold"
-            className="w-full"
-            disabled={isDisabled || isGenerateDisabled || isGenerating}
-            onClick={hasBeenGenerated ? handleRegenClick : onGenerate}
-          >
-            <ImageIcon className="w-4 h-4 mr-2" />
-            {hasBeenGenerated ? 'Regenerate' : 'Generate'} {frameType} Frame
-          </Button>
-        ) : isGenerating ? (
-          <Button variant="outline" className="w-full" disabled>
-            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-            Generating...
-          </Button>
-        ) : hasImage && !isGenerating ? (
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={handleRegenClick}
-            disabled={isDisabled || isGenerateDisabled}
-          >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Regenerate
-          </Button>
-        ) : null}
       </div>
 
       {/* Regeneration correction area */}
@@ -739,6 +834,19 @@ export function FramePanel({
             />
           </DialogContent>
         </Dialog>
+      )}
+
+      {/* Upload modal */}
+      {onUploadFrame && (
+        <FrameUploadModal
+          open={showUploadModal}
+          onOpenChange={setShowUploadModal}
+          onUpload={(file, usage) => {
+            onUploadFrame(file, usage);
+            setShowUploadModal(false);
+          }}
+          isUploading={isUploadPending}
+        />
       )}
     </div>
   );
