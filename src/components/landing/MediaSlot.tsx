@@ -17,19 +17,16 @@ const aspectMap = {
 
 /**
  * Viewfinder corner marks — the "Technical Auteur" motif.
- * Replaces rounded cards with camera field-of-view marks.
+ * Colors driven by CSS custom properties (--l-accent, etc.) set on the Landing root.
  */
 function ViewfinderFrame({ children, className }: { children: React.ReactNode; className?: string }) {
+  const cornerStyle = { borderColor: 'var(--l-accent)' }
   return (
     <div className={cn('relative', className)}>
-      {/* Top-left corner */}
-      <span className="absolute -top-px -left-px h-4 w-4 border-l border-t border-[oklch(75%_0.16_65)]" />
-      {/* Top-right corner */}
-      <span className="absolute -top-px -right-px h-4 w-4 border-r border-t border-[oklch(75%_0.16_65)]" />
-      {/* Bottom-left corner */}
-      <span className="absolute -bottom-px -left-px h-4 w-4 border-l border-b border-[oklch(75%_0.16_65)]" />
-      {/* Bottom-right corner */}
-      <span className="absolute -bottom-px -right-px h-4 w-4 border-r border-b border-[oklch(75%_0.16_65)]" />
+      <span className="absolute -top-px -left-px h-4 w-4 border-l border-t" style={cornerStyle} />
+      <span className="absolute -top-px -right-px h-4 w-4 border-r border-t" style={cornerStyle} />
+      <span className="absolute -bottom-px -left-px h-4 w-4 border-l border-b" style={cornerStyle} />
+      <span className="absolute -bottom-px -right-px h-4 w-4 border-r border-b" style={cornerStyle} />
       {children}
     </div>
   )
@@ -58,7 +55,7 @@ export function MediaSlot({
           </div>
         </ViewfinderFrame>
         {caption && (
-          <figcaption className="text-xs uppercase tracking-widest text-[oklch(50%_0.012_260)]">
+          <figcaption className="text-xs uppercase tracking-widest" style={{ color: 'var(--l-caption)' }}>
             {caption}
           </figcaption>
         )}
@@ -70,25 +67,21 @@ export function MediaSlot({
     <figure className={cn('flex flex-col gap-2', className)}>
       <ViewfinderFrame>
         <div
-          className={cn(
-            'flex flex-col items-center justify-center gap-2',
-            'border border-[oklch(22%_0.012_260)]',
-            'bg-[oklch(13%_0.012_260)]',
-            aspect
-          )}
+          className={cn('flex flex-col items-center justify-center gap-2', aspect)}
+          style={{ border: '1px solid var(--l-line)', backgroundColor: 'var(--l-surface)' }}
         >
           {/* Crosshair marks */}
           <div className="relative h-5 w-5">
-            <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-[oklch(28%_0.012_260)]" />
-            <span className="absolute top-1/2 left-0 w-full h-px -translate-y-1/2 bg-[oklch(28%_0.012_260)]" />
+            <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2" style={{ backgroundColor: 'var(--l-crosshair)' }} />
+            <span className="absolute top-1/2 left-0 w-full h-px -translate-y-1/2" style={{ backgroundColor: 'var(--l-crosshair)' }} />
           </div>
-          <span className="text-[10px] uppercase tracking-[0.2em] text-[oklch(40%_0.012_260)]">
+          <span className="text-[10px] uppercase tracking-[0.2em]" style={{ color: 'var(--l-placeholder)' }}>
             {alt}
           </span>
         </div>
       </ViewfinderFrame>
       {caption && (
-        <figcaption className="text-xs uppercase tracking-widest text-[oklch(50%_0.012_260)]">
+        <figcaption className="text-xs uppercase tracking-widest" style={{ color: 'var(--l-caption)' }}>
           {caption}
         </figcaption>
       )}
