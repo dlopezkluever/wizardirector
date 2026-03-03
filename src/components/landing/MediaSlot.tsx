@@ -23,13 +23,13 @@ function ViewfinderFrame({ children, className }: { children: React.ReactNode; c
   return (
     <div className={cn('relative', className)}>
       {/* Top-left corner */}
-      <span className="absolute -top-px -left-px h-4 w-4 border-l border-t border-[oklch(85%_0.18_92)]" />
+      <span className="absolute -top-px -left-px h-4 w-4 border-l border-t border-[oklch(75%_0.16_65)]" />
       {/* Top-right corner */}
-      <span className="absolute -top-px -right-px h-4 w-4 border-r border-t border-[oklch(85%_0.18_92)]" />
+      <span className="absolute -top-px -right-px h-4 w-4 border-r border-t border-[oklch(75%_0.16_65)]" />
       {/* Bottom-left corner */}
-      <span className="absolute -bottom-px -left-px h-4 w-4 border-l border-b border-[oklch(85%_0.18_92)]" />
+      <span className="absolute -bottom-px -left-px h-4 w-4 border-l border-b border-[oklch(75%_0.16_65)]" />
       {/* Bottom-right corner */}
-      <span className="absolute -bottom-px -right-px h-4 w-4 border-r border-b border-[oklch(85%_0.18_92)]" />
+      <span className="absolute -bottom-px -right-px h-4 w-4 border-r border-b border-[oklch(75%_0.16_65)]" />
       {children}
     </div>
   )
@@ -58,7 +58,7 @@ export function MediaSlot({
           </div>
         </ViewfinderFrame>
         {caption && (
-          <figcaption className="text-xs uppercase tracking-widest text-[oklch(50%_0.02_260)]">
+          <figcaption className="text-xs uppercase tracking-widest text-[oklch(50%_0.012_260)]">
             {caption}
           </figcaption>
         )}
@@ -72,23 +72,23 @@ export function MediaSlot({
         <div
           className={cn(
             'flex flex-col items-center justify-center gap-2',
-            'border border-[oklch(25%_0.02_260)]',
-            'bg-[oklch(14%_0.01_260)]',
+            'border border-[oklch(22%_0.012_260)]',
+            'bg-[oklch(13%_0.012_260)]',
             aspect
           )}
         >
           {/* Crosshair marks */}
           <div className="relative h-5 w-5">
-            <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-[oklch(30%_0.02_260)]" />
-            <span className="absolute top-1/2 left-0 w-full h-px -translate-y-1/2 bg-[oklch(30%_0.02_260)]" />
+            <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-[oklch(28%_0.012_260)]" />
+            <span className="absolute top-1/2 left-0 w-full h-px -translate-y-1/2 bg-[oklch(28%_0.012_260)]" />
           </div>
-          <span className="text-[10px] uppercase tracking-[0.2em] text-[oklch(40%_0.02_260)]">
+          <span className="text-[10px] uppercase tracking-[0.2em] text-[oklch(40%_0.012_260)]">
             {alt}
           </span>
         </div>
       </ViewfinderFrame>
       {caption && (
-        <figcaption className="text-xs uppercase tracking-widest text-[oklch(50%_0.02_260)]">
+        <figcaption className="text-xs uppercase tracking-widest text-[oklch(50%_0.012_260)]">
           {caption}
         </figcaption>
       )}
