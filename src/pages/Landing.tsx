@@ -1,448 +1,334 @@
+import '@fontsource-variable/fraunces'
+import '@fontsource-variable/space-grotesk'
+
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import {
-  BookOpen,
-  Clapperboard,
-  Film,
-  Sparkles,
-  Palette,
-  Users,
-  MapPin,
-  SplitSquareVertical,
-  FileText,
-  Layers,
-  Image,
-  Eye,
-  DollarSign,
-  Video,
-  ArrowRight,
-  Check,
-  PenTool,
-  Paintbrush,
-  Play,
-  Cpu,
-  Zap,
-} from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { ArrowRight, Check } from 'lucide-react'
 import { ScrollReveal } from '@/components/landing/ScrollReveal'
 import { MediaSlot } from '@/components/landing/MediaSlot'
 
-/* ─── Stage data ─── */
+/* ─── Data ─── */
 
-const pipelineStages = [
-  { num: 1, name: 'Story Seed', desc: 'Expand, condense, transform, or upload your narrative', icon: BookOpen, phase: 'A' },
-  { num: 2, name: 'Treatment', desc: 'AI builds a structured treatment from your seed', icon: FileText, phase: 'A' },
-  { num: 3, name: 'Beat Sheet', desc: 'Break the treatment into dramatic beats', icon: Layers, phase: 'A' },
-  { num: 4, name: 'Screenplay', desc: 'Full screenplay with professional formatting', icon: Clapperboard, phase: 'A' },
-  { num: 5, name: 'Asset Bible', desc: 'Lock characters, locations, props & style capsules', icon: Palette, phase: 'A' },
-  { num: 6, name: 'Script Hub', desc: 'Scene-by-scene breakdown and navigation', icon: SplitSquareVertical, phase: 'B' },
-  { num: 7, name: 'Shot Design', desc: 'Camera angles, composition, and pacing per shot', icon: Film, phase: 'B' },
-  { num: 8, name: 'Visual Prompts', desc: 'AI-crafted prompts with continuity awareness', icon: Sparkles, phase: 'B' },
-  { num: 9, name: 'Dialogue Polish', desc: 'Refine dialogue with character voice consistency', icon: Users, phase: 'B' },
-  { num: 10, name: 'Frame Anchors', desc: 'Generate cheap reference frames before committing', icon: Image, phase: 'B' },
-  { num: 11, name: 'Cost Checkout', desc: 'Review costs and choose speed vs quality', icon: DollarSign, phase: 'B' },
-  { num: 12, name: 'Render', desc: 'Final video generation with Veo3, scene by scene', icon: Video, phase: 'B' },
+const stages = [
+  { num: '01', name: 'Story Seed', desc: 'Transform narrative fragments into a structured core. Expand, condense, or upload.', phase: 'A' as const },
+  { num: '02', name: 'Treatment', desc: 'AI builds a structured dramatic treatment. Tone, pacing, thematic anchors.', phase: 'A' as const },
+  { num: '03', name: 'Beat Sheet', desc: 'Break the treatment into dramatic beats with scene boundaries.', phase: 'A' as const },
+  { num: '04', name: 'Screenplay', desc: 'Full screenplay with professional formatting and dialogue.', phase: 'A' as const },
+  { num: '05', name: 'Asset Bible', desc: 'Lock characters, locations, props, and style capsules for consistency.', phase: 'A' as const },
+  { num: '06', name: 'Script Hub', desc: 'Scene-by-scene breakdown. Navigate your production.', phase: 'B' as const },
+  { num: '07', name: 'Shot Design', desc: 'Camera angles, composition, movement, and pacing per shot.', phase: 'B' as const },
+  { num: '08', name: 'Visual Prompts', desc: 'AI-crafted generation prompts with continuity awareness.', phase: 'B' as const },
+  { num: '09', name: 'Dialogue Polish', desc: 'Refine dialogue timing and character voice consistency.', phase: 'B' as const },
+  { num: '10', name: 'Frame Anchors', desc: 'Cheap reference frames before committing credits.', phase: 'B' as const },
+  { num: '11', name: 'Cost Checkout', desc: 'Review costs, choose speed vs quality, gate before render.', phase: 'B' as const },
+  { num: '12', name: 'Render', desc: 'Final video generation with Veo3. Scene by scene, shot by shot.', phase: 'B' as const },
 ]
 
-const features = [
-  {
-    title: '4 Ways In',
-    desc: 'Expand an idea, condense a novel, transform existing content, or upload a script directly.',
-    icon: BookOpen,
-    media: 'Screenshot of Stage 1 input mode selector',
-  },
-  {
-    title: 'Visual Continuity Engine',
-    desc: 'Asset inheritance, rearview mirror, continuity drift detection, and frame anchoring.',
-    icon: Eye,
-    media: 'Screenshot of continuity tracking UI',
-  },
-  {
-    title: 'Cost Control, Not Surprise',
-    desc: 'Pre-generation estimates, Stage 11 gating, and speed vs quality modes.',
-    icon: DollarSign,
-    media: 'Screenshot of Stage 11 cost checkout view',
-  },
-  {
-    title: 'AI Multi-Provider',
-    desc: 'OpenAI, Anthropic, Gemini for text. Nano Banana for frames. Google Veo3 for video.',
-    icon: Cpu,
-    media: 'Diagram showing provider logos and capabilities',
-  },
-]
-
-const howItWorks = [
-  {
-    step: 1,
-    title: 'Write',
-    desc: 'Start with any narrative input. AI helps you build a full screenplay with treatments, beat sheets, and rich formatting.',
-    icon: PenTool,
-    media: 'Gif of the screenplay editor in action',
-  },
-  {
-    step: 2,
-    title: 'Design',
-    desc: 'Define your visual world. Characters, locations, props — all locked for consistency before a single frame is generated.',
-    icon: Paintbrush,
-    media: 'Screenshot of asset management / Stage 5',
-  },
-  {
-    step: 3,
-    title: 'Produce',
-    desc: 'Generate anchor frames cheaply, review costs, then render final video with Veo3. Scene by scene, shot by shot.',
-    icon: Play,
-    media: 'Gif of Stage 12 video generation / timeline',
-  },
+const capabilities = [
+  { label: '4 input modes', detail: 'Expand an idea, condense a novel, transform existing content, or upload a script.' },
+  { label: 'Visual continuity', detail: 'Asset inheritance, rearview mirror, drift detection, frame anchoring.' },
+  { label: 'Cost gating', detail: 'Pre-generation estimates, checkout stage, speed vs quality modes.' },
+  { label: 'Multi-provider AI', detail: 'OpenAI, Anthropic, Gemini for text. Nano Banana for frames. Google Veo3 for video.' },
 ]
 
 const pricingFeatures = [
-  'Full 12-stage pipeline access',
+  'Full 12-stage pipeline',
   'Unlimited projects & scenes',
-  'Multi-provider AI (text, image, video)',
-  'Git-style project branching',
+  'Multi-provider AI stack',
+  'Git-style branching',
   'Visual continuity engine',
   'Real-time cost tracking',
   'Professional screenplay editor',
 ]
+
+/* ─── Palette (OKLCH, scoped via inline + Tailwind arbitrary) ─── */
+// bg:      oklch(12% 0.01 260)   — deep ink
+// surface: oklch(16% 0.015 260)  — slightly lifted
+// accent:  oklch(85% 0.18 92)    — safety yellow
+// text:    oklch(95% 0.01 260)   — near white
+// muted:   oklch(55% 0.02 260)   — secondary text
+// line:    oklch(25% 0.02 260)   — hairlines
+
+const EXPO_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1]
 
 /* ─── Component ─── */
 
 export function Landing() {
   const navigate = useNavigate()
 
-  const scrollToSection = (id: string) => {
+  const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
-      {/* ─── Nav Bar ─── */}
-      <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-border/30">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-          <span className="font-display text-xl font-bold text-gradient-gold">
-            Aiuteur
+    <div
+      className="min-h-screen overflow-x-hidden"
+      style={{
+        fontFamily: "'Space Grotesk Variable', 'Space Grotesk', system-ui, sans-serif",
+        backgroundColor: 'oklch(12% 0.01 260)',
+        color: 'oklch(95% 0.01 260)',
+      }}
+    >
+      {/* ── Nav ── */}
+      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-[oklch(25%_0.02_260)]" style={{ backgroundColor: 'oklch(12% 0.01 260 / 0.9)', backdropFilter: 'blur(8px)' }}>
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6 lg:px-8">
+          <span className="text-sm font-medium tracking-[-0.02em]" style={{ fontFamily: "'Fraunces Variable', 'Fraunces', Georgia, serif" }}>
+            AIUTEUR
           </span>
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="sm"
+          <div className="flex items-center gap-8">
+            <button
+              onClick={() => scrollTo('pipeline')}
+              className="hidden sm:block text-xs uppercase tracking-[0.2em] transition-colors duration-200 hover:text-[oklch(85%_0.18_92)]"
+              style={{ color: 'oklch(55% 0.02 260)' }}
+            >
+              Process
+            </button>
+            <button
+              onClick={() => scrollTo('pricing')}
+              className="hidden sm:block text-xs uppercase tracking-[0.2em] transition-colors duration-200 hover:text-[oklch(85%_0.18_92)]"
+              style={{ color: 'oklch(55% 0.02 260)' }}
+            >
+              Pricing
+            </button>
+            <button
               onClick={() => navigate('/auth')}
+              className="hidden sm:block text-xs uppercase tracking-[0.2em] transition-colors duration-200 hover:text-[oklch(85%_0.18_92)]"
+              style={{ color: 'oklch(55% 0.02 260)' }}
             >
               Log In
-            </Button>
-            <Button size="sm" onClick={() => navigate('/auth')}>
-              Start Free Trial
-            </Button>
+            </button>
+            <button
+              onClick={() => navigate('/auth')}
+              className="text-xs font-medium uppercase tracking-[0.15em] px-5 py-2 transition-transform duration-200 hover:scale-[1.03] active:scale-[0.98]"
+              style={{ backgroundColor: 'oklch(85% 0.18 92)', color: 'oklch(12% 0.01 260)' }}
+            >
+              Start Production
+            </button>
           </div>
         </div>
       </nav>
 
-      {/* ─── 1. Hero ─── */}
-      <section
-        className="relative flex min-h-screen flex-col items-center justify-center px-6 pt-16"
-        style={{ background: 'var(--gradient-hero)' }}
-      >
-        {/* Subtle radial glow behind headline */}
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="h-[600px] w-[600px] rounded-full bg-primary/5 blur-[120px]" />
-        </div>
-
-        <div className="relative z-10 mx-auto flex max-w-5xl flex-col items-center gap-8 text-center">
-          <motion.h1
-            className="font-display text-5xl font-bold leading-tight tracking-tight sm:text-6xl lg:text-7xl"
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, ease: [0.25, 0.4, 0.25, 1] }}
-          >
-            From Narrative to Film.{' '}
-            <span className="text-gradient-gold">Directed by You</span>,
-            Powered by AI.
-          </motion.h1>
-
+      {/* ── Hero ── */}
+      <section className="px-6 lg:px-8 pt-32 pb-24 lg:pb-32">
+        <div className="mx-auto max-w-7xl">
           <motion.p
-            className="max-w-2xl text-lg text-muted-foreground sm:text-xl"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.2, ease: [0.25, 0.4, 0.25, 1] }}
+            className="text-xs uppercase tracking-[0.3em] mb-8"
+            style={{ color: 'oklch(85% 0.18 92)' }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.6, ease: EXPO_OUT }}
           >
-            A deterministic 12-stage pipeline that transforms any narrative into
-            a fully produced film — with complete creative control and cost
-            visibility at every step.
+            Deterministic AI Filmmaking
           </motion.p>
 
-          <motion.div
-            className="flex flex-wrap justify-center gap-4"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5, delay: 0.4, ease: [0.25, 0.4, 0.25, 1] }}
-          >
-            <Button size="xl" onClick={() => navigate('/auth')}>
-              Start Free Trial
-              <ArrowRight className="ml-1 h-5 w-5" />
-            </Button>
-            <Button
-              variant="outline"
-              size="xl"
-              onClick={() => scrollToSection('pipeline')}
-            >
-              See How It Works
-            </Button>
-          </motion.div>
-
-          <motion.div
-            className="mt-4 w-full max-w-4xl"
+          <motion.h1
+            className="leading-[0.9] tracking-tight mb-12"
+            style={{
+              fontFamily: "'Fraunces Variable', 'Fraunces', Georgia, serif",
+              fontSize: 'clamp(3rem, 9vw, 7.5rem)',
+              fontStyle: 'italic',
+              fontWeight: 700,
+            }}
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.6, ease: [0.25, 0.4, 0.25, 1] }}
+            transition={{ duration: 0.8, delay: 0.1, ease: EXPO_OUT }}
           >
-            <MediaSlot
-              alt="App hero screenshot / demo gif"
-              aspectRatio="16/9"
-            />
+            From Narrative
+            <br />
+            <span style={{ color: 'oklch(55% 0.02 260)', fontStyle: 'normal' }}>to</span>{' '}
+            Film.
+          </motion.h1>
+
+          <motion.div
+            className="grid grid-cols-1 md:grid-cols-12 gap-12 items-end"
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.3, ease: EXPO_OUT }}
+          >
+            <div className="md:col-span-7">
+              <p
+                className="text-xl sm:text-2xl leading-relaxed max-w-2xl"
+                style={{ color: 'oklch(55% 0.02 260)' }}
+              >
+                A{' '}
+                <span style={{ color: 'oklch(95% 0.01 260)' }}>deterministic 12-stage pipeline</span>{' '}
+                that transforms script to screen. No credit-roulette. Just creative engineering.
+              </p>
+              <div className="flex flex-wrap gap-4 mt-10">
+                <button
+                  onClick={() => navigate('/auth')}
+                  className="flex items-center gap-2 text-sm font-medium uppercase tracking-[0.1em] px-7 py-3 transition-transform duration-200 hover:scale-[1.03] active:scale-[0.98]"
+                  style={{ backgroundColor: 'oklch(85% 0.18 92)', color: 'oklch(12% 0.01 260)' }}
+                >
+                  Start Free Trial
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => scrollTo('pipeline')}
+                  className="text-sm uppercase tracking-[0.1em] px-7 py-3 border transition-colors duration-200 hover:text-[oklch(85%_0.18_92)] hover:border-[oklch(85%_0.18_92)]"
+                  style={{ borderColor: 'oklch(25% 0.02 260)', color: 'oklch(55% 0.02 260)' }}
+                >
+                  See the Pipeline
+                </button>
+              </div>
+            </div>
+
+            <div className="md:col-span-5">
+              <MediaSlot alt="Pipeline overview" aspectRatio="4/3" />
+            </div>
           </motion.div>
         </div>
       </section>
 
-      {/* ─── 2. Problem → Solution ─── */}
-      <section className="py-24 px-6">
-        <div className="mx-auto grid max-w-6xl gap-12 md:grid-cols-2 md:gap-16">
-          <ScrollReveal direction="left">
-            <div className="flex flex-col gap-6">
-              <Badge variant="destructive" className="w-fit">
-                The Problem
-              </Badge>
-              <h2 className="font-display text-3xl font-bold sm:text-4xl">
-                Traditional AI video ={' '}
-                <span className="text-destructive">expensive roulette</span>
-              </h2>
-              <p className="text-muted-foreground">
-                Generate → hope → waste credits. No structure, no continuity, no
-                cost control. Every render is a gamble with your budget and your
-                vision.
-              </p>
-              <MediaSlot
-                alt="Chaotic AI generation visual or diagram"
-                aspectRatio="4/3"
-              />
-            </div>
-          </ScrollReveal>
-
-          <ScrollReveal direction="right">
-            <div className="flex flex-col gap-6">
-              <Badge className="w-fit">The Inversion</Badge>
-              <h2 className="font-display text-3xl font-bold sm:text-4xl">
-                Plan → Anchor →{' '}
-                <span className="text-gradient-gold">Generate</span>
-              </h2>
-              <p className="text-muted-foreground">
-                Aiuteur inverts the process. Build your story, lock your assets,
-                preview with cheap frames, then render with confidence. Know your
-                costs before you spend.
-              </p>
-              <MediaSlot
-                alt="Clean pipeline flow visual or diagram"
-                aspectRatio="4/3"
-              />
+      {/* ── Problem / Solution — single editorial section ── */}
+      <section className="border-t border-[oklch(25%_0.02_260)]">
+        <div className="mx-auto max-w-7xl px-6 lg:px-8 py-24 lg:py-32">
+          <ScrollReveal direction="up">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-16">
+              <div className="md:col-span-5">
+                <p className="text-xs uppercase tracking-[0.3em] mb-6" style={{ color: 'oklch(85% 0.18 92)' }}>
+                  The Problem
+                </p>
+                <h2
+                  className="text-3xl sm:text-4xl leading-tight tracking-tight"
+                  style={{ fontFamily: "'Fraunces Variable', 'Fraunces', Georgia, serif", fontWeight: 700 }}
+                >
+                  Generate. Hope.
+                  <br />
+                  <span style={{ color: 'oklch(55% 0.02 260)' }}>Waste credits.</span>
+                </h2>
+              </div>
+              <div className="md:col-span-7 flex flex-col gap-8">
+                <p className="text-lg leading-relaxed" style={{ color: 'oklch(55% 0.02 260)' }}>
+                  Traditional AI video has no structure, no continuity, and no cost control.
+                  Every render is a gamble with your budget and your creative vision.
+                </p>
+                <div className="border-l-2 pl-6" style={{ borderColor: 'oklch(85% 0.18 92)' }}>
+                  <p
+                    className="text-lg leading-relaxed"
+                    style={{ color: 'oklch(95% 0.01 260)' }}
+                  >
+                    Aiuteur inverts the process:{' '}
+                    <span style={{ color: 'oklch(85% 0.18 92)' }}>Plan → Anchor → Generate.</span>
+                    {' '}Build your story, lock your assets, preview with cheap reference frames, then
+                    render with confidence.
+                  </p>
+                </div>
+              </div>
             </div>
           </ScrollReveal>
         </div>
       </section>
 
-      {/* ─── 3. 12-Stage Pipeline ─── */}
-      <section id="pipeline" className="py-24 px-6">
-        <div className="mx-auto max-w-6xl">
-          <ScrollReveal direction="up" className="mb-16 text-center">
-            <Badge variant="outline" className="mb-4">
-              The Pipeline
-            </Badge>
-            <h2 className="font-display text-4xl font-bold sm:text-5xl">
-              12 Stages. <span className="text-gradient-gold">Zero Guesswork.</span>
-            </h2>
-            <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">
-              From a single idea to a finished film, every stage builds on the
-              last with deterministic, auditable outputs.
-            </p>
-          </ScrollReveal>
-
-          {/* Phase A */}
-          <div className="mb-16">
-            <ScrollReveal direction="up" className="mb-8">
-              <div className="flex items-center gap-3">
-                <div className="h-px flex-1 bg-gradient-to-r from-primary/50 to-transparent" />
-                <span className="text-sm font-semibold uppercase tracking-widest text-primary">
-                  Phase A — Global Narrative Engine
-                </span>
-                <div className="h-px flex-1 bg-gradient-to-l from-primary/50 to-transparent" />
-              </div>
+      {/* ── 12-Stage Pipeline — Vertical Production Stack ── */}
+      <section id="pipeline" className="border-t border-[oklch(25%_0.02_260)]">
+        <div className="mx-auto max-w-7xl px-6 lg:px-8">
+          {/* Pipeline header */}
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end py-12 gap-4">
+            <ScrollReveal direction="up">
+              <h2
+                className="text-4xl sm:text-5xl tracking-tight"
+                style={{ fontFamily: "'Fraunces Variable', 'Fraunces', Georgia, serif", fontWeight: 700 }}
+              >
+                The 12-Stage Pipeline
+              </h2>
             </ScrollReveal>
-
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {pipelineStages
-                .filter((s) => s.phase === 'A')
-                .map((stage, i) => (
-                  <ScrollReveal key={stage.num} direction="up" delay={i * 0.1}>
-                    <Card className="card-hover glass h-full">
-                      <CardHeader className="flex flex-row items-center gap-4 pb-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-primary/40 bg-primary/10 text-primary">
-                          <stage.icon className="h-5 w-5" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold uppercase tracking-wider text-primary">
-                            Stage {stage.num}
-                          </p>
-                          <CardTitle className="text-base">
-                            {stage.name}
-                          </CardTitle>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="flex flex-col gap-3">
-                        <p className="text-sm text-muted-foreground">
-                          {stage.desc}
-                        </p>
-                        <MediaSlot
-                          alt={`Stage ${stage.num} — ${stage.name} UI`}
-                          aspectRatio="16/9"
-                          className="mt-1"
-                        />
-                      </CardContent>
-                    </Card>
-                  </ScrollReveal>
-                ))}
-            </div>
+            <ScrollReveal direction="up" delay={0.1}>
+              <p className="text-xs uppercase tracking-[0.2em] pb-1" style={{ color: 'oklch(55% 0.02 260)' }}>
+                Linear Production Flow ↓
+              </p>
+            </ScrollReveal>
           </div>
 
-          {/* Gold connecting line */}
-          <ScrollReveal direction="scale" className="my-8 flex justify-center">
-            <div className="flex items-center gap-2">
-              <div className="h-px w-16 bg-gradient-to-r from-transparent to-primary/60" />
-              <Zap className="h-5 w-5 text-primary" />
-              <div className="h-px w-16 bg-gradient-to-l from-transparent to-primary/60" />
-            </div>
-          </ScrollReveal>
-
-          {/* Phase B */}
-          <div>
-            <ScrollReveal direction="up" className="mb-8">
-              <div className="flex items-center gap-3">
-                <div className="h-px flex-1 bg-gradient-to-r from-accent/50 to-transparent" />
-                <span className="text-sm font-semibold uppercase tracking-widest text-accent">
-                  Phase B — Production Engine
-                </span>
-                <div className="h-px flex-1 bg-gradient-to-l from-accent/50 to-transparent" />
-              </div>
-            </ScrollReveal>
-
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {pipelineStages
-                .filter((s) => s.phase === 'B')
-                .map((stage, i) => (
-                  <ScrollReveal key={stage.num} direction="up" delay={i * 0.1}>
-                    <Card className="card-hover glass h-full">
-                      <CardHeader className="flex flex-row items-center gap-4 pb-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-accent/40 bg-accent/10 text-accent">
-                          <stage.icon className="h-5 w-5" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold uppercase tracking-wider text-accent">
-                            Stage {stage.num}
-                          </p>
-                          <CardTitle className="text-base">
-                            {stage.name}
-                          </CardTitle>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="flex flex-col gap-3">
-                        <p className="text-sm text-muted-foreground">
-                          {stage.desc}
-                        </p>
-                        <MediaSlot
-                          alt={`Stage ${stage.num} — ${stage.name} UI`}
-                          aspectRatio="16/9"
-                          className="mt-1"
-                        />
-                      </CardContent>
-                    </Card>
-                  </ScrollReveal>
-                ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ─── 4. Feature Highlights ─── */}
-      <section className="py-24 px-6">
-        <div className="mx-auto max-w-6xl">
-          <ScrollReveal direction="up" className="mb-16 text-center">
-            <h2 className="font-display text-4xl font-bold sm:text-5xl">
-              Built for <span className="text-gradient-gold">Filmmakers</span>
-            </h2>
-            <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">
-              Every feature exists to give you more control, more consistency,
-              and more confidence.
+          {/* Phase A label */}
+          <div className="border-t border-[oklch(25%_0.02_260)] py-3">
+            <p className="text-[10px] uppercase tracking-[0.3em]" style={{ color: 'oklch(85% 0.18 92)' }}>
+              Phase A — Global Narrative Engine
             </p>
-          </ScrollReveal>
+          </div>
 
-          <div className="grid gap-6 sm:grid-cols-2">
-            {features.map((f, i) => (
-              <ScrollReveal key={f.title} direction="scale" delay={i * 0.1}>
-                <Card className="card-hover glass h-full overflow-hidden">
-                  <CardHeader className="flex flex-row items-center gap-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                      <f.icon className="h-6 w-6" />
-                    </div>
-                    <CardTitle className="text-xl">{f.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-4">
-                    <p className="text-muted-foreground">{f.desc}</p>
-                    <MediaSlot alt={f.media} aspectRatio="16/9" />
-                  </CardContent>
-                </Card>
+          {/* Stage rows */}
+          <div className="border-t border-[oklch(25%_0.02_260)]">
+            {stages.map((stage, i) => (
+              <ScrollReveal key={stage.num} direction="fade" delay={i * 0.04}>
+                {/* Phase B label before stage 06 */}
+                {stage.num === '06' && (
+                  <div className="border-b border-[oklch(25%_0.02_260)] py-3">
+                    <p className="text-[10px] uppercase tracking-[0.3em]" style={{ color: 'oklch(85% 0.18 92)' }}>
+                      Phase B — Production Engine
+                    </p>
+                  </div>
+                )}
+                <div
+                  className="group flex flex-wrap md:flex-nowrap items-center gap-6 md:gap-12 py-8 md:py-10 border-b border-[oklch(25%_0.02_260)] transition-[background-color,padding] duration-[400ms] hover:pl-4"
+                  style={{ transitionTimingFunction: 'cubic-bezier(0.23, 1, 0.32, 1)' }}
+                >
+                  <span
+                    className="text-4xl md:text-5xl font-light shrink-0 tabular-nums"
+                    style={{ color: 'oklch(85% 0.18 92)', fontVariantNumeric: 'tabular-nums' }}
+                  >
+                    {stage.num}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-lg md:text-xl font-medium uppercase tracking-tight">
+                      {stage.name}
+                    </h3>
+                    <p className="text-sm mt-1 max-w-md" style={{ color: 'oklch(55% 0.02 260)' }}>
+                      {stage.desc}
+                    </p>
+                  </div>
+                  <div className="hidden lg:block w-48 xl:w-56 shrink-0">
+                    <MediaSlot alt={`Stage ${stage.num} UI`} aspectRatio="16/9" />
+                  </div>
+                  <button
+                    className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-[10px] uppercase tracking-[0.2em] px-4 py-2 border shrink-0 whitespace-nowrap"
+                    style={{ borderColor: 'oklch(85% 0.18 92)', color: 'oklch(85% 0.18 92)' }}
+                    tabIndex={-1}
+                  >
+                    Explore Stage
+                  </button>
+                </div>
               </ScrollReveal>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ─── 5. How It Works ─── */}
-      <section className="py-24 px-6">
-        <div className="mx-auto max-w-5xl">
-          <ScrollReveal direction="up" className="mb-16 text-center">
-            <Badge variant="outline" className="mb-4">
-              Simple as 1-2-3
-            </Badge>
-            <h2 className="font-display text-4xl font-bold sm:text-5xl">
-              How It <span className="text-gradient-gold">Works</span>
+      {/* ── Capabilities — Not a card grid. Alternating asymmetric rows. ── */}
+      <section className="border-t border-[oklch(25%_0.02_260)]">
+        <div className="mx-auto max-w-7xl px-6 lg:px-8 py-24 lg:py-32">
+          <ScrollReveal direction="up">
+            <p className="text-xs uppercase tracking-[0.3em] mb-6" style={{ color: 'oklch(85% 0.18 92)' }}>
+              Capabilities
+            </p>
+            <h2
+              className="text-4xl sm:text-5xl tracking-tight mb-20"
+              style={{ fontFamily: "'Fraunces Variable', 'Fraunces', Georgia, serif", fontWeight: 700 }}
+            >
+              Built for the process,
+              <br />
+              <span style={{ color: 'oklch(55% 0.02 260)' }}>not the prompt.</span>
             </h2>
           </ScrollReveal>
 
-          <div className="flex flex-col gap-16">
-            {howItWorks.map((item, i) => (
-              <ScrollReveal
-                key={item.step}
-                direction="right"
-                delay={i * 0.15}
-              >
-                <div className="grid items-center gap-8 md:grid-cols-2">
-                  <div className={`flex flex-col gap-4 ${i % 2 === 1 ? 'md:order-2' : ''}`}>
-                    <div className="flex items-center gap-4">
-                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary glow-gold">
-                        <item.icon className="h-7 w-7" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold uppercase tracking-wider text-primary">
-                          Step {item.step}
-                        </p>
-                        <h3 className="font-display text-2xl font-bold">
-                          {item.title}
-                        </h3>
-                      </div>
-                    </div>
-                    <p className="text-muted-foreground">{item.desc}</p>
+          <div className="flex flex-col">
+            {capabilities.map((cap, i) => (
+              <ScrollReveal key={cap.label} direction="up" delay={i * 0.08}>
+                <div
+                  className="grid grid-cols-1 md:grid-cols-12 gap-6 md:gap-12 py-10 border-t border-[oklch(25%_0.02_260)]"
+                >
+                  <div className="md:col-span-4">
+                    <h3 className="text-lg font-medium uppercase tracking-tight">
+                      {cap.label}
+                    </h3>
                   </div>
-                  <div className={i % 2 === 1 ? 'md:order-1' : ''}>
-                    <MediaSlot alt={item.media} aspectRatio="16/9" />
+                  <div className="md:col-span-5">
+                    <p className="text-base leading-relaxed" style={{ color: 'oklch(55% 0.02 260)' }}>
+                      {cap.detail}
+                    </p>
+                  </div>
+                  <div className="md:col-span-3">
+                    <MediaSlot alt={`${cap.label} screenshot`} aspectRatio="4/3" />
                   </div>
                 </div>
               </ScrollReveal>
@@ -451,91 +337,158 @@ export function Landing() {
         </div>
       </section>
 
-      {/* ─── 6. Pricing ─── */}
-      <section className="py-24 px-6">
-        <div className="mx-auto max-w-md">
-          <ScrollReveal direction="scale">
-            <Card className="relative overflow-hidden border-primary/30 glow-gold">
-              {/* Gold top accent */}
-              <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary to-accent" />
+      {/* ── How It Works — Three editorial steps ── */}
+      <section className="border-t border-[oklch(25%_0.02_260)]">
+        <div className="mx-auto max-w-7xl px-6 lg:px-8 py-24 lg:py-32">
+          <ScrollReveal direction="up">
+            <p className="text-xs uppercase tracking-[0.3em] mb-6" style={{ color: 'oklch(85% 0.18 92)' }}>
+              Workflow
+            </p>
+            <h2
+              className="text-4xl sm:text-5xl tracking-tight mb-20"
+              style={{ fontFamily: "'Fraunces Variable', 'Fraunces', Georgia, serif", fontWeight: 700 }}
+            >
+              Write. Design.{' '}
+              <span style={{ fontStyle: 'italic' }}>Produce.</span>
+            </h2>
+          </ScrollReveal>
 
-              <CardHeader className="text-center">
-                <Badge className="mx-auto mb-2 w-fit">14-Day Free Trial</Badge>
-                <CardTitle className="font-display text-3xl">
-                  Aiuteur Pro
-                </CardTitle>
-                <div className="mt-4 flex items-baseline justify-center gap-1">
-                  <span className="font-display text-5xl font-bold text-gradient-gold">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-px" style={{ backgroundColor: 'oklch(25% 0.02 260)' }}>
+            {[
+              {
+                num: '01',
+                title: 'Write',
+                desc: 'Start with any narrative input. AI helps you build a full screenplay — treatments, beat sheets, professional formatting.',
+                media: 'Screenplay editor',
+              },
+              {
+                num: '02',
+                title: 'Design',
+                desc: 'Define your visual world. Characters, locations, props — all locked for consistency before a single frame is generated.',
+                media: 'Asset management UI',
+              },
+              {
+                num: '03',
+                title: 'Produce',
+                desc: 'Generate anchor frames cheaply, review costs, then render final video with Veo3. Scene by scene, shot by shot.',
+                media: 'Video timeline',
+              },
+            ].map((step, i) => (
+              <ScrollReveal key={step.num} direction="up" delay={i * 0.12}>
+                <div className="flex flex-col gap-6 p-8 lg:p-10" style={{ backgroundColor: 'oklch(12% 0.01 260)' }}>
+                  <span
+                    className="text-5xl font-light"
+                    style={{ color: 'oklch(85% 0.18 92)', fontVariantNumeric: 'tabular-nums' }}
+                  >
+                    {step.num}
+                  </span>
+                  <h3
+                    className="text-2xl tracking-tight"
+                    style={{ fontFamily: "'Fraunces Variable', 'Fraunces', Georgia, serif", fontWeight: 700 }}
+                  >
+                    {step.title}
+                  </h3>
+                  <p className="text-sm leading-relaxed" style={{ color: 'oklch(55% 0.02 260)' }}>
+                    {step.desc}
+                  </p>
+                  <MediaSlot alt={step.media} aspectRatio="16/9" />
+                </div>
+              </ScrollReveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Pricing — Clean, no card ── */}
+      <section id="pricing" className="border-t border-[oklch(25%_0.02_260)]">
+        <div className="mx-auto max-w-7xl px-6 lg:px-8 py-24 lg:py-32">
+          <ScrollReveal direction="up">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-16">
+              <div className="md:col-span-5">
+                <p className="text-xs uppercase tracking-[0.3em] mb-6" style={{ color: 'oklch(85% 0.18 92)' }}>
+                  Pricing
+                </p>
+                <h2
+                  className="text-4xl sm:text-5xl tracking-tight"
+                  style={{ fontFamily: "'Fraunces Variable', 'Fraunces', Georgia, serif", fontWeight: 700 }}
+                >
+                  One plan.
+                  <br />
+                  <span style={{ fontStyle: 'italic' }}>Full pipeline.</span>
+                </h2>
+              </div>
+
+              <div className="md:col-span-7">
+                <div className="flex items-baseline gap-2 mb-2">
+                  <span
+                    className="text-6xl sm:text-7xl font-light tracking-tight"
+                    style={{
+                      fontFamily: "'Fraunces Variable', 'Fraunces', Georgia, serif",
+                      color: 'oklch(85% 0.18 92)',
+                    }}
+                  >
                     $6.66
                   </span>
-                  <span className="text-muted-foreground">/month</span>
+                  <span className="text-sm" style={{ color: 'oklch(55% 0.02 260)' }}>/month</span>
                 </div>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Bring your own API keys (OpenAI, Anthropic, Google Cloud)
-                </p>
-              </CardHeader>
 
-              <CardContent className="flex flex-col gap-6">
-                <ul className="flex flex-col gap-3">
+                <p className="text-sm mb-10" style={{ color: 'oklch(55% 0.02 260)' }}>
+                  14-day free trial. Bring your own API keys.
+                </p>
+
+                <ul className="flex flex-col gap-3 mb-10">
                   {pricingFeatures.map((feat) => (
-                    <li
-                      key={feat}
-                      className="flex items-center gap-3 text-sm text-foreground"
-                    >
-                      <Check className="h-4 w-4 shrink-0 text-primary" />
-                      {feat}
+                    <li key={feat} className="flex items-center gap-3 text-sm">
+                      <Check className="h-3.5 w-3.5 shrink-0" style={{ color: 'oklch(85% 0.18 92)' }} />
+                      <span style={{ color: 'oklch(75% 0.01 260)' }}>{feat}</span>
                     </li>
                   ))}
                 </ul>
 
-                <Button
-                  size="xl"
-                  className="w-full"
+                <button
                   onClick={() => navigate('/auth')}
+                  className="flex items-center gap-2 text-sm font-medium uppercase tracking-[0.1em] px-7 py-3 transition-transform duration-200 hover:scale-[1.03] active:scale-[0.98]"
+                  style={{ backgroundColor: 'oklch(85% 0.18 92)', color: 'oklch(12% 0.01 260)' }}
                 >
                   Start Your Free Trial
-                  <ArrowRight className="ml-1 h-5 w-5" />
-                </Button>
-              </CardContent>
-            </Card>
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
           </ScrollReveal>
         </div>
       </section>
 
-      {/* ─── 7. Footer ─── */}
-      <ScrollReveal direction="fade">
-        <footer className="border-t border-border/30 py-12 px-6">
-          <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 text-center sm:flex-row sm:justify-between sm:text-left">
-            <div>
-              <span className="font-display text-xl font-bold text-gradient-gold">
-                Aiuteur
-              </span>
-              <p className="mt-1 text-sm text-muted-foreground">
-                AI narrative-to-film pipeline
-              </p>
-            </div>
-
-            <div className="flex items-center gap-6 text-sm text-muted-foreground">
-              <button
-                onClick={() => navigate('/auth')}
-                className="hover:text-foreground transition-colors"
-              >
-                Sign Up
-              </button>
-              <button
-                onClick={() => navigate('/auth')}
-                className="hover:text-foreground transition-colors"
-              >
-                Log In
-              </button>
-            </div>
-
-            <p className="text-xs text-muted-foreground/60">
-              &copy; {new Date().getFullYear()} Aiuteur. All rights reserved.
-            </p>
+      {/* ── Footer ── */}
+      <footer className="border-t border-[oklch(25%_0.02_260)]">
+        <div className="mx-auto max-w-7xl px-6 lg:px-8 py-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <span
+            className="text-sm tracking-[-0.02em]"
+            style={{ fontFamily: "'Fraunces Variable', 'Fraunces', Georgia, serif" }}
+          >
+            AIUTEUR
+          </span>
+          <div className="flex items-center gap-8">
+            <button
+              onClick={() => navigate('/auth')}
+              className="text-xs uppercase tracking-[0.15em] transition-colors duration-200 hover:text-[oklch(85%_0.18_92)]"
+              style={{ color: 'oklch(55% 0.02 260)' }}
+            >
+              Sign Up
+            </button>
+            <button
+              onClick={() => navigate('/auth')}
+              className="text-xs uppercase tracking-[0.15em] transition-colors duration-200 hover:text-[oklch(85%_0.18_92)]"
+              style={{ color: 'oklch(55% 0.02 260)' }}
+            >
+              Log In
+            </button>
           </div>
-        </footer>
-      </ScrollReveal>
+          <p className="text-xs" style={{ color: 'oklch(35% 0.02 260)' }}>
+            &copy; {new Date().getFullYear()} Aiuteur
+          </p>
+        </div>
+      </footer>
     </div>
   )
 }
