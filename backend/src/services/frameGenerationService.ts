@@ -657,8 +657,12 @@ export class FrameGenerationService {
                 *,
                 shots!inner (
                     id,
+                    shot_id,
+                    shot_order,
                     frame_prompt,
-                    end_frame_prompt
+                    end_frame_prompt,
+                    start_continuity,
+                    scene_id
                 )
             `)
             .eq('id', frameId)
@@ -669,6 +673,83 @@ export class FrameGenerationService {
         }
 
         const shot = (frame as any).shots;
+
+        // If start frame with match mode → copy from previous shot's end instead of AI generation
+        if (frame.frame_type === 'start' && shot.start_continuity === 'match') {
+            // Find previous shot's end frame
+            const { data: allShots } = await supabase
+                .from('shots')
+                .select('id, shot_id')
+                .eq('scene_id', shot.scene_id)
+                .order('shot_order', { ascending: true });
+
+            if (allShots) {
+                const shotIdx = allShots.findIndex((s: any) => s.id === shot.id);
+                if (shotIdx > 0) {
+                    const prevShot = allShots[shotIdx - 1];
+                    const { data: prevEndFrame } = await supabase
+                        .from('frames')
+                        .select('id, image_url, storage_path, status')
+                        .eq('shot_id', prevShot.id)
+                        .eq('frame_type', 'end')
+                        .in('status', ['generated', 'approved'])
+                        .single();
+
+                    if (prevEndFrame?.image_url) {
+                        const now = new Date().toISOString();
+                        // Copy the frame instead of AI generation
+                        await supabase
+                            .from('frames')
+                            .update({
+                                image_url: prevEndFrame.image_url,
+                                storage_path: prevEndFrame.storage_path,
+                                status: 'generated',
+                                prompt_snapshot: `[Match copy from Shot ${prevShot.shot_id} end frame]`,
+                                generated_at: now,
+                                previous_frame_id: prevEndFrame.id,
+                                generation_count: (frame.generation_count || 0) + 1,
+                                updated_at: now,
+                            })
+                            .eq('id', frameId);
+
+                        // Create zero-cost job
+                        const { data: job } = await supabase
+                            .from('image_generation_jobs')
+                            .insert({
+                                project_id: projectId,
+                                branch_id: branchId,
+                                scene_id: sceneId,
+                                shot_id: shot.id,
+                                job_type: 'start_frame',
+                                status: 'completed',
+                                cost_credits: 0,
+                                prompt: '[Match regen copy — zero cost]',
+                                public_url: prevEndFrame.image_url,
+                                storage_path: prevEndFrame.storage_path,
+                                completed_at: now,
+                            })
+                            .select('id')
+                            .single();
+
+                        if (job) {
+                            await supabase
+                                .from('frames')
+                                .update({ current_job_id: job.id })
+                                .eq('id', frameId);
+                        }
+
+                        const { data: updatedFrame } = await supabase
+                            .from('frames')
+                            .select('*')
+                            .eq('id', frameId)
+                            .single();
+
+                        return this.mapFrameFromDb(updatedFrame);
+                    }
+                }
+            }
+        }
+
         if (!shot?.frame_prompt) {
             throw new Error('Shot has no frame prompt');
         }
