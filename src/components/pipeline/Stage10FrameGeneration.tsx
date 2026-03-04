@@ -264,7 +264,7 @@ export function Stage10FrameGeneration({
     }) => frameService.addFrameAsReference(projectId, sceneId, shotId, sourceFrameId, targetFrameType),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
-      toast({ title: 'Reference added', description: 'Frame added as continuity reference' });
+      toast({ title: 'Reference linked', description: 'Regenerate this frame to apply the new camera angle reference' });
     },
   });
 
@@ -420,8 +420,8 @@ export function Stage10FrameGeneration({
     [shots]
   );
 
-  // Compute unified match link for a frame from frame_links data
-  const getMatchLink = useCallback((frame: Frame | null): { role: 'source' | 'target'; linkId: string; otherLabel: string } | undefined => {
+  // Compute unified continuity link for a frame from frame_links data
+  const getContinuityLink = useCallback((frame: Frame | null): { linkType: 'match' | 'reference'; role: 'source' | 'target'; linkId: string; otherLabel: string } | undefined => {
     if (!frame || frameLinks.length === 0) return undefined;
 
     // Check if this frame is a target
@@ -430,15 +430,15 @@ export function Stage10FrameGeneration({
       // Find source in current scene's shots
       for (const s of shots) {
         if (s.startFrame?.id === asTarget.sourceFrameId || s.endFrame?.id === asTarget.sourceFrameId) {
-          return { role: 'target', linkId: asTarget.id, otherLabel: s.shotId };
+          return { linkType: asTarget.linkType, role: 'target', linkId: asTarget.id, otherLabel: s.shotId };
         }
       }
       // Check cross-scene frames
       if (adjacentSceneFrames?.prevSceneEndFrame?.frameId === asTarget.sourceFrameId) {
-        return { role: 'target', linkId: asTarget.id, otherLabel: `Scene ${adjacentSceneFrames.prevSceneEndFrame.sceneNumber} End` };
+        return { linkType: asTarget.linkType, role: 'target', linkId: asTarget.id, otherLabel: `Scene ${adjacentSceneFrames.prevSceneEndFrame.sceneNumber} End` };
       }
       if (adjacentSceneFrames?.nextSceneStartFrame?.frameId === asTarget.sourceFrameId) {
-        return { role: 'target', linkId: asTarget.id, otherLabel: `Scene ${adjacentSceneFrames.nextSceneStartFrame.sceneNumber} Start` };
+        return { linkType: asTarget.linkType, role: 'target', linkId: asTarget.id, otherLabel: `Scene ${adjacentSceneFrames.nextSceneStartFrame.sceneNumber} Start` };
       }
     }
 
@@ -448,15 +448,15 @@ export function Stage10FrameGeneration({
       // Find target in current scene's shots
       for (const s of shots) {
         if (s.startFrame?.id === asSource.targetFrameId || s.endFrame?.id === asSource.targetFrameId) {
-          return { role: 'source', linkId: asSource.id, otherLabel: s.shotId };
+          return { linkType: asSource.linkType, role: 'source', linkId: asSource.id, otherLabel: s.shotId };
         }
       }
       // Check cross-scene frames
       if (adjacentSceneFrames?.prevSceneEndFrame?.frameId === asSource.targetFrameId) {
-        return { role: 'source', linkId: asSource.id, otherLabel: `Scene ${adjacentSceneFrames.prevSceneEndFrame.sceneNumber} End` };
+        return { linkType: asSource.linkType, role: 'source', linkId: asSource.id, otherLabel: `Scene ${adjacentSceneFrames.prevSceneEndFrame.sceneNumber} End` };
       }
       if (adjacentSceneFrames?.nextSceneStartFrame?.frameId === asSource.targetFrameId) {
-        return { role: 'source', linkId: asSource.id, otherLabel: `Scene ${adjacentSceneFrames.nextSceneStartFrame.sceneNumber} Start` };
+        return { linkType: asSource.linkType, role: 'source', linkId: asSource.id, otherLabel: `Scene ${adjacentSceneFrames.nextSceneStartFrame.sceneNumber} Start` };
       }
     }
 
@@ -939,7 +939,7 @@ export function Stage10FrameGeneration({
                           referenceImages: refs,
                         })
                       }
-                      matchLink={getMatchLink(selectedShot.startFrame)}
+                      continuityLink={getContinuityLink(selectedShot.startFrame)}
                       onBreakLink={(linkId) => breakFrameLinkMutation.mutate(linkId)}
                       adjacentFrames={getAdjacentFrames(selectedShot, 'start')}
                       onMatchFromFrame={(sourceFrameId) =>
@@ -1068,7 +1068,7 @@ export function Stage10FrameGeneration({
                             })
                           }
                           hideHeader
-                          matchLink={getMatchLink(selectedShot.endFrame)}
+                          continuityLink={getContinuityLink(selectedShot.endFrame)}
                           onBreakLink={(linkId) => breakFrameLinkMutation.mutate(linkId)}
                           adjacentFrames={getAdjacentFrames(selectedShot, 'end')}
                           onMatchFromFrame={(sourceFrameId) =>
