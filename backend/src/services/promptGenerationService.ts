@@ -948,7 +948,8 @@ The next shot's camera is: ${nextShotContinuity.camera || 'same'}` : ''} Output 
     shot: ShotData,
     previousShot: ShotData,
     sceneAssets: SceneAssetInstanceData[],
-    styleCapsule?: StyleCapsule | null
+    styleCapsule?: StyleCapsule | null,
+    referenceFrameAnalysis?: string
   ): Promise<string> {
     console.log(`[PromptGeneration] Generating continuity frame prompt for shot ${shot.shot_id}`);
 
@@ -972,7 +973,13 @@ WHAT MUST BE PRESERVED FROM THE REFERENCE:
 - Background elements and atmospheric conditions
 - Prop positions and states
 - Time of day and weather
+${referenceFrameAnalysis ? `
+REFERENCE FRAME ANALYSIS (from vision analysis of the actual reference image):
+${referenceFrameAnalysis}
 
+Use this analysis as ground truth for what is visible in the reference.
+Prioritize these observations over metadata-only descriptions where they conflict.
+` : ''}
 WHAT CHANGES:
 - Camera position: from ${prevCamera.shotType} ${prevCamera.angle} to ${currCamera.shotType} ${currCamera.angle}
 - Framing/composition adjusted for new focal distance
