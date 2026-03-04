@@ -958,6 +958,33 @@ router.post('/:projectId/scenes/:sceneId/shots/:shotId/add-frame-as-reference', 
             .update({ [column]: newOrder, updated_at: new Date().toISOString() })
             .eq('id', shotId);
 
+        // Find the target frame record and create a reference frame_link
+        const { data: targetFrame } = await supabase
+            .from('frames')
+            .select('id')
+            .eq('shot_id', shotId)
+            .eq('frame_type', targetFrameType)
+            .single();
+
+        if (targetFrame) {
+            // Delete ANY existing link on target (match or ref — mutual exclusivity)
+            await supabase.from('frame_links').delete().eq('target_frame_id', targetFrame.id);
+
+            // Create reference link
+            await supabase.from('frame_links').insert({
+                source_frame_id: sourceFrameId,
+                target_frame_id: targetFrame.id,
+                link_type: 'reference',
+            });
+        }
+
+        // Set start_continuity = 'camera_change' for start frames
+        if (targetFrameType === 'start') {
+            await supabase.from('shots')
+                .update({ start_continuity: 'camera_change', updated_at: new Date().toISOString() })
+                .eq('id', shotId);
+        }
+
         res.json({ success: true });
     } catch (error: any) {
         console.error('Error in POST add-frame-as-reference:', error);
@@ -1708,12 +1735,12 @@ router.post('/:projectId/scenes/:sceneId/batch-link-copy', async (req, res) => {
                     .eq('id', targetFrameId);
             }
 
-            // Create reactive frame link
+            // Create reactive frame link (replaces any existing match or ref link)
             await supabase.from('frame_links').upsert({
                 source_frame_id: prevEndFrame.id,
                 target_frame_id: targetFrameId,
                 link_type: 'match',
-            }, { onConflict: 'target_frame_id,link_type' });
+            }, { onConflict: 'target_frame_id' });
 
             copied++;
         }
@@ -1856,12 +1883,23 @@ router.post('/:projectId/scenes/:sceneId/shots/:shotId/copy-frame', async (req, 
                 .eq('id', targetFrame.id);
         }
 
-        // Create/update reactive frame link (match type)
+        // Create/update reactive frame link (replaces any existing match or ref link)
         await supabase.from('frame_links').upsert({
             source_frame_id: sourceFrameId,
             target_frame_id: targetFrame.id,
             link_type: 'match',
-        }, { onConflict: 'target_frame_id,link_type' });
+        }, { onConflict: 'target_frame_id' });
+
+        // Clean up stale continuity reference if match replaced a ref link
+        const refColumn = targetFrameType === 'start' ? 'reference_image_order' : 'end_frame_reference_image_order';
+        const { data: targetShot } = await supabase.from('shots').select(refColumn).eq('id', shotId).single();
+        const refOrder = (targetShot as any)?.[refColumn];
+        if (Array.isArray(refOrder)) {
+            const filtered = refOrder.filter((e: any) => e.type !== 'continuity');
+            if (filtered.length !== refOrder.length) {
+                await supabase.from('shots').update({ [refColumn]: filtered }).eq('id', shotId);
+            }
+        }
 
         res.json({
             success: true,
