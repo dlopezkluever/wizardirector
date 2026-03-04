@@ -362,7 +362,7 @@ The plan covers all 7 issues you raised, organized into 6 phases with clear depe
 
  --
 
- Test Results Summary
+## *Test Results Summary*:
 
   Unit Tests
 
@@ -427,3 +427,5 @@ The plan covers all 7 issues you raised, organized into 6 phases with clear depe
   All 6 phases of the continuity revamp are working correctly end-to-end. The migration
   034_frame_links.sql needs to be run for the reactive link features (Phase 4) to work in       
   production.
+
+  *
