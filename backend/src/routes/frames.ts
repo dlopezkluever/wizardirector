@@ -93,12 +93,88 @@ router.get('/:projectId/scenes/:sceneId/frames', async (req, res) => {
             }
         }
 
+        // Fetch adjacent scene frames for cross-scene continuity
+        const adjacentSceneFrames: Record<string, unknown> = {};
+
+        // Previous scene's last shot's end frame
+        const { data: prevScene } = await supabase
+            .from('scenes')
+            .select('id, scene_number')
+            .eq('branch_id', project.active_branch_id)
+            .eq('scene_number', scene.scene_number - 1)
+            .single();
+
+        if (prevScene) {
+            const { data: prevLastShot } = await supabase
+                .from('shots')
+                .select('id, shot_id')
+                .eq('scene_id', prevScene.id)
+                .order('shot_order', { ascending: false })
+                .limit(1)
+                .single();
+
+            if (prevLastShot) {
+                const { data: prevEndFrame } = await supabase
+                    .from('frames')
+                    .select('id, image_url')
+                    .eq('shot_id', prevLastShot.id)
+                    .eq('frame_type', 'end')
+                    .single();
+
+                if (prevEndFrame) {
+                    adjacentSceneFrames.prevSceneEndFrame = {
+                        frameId: prevEndFrame.id,
+                        imageUrl: prevEndFrame.image_url,
+                        sceneNumber: prevScene.scene_number,
+                        shotLabel: prevLastShot.shot_id,
+                    };
+                }
+            }
+        }
+
+        // Next scene's first shot's start frame
+        const { data: nextScene } = await supabase
+            .from('scenes')
+            .select('id, scene_number')
+            .eq('branch_id', project.active_branch_id)
+            .eq('scene_number', scene.scene_number + 1)
+            .single();
+
+        if (nextScene) {
+            const { data: nextFirstShot } = await supabase
+                .from('shots')
+                .select('id, shot_id')
+                .eq('scene_id', nextScene.id)
+                .order('shot_order', { ascending: true })
+                .limit(1)
+                .single();
+
+            if (nextFirstShot) {
+                const { data: nextStartFrame } = await supabase
+                    .from('frames')
+                    .select('id, image_url')
+                    .eq('shot_id', nextFirstShot.id)
+                    .eq('frame_type', 'start')
+                    .single();
+
+                if (nextStartFrame) {
+                    adjacentSceneFrames.nextSceneStartFrame = {
+                        frameId: nextStartFrame.id,
+                        imageUrl: nextStartFrame.image_url,
+                        sceneNumber: nextScene.scene_number,
+                        shotLabel: nextFirstShot.shot_id,
+                    };
+                }
+            }
+        }
+
         res.json({
             shots: shotsWithFrames,
             sceneNumber: scene.scene_number,
             costSummary,
             allFramesApproved: allApproved,
             links,
+            adjacentSceneFrames,
         });
     } catch (error) {
         console.error('Error in GET /api/projects/:projectId/scenes/:sceneId/frames:', error);
