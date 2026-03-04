@@ -130,6 +130,7 @@ export function Stage10FrameGeneration({
 
   const shots = useMemo(() => framesData?.shots || [], [framesData?.shots]);
   const frameLinks = useMemo(() => framesData?.links || [], [framesData?.links]);
+  const adjacentSceneFrames = framesData?.adjacentSceneFrames;
   const costSummary = framesData?.costSummary || { totalCredits: 0, frameCount: 0 };
   const allFramesApproved = framesData?.allFramesApproved || false;
 
@@ -419,70 +420,60 @@ export function Stage10FrameGeneration({
     [shots]
   );
 
-  // Compute continuity status for a shot
-  const getContinuityInfo = useCallback((shot: ShotWithFrames) => {
-    const prevShot = getPreviousShot(shot.id);
-    if (!prevShot) return { mode: 'none' as ContinuityMode, sourceShot: undefined };
-    return {
-      mode: (shot.startContinuity || 'none') as ContinuityMode,
-      sourceShot: prevShot.shotId,
-    };
-  }, [getPreviousShot]);
-
-  // Check if a frame is a link source (some other shot's frame was copied from it)
-  const getLinkTarget = useCallback((frame: Frame | null) => {
-    if (!frame) return undefined;
-    for (const s of shots) {
-      if (s.startFrame?.previousFrameId === frame.id && s.startFrame.id !== frame.id) {
-        return { targetShotLabel: s.shotId, targetFrameType: 'start' as const };
-      }
-      if (s.endFrame?.previousFrameId === frame.id && s.endFrame.id !== frame.id) {
-        return { targetShotLabel: s.shotId, targetFrameType: 'end' as const };
-      }
-    }
-    return undefined;
-  }, [shots]);
-
-  // Compute reactive link for a frame from frame_links data
-  const getReactiveLink = useCallback((frame: Frame | null): { role: 'source' | 'target'; linkId: string; otherShotLabel: string } | undefined => {
+  // Compute unified match link for a frame from frame_links data
+  const getMatchLink = useCallback((frame: Frame | null): { role: 'source' | 'target'; linkId: string; otherLabel: string } | undefined => {
     if (!frame || frameLinks.length === 0) return undefined;
 
     // Check if this frame is a target
     const asTarget = frameLinks.find((l: FrameLink) => l.targetFrameId === frame.id);
     if (asTarget) {
-      // Find source shot label
+      // Find source in current scene's shots
       for (const s of shots) {
         if (s.startFrame?.id === asTarget.sourceFrameId || s.endFrame?.id === asTarget.sourceFrameId) {
-          return { role: 'target', linkId: asTarget.id, otherShotLabel: s.shotId };
+          return { role: 'target', linkId: asTarget.id, otherLabel: s.shotId };
         }
+      }
+      // Check cross-scene frames
+      if (adjacentSceneFrames?.prevSceneEndFrame?.frameId === asTarget.sourceFrameId) {
+        return { role: 'target', linkId: asTarget.id, otherLabel: `Scene ${adjacentSceneFrames.prevSceneEndFrame.sceneNumber} End` };
+      }
+      if (adjacentSceneFrames?.nextSceneStartFrame?.frameId === asTarget.sourceFrameId) {
+        return { role: 'target', linkId: asTarget.id, otherLabel: `Scene ${adjacentSceneFrames.nextSceneStartFrame.sceneNumber} Start` };
       }
     }
 
     // Check if this frame is a source
     const asSource = frameLinks.find((l: FrameLink) => l.sourceFrameId === frame.id);
     if (asSource) {
-      // Find target shot label
+      // Find target in current scene's shots
       for (const s of shots) {
         if (s.startFrame?.id === asSource.targetFrameId || s.endFrame?.id === asSource.targetFrameId) {
-          return { role: 'source', linkId: asSource.id, otherShotLabel: s.shotId };
+          return { role: 'source', linkId: asSource.id, otherLabel: s.shotId };
         }
+      }
+      // Check cross-scene frames
+      if (adjacentSceneFrames?.prevSceneEndFrame?.frameId === asSource.targetFrameId) {
+        return { role: 'source', linkId: asSource.id, otherLabel: `Scene ${adjacentSceneFrames.prevSceneEndFrame.sceneNumber} End` };
+      }
+      if (adjacentSceneFrames?.nextSceneStartFrame?.frameId === asSource.targetFrameId) {
+        return { role: 'source', linkId: asSource.id, otherLabel: `Scene ${adjacentSceneFrames.nextSceneStartFrame.sceneNumber} Start` };
       }
     }
 
     return undefined;
-  }, [frameLinks, shots]);
+  }, [frameLinks, shots, adjacentSceneFrames]);
 
   // Build adjacentFrames prop for FramePanel
   const getAdjacentFrames = useCallback((shot: ShotWithFrames, frameType: 'start' | 'end') => {
     const prev = getPreviousShot(shot.id);
     const next = getNextShot(shot.id);
     const result: {
-      prevEnd?: { shotId: string; frameId: string; imageUrl: string | null; shotLabel: string };
-      nextStart?: { shotId: string; frameId: string; imageUrl: string | null; shotLabel: string };
+      prevEnd?: { shotId: string; frameId: string; imageUrl: string | null; shotLabel: string; isCrossScene?: boolean; sceneLabel?: string };
+      nextStart?: { shotId: string; frameId: string; imageUrl: string | null; shotLabel: string; isCrossScene?: boolean; sceneLabel?: string };
     } = {};
 
     if (frameType === 'start') {
-      // Start frame: only adjacent is prev shot's end
+      // Start frame: adjacent is prev shot's end frame
       if (prev?.endFrame) {
         result.prevEnd = {
           shotId: prev.id,
@@ -490,9 +481,20 @@ export function Stage10FrameGeneration({
           imageUrl: prev.endFrame.imageUrl,
           shotLabel: prev.shotId,
         };
+      } else if (!prev && adjacentSceneFrames?.prevSceneEndFrame) {
+        // First shot's start: pull from previous scene's last end frame
+        const csf = adjacentSceneFrames.prevSceneEndFrame;
+        result.prevEnd = {
+          shotId: csf.shotLabel,
+          frameId: csf.frameId,
+          imageUrl: csf.imageUrl,
+          shotLabel: `Sc${csf.sceneNumber} End`,
+          isCrossScene: true,
+          sceneLabel: `Scene ${csf.sceneNumber} End`,
+        };
       }
     } else {
-      // End frame: only adjacent is next shot's start
+      // End frame: adjacent is next shot's start frame
       if (next?.startFrame) {
         result.nextStart = {
           shotId: next.id,
@@ -500,11 +502,22 @@ export function Stage10FrameGeneration({
           imageUrl: next.startFrame.imageUrl,
           shotLabel: next.shotId,
         };
+      } else if (!next && adjacentSceneFrames?.nextSceneStartFrame) {
+        // Last shot's end: pull from next scene's first start frame
+        const csf = adjacentSceneFrames.nextSceneStartFrame;
+        result.nextStart = {
+          shotId: csf.shotLabel,
+          frameId: csf.frameId,
+          imageUrl: csf.imageUrl,
+          shotLabel: `Sc${csf.sceneNumber} Start`,
+          isCrossScene: true,
+          sceneLabel: `Scene ${csf.sceneNumber} Start`,
+        };
       }
     }
 
     return result;
-  }, [getPreviousShot, getNextShot]);
+  }, [getPreviousShot, getNextShot, adjacentSceneFrames]);
 
   // Continuity summary for sidebar
   const continuitySummary = useMemo(() => {
@@ -926,14 +939,7 @@ export function Stage10FrameGeneration({
                           referenceImages: refs,
                         })
                       }
-                      continuityInfo={getContinuityInfo(selectedShot)}
-                      onRemoveLink={
-                        selectedShot.startContinuity && selectedShot.startContinuity !== 'none'
-                          ? () => updateContinuityMutation.mutate({ shotId: selectedShot.id, startContinuity: 'none' })
-                          : undefined
-                      }
-                      linkTarget={getLinkTarget(selectedShot.startFrame)}
-                      reactiveLink={getReactiveLink(selectedShot.startFrame)}
+                      matchLink={getMatchLink(selectedShot.startFrame)}
                       onBreakLink={(linkId) => breakFrameLinkMutation.mutate(linkId)}
                       adjacentFrames={getAdjacentFrames(selectedShot, 'start')}
                       onMatchFromFrame={(sourceFrameId) =>
@@ -1062,8 +1068,7 @@ export function Stage10FrameGeneration({
                             })
                           }
                           hideHeader
-                          linkTarget={getLinkTarget(selectedShot.endFrame)}
-                          reactiveLink={getReactiveLink(selectedShot.endFrame)}
+                          matchLink={getMatchLink(selectedShot.endFrame)}
                           onBreakLink={(linkId) => breakFrameLinkMutation.mutate(linkId)}
                           adjacentFrames={getAdjacentFrames(selectedShot, 'end')}
                           onMatchFromFrame={(sourceFrameId) =>
