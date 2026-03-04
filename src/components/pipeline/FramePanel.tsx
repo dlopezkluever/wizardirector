@@ -11,10 +11,8 @@ import {
   Pencil,
   Trash2,
   Link2,
-  Camera,
+  Unlink,
   Upload,
-  BookmarkPlus,
-  X,
   ArrowDownToLine,
   ArrowUpFromLine,
 } from 'lucide-react';
@@ -71,6 +69,8 @@ interface AdjacentFrameInfo {
   frameId: string;
   imageUrl: string | null;
   shotLabel: string;
+  isCrossScene?: boolean;
+  sceneLabel?: string;
 }
 
 interface FramePanelProps {
@@ -94,16 +94,10 @@ interface FramePanelProps {
   hideHeader?: boolean;
   projectId?: string;
   sceneId?: string;
-  continuityInfo?: {
-    mode: 'none' | 'match' | 'camera_change';
-    sourceShot?: string;
-  };
-  onRemoveLink?: () => void;
-  linkTarget?: { targetShotLabel: string; targetFrameType: 'start' | 'end' };
-  reactiveLink?: {
+  matchLink?: {
     role: 'source' | 'target';
     linkId: string;
-    otherShotLabel: string;
+    otherLabel: string;
   };
   onBreakLink?: (linkId: string) => void;
   // Bidirectional continuity props
@@ -148,10 +142,7 @@ export function FramePanel({
   hideHeader = false,
   projectId,
   sceneId,
-  continuityInfo,
-  onRemoveLink,
-  linkTarget,
-  reactiveLink,
+  matchLink,
   onBreakLink,
   adjacentFrames,
   onMatchFromFrame,
@@ -423,7 +414,7 @@ export function FramePanel({
                         onClick={(e) => {
                           e.stopPropagation();
                           // If this frame is a reactive link target, confirm before selecting
-                          if (reactiveLink?.role === 'target') {
+                          if (matchLink?.role === 'target') {
                             const skip = localStorage.getItem('skipContinuityBreakConfirm') === 'true';
                             if (skip) {
                               selectMutation.mutate(gen.jobId);
@@ -494,65 +485,37 @@ export function FramePanel({
   return (
     <div className={cn('flex flex-col', isDisabled && 'opacity-60')}>
       {/* Header */}
+      {/* Match link badge — always visible regardless of hideHeader */}
+      {matchLink && (
+        <div className="flex items-center gap-1.5 mb-2">
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${
+            matchLink.role === 'source'
+              ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+              : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+          }`}>
+            <Link2 className="w-3 h-3" />
+            {matchLink.role === 'source'
+              ? `Push Match TO ${matchLink.otherLabel}`
+              : `Pull Match FROM ${matchLink.otherLabel}`}
+          </span>
+          {onBreakLink && (
+            <button
+              onClick={() => onBreakLink(matchLink.linkId)}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium
+                border border-red-500/30 text-red-400 hover:bg-red-500/20 transition-colors"
+            >
+              <Unlink className="w-3 h-3" />
+              Break Link
+            </button>
+          )}
+        </div>
+      )}
+
       {!hideHeader && (
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <h3 className="text-sm font-medium text-foreground capitalize">
-              {frameType} Frame
-            </h3>
-            {/* Continuity mode badge + inline remove */}
-            {continuityInfo && continuityInfo.mode !== 'none' && (
-              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                continuityInfo.mode === 'match'
-                  ? 'bg-blue-500/20 text-blue-300'
-                  : 'bg-purple-500/20 text-purple-300'
-              }`}>
-                {continuityInfo.mode === 'match' ? (
-                  <><Link2 className="w-3 h-3" /> Match from {continuityInfo.sourceShot}</>
-                ) : (
-                  <><Camera className="w-3 h-3" /> Angle from {continuityInfo.sourceShot}</>
-                )}
-                {onRemoveLink && (
-                  <button
-                    onClick={onRemoveLink}
-                    className="ml-0.5 hover:text-red-400 transition-colors"
-                    title="Remove link"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </span>
-            )}
-            {/* Source-side link indicator (legacy previousFrameId) */}
-            {linkTarget && !reactiveLink && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/20 text-blue-300">
-                <Link2 className="w-3 h-3" />
-                Pushing to {linkTarget.targetShotLabel}
-              </span>
-            )}
-            {/* Reactive link indicator */}
-            {reactiveLink && reactiveLink.role === 'source' && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/20 text-blue-300">
-                <Link2 className="w-3 h-3" />
-                {`Linked \u2192 ${reactiveLink.otherShotLabel}`}
-              </span>
-            )}
-            {reactiveLink && reactiveLink.role === 'target' && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/20 text-blue-300">
-                <Link2 className="w-3 h-3" />
-                {`Linked \u2190 ${reactiveLink.otherShotLabel}`}
-                {onBreakLink && (
-                  <button
-                    onClick={() => onBreakLink(reactiveLink.linkId)}
-                    className="ml-0.5 hover:text-red-400 transition-colors"
-                    title="Break reactive link"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </span>
-            )}
-          </div>
+          <h3 className="text-sm font-medium text-foreground capitalize">
+            {frameType} Frame
+          </h3>
           <div className="flex items-center gap-1.5 flex-wrap">
             {/* Upload icon */}
             {onUploadFrame && (
@@ -722,7 +685,7 @@ export function FramePanel({
           ) : null}
         </div>
 
-        {/* Continuity buttons — 4-button grid per adjacent frame */}
+        {/* Continuity buttons — 4-button grid (within-scene) or 2-button pull-only (cross-scene) */}
         {adjacentFrames?.prevEnd && (
           <div className="grid grid-cols-2 gap-1.5">
             {onMatchFromFrame && (
@@ -734,7 +697,7 @@ export function FramePanel({
                 disabled={!adjacentFrames.prevEnd.imageUrl || isDisabled}
               >
                 <ArrowDownToLine className="w-3 h-3 mr-1" />
-                Pull match {adjacentFrames.prevEnd.shotLabel}
+                Pull match {adjacentFrames.prevEnd.sceneLabel || adjacentFrames.prevEnd.shotLabel}
               </Button>
             )}
             {onRefFromFrame && (
@@ -746,10 +709,10 @@ export function FramePanel({
                 disabled={!adjacentFrames.prevEnd.imageUrl || isDisabled}
               >
                 <ArrowDownToLine className="w-3 h-3 mr-1" />
-                Pull ref {adjacentFrames.prevEnd.shotLabel}
+                Pull ref {adjacentFrames.prevEnd.sceneLabel || adjacentFrames.prevEnd.shotLabel}
               </Button>
             )}
-            {onPushMatchToFrame && (
+            {!adjacentFrames.prevEnd.isCrossScene && onPushMatchToFrame && (
               <Button
                 variant="outline"
                 size="sm"
@@ -761,7 +724,7 @@ export function FramePanel({
                 Push match {adjacentFrames.prevEnd.shotLabel}
               </Button>
             )}
-            {onPushRefToFrame && (
+            {!adjacentFrames.prevEnd.isCrossScene && onPushRefToFrame && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -786,7 +749,7 @@ export function FramePanel({
                 disabled={!adjacentFrames.nextStart.imageUrl || isDisabled}
               >
                 <ArrowDownToLine className="w-3 h-3 mr-1" />
-                Pull match {adjacentFrames.nextStart.shotLabel}
+                Pull match {adjacentFrames.nextStart.sceneLabel || adjacentFrames.nextStart.shotLabel}
               </Button>
             )}
             {onRefFromFrame && (
@@ -798,10 +761,10 @@ export function FramePanel({
                 disabled={!adjacentFrames.nextStart.imageUrl || isDisabled}
               >
                 <ArrowDownToLine className="w-3 h-3 mr-1" />
-                Pull ref {adjacentFrames.nextStart.shotLabel}
+                Pull ref {adjacentFrames.nextStart.sceneLabel || adjacentFrames.nextStart.shotLabel}
               </Button>
             )}
-            {onPushMatchToFrame && (
+            {!adjacentFrames.nextStart.isCrossScene && onPushMatchToFrame && (
               <Button
                 variant="outline"
                 size="sm"
@@ -813,7 +776,7 @@ export function FramePanel({
                 Push match {adjacentFrames.nextStart.shotLabel}
               </Button>
             )}
-            {onPushRefToFrame && (
+            {!adjacentFrames.nextStart.isCrossScene && onPushRefToFrame && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -950,7 +913,7 @@ export function FramePanel({
           <AlertDialogHeader>
             <AlertDialogTitle>Break continuity link?</AlertDialogTitle>
             <AlertDialogDescription>
-              Selecting a different image will break the link from {reactiveLink?.otherShotLabel || 'the source shot'}. This frame will no longer auto-update when the source changes.
+              This frame is reactively linked from {matchLink?.otherLabel || 'the source shot'}. Editing it will break the link.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="flex items-center gap-2 py-2">
@@ -976,7 +939,7 @@ export function FramePanel({
                 setPendingSelectJobId(null);
               }}
             >
-              Break Link &amp; Select
+              Break &amp; Continue
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
