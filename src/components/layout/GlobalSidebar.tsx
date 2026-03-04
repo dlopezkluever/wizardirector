@@ -11,6 +11,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 interface SidebarItem {
   id: string;
@@ -50,7 +51,7 @@ export function GlobalSidebar({}: GlobalSidebarProps) {
     >
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-6 border-b border-sidebar-border">
-        <div className="flex items-center justify-center w-15 h-15 rounded-xl shadow-gold overflow-hidden" style={{ backgroundColor: '#0d1015' }}>
+        <div className="flex items-center justify-center w-15 h-15 rounded-xl shadow-gold overflow-hidden bg-sidebar">
           <img src="/aiuteur-simple.png" alt="Aiuteur" className="w-14 h-14 object-contain" />
         </div>
         {!collapsed && (
@@ -120,6 +121,8 @@ export function GlobalSidebar({}: GlobalSidebarProps) {
             )}
           </button>
         )}
+
+        <ThemeToggle collapsed={collapsed} />
 
         {/* Collapse Toggle */}
         <button

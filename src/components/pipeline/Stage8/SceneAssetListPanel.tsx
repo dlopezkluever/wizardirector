@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 import { getTagColors } from '@/lib/constants/statusTags';
 import { sceneAssetService } from '@/lib/services/sceneAssetService';
 import type { SceneAssetInstance, SceneAssetRelevanceResult } from '@/types/scene';
+import { SceneIndicator } from '../SceneIndicator';
 
 type AssetTypeKey = 'character' | 'location' | 'prop';
 
@@ -95,6 +96,9 @@ export interface SceneAssetListPanelProps {
   shotPresenceMap?: Map<string, string[]>;
   /** Convert asset to transformation on another asset */
   onConvertToTransformation?: (instance: SceneAssetInstance) => void;
+  /** Scene indicator props */
+  sceneNumber?: number;
+  sceneSlug?: string;
 }
 
 function AssetTypeGroup({
@@ -289,6 +293,8 @@ export function SceneAssetListPanel({
   onRemoveAsset,
   shotPresenceMap,
   onConvertToTransformation,
+  sceneNumber,
+  sceneSlug,
 }: SceneAssetListPanelProps) {
   const [filters, setFilters] = useState<AssetFilters>(defaultFilters);
   const queryClient = useQueryClient();
@@ -377,7 +383,12 @@ export function SceneAssetListPanel({
       className="w-80 border-r border-border/50 bg-card/30 backdrop-blur-sm flex flex-col shrink-0"
     >
       <div className="p-4 border-b border-border/50">
-        <h2 className="font-display text-lg font-semibold text-foreground">Scene Assets</h2>
+        <h2 className="font-display text-lg font-semibold text-foreground flex items-center gap-2">
+          Scene Assets
+          {sceneNumber != null && sceneNumber > 0 && (
+            <SceneIndicator sceneNumber={sceneNumber} slug={sceneSlug ?? ''} />
+          )}
+        </h2>
         <p className="text-xs text-muted-foreground mt-1">
           {filteredAssets.length} asset{filteredAssets.length !== 1 ? 's' : ''} • {withVisuals} with visuals • {assetsWithTags} with tags ({totalTags} total)
         </p>
