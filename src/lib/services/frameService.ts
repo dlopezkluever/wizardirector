@@ -14,12 +14,23 @@ import type {
   GenerationMode,
 } from '@/types/scene';
 
+export interface AdjacentSceneFrame {
+  frameId: string;
+  imageUrl: string | null;
+  sceneNumber: number;
+  shotLabel: string;
+}
+
 export interface FetchFramesResponse {
   shots: ShotWithFrames[];
   sceneNumber: number;
   costSummary: FrameCostSummary;
   allFramesApproved: boolean;
   links?: FrameLink[];
+  adjacentSceneFrames?: {
+    prevSceneEndFrame?: AdjacentSceneFrame;
+    nextSceneStartFrame?: AdjacentSceneFrame;
+  };
 }
 
 export interface GenerateFramesRequest {
