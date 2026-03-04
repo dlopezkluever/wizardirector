@@ -328,7 +328,7 @@ export interface FrameLink {
   id: string;
   sourceFrameId: string;
   targetFrameId: string;
-  linkType: 'match';
+  linkType: 'match' | 'reference';
   createdAt: string;
 }
 
