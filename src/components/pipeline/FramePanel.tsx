@@ -94,7 +94,8 @@ interface FramePanelProps {
   hideHeader?: boolean;
   projectId?: string;
   sceneId?: string;
-  matchLink?: {
+  continuityLink?: {
+    linkType: 'match' | 'reference';
     role: 'source' | 'target';
     linkId: string;
     otherLabel: string;
@@ -142,7 +143,7 @@ export function FramePanel({
   hideHeader = false,
   projectId,
   sceneId,
-  matchLink,
+  continuityLink,
   onBreakLink,
   adjacentFrames,
   onMatchFromFrame,
@@ -413,8 +414,8 @@ export function FramePanel({
                         className="bg-amber-400 hover:bg-amber-500 text-amber-900"
                         onClick={(e) => {
                           e.stopPropagation();
-                          // If this frame is a reactive link target, confirm before selecting
-                          if (matchLink?.role === 'target') {
+                          // If this frame is a reactive match link target, confirm before selecting
+                          if (continuityLink?.linkType === 'match' && continuityLink?.role === 'target') {
                             const skip = localStorage.getItem('skipContinuityBreakConfirm') === 'true';
                             if (skip) {
                               selectMutation.mutate(gen.jobId);
@@ -485,22 +486,30 @@ export function FramePanel({
   return (
     <div className={cn('flex flex-col', isDisabled && 'opacity-60')}>
       {/* Header */}
-      {/* Match link badge — always visible regardless of hideHeader */}
-      {matchLink && (
+      {/* Continuity link badge — always visible regardless of hideHeader */}
+      {continuityLink && (
         <div className="flex items-center gap-1.5 mb-2">
           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${
-            matchLink.role === 'source'
-              ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-              : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+            continuityLink.linkType === 'match'
+              ? continuityLink.role === 'source'
+                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+              : continuityLink.role === 'source'
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                : 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
           }`}>
             <Link2 className="w-3 h-3" />
-            {matchLink.role === 'source'
-              ? `Push Match TO ${matchLink.otherLabel}`
-              : `Pull Match FROM ${matchLink.otherLabel}`}
+            {continuityLink.linkType === 'match'
+              ? continuityLink.role === 'source'
+                ? `Push Match TO ${continuityLink.otherLabel}`
+                : `Pull Match FROM ${continuityLink.otherLabel}`
+              : continuityLink.role === 'source'
+                ? `Ref Source → ${continuityLink.otherLabel}`
+                : `Ref FROM ${continuityLink.otherLabel}`}
           </span>
           {onBreakLink && (
             <button
-              onClick={() => onBreakLink(matchLink.linkId)}
+              onClick={() => onBreakLink(continuityLink.linkId)}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium
                 border border-red-500/30 text-red-400 hover:bg-red-500/20 transition-colors"
             >
@@ -702,9 +711,9 @@ export function FramePanel({
             )}
             {onRefFromFrame && (
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                className="text-xs h-7 text-muted-foreground"
+                className="text-xs h-7"
                 onClick={() => onRefFromFrame(adjacentFrames.prevEnd!.frameId)}
                 disabled={!adjacentFrames.prevEnd.imageUrl || isDisabled}
               >
@@ -726,9 +735,9 @@ export function FramePanel({
             )}
             {!adjacentFrames.prevEnd.isCrossScene && onPushRefToFrame && (
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                className="text-xs h-7 text-muted-foreground"
+                className="text-xs h-7"
                 onClick={() => onPushRefToFrame(adjacentFrames.prevEnd!.frameId)}
                 disabled={!hasImage || isDisabled}
               >
@@ -754,9 +763,9 @@ export function FramePanel({
             )}
             {onRefFromFrame && (
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                className="text-xs h-7 text-muted-foreground"
+                className="text-xs h-7"
                 onClick={() => onRefFromFrame(adjacentFrames.nextStart!.frameId)}
                 disabled={!adjacentFrames.nextStart.imageUrl || isDisabled}
               >
@@ -778,9 +787,9 @@ export function FramePanel({
             )}
             {!adjacentFrames.nextStart.isCrossScene && onPushRefToFrame && (
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                className="text-xs h-7 text-muted-foreground"
+                className="text-xs h-7"
                 onClick={() => onPushRefToFrame(adjacentFrames.nextStart!.frameId)}
                 disabled={!hasImage || isDisabled}
               >
@@ -913,7 +922,7 @@ export function FramePanel({
           <AlertDialogHeader>
             <AlertDialogTitle>Break continuity link?</AlertDialogTitle>
             <AlertDialogDescription>
-              This frame is reactively linked from {matchLink?.otherLabel || 'the source shot'}. Editing it will break the link.
+              This frame is reactively linked from {continuityLink?.otherLabel || 'the source shot'}. Editing it will break the link.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="flex items-center gap-2 py-2">
