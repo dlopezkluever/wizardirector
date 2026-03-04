@@ -958,13 +958,27 @@ router.post('/:projectId/scenes/:sceneId/shots/:shotId/add-frame-as-reference', 
             .update({ [column]: newOrder, updated_at: new Date().toISOString() })
             .eq('id', shotId);
 
-        // Find the target frame record and create a reference frame_link
-        const { data: targetFrame } = await supabase
+        // Find or create the target frame record, then create a reference frame_link
+        let { data: targetFrame } = await supabase
             .from('frames')
             .select('id')
             .eq('shot_id', shotId)
             .eq('frame_type', targetFrameType)
             .single();
+
+        // Create frame record if it doesn't exist yet (pending, pre-generation)
+        if (!targetFrame) {
+            const { data: created } = await supabase
+                .from('frames')
+                .upsert({
+                    shot_id: shotId,
+                    frame_type: targetFrameType,
+                    status: 'pending',
+                }, { onConflict: 'shot_id,frame_type', ignoreDuplicates: true })
+                .select('id')
+                .single();
+            targetFrame = created;
+        }
 
         if (targetFrame) {
             // Delete ANY existing link on target (match or ref — mutual exclusivity)
