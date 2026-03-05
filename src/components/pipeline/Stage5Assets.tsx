@@ -112,6 +112,7 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
   const [isExtracting, setIsExtracting] = useState(false);
   const [isLocking, setIsLocking] = useState(false);
   const [expandedAssetId, setExpandedAssetId] = useState<string | null>(null);
+  const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set());
   const [editingDescriptions, setEditingDescriptions] = useState<Record<string, string>>({});
   const [savingAssets, setSavingAssets] = useState<Set<string>>(new Set());
   const [saveTimeouts, setSaveTimeouts] = useState<Record<string, NodeJS.Timeout>>({});
@@ -1061,7 +1062,7 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                               "transition-all relative",
                               selectionMode && selectedAssetIds.has(asset.id) && "ring-2 ring-primary"
                             )}
-                            onClick={selectionMode && !asset.locked ? () => toggleAssetSelection(asset.id) : undefined}
+                            onClick={selectionMode ? () => toggleAssetSelection(asset.id) : undefined}
                           >
                             {/* Selection checkbox overlay */}
                             {selectionMode && (
@@ -1069,7 +1070,7 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                                 <Checkbox
                                   checked={selectedAssetIds.has(asset.id)}
                                   onCheckedChange={() => toggleAssetSelection(asset.id)}
-                                  disabled={asset.locked}
+                                  disabled={false}
                                   onClick={e => e.stopPropagation()}
                                 />
                               </div>
@@ -1114,7 +1115,7 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                                         Defer Asset
                                       </DropdownMenuItem>
                                     )}
-                                    {!isStageLockedOrOutdated && !asset.locked && (
+                                    {!isStageLockedOrOutdated && (
                                       <DropdownMenuSub>
                                         <DropdownMenuSubTrigger>
                                           <RefreshCw className="w-4 h-4 mr-2" />
@@ -1204,9 +1205,29 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                                   </div>
                                 </div>
                               ) : (
-                                <p className="text-xs text-muted-foreground line-clamp-3">
-                                  {asset.description}
-                                </p>
+                                <div>
+                                  <p className={cn(
+                                    "text-xs text-muted-foreground",
+                                    !expandedDescriptions.has(asset.id) && "line-clamp-3"
+                                  )}>
+                                    {asset.description}
+                                  </p>
+                                  {asset.description && asset.description.length > 120 && (
+                                    <button
+                                      className="text-[10px] text-primary hover:underline mt-0.5"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setExpandedDescriptions(prev => {
+                                          const next = new Set(prev);
+                                          if (next.has(asset.id)) { next.delete(asset.id); } else { next.add(asset.id); }
+                                          return next;
+                                        });
+                                      }}
+                                    >
+                                      {expandedDescriptions.has(asset.id) ? 'Show less' : 'Show more'}
+                                    </button>
+                                  )}
+                                </div>
                               )}
 
                               {/* Actions */}
@@ -1461,7 +1482,7 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
               ) : (
                 <>
                   <Lock className="w-4 h-4 mr-2" />
-                  Lock All Assets & Begin Production
+                  Finalize Assets
                 </>
               )}
             </Button>
@@ -1501,12 +1522,14 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
       )}
 
       {/* Floating Selection Toolbar */}
-      {selectionMode && selectedAssetIds.size > 0 && !isStageLockedOrOutdated && (
+      {selectionMode && !isStageLockedOrOutdated && (
         <TooltipProvider>
           <div className="fixed bottom-16 left-[280px] right-0 bg-card border-t border-border p-3 shadow-lg z-50">
             <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
               <span className="text-sm font-medium">
-                {selectedAssetIds.size} selected
+                {selectedAssetIds.size > 0
+                  ? `${selectedAssetIds.size} selected`
+                  : 'Select assets to merge or split'}
               </span>
               <div className="flex gap-2">
                 <Tooltip>
