@@ -129,3 +129,37 @@ User answered Claude's questions:
 
   ---
   Shall I proceed with implementing all 6 fixes?
+  Yes
+
+  ## **Implementation Summary**
+
+  All 18 tests pass, including the updated one. The image-generation test 
+  failures are pre-existing and unrelated.
+
+  Here's a summary of all changes made:
+
+  Changes Made
+
+  Stage5Assets.tsx (5 fixes):
+  1. Issue #1 — Line 1117: Removed && !asset.locked from Change Type      
+  submenu guard → now accessible on image-approved assets
+  2. Issue #2 — Line 1064: Removed && !asset.locked from card onClick;    
+  Line 1072: Changed disabled={asset.locked} to disabled={false} → locked 
+  assets are now selectable for merge
+  3. Issue #4 — Line 1504: Removed selectedAssetIds.size > 0 && → floating   bar shows immediately in select mode with hint text
+  4. Issue #6 — Added expandedDescriptions state + inline "Show more/less"   toggle for descriptions >120 chars
+  5. Issue #12 — Changed button text from "Lock All Assets & Begin        
+  Production" to "Finalize Assets"
+
+  Stage6ScriptHub.tsx (Issue #7):
+  - Added Tooltip imports
+  - Replaced amber ⚠ Risky text with a subtle 2×2px colored dot (amber    
+  for risky, destructive for broken) with explanatory tooltip on hover    
+
+  backend/src/routes/projectAssets.ts (Issue #1 backend):
+  - Updated lock guard to allow asset_type changes on locked assets       
+  (alongside deferred)
+
+  backend/src/tests/assetTypeAndMerge.test.ts:
+  - Updated test to match new behavior (asset_type changes on locked      
+  assets now succeed)
