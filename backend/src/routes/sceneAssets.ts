@@ -39,7 +39,7 @@ const router = Router();
 
 const CreateSceneAssetInstanceSchema = z.object({
   projectAssetId: z.string().uuid(),
-  descriptionOverride: z.string().optional(),
+  descriptionOverride: z.string().optional().nullable(),
   statusTags: z.array(z.string()).optional(),
   carryForward: z.boolean().optional(),
   inheritedFromInstanceId: z.string().uuid().optional(),
@@ -850,7 +850,7 @@ router.post('/:projectId/scenes/:sceneId/assets/populate-from-dependencies', asy
     // Fetch all project_assets for this branch
     const { data: projectAssets, error: assetsError } = await supabase
       .from('project_assets')
-      .select('id, name, asset_type')
+      .select('id, name, asset_type, description')
       .eq('branch_id', project.active_branch_id);
 
     if (assetsError || !projectAssets) {
@@ -879,6 +879,7 @@ router.post('/:projectId/scenes/:sceneId/assets/populate-from-dependencies', asy
       project_asset_id: string;
       carry_forward: boolean;
       status_tags: string[];
+      effective_description: string;
     }> = [];
 
     for (const charName of expectedChars) {
@@ -889,6 +890,7 @@ router.post('/:projectId/scenes/:sceneId/assets/populate-from-dependencies', asy
           project_asset_id: asset.id,
           carry_forward: true,
           status_tags: [],
+          effective_description: asset.description ?? '',
         });
         existingAssetIds.add(asset.id);
       }
@@ -902,6 +904,7 @@ router.post('/:projectId/scenes/:sceneId/assets/populate-from-dependencies', asy
           project_asset_id: asset.id,
           carry_forward: true,
           status_tags: [],
+          effective_description: asset.description ?? '',
         });
         existingAssetIds.add(asset.id);
       }
@@ -915,6 +918,7 @@ router.post('/:projectId/scenes/:sceneId/assets/populate-from-dependencies', asy
           project_asset_id: asset.id,
           carry_forward: true,
           status_tags: [],
+          effective_description: asset.description ?? '',
         });
         existingAssetIds.add(asset.id);
       }
@@ -1747,7 +1751,7 @@ router.post('/:projectId/scenes/:sceneId/transformation-events/:eventId/generate
 router.post('/:projectId/scenes/:sceneId/transformation-events/generate-prefill', async (req, res) => {
   try {
     const { sceneId } = req.params;
-    const { trigger_shot_id, scene_asset_instance_id, transformation_type } = req.body;
+    const { trigger_shot_id, scene_asset_instance_id, transformation_type, absorbed_instance_id } = req.body;
 
     if (!trigger_shot_id || !scene_asset_instance_id) {
       return res.status(400).json({ error: 'trigger_shot_id and scene_asset_instance_id are required' });
@@ -1757,7 +1761,8 @@ router.post('/:projectId/scenes/:sceneId/transformation-events/generate-prefill'
       trigger_shot_id,
       scene_asset_instance_id,
       transformation_type || 'instant',
-      sceneId
+      sceneId,
+      absorbed_instance_id
     );
 
     res.json(result);
@@ -1856,8 +1861,9 @@ router.post('/:projectId/scenes/:sceneId/transformation-events/:eventId/generate
 
     res.json({ jobId: result.jobId, status: result.status });
   } catch (err) {
-    console.error('[TransformationEvents] Generate post-image error:', err);
-    res.status(500).json({ error: 'Failed to generate post-image' });
+    const message = err instanceof Error ? err.message : 'Failed to generate post-image';
+    console.error('[TransformationEvents] Generate post-image error:', message, err);
+    res.status(500).json({ error: message });
   }
 });
 

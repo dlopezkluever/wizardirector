@@ -11,23 +11,32 @@ import {
   Edit3,
   Lock,
   AlertTriangle,
-  Info,
   Loader2,
   RefreshCw,
   Sparkles,
   Save,
-  Unlock
+  Unlock,
+  Link2,
+  Camera,
+  List,
+  Grid3x3
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { promptService } from '@/lib/services/promptService';
-import type { PromptSet } from '@/types/scene';
+import { shotAssetAssignmentService } from '@/lib/services/shotAssetAssignmentService';
+import { sceneAssetService } from '@/lib/services/sceneAssetService';
+import { useShotAssetAutoPopulate } from '@/lib/hooks/useShotAssetAutoPopulate';
+import type { PromptSet, ContinuityMode, ShotAssetAssignment, SceneAssetInstance } from '@/types/scene';
 import { LockedStageHeader } from './LockedStageHeader';
+import { StageInfoButton } from './StageInfoButton';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
@@ -35,6 +44,11 @@ import { ContentAccessCarousel } from './ContentAccessCarousel';
 import { ReferenceImageThumbnail } from './ReferenceImageThumbnail';
 import { SceneIndicator } from './SceneIndicator';
 import { useSceneInfo } from '@/hooks/useSceneInfo';
+import { ShotAssetPanel } from './Stage9/ShotAssetPanel';
+import { BulkPresenceTemplates } from './Stage9/BulkPresenceTemplates';
+import { ShotAssetTimeline } from './Stage9/ShotAssetTimeline';
+import { shotService } from '@/lib/services/shotService';
+import type { Shot } from '@/types/scene';
 
 interface Stage9PromptSegmentationProps {
   projectId: string;
@@ -89,8 +103,58 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
   const [isSaving, setIsSaving] = useState(false);
   const debouncedUpdates = useDebounce(pendingUpdates, 500);
 
+  // Shot asset assignments state (§9)
+  const [shotAssignments, setShotAssignments] = useState<ShotAssetAssignment[]>([]);
+  const [sceneAssets, setSceneAssets] = useState<SceneAssetInstance[]>([]);
+  const [assignmentsVersion, setAssignmentsVersion] = useState(0);
+
+  // Shots data for bulk templates
+  const [sceneShotsData, setSceneShotsData] = useState<Shot[]>([]);
+
+  // View mode: card (default) or timeline matrix
+  const [viewMode, setViewMode] = useState<'cards' | 'timeline'>('cards');
+
   // Track initial load
   const hasLoadedRef = useRef(false);
+
+  // Load assignments + scene assets + shots
+  useEffect(() => {
+    if (!projectId || !sceneId) return;
+    (async () => {
+      try {
+        const [assignments, assets, shots] = await Promise.all([
+          shotAssetAssignmentService.listForScene(projectId, sceneId),
+          sceneAssetService.listSceneAssets(projectId, sceneId),
+          shotService.fetchShots(projectId, sceneId),
+        ]);
+        setShotAssignments(assignments);
+        setSceneAssets(assets);
+        setSceneShotsData(shots);
+      } catch (err) {
+        console.error('Failed to load shot assignments:', err);
+      }
+    })();
+  }, [projectId, sceneId, assignmentsVersion]);
+
+  // Auto-populate if no assignments (§10A)
+  useShotAssetAutoPopulate({
+    projectId,
+    sceneId,
+    enabled: sceneAssets.length > 0 && shotAssignments.length === 0 && assignmentsVersion === 0,
+    onPopulated: (result) => {
+      if (result.created > 0) {
+        toast({ title: 'Assignments initialized', description: `Created assignments for all shots.` });
+        setAssignmentsVersion(v => v + 1);
+      }
+    },
+  });
+
+  // Group assignments by shot UUID
+  const assignmentsByShot = shotAssignments.reduce<Record<string, ShotAssetAssignment[]>>((acc, a) => {
+    if (!acc[a.shot_id]) acc[a.shot_id] = [];
+    acc[a.shot_id].push(a);
+    return acc;
+  }, {});
 
   // Load prompts on mount
   useEffect(() => {
@@ -379,6 +443,39 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
             </div>
           )}
 
+          {/* Cards / Timeline toggle */}
+          <div className="flex gap-1 border rounded-md">
+            <Button
+              variant={viewMode === 'cards' ? 'secondary' : 'ghost'}
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setViewMode('cards')}
+              title="Card view"
+            >
+              <List className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={viewMode === 'timeline' ? 'secondary' : 'ghost'}
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setViewMode('timeline')}
+              title="Timeline view"
+            >
+              <Grid3x3 className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Bulk Template Selector */}
+          {sceneShotsData.length > 0 && sceneAssets.length > 0 && (
+            <BulkPresenceTemplates
+              projectId={projectId}
+              sceneId={sceneId}
+              sceneAssets={sceneAssets}
+              shots={sceneShotsData}
+              onApplied={() => setAssignmentsVersion(v => v + 1)}
+            />
+          )}
+
           {/* Generate button */}
           <Button
             variant="gold"
@@ -401,18 +498,22 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
         </div>
       </div>
 
-      {/* Info banner */}
-      <div className="px-6 py-3 bg-blue-500/10 border-b border-blue-500/20">
-        <div className="flex items-center gap-2 text-xs text-blue-400">
-          <Info className="w-4 h-4 flex-shrink-0" />
-          <span>
-            Frame prompts are read-only by default to preserve AI-generated precision.
-            Video prompts are always editable for audio/dialogue tuning.
-          </span>
+      {/* Timeline View */}
+      {viewMode === 'timeline' && (
+        <div className="p-6">
+          <ShotAssetTimeline
+            projectId={projectId}
+            sceneId={sceneId}
+            promptSets={promptSets}
+            assignments={shotAssignments}
+            sceneAssets={sceneAssets}
+            onAssignmentsChanged={() => setAssignmentsVersion(v => v + 1)}
+          />
         </div>
-      </div>
+      )}
 
       {/* Prompt Cards */}
+      {viewMode === 'cards' && (
       <ScrollArea className="flex-1">
         <div className="p-6 space-y-4">
           {promptSets.map((promptSet, index) => {
@@ -463,6 +564,24 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                           )}
                         >
                           {promptSet.aiRecommendsEndFrame ? 'AI: End Frame' : 'AI: No End Frame'}
+                        </Badge>
+                      )}
+                      {index > 0 && promptSet.aiStartContinuity === 'match' && (
+                        <Badge
+                          variant="secondary"
+                          className="text-[10px] select-none bg-blue-500/20 text-blue-300"
+                        >
+                          <Link2 className="w-3 h-3 mr-1" />
+                          AI: Match &larr;
+                        </Badge>
+                      )}
+                      {index > 0 && promptSet.aiStartContinuity === 'camera_change' && (
+                        <Badge
+                          variant="secondary"
+                          className="text-[10px] select-none bg-purple-500/20 text-purple-300"
+                        >
+                          <Camera className="w-3 h-3 mr-1" />
+                          AI: Angle &larr;
                         </Badge>
                       )}
                       {/* Transformation state badges */}
@@ -560,6 +679,20 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                           </div>
                         )}
 
+                        {/* Per-Shot Asset Panel (§9A) */}
+                        {promptSet.shotUuid && (
+                          <ShotAssetPanel
+                            projectId={projectId}
+                            sceneId={sceneId}
+                            shotId={promptSet.shotUuid}
+                            shotLabel={promptSet.shotId}
+                            assignments={assignmentsByShot[promptSet.shotUuid] || []}
+                            sceneAssets={sceneAssets}
+                            onAssignmentsChanged={() => setAssignmentsVersion(v => v + 1)}
+                            startContinuity={promptSet.startContinuity}
+                          />
+                        )}
+
                         {/* Reference Image Thumbnails */}
                         {promptSet.referenceImageOrder && promptSet.referenceImageOrder.length > 0 && (
                           <div className="flex items-center gap-2 flex-wrap">
@@ -573,6 +706,49 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                                 index={idx}
                               />
                             ))}
+                          </div>
+                        )}
+
+                        {/* Continuity Mode Selector */}
+                        {index > 0 && (
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">Continuity:</span>
+                            <Select
+                              value={promptSet.startContinuity || 'none'}
+                              onValueChange={(value: string) => {
+                                const updated = [...promptSets];
+                                updated[index] = { ...updated[index], startContinuity: value as ContinuityMode };
+                                setPromptSets(updated);
+                                if (promptSet.shotUuid) {
+                                  promptService.updatePrompt(projectId, sceneId, promptSet.shotUuid, {
+                                    startContinuity: value as ContinuityMode,
+                                  }).catch(() => {
+                                    toast({
+                                      title: 'Error',
+                                      description: 'Failed to update continuity mode',
+                                      variant: 'destructive',
+                                    });
+                                  });
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-7 w-[180px] text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">None (Independent)</SelectItem>
+                                <SelectItem value="match">
+                                  <span className="flex items-center gap-1">
+                                    <Link2 className="w-3 h-3" /> Match &larr;
+                                  </span>
+                                </SelectItem>
+                                <SelectItem value="camera_change">
+                                  <span className="flex items-center gap-1">
+                                    <Camera className="w-3 h-3" /> Angle Change &larr;
+                                  </span>
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
                         )}
 
@@ -655,6 +831,53 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                           </div>
                         </div>
 
+                        {/* Continuity Prompt (camera_change only) */}
+                        {promptSet.startContinuity === 'camera_change' && (
+                          <div className="mt-3 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-xs flex items-center gap-1.5">
+                                <Camera className="w-3.5 h-3.5 text-purple-400" />
+                                Continuity Prompt (Recomposition)
+                              </Label>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-[10px] px-2"
+                                disabled={regeneratingShots.has(promptSet.shotId)}
+                                onClick={async () => {
+                                  if (!promptSet.shotUuid) return;
+                                  setRegeneratingShots(prev => new Set([...prev, promptSet.shotId]));
+                                  try {
+                                    const result = await promptService.generateContinuityPrompt(projectId, sceneId, promptSet.shotUuid);
+                                    const updated = [...promptSets];
+                                    updated[index] = { ...updated[index], continuityFramePrompt: result.continuityFramePrompt };
+                                    setPromptSets(updated);
+                                  } catch (err) {
+                                    console.error('Failed to generate continuity prompt:', err);
+                                  } finally {
+                                    setRegeneratingShots(prev => {
+                                      const next = new Set(prev);
+                                      next.delete(promptSet.shotId);
+                                      return next;
+                                    });
+                                  }
+                                }}
+                              >
+                                {regeneratingShots.has(promptSet.shotId) ? 'Generating...' : 'Regenerate'}
+                              </Button>
+                            </div>
+                            <Textarea
+                              value={promptSet.continuityFramePrompt || ''}
+                              readOnly
+                              className="text-xs min-h-[60px] bg-purple-500/5 border-purple-500/20"
+                              placeholder="Continuity prompt will be generated when prompts are generated..."
+                            />
+                            <p className="text-[10px] text-muted-foreground">
+                              This prompt will be used instead of the Frame Prompt when generating with camera change continuity.
+                            </p>
+                          </div>
+                        )}
+
                         {/* Video Prompt */}
                         <div>
                           <div className="flex items-center justify-between mb-2">
@@ -721,6 +944,7 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
           })}
         </div>
       </ScrollArea>
+      )}
 
       {/* Footer — hidden when locked */}
       {!stage9Locked && !stage9Outdated && (
@@ -768,6 +992,8 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
         }}
         isConfirming={isConfirmingUnlock}
       />
+
+      <StageInfoButton infoKey="stage-9" />
     </div>
   );
 }

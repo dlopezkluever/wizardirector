@@ -13,6 +13,7 @@ import { imagesRouter } from './routes/images.js';
 import { assetsRouter } from './routes/assets.js';
 import { projectAssetsRouter } from './routes/projectAssets.js';
 import { sceneAssetsRouter } from './routes/sceneAssets.js';
+import { shotAssignmentsRouter } from './routes/shotAssignments.js';
 import { framesRouter } from './routes/frames.js';
 import { checkoutRouter } from './routes/checkout.js';
 import { sceneStageLockRouter } from './routes/sceneStageLocks.js';
@@ -50,6 +51,9 @@ app.use('/api/projects', authenticateUser, projectsRouter);
 app.use('/api/projects', authenticateUser, projectAssetsRouter);
 // Scene asset instances / inheritance (protected, nested under projects)
 app.use('/api/projects', authenticateUser, sceneAssetsRouter);
+
+// Shot asset assignments (protected, nested under projects)
+app.use('/api/projects', authenticateUser, shotAssignmentsRouter);
 
 // Frames routes (protected, nested under projects)
 app.use('/api/projects', authenticateUser, framesRouter);

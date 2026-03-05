@@ -140,13 +140,15 @@ export class ShotService {
 
   /**
    * Split shot into two using LLM agent.
-   * shotId is the shot row id (UUID). Returns the two new shots.
+   * shotId is the shot row id (UUID). Returns the new split shots.
+   * splitCount: 2 (default) or 3 for three-way split.
    */
   async splitShot(
     projectId: string,
     sceneId: string,
     shotId: string,
-    userGuidance?: string
+    userGuidance?: string,
+    splitCount?: 2 | 3
   ): Promise<Shot[]> {
     const { data: { session } } = await supabase.auth.getSession();
 
@@ -162,7 +164,7 @@ export class ShotService {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userGuidance }),
+        body: JSON.stringify({ userGuidance, splitCount }),
       }
     );
 

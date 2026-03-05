@@ -8,6 +8,7 @@ import { NewProjectCard } from '@/components/dashboard/NewProjectCard';
 import { NewProjectDialog } from '@/components/dashboard/NewProjectDialog';
 import { projectService } from '@/lib/services/projectService';
 import { useToast } from '@/hooks/use-toast';
+import { StageInfoButton } from '@/components/pipeline/StageInfoButton';
 import type { Project } from '@/types/project';
 
 interface DashboardProps {
@@ -144,6 +145,8 @@ export function Dashboard({ onProjectSelect, onNewProject }: DashboardProps) {
         onOpenChange={setNewProjectDialogOpen}
         onProjectCreated={handleProjectCreated}
       />
+
+      <StageInfoButton infoKey="dashboard" />
     </div>
   );
 }

@@ -182,6 +182,7 @@ export interface MergeAssetsRequest {
   survivorAssetId: string;
   absorbedAssetIds: string[];
   updatedName?: string;
+  updatedDescription?: string;
 }
 
 export interface MergeAssetsResponse {
@@ -189,6 +190,7 @@ export interface MergeAssetsResponse {
   survivor: ProjectAsset;
   instancesRepointed: number;
   assetsAbsorbed: number;
+  assignmentsMigrated: number;
 }
 
 export interface SplitAssetRequest {

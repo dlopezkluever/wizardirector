@@ -749,6 +749,7 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
             currentStage={sceneStage}
             completedStages={completedSceneStages}
             onStageSelect={setSceneStage}
+            onBackToScriptHub={handleExitScene}
             stageLockStatuses={deriveSidebarLockStatuses()}
           />
         </div>

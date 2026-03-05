@@ -35,6 +35,7 @@ import type { Beat } from '@/lib/services/beatService';
 import { supabase } from '@/lib/supabase';
 import type { StageStatus } from '@/types/project';
 import { LockedStageHeader } from './LockedStageHeader';
+import { StageInfoButton } from './StageInfoButton';
 import {
   Dialog,
   DialogContent,
@@ -1257,6 +1258,8 @@ export function Stage4MasterScript({ projectId, onComplete, onBack, stageStatus,
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <StageInfoButton infoKey="stage-4" />
     </div>
   );
 }

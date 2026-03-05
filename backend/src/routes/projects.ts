@@ -6,7 +6,8 @@ import { ShotExtractionService } from '../services/shotExtractionService.js';
 import { ShotSplitService } from '../services/shotSplitService.js';
 import { ShotMergeService } from '../services/shotMergeService.js';
 import { shotValidationService } from '../services/shotValidationService.js';
-import { promptGenerationService, type ShotData, type SceneAssetInstanceData } from '../services/promptGenerationService.js';
+import { promptGenerationService, type ShotData, type SceneAssetInstanceData, type ShotAssetAssignmentForPrompt } from '../services/promptGenerationService.js';
+import { shotAssetAssignmentService } from '../services/shotAssetAssignmentService.js';
 import { StyleCapsuleService } from '../services/styleCapsuleService.js';
 import { ContextManager } from '../services/contextManager.js';
 
@@ -1370,8 +1371,9 @@ router.put('/:id/scenes/:sceneId/shots/:shotId', async (req, res) => {
 router.post('/:id/scenes/:sceneId/shots/:shotId/split', async (req, res) => {
   try {
     const { id: projectId, sceneId, shotId } = req.params;
-    const { userGuidance } = req.body || {};
+    const { userGuidance, splitCount } = req.body || {};
     const userId = req.user!.id;
+    const count = splitCount === 3 ? 3 : 2;
 
     const { data: project } = await supabase
       .from('projects')
@@ -1389,8 +1391,14 @@ router.post('/:id/scenes/:sceneId/shots/:shotId/split', async (req, res) => {
       .single();
     if (!originalShot) return res.status(404).json({ error: 'Shot not found' });
 
+    // §6: Save existing assignments BEFORE deleting the original shot (they cascade-delete)
+    const { data: existingAssignments } = await supabase
+      .from('shot_asset_assignments')
+      .select('scene_asset_instance_id, presence_type')
+      .eq('shot_id', shotId);
+
     const shotSplitService = new ShotSplitService();
-    const newShotsPayload = await shotSplitService.splitShot(originalShot, userGuidance);
+    const newShotsPayload = await shotSplitService.splitShot(originalShot, userGuidance, count);
 
     const { error: deleteError } = await supabase
       .from('shots')
@@ -1398,6 +1406,7 @@ router.post('/:id/scenes/:sceneId/shots/:shotId/split', async (req, res) => {
       .eq('id', shotId);
     if (deleteError) return res.status(500).json({ error: 'Failed to delete original shot' });
 
+    // Shift shot_order for downstream shots to make room for (count - 1) additional shots
     const { data: shotsAfterDelete } = await supabase
       .from('shots')
       .select('id, shot_order')
@@ -1405,7 +1414,7 @@ router.post('/:id/scenes/:sceneId/shots/:shotId/split', async (req, res) => {
       .gt('shot_order', originalShot.shot_order);
     if (shotsAfterDelete?.length) {
       for (const s of shotsAfterDelete) {
-        await supabase.from('shots').update({ shot_order: s.shot_order + 1 }).eq('id', s.id);
+        await supabase.from('shots').update({ shot_order: s.shot_order + (count - 1) }).eq('id', s.id);
       }
     }
 
@@ -1429,6 +1438,28 @@ router.post('/:id/scenes/:sceneId/shots/:shotId/split', async (req, res) => {
       .insert(insertRows)
       .select('*');
     if (insertError) return res.status(500).json({ error: 'Failed to insert split shots' });
+
+    // §6: Clone saved assignments to all new sub-shots
+    if (existingAssignments && existingAssignments.length > 0 && insertedShots) {
+      const assignmentRows = insertedShots.flatMap((newShot: any) =>
+        existingAssignments.map((a: any) => ({
+          shot_id: newShot.id,
+          scene_asset_instance_id: a.scene_asset_instance_id,
+          presence_type: a.presence_type,
+        }))
+      );
+      const { error: assignError } = await supabase
+        .from('shot_asset_assignments')
+        .insert(assignmentRows);
+      if (assignError) {
+        console.warn('Failed to clone assignments to split shots:', assignError);
+      }
+    }
+
+    // §6: Invalidate Stage 9 and downstream after split
+    shotAssetAssignmentService.invalidateStage9AndDownstream(sceneId).catch(err => {
+      console.warn('Failed to invalidate stages after shot split:', err);
+    });
 
     res.json({ success: true, newShots: insertedShots });
   } catch (error: any) {
@@ -1971,7 +2002,10 @@ router.get('/:id/scenes/:sceneId/prompts', async (req, res) => {
         ai_recommends_end_frame,
         compatible_models,
         reference_image_order,
-        prompts_generated_at
+        prompts_generated_at,
+        start_continuity,
+        ai_start_continuity,
+        continuity_frame_prompt
       `)
       .eq('scene_id', sceneId)
       .order('shot_order', { ascending: true });
@@ -1998,6 +2032,9 @@ router.get('/:id/scenes/:sceneId/prompts', async (req, res) => {
       action: shot.action,
       setting: shot.setting,
       camera: shot.camera,
+      startContinuity: shot.start_continuity || 'none',
+      aiStartContinuity: shot.ai_start_continuity || null,
+      continuityFramePrompt: shot.continuity_frame_prompt || null,
     }));
 
     res.json({ prompts: promptSets, sceneNumber: scene.scene_number });
@@ -2011,7 +2048,7 @@ router.get('/:id/scenes/:sceneId/prompts', async (req, res) => {
 router.put('/:id/scenes/:sceneId/shots/:shotId/prompts', async (req, res) => {
   try {
     const { id: projectId, sceneId, shotId } = req.params;
-    const { framePrompt, videoPrompt, requiresEndFrame, compatibleModels } = req.body;
+    const { framePrompt, videoPrompt, requiresEndFrame, compatibleModels, startContinuity } = req.body;
     const userId = req.user!.id;
 
     // Verify project ownership
@@ -2075,6 +2112,17 @@ router.put('/:id/scenes/:sceneId/shots/:shotId/prompts', async (req, res) => {
       updateData.compatible_models = compatibleModels;
     }
 
+    if (startContinuity !== undefined) {
+      if (!['none', 'match', 'camera_change'].includes(startContinuity)) {
+        return res.status(400).json({ error: 'startContinuity must be none, match, or camera_change' });
+      }
+      updateData.start_continuity = startContinuity;
+      // Clear continuity prompt when switching to 'none'
+      if (startContinuity === 'none') {
+        updateData.continuity_frame_prompt = null;
+      }
+    }
+
     // Update the shot
     const { data: updatedShot, error: updateError } = await supabase
       .from('shots')
@@ -2099,6 +2147,9 @@ router.put('/:id/scenes/:sceneId/shots/:shotId/prompts', async (req, res) => {
         requiresEndFrame: updatedShot.requires_end_frame ?? true,
         compatibleModels: updatedShot.compatible_models || ['Veo3'],
         promptsGeneratedAt: updatedShot.prompts_generated_at,
+        startContinuity: updatedShot.start_continuity || 'none',
+        aiStartContinuity: updatedShot.ai_start_continuity || null,
+        continuityFramePrompt: updatedShot.continuity_frame_prompt || null,
       },
     });
   } catch (error) {
@@ -2293,12 +2344,36 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
       console.log(`[Stage9] Found ${transformationEvents.length} confirmed transformation event(s) for scene`);
     }
 
-    // Generate prompts using the service (with transformation events)
+    // Fetch per-shot asset assignments (§4: presence-aware manifests)
+    let shotAssignmentMap: Map<string, ShotAssetAssignmentForPrompt[]> | undefined;
+    try {
+      const hasAssignments = await shotAssetAssignmentService.hasAssignments(sceneId);
+      if (hasAssignments) {
+        const allAssignments = await shotAssetAssignmentService.getAssignmentsForScene(sceneId);
+        shotAssignmentMap = new Map<string, ShotAssetAssignmentForPrompt[]>();
+        for (const a of allAssignments) {
+          const list = shotAssignmentMap.get(a.shot_id) || [];
+          list.push({
+            scene_asset_instance_id: a.scene_asset_instance_id,
+            presence_type: a.presence_type as ShotAssetAssignmentForPrompt['presence_type'],
+          });
+          shotAssignmentMap.set(a.shot_id, list);
+        }
+        console.log(`[Stage9] Using per-shot asset assignments for ${shotAssignmentMap.size} shot(s)`);
+      } else {
+        console.log(`[Stage9] No shot assignments found — using legacy all-assets-per-shot behavior`);
+      }
+    } catch (assignErr) {
+      console.warn('[Stage9] Failed to fetch shot assignments, falling back to legacy:', assignErr);
+    }
+
+    // Generate prompts using the service (with transformation events + assignments)
     const results = await promptGenerationService.generateBulkPromptSets(
       shotDataList,
       sceneAssets,
       styleCapsule,
-      transformationEvents.length > 0 ? transformationEvents : undefined
+      transformationEvents.length > 0 ? transformationEvents : undefined,
+      shotAssignmentMap
     );
 
     // Update shots with generated prompts
@@ -2315,6 +2390,9 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
             ai_recommends_end_frame: r.aiRecommendsEndFrame ?? r.requiresEndFrame,
             compatible_models: r.compatibleModels,
             reference_image_order: r.referenceImageOrder || null,
+            end_frame_reference_image_order: r.endFrameReferenceImageOrder || null,
+            ai_start_continuity: r.aiStartContinuity || null,
+            start_continuity: r.aiStartContinuity || 'none',
             prompts_generated_at: now,
             updated_at: now,
           })
@@ -2340,7 +2418,10 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
         dialogue,
         action,
         setting,
-        camera
+        camera,
+        start_continuity,
+        ai_start_continuity,
+        continuity_frame_prompt
       `)
       .eq('scene_id', sceneId)
       .order('shot_order', { ascending: true });
@@ -2361,6 +2442,9 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
       action: shot.action,
       setting: shot.setting,
       camera: shot.camera,
+      startContinuity: shot.start_continuity || 'none',
+      aiStartContinuity: shot.ai_start_continuity || null,
+      continuityFramePrompt: shot.continuity_frame_prompt || null,
     }));
 
     const successCount = results.filter(r => r.success).length;

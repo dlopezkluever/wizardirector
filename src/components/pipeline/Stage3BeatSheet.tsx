@@ -41,6 +41,7 @@ import { beatService, type Beat } from '@/lib/services/beatService';
 import { stageStateService } from '@/lib/services/stageStateService';
 import type { StageStatus } from '@/types/project';
 import { LockedStageHeader } from './LockedStageHeader';
+import { StageInfoButton } from './StageInfoButton';
 
 interface Stage3Content {
   beats: Beat[];
@@ -925,6 +926,8 @@ export function Stage3BeatSheet({ projectId, onComplete, onBack, stageStatus, on
           );
         })()}
       </AnimatePresence>
+
+      <StageInfoButton infoKey="stage-3" />
     </div>
   );
 }

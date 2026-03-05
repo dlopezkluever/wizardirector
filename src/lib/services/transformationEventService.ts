@@ -136,8 +136,15 @@ export const transformationEventService = {
       trigger_shot_id: string;
       scene_asset_instance_id: string;
       transformation_type: string;
+      absorbed_instance_id?: string;
     }
-  ): Promise<{ post_description: string; transformation_narrative: string }> {
+  ): Promise<{
+    post_description: string;
+    transformation_narrative: string;
+    trigger_shot_id?: string;
+    transformation_type?: string;
+    completion_shot_id?: string;
+  }> {
     const headers = await getAuthHeaders();
     const response = await fetch(
       `/api/projects/${projectId}/scenes/${sceneId}/transformation-events/generate-prefill`,

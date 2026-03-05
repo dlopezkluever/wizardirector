@@ -44,6 +44,9 @@ export interface ShotWithFrames {
     referenceImageOrder: { label: string; assetName: string; url: string; type: string }[] | null;
     endFrameReferenceImageOrder: { label: string; assetName: string; url: string; type: string }[] | null;
     endFramePrompt: string | null;
+    startContinuity: 'none' | 'match' | 'camera_change';
+    aiStartContinuity: 'none' | 'match' | 'camera_change' | null;
+    continuityFramePrompt: string | null;
     startFrame: Frame | null;
     endFrame: Frame | null;
 }
@@ -106,7 +109,10 @@ export class FrameGenerationService {
                 video_prompt,
                 reference_image_order,
                 end_frame_reference_image_order,
-                end_frame_prompt
+                end_frame_prompt,
+                start_continuity,
+                ai_start_continuity,
+                continuity_frame_prompt
             `)
             .eq('scene_id', sceneId)
             .order('shot_order', { ascending: true });
@@ -229,6 +235,9 @@ export class FrameGenerationService {
                 referenceImageOrder: shot.reference_image_order || null,
                 endFrameReferenceImageOrder: endFrameRefOrder,
                 endFramePrompt: shot.end_frame_prompt || null,
+                startContinuity: shot.start_continuity || 'none',
+                aiStartContinuity: shot.ai_start_continuity || null,
+                continuityFramePrompt: shot.continuity_frame_prompt || null,
                 startFrame: frameEntry.start,
                 endFrame: frameEntry.end,
             };
@@ -281,21 +290,82 @@ export class FrameGenerationService {
             // Fetch asset reference images for this shot
             const shotRefImages = await this.fetchShotReferenceImages(shot.id);
 
-            // Generate start frame
+            // Generate start frame (with continuity handling)
             const startFrame = await this.ensureFrame(shot.id, 'start', previousEndFrameId);
             if (startFrame.status === 'pending' || startFrame.status === 'rejected') {
-                await this.startFrameGeneration(
-                    startFrame.id,
-                    projectId,
-                    branchId,
-                    sceneId,
-                    shot.id,
-                    shot.frame_prompt,
-                    visualStyleCapsuleId,
-                    aspectRatio,
-                    shotRefImages
-                );
-                jobsCreated++;
+                if (shot.start_continuity === 'match' && previousEndFrameId) {
+                    // Match mode: copy from previous shot's end frame
+                    const { data: prevEndFrame } = await supabase
+                        .from('frames')
+                        .select('image_url, storage_path')
+                        .eq('id', previousEndFrameId)
+                        .single();
+
+                    if (prevEndFrame?.image_url) {
+                        await supabase
+                            .from('frames')
+                            .update({
+                                image_url: prevEndFrame.image_url,
+                                storage_path: prevEndFrame.storage_path,
+                                status: 'generated',
+                                prompt_snapshot: '[Copied from previous shot end frame — match continuity]',
+                                generated_at: new Date().toISOString(),
+                                previous_frame_id: previousEndFrameId,
+                            })
+                            .eq('id', startFrame.id);
+                        // No jobsCreated++ — zero cost
+                    } else {
+                        // Fallback to normal generation if no image
+                        await this.startFrameGeneration(
+                            startFrame.id, projectId, branchId, sceneId, shot.id,
+                            shot.frame_prompt, visualStyleCapsuleId, aspectRatio, shotRefImages
+                        );
+                        jobsCreated++;
+                    }
+                } else if (shot.start_continuity === 'camera_change' && previousEndFrameId) {
+                    // Camera change mode: analyze reference image then generate with enhanced prompt
+                    // Check frame_links for a reference link first, fall back to previous end frame
+                    let refImageUrl: string | null = null;
+                    const { data: refLink } = await supabase
+                        .from('frame_links')
+                        .select('source_frame_id')
+                        .eq('target_frame_id', startFrame.id)
+                        .eq('link_type', 'reference')
+                        .single();
+
+                    if (refLink) {
+                        const { data: srcFrame } = await supabase
+                            .from('frames').select('image_url').eq('id', refLink.source_frame_id).single();
+                        refImageUrl = srcFrame?.image_url || null;
+                    }
+
+                    if (!refImageUrl) {
+                        const { data: prevEndFrame } = await supabase
+                            .from('frames').select('image_url').eq('id', previousEndFrameId).single();
+                        refImageUrl = prevEndFrame?.image_url || null;
+                    }
+
+                    if (refImageUrl) {
+                        await this.generateWithCameraChangeAnalysis(
+                            startFrame.id, projectId, branchId, sceneId, shot.id, shot,
+                            refImageUrl, visualStyleCapsuleId, aspectRatio, shotRefImages
+                        );
+                    } else {
+                        // No reference image available — fall back to normal generation
+                        await this.startFrameGeneration(
+                            startFrame.id, projectId, branchId, sceneId, shot.id,
+                            shot.frame_prompt, visualStyleCapsuleId, aspectRatio, shotRefImages
+                        );
+                    }
+                    jobsCreated++;
+                } else {
+                    // Normal generation
+                    await this.startFrameGeneration(
+                        startFrame.id, projectId, branchId, sceneId, shot.id,
+                        shot.frame_prompt, visualStyleCapsuleId, aspectRatio, shotRefImages
+                    );
+                    jobsCreated++;
+                }
             }
             createdFrames.push(startFrame);
 
@@ -462,6 +532,144 @@ export class FrameGenerationService {
     }
 
     /**
+     * Generate a frame with camera change analysis — analyzes the reference image,
+     * builds an enhanced continuity prompt, and starts generation.
+     */
+    private async generateWithCameraChangeAnalysis(
+        frameId: string,
+        projectId: string,
+        branchId: string,
+        sceneId: string,
+        shotId: string,
+        shot: any,
+        referenceImageUrl: string,
+        visualStyleCapsuleId?: string,
+        aspectRatio?: string,
+        existingRefImages?: ReferenceImage[]
+    ): Promise<void> {
+        // 1. Analyze reference image via vision
+        const { ImageAnalysisService } = await import('./imageAnalysisService.js');
+        const imageAnalysisService = new ImageAnalysisService();
+        const analysis = await imageAnalysisService.analyzeReferenceFrame(referenceImageUrl);
+
+        // 2. Fetch scene assets
+        const { data: sceneAssets } = await supabase
+            .from('scene_asset_instances')
+            .select(`
+                id,
+                description_override,
+                effective_description,
+                status_tags,
+                image_key_url,
+                carry_forward,
+                inherited_from_instance_id,
+                project_asset:project_assets(id, name, asset_type, description, image_key_url)
+            `)
+            .eq('scene_id', sceneId);
+
+        const assets = (sceneAssets || []).map((instance: any) => ({
+            id: instance.id,
+            project_asset: instance.project_asset ? {
+                id: instance.project_asset.id,
+                name: instance.project_asset.name,
+                asset_type: instance.project_asset.asset_type,
+                description: instance.project_asset.description,
+                image_key_url: instance.project_asset.image_key_url || undefined,
+            } : undefined,
+            description_override: instance.description_override,
+            effective_description: instance.effective_description || '',
+            status_tags: instance.status_tags || [],
+            image_key_url: instance.image_key_url || undefined,
+        }));
+
+        // 3. Fetch previous shot data
+        const { data: allShots } = await supabase
+            .from('shots')
+            .select('*')
+            .eq('scene_id', sceneId)
+            .order('shot_order', { ascending: true });
+
+        const shotIndex = (allShots || []).findIndex((s: any) => s.id === shotId);
+        const previousShot = shotIndex > 0 ? allShots![shotIndex - 1] : null;
+
+        const buildShotData = (s: any) => ({
+            id: s.id,
+            shot_id: s.shot_id,
+            duration: s.duration,
+            dialogue: s.dialogue || '',
+            action: s.action,
+            characters_foreground: s.characters_foreground || [],
+            characters_background: s.characters_background || [],
+            setting: s.setting,
+            camera: s.camera,
+            continuity_flags: s.continuity_flags,
+            beat_reference: s.beat_reference,
+        });
+
+        // 4. Fetch style capsule if needed
+        let styleCapsule = null;
+        if (visualStyleCapsuleId) {
+            try {
+                const { StyleCapsuleService } = await import('./styleCapsuleService.js');
+                const styleCapsuleService = new StyleCapsuleService();
+                // Need userId — fetch from project
+                const { data: proj } = await supabase.from('projects').select('user_id').eq('id', projectId).single();
+                if (proj) {
+                    styleCapsule = await styleCapsuleService.getCapsuleById(visualStyleCapsuleId, proj.user_id);
+                }
+            } catch {
+                // Continue without
+            }
+        }
+
+        // 5. Generate enhanced prompt
+        const { promptGenerationService } = await import('./promptGenerationService.js');
+        const currentShotData = buildShotData(shot);
+        const prevShotData = previousShot ? buildShotData(previousShot) : currentShotData;
+
+        const enhancedPrompt = await promptGenerationService.generateContinuityFramePrompt(
+            currentShotData,
+            prevShotData,
+            assets,
+            styleCapsule,
+            analysis
+        );
+
+        // 6. Assemble reference images
+        const refs: ReferenceImage[] = [
+            { url: referenceImageUrl, role: 'identity' as const },
+            ...(existingRefImages || []),
+        ];
+
+        // 7. Start generation
+        await this.startFrameGeneration(
+            frameId, projectId, branchId, sceneId, shotId,
+            enhancedPrompt, visualStyleCapsuleId, aspectRatio, refs
+        );
+
+        // 8. Save enhanced prompt for UI visibility
+        await supabase
+            .from('shots')
+            .update({
+                continuity_frame_prompt: enhancedPrompt,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', shotId);
+
+        // 9. Refresh stale reference_image_order URL if needed
+        const { data: currentRefOrder } = await supabase
+            .from('shots').select('reference_image_order').eq('id', shotId).single();
+        if (currentRefOrder?.reference_image_order) {
+            const order = currentRefOrder.reference_image_order as any[];
+            const entry = order.find((e: any) => e.type === 'continuity');
+            if (entry && entry.url !== referenceImageUrl) {
+                entry.url = referenceImageUrl;
+                await supabase.from('shots').update({ reference_image_order: order }).eq('id', shotId);
+            }
+        }
+    }
+
+    /**
      * Start frame generation job
      */
     private async startFrameGeneration(
@@ -604,8 +812,12 @@ export class FrameGenerationService {
                 *,
                 shots!inner (
                     id,
+                    shot_id,
+                    shot_order,
                     frame_prompt,
-                    end_frame_prompt
+                    end_frame_prompt,
+                    start_continuity,
+                    scene_id
                 )
             `)
             .eq('id', frameId)
@@ -616,8 +828,145 @@ export class FrameGenerationService {
         }
 
         const shot = (frame as any).shots;
+
+        // If start frame with match mode → copy from previous shot's end instead of AI generation
+        if (frame.frame_type === 'start' && shot.start_continuity === 'match') {
+            // Find previous shot's end frame
+            const { data: allShots } = await supabase
+                .from('shots')
+                .select('id, shot_id')
+                .eq('scene_id', shot.scene_id)
+                .order('shot_order', { ascending: true });
+
+            if (allShots) {
+                const shotIdx = allShots.findIndex((s: any) => s.id === shot.id);
+                if (shotIdx > 0) {
+                    const prevShot = allShots[shotIdx - 1];
+                    const { data: prevEndFrame } = await supabase
+                        .from('frames')
+                        .select('id, image_url, storage_path, status')
+                        .eq('shot_id', prevShot.id)
+                        .eq('frame_type', 'end')
+                        .in('status', ['generated', 'approved'])
+                        .single();
+
+                    if (prevEndFrame?.image_url) {
+                        const now = new Date().toISOString();
+                        // Copy the frame instead of AI generation
+                        await supabase
+                            .from('frames')
+                            .update({
+                                image_url: prevEndFrame.image_url,
+                                storage_path: prevEndFrame.storage_path,
+                                status: 'generated',
+                                prompt_snapshot: `[Match copy from Shot ${prevShot.shot_id} end frame]`,
+                                generated_at: now,
+                                previous_frame_id: prevEndFrame.id,
+                                generation_count: (frame.generation_count || 0) + 1,
+                                updated_at: now,
+                            })
+                            .eq('id', frameId);
+
+                        // Create zero-cost job
+                        const { data: job } = await supabase
+                            .from('image_generation_jobs')
+                            .insert({
+                                project_id: projectId,
+                                branch_id: branchId,
+                                scene_id: sceneId,
+                                shot_id: shot.id,
+                                job_type: 'start_frame',
+                                status: 'completed',
+                                cost_credits: 0,
+                                prompt: '[Match regen copy — zero cost]',
+                                public_url: prevEndFrame.image_url,
+                                storage_path: prevEndFrame.storage_path,
+                                completed_at: now,
+                            })
+                            .select('id')
+                            .single();
+
+                        if (job) {
+                            await supabase
+                                .from('frames')
+                                .update({ current_job_id: job.id })
+                                .eq('id', frameId);
+                        }
+
+                        const { data: updatedFrame } = await supabase
+                            .from('frames')
+                            .select('*')
+                            .eq('id', frameId)
+                            .single();
+
+                        return this.mapFrameFromDb(updatedFrame);
+                    }
+                }
+            }
+        }
+
         if (!shot?.frame_prompt) {
             throw new Error('Shot has no frame prompt');
+        }
+
+        // If start frame with camera_change mode → use analyze-then-generate path
+        if (frame.frame_type === 'start' && shot.start_continuity === 'camera_change') {
+            let refImageUrl: string | null = null;
+
+            // Check frame_links for a reference link on this frame
+            const { data: refLink } = await supabase
+                .from('frame_links')
+                .select('source_frame_id')
+                .eq('target_frame_id', frameId)
+                .eq('link_type', 'reference')
+                .single();
+
+            if (refLink) {
+                const { data: srcFrame } = await supabase
+                    .from('frames').select('image_url').eq('id', refLink.source_frame_id).single();
+                refImageUrl = srcFrame?.image_url || null;
+            }
+
+            // Fall back to previous shot's end frame
+            if (!refImageUrl) {
+                const { data: allShots } = await supabase
+                    .from('shots')
+                    .select('id, shot_id')
+                    .eq('scene_id', shot.scene_id)
+                    .order('shot_order', { ascending: true });
+
+                if (allShots) {
+                    const shotIdx = allShots.findIndex((s: any) => s.id === shot.id);
+                    if (shotIdx > 0) {
+                        const prevShot = allShots[shotIdx - 1];
+                        const { data: prevEndFrame } = await supabase
+                            .from('frames')
+                            .select('image_url')
+                            .eq('shot_id', prevShot.id)
+                            .eq('frame_type', 'end')
+                            .in('status', ['generated', 'approved'])
+                            .single();
+                        refImageUrl = prevEndFrame?.image_url || null;
+                    }
+                }
+            }
+
+            if (refImageUrl) {
+                const shotRefImages = await this.fetchShotReferenceImages(shot.id);
+                await this.generateWithCameraChangeAnalysis(
+                    frameId, projectId, branchId, sceneId, shot.id, shot,
+                    refImageUrl, visualStyleCapsuleId, aspectRatio, shotRefImages
+                );
+
+                const { data: updatedFrame } = await supabase
+                    .from('frames')
+                    .select('*')
+                    .eq('id', frameId)
+                    .single();
+
+                return this.mapFrameFromDb(updatedFrame);
+            }
+            // If no ref image, fall through to generic generation below
         }
 
         // Prepare prompt: use end_frame_prompt for end frames, fall back to old suffix
@@ -958,6 +1307,64 @@ export class FrameGenerationService {
         }
 
         return true;
+    }
+
+    /**
+     * Propagate reactive frame links: when a source frame changes,
+     * update all target frames that are linked to it.
+     * Only 'match' links are reactive.
+     */
+    async propagateFrameLinks(frameId: string, propagating = false): Promise<void> {
+        // Guard against infinite loops
+        if (propagating) return;
+
+        try {
+            // Find all links where this frame is the source
+            const { data: links, error: linksError } = await supabase
+                .from('frame_links')
+                .select('id, target_frame_id')
+                .eq('source_frame_id', frameId)
+                .eq('link_type', 'match');
+
+            if (linksError || !links || links.length === 0) return;
+
+            // Get source frame's current image
+            const { data: sourceFrame } = await supabase
+                .from('frames')
+                .select('image_url, storage_path, shot_id')
+                .eq('id', frameId)
+                .single();
+
+            if (!sourceFrame?.image_url) return;
+
+            // Get source shot label for audit trail
+            const { data: sourceShot } = await supabase
+                .from('shots')
+                .select('shot_id')
+                .eq('id', sourceFrame.shot_id)
+                .single();
+
+            const now = new Date().toISOString();
+
+            for (const link of links) {
+                // Update target frame
+                await supabase
+                    .from('frames')
+                    .update({
+                        image_url: sourceFrame.image_url,
+                        storage_path: sourceFrame.storage_path,
+                        generated_at: now,
+                        prompt_snapshot: `[Auto-propagated from linked source ${sourceShot?.shot_id || 'unknown'}]`,
+                        updated_at: now,
+                    })
+                    .eq('id', link.target_frame_id);
+            }
+
+            console.log(`[FrameLinks] Propagated frame ${frameId} to ${links.length} target(s)`);
+        } catch (error) {
+            console.error('[FrameLinks] Propagation error:', error);
+            // Don't throw — propagation failure shouldn't block the original operation
+        }
     }
 }
 

@@ -10,14 +10,27 @@ import type {
   ShotWithFrames,
   FrameCostSummary,
   FrameJobStatus,
+  FrameLink,
   GenerationMode,
 } from '@/types/scene';
+
+export interface AdjacentSceneFrame {
+  frameId: string;
+  imageUrl: string | null;
+  sceneNumber: number;
+  shotLabel: string;
+}
 
 export interface FetchFramesResponse {
   shots: ShotWithFrames[];
   sceneNumber: number;
   costSummary: FrameCostSummary;
   allFramesApproved: boolean;
+  links?: FrameLink[];
+  adjacentSceneFrames?: {
+    prevSceneEndFrame?: AdjacentSceneFrame;
+    nextSceneStartFrame?: AdjacentSceneFrame;
+  };
 }
 
 export interface GenerateFramesRequest {
@@ -49,6 +62,7 @@ export interface FrameGeneration {
   costCredits: number;
   createdAt: string;
   isCurrent: boolean;
+  source?: 'ai' | 'copy' | 'upload';
 }
 
 export interface ReferenceImageOption {
@@ -389,7 +403,15 @@ class FrameService {
     }
 
     const data = await response.json();
-    return data.generations;
+    return (data.generations as FrameGeneration[]).map((gen) => {
+      let source: 'ai' | 'copy' | 'upload' = 'ai';
+      if (gen.prompt?.includes('[Frame copy') || gen.prompt?.includes('[Batch link copy') || gen.prompt?.includes('[Match regen copy')) {
+        source = 'copy';
+      } else if (gen.prompt?.includes('[User upload')) {
+        source = 'upload';
+      }
+      return { ...gen, source };
+    });
   }
 
   /**
@@ -667,6 +689,154 @@ class FrameService {
       rejectedFrames,
       readyFrames: approvedFrames + generatedFrames,
     };
+  }
+  /**
+   * Add a frame as a continuity reference for a shot's start or end frame
+   */
+  async addFrameAsReference(
+    projectId: string,
+    sceneId: string,
+    shotId: string,
+    sourceFrameId: string,
+    targetFrameType: 'start' | 'end'
+  ): Promise<{ success: boolean }> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/shots/${shotId}/add-frame-as-reference`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ sourceFrameId, targetFrameType }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Failed to add reference' }));
+      throw new Error(error.error || 'Failed to add reference');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Upload an image as a frame variant or reference
+   */
+  async uploadFrameImage(
+    projectId: string,
+    sceneId: string,
+    shotId: string,
+    file: File,
+    frameType: 'start' | 'end',
+    usage: 'variant' | 'reference'
+  ): Promise<{ success: boolean; imageUrl: string; frameId?: string }> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('frameType', frameType);
+    formData.append('usage', usage);
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/shots/${shotId}/upload-frame-image`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: formData,
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Failed to upload image' }));
+      throw new Error(error.error || 'Failed to upload image');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Batch link all shots: set match mode and copy end frames into next start carousels
+   */
+  async batchLinkCopy(
+    projectId: string,
+    sceneId: string
+  ): Promise<{ copied: number; modeSet: number }> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/batch-link-copy`,
+      {
+        method: 'POST',
+        headers,
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Failed to batch link' }));
+      throw new Error(error.error || 'Failed to batch link');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Copy a frame to a target frame type (start or end) within the same shot
+   */
+  async copyFrame(
+    projectId: string,
+    sceneId: string,
+    shotId: string,
+    sourceFrameId: string,
+    targetFrameType: 'start' | 'end'
+  ): Promise<{ success: boolean; frame: Frame }> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/shots/${shotId}/copy-frame`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ sourceFrameId, targetFrameType }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Failed to copy frame' }));
+      throw new Error(error.error || 'Failed to copy frame');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Break a reactive frame link
+   */
+  async breakFrameLink(
+    projectId: string,
+    sceneId: string,
+    linkId: string
+  ): Promise<{ success: boolean }> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/frame-links/${linkId}`,
+      {
+        method: 'DELETE',
+        headers,
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Failed to break link' }));
+      throw new Error(error.error || 'Failed to break link');
+    }
+
+    return response.json();
   }
 }
 

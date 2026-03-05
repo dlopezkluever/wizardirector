@@ -175,14 +175,14 @@ export interface SceneAssetSuggestion {
 export interface CreateSceneAssetInstanceRequest {
   sceneId: string;
   projectAssetId: string;
-  descriptionOverride?: string;
+  descriptionOverride?: string | null;
   statusTags?: string[];
   carryForward?: boolean;
   inheritedFromInstanceId?: string;
 }
 
 export interface UpdateSceneAssetInstanceRequest {
-  descriptionOverride?: string;
+  descriptionOverride?: string | null;
   imageKeyUrl?: string;
   statusTags?: string[];
   carryForward?: boolean;
@@ -210,6 +210,20 @@ export interface SceneAssetRelevanceResult {
   }>;
 }
 
+// Shot Asset Assignment types (migration 033)
+export type PresenceType = 'throughout' | 'enters' | 'exits' | 'passes_through';
+
+export interface ShotAssetAssignment {
+  id: string;
+  shot_id: string;
+  scene_asset_instance_id: string;
+  presence_type: PresenceType;
+  created_at: string;
+  updated_at: string;
+  // Joined data (from API response)
+  scene_asset_instance?: SceneAssetInstance;
+}
+
 export interface ReferenceImageOrderEntry {
   label: string;
   assetName: string;
@@ -222,6 +236,8 @@ export interface PromptSetTransformationContext {
   state: 'pre-transform' | 'post-transform' | 'transforming';
   transformationType: TransformationType;
 }
+
+export type ContinuityMode = 'none' | 'match' | 'camera_change';
 
 export interface PromptSet {
   shotId: string;
@@ -240,6 +256,10 @@ export interface PromptSet {
   action?: string;
   setting?: string;
   camera?: string;
+  // Continuity linking (Stage 9/10)
+  startContinuity?: ContinuityMode;
+  aiStartContinuity?: ContinuityMode | null;
+  continuityFramePrompt?: string | null;
   // Transformation context (populated when events affect this shot)
   transformationContext?: PromptSetTransformationContext[];
   // UI state (not persisted)
@@ -296,8 +316,20 @@ export interface ShotWithFrames {
   referenceImageOrder?: ReferenceImageOrderEntry[] | null;
   endFrameReferenceImageOrder?: ReferenceImageOrderEntry[] | null;
   endFramePrompt?: string | null;
+  // Continuity linking (Stage 9/10)
+  startContinuity?: ContinuityMode;
+  aiStartContinuity?: ContinuityMode | null;
+  continuityFramePrompt?: string | null;
   startFrame: Frame | null;
   endFrame: Frame | null;
+}
+
+export interface FrameLink {
+  id: string;
+  sourceFrameId: string;
+  targetFrameId: string;
+  linkType: 'match' | 'reference';
+  createdAt: string;
 }
 
 export interface FrameCostSummary {

@@ -27,6 +27,7 @@ import { sceneService } from '@/lib/services/sceneService';
 import { checkoutService } from '@/lib/services/checkoutService';
 import type { Scene, SceneStatus, ContinuityRisk } from '@/types/scene';
 import { ContentAccessCarousel } from './ContentAccessCarousel';
+import { StageInfoButton } from './StageInfoButton';
 
 const statusConfig: Record<SceneStatus, { label: string; color: string; icon: typeof CheckCircle2 }> = {
   'draft': { label: 'Draft', color: 'bg-muted text-muted-foreground', icon: Clock },
@@ -605,6 +606,8 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
           </motion.div>
         )}
       </AnimatePresence>
+
+      <StageInfoButton infoKey="stage-6" />
     </div>
   );
 }

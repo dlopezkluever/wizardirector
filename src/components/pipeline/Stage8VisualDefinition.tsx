@@ -24,6 +24,7 @@ import { Card } from '@/components/ui/card';
 import { SceneAssetListPanel, type AssetFilters } from '@/components/pipeline/Stage8/SceneAssetListPanel';
 import { VisualStateEditorPanel } from '@/components/pipeline/Stage8/VisualStateEditorPanel';
 import { TagCarryForwardPrompt, type TagCarryForwardDecision } from '@/components/pipeline/Stage8/TagCarryForwardPrompt';
+import { ConvertToTransformationDialog } from '@/components/pipeline/Stage8/ConvertToTransformationDialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -61,9 +62,11 @@ import { sceneAssetService } from '@/lib/services/sceneAssetService';
 import { sceneService } from '@/lib/services/sceneService';
 import { shotService } from '@/lib/services/shotService';
 import { transformationEventService } from '@/lib/services/transformationEventService';
-import { cn } from '@/lib/utils';
+import { useShotAssetAutoPopulate } from '@/lib/hooks/useShotAssetAutoPopulate';
+import { cn, formatSceneHeader } from '@/lib/utils';
 import type { SceneAssetInstance, SceneAssetRelevanceResult, SceneAssetSuggestion, TransformationEvent } from '@/types/scene';
 import { LockedStageHeader } from './LockedStageHeader';
+import { StageInfoButton } from './StageInfoButton';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
@@ -396,6 +399,8 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
   const [rightPanelMode, setRightPanelMode] = useState<RightPanelMode>('default');
   // 3B.7: Remove asset confirmation
   const [removeConfirmAssetId, setRemoveConfirmAssetId] = useState<string | null>(null);
+  // Convert to transformation state
+  const [convertingAsset, setConvertingAsset] = useState<SceneAssetInstance | null>(null);
 
   // Prior scene data for Continuity Header
   // Tag carry-forward prompt (Task 5, Feature 5.3)
@@ -446,6 +451,18 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
     queryKey: ['shots', projectId, sceneId],
     queryFn: () => shotService.fetchShots(projectId, sceneId),
     enabled: Boolean(projectId && sceneId),
+  });
+
+  // Auto-populate shot-asset assignments if none exist (§10A)
+  useShotAssetAutoPopulate({
+    projectId,
+    sceneId,
+    enabled: shots.length > 0 && sceneAssets.length > 0,
+    onPopulated: (result) => {
+      if (result.created > 0) {
+        toast.success(`Asset assignments initialized for all ${shots.length} shots.`);
+      }
+    },
   });
 
   // Transformation events for gatekeeper validation
@@ -662,6 +679,10 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
         maxAttempts: 60,
         onProgress: (completed, total) => setBulkProgress({ completed, total }),
       });
+      // Invalidate attempt carousels for each generated instance so images display without refresh
+      for (const instanceId of selectedForGeneration) {
+        queryClient.invalidateQueries({ queryKey: ['scene-asset-attempts', projectId, sceneId, instanceId] });
+      }
       await queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
       const completedCount = statuses.filter(s => s.status === 'completed').length;
       const failedCount = statuses.filter(s => s.status === 'failed').length;
@@ -694,6 +715,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
       try {
         const result = await sceneAssetService.generateSceneAssetImage(projectId, sceneId, instanceId);
         await pollSingleImageJob(result.jobId);
+        await queryClient.invalidateQueries({ queryKey: ['scene-asset-attempts', projectId, sceneId, instanceId] });
         await queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
         toast.success('Image generated successfully');
       } catch (e) {
@@ -822,6 +844,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           isOpen={assetDrawerOpen}
           onClose={() => setAssetDrawerOpen(false)}
           onSceneInstanceCreated={handleSceneInstanceCreated}
+          shots={shots}
         />
       </div>
     );
@@ -881,6 +904,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           sceneId={sceneId}
           onRemoveAsset={handleRemoveFromScene}
           shotPresenceMap={shotPresenceMap}
+          onConvertToTransformation={setConvertingAsset}
         />
 
         <VisualStateEditorPanel
@@ -968,6 +992,27 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Convert to Transformation Dialog */}
+      {convertingAsset && (
+        <ConvertToTransformationDialog
+          open={!!convertingAsset}
+          onOpenChange={open => { if (!open) setConvertingAsset(null); }}
+          absorbedAsset={convertingAsset}
+          sceneAssets={sceneAssets}
+          projectId={projectId}
+          sceneId={sceneId}
+          shots={shots}
+          sceneScriptExcerpt={currentScene?.scriptExcerpt}
+          onComplete={() => {
+            setConvertingAsset(null);
+            refetch();
+            queryClient.invalidateQueries({ queryKey: ['transformation-events', projectId, sceneId] });
+          }}
+        />
+      )}
+
+      <StageInfoButton infoKey="stage-8" />
     </div>
   );
 }

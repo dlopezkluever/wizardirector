@@ -24,6 +24,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -60,6 +63,7 @@ import { SplitWizard } from './SplitWizard';
 import type { ProjectAsset, AssetPreviewEntity, AssetType, AssetDecision } from '@/types/asset';
 import type { StageStatus } from '@/types/project';
 import { LockedStageHeader } from './LockedStageHeader';
+import { StageInfoButton } from './StageInfoButton';
 
 interface Stage5AssetsProps {
   projectId: string;
@@ -555,6 +559,16 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
     }
   };
 
+  const handleChangeType = async (assetId: string, newType: AssetType) => {
+    try {
+      await projectAssetService.updateAsset(projectId, assetId, { asset_type: newType });
+      setAssets(prev => prev.map(a => a.id === assetId ? { ...a, asset_type: newType } : a));
+      toast.success(`Changed type to ${newType === 'extra_archetype' ? 'Extra/Archetype' : newType}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to change type');
+    }
+  };
+
   const handlePromoteToGlobal = async (assetId: string) => {
     setPromotingAssetId(assetId);
     setPromotionConfirmOpen(true);
@@ -626,15 +640,12 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
 
   const selectedAssets = activeAssets.filter(a => selectedAssetIds.has(a.id));
 
-  // Merge validation: 2+ selected, all same type
-  const canMerge = selectedAssets.length >= 2 &&
-    new Set(selectedAssets.map(a => a.asset_type)).size === 1;
+  // Merge validation: 2+ selected (cross-type now allowed)
+  const canMerge = selectedAssets.length >= 2;
 
   const mergeDisabledReason = selectedAssets.length < 2
     ? 'Select at least 2 assets to merge'
-    : new Set(selectedAssets.map(a => a.asset_type)).size > 1
-      ? 'Selected assets must be the same type'
-      : '';
+    : '';
 
   // Split validation: exactly 1 selected with multiple scenes
   const canSplit = selectedAssets.length === 1 &&
@@ -646,13 +657,14 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
       ? 'Asset must appear in 2+ scenes to split'
       : '';
 
-  const handleMergeConfirm = async (survivorId: string, updatedName?: string) => {
+  const handleMergeConfirm = async (survivorId: string, updatedName?: string, updatedDescription?: string) => {
     const absorbedIds = selectedAssets.filter(a => a.id !== survivorId).map(a => a.id);
     try {
       const result = await projectAssetService.mergeAssets(projectId, {
         survivorAssetId: survivorId,
         absorbedAssetIds: absorbedIds,
         updatedName,
+        updatedDescription,
       });
       toast.success(`Merged ${result.assetsAbsorbed} asset${result.assetsAbsorbed > 1 ? 's' : ''} into "${result.survivor.name}"`);
       await loadAssets();
@@ -1102,6 +1114,26 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                                         Defer Asset
                                       </DropdownMenuItem>
                                     )}
+                                    {!isStageLockedOrOutdated && !asset.locked && (
+                                      <DropdownMenuSub>
+                                        <DropdownMenuSubTrigger>
+                                          <RefreshCw className="w-4 h-4 mr-2" />
+                                          Change Type
+                                        </DropdownMenuSubTrigger>
+                                        <DropdownMenuSubContent>
+                                          {(['character', 'prop', 'location', 'extra_archetype'] as const).map(t => (
+                                            <DropdownMenuItem
+                                              key={t}
+                                              disabled={asset.asset_type === t}
+                                              onClick={() => handleChangeType(asset.id, t)}
+                                            >
+                                              {asset.asset_type === t && <Check className="w-4 h-4 mr-2" />}
+                                              {t === 'extra_archetype' ? 'Extra/Archetype' : t.charAt(0).toUpperCase() + t.slice(1)}
+                                            </DropdownMenuItem>
+                                          ))}
+                                        </DropdownMenuSubContent>
+                                      </DropdownMenuSub>
+                                    )}
                                     {asset.asset_type === 'character' && (
                                       <DropdownMenuItem onClick={() => setAngleDialogAsset(asset)}>
                                         <RotateCw className="w-4 h-4 mr-2" />
@@ -1453,6 +1485,7 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
           open={showMergeDialog}
           onOpenChange={setShowMergeDialog}
           assets={selectedAssets}
+          projectId={projectId}
           onConfirm={handleMergeConfirm}
         />
       )}
@@ -1527,6 +1560,8 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
           </div>
         </TooltipProvider>
       )}
+
+      <StageInfoButton infoKey="stage-5" />
     </div>
   );
 }

@@ -76,6 +76,15 @@ export interface AddTransformationDialogProps {
   projectId: string;
   sceneId: string;
   sceneScriptExcerpt?: string;
+  /** External control: when provided, dialog open state is controlled externally */
+  externalOpen?: boolean;
+  onExternalOpenChange?: (open: boolean) => void;
+  /** Initial values for pre-filling from convert-to-transformation flow */
+  initialTriggerShotId?: string;
+  initialTransformationType?: TransformationType;
+  initialCompletionShotId?: string;
+  initialPostDescription?: string;
+  initialNarrative?: string;
 }
 
 export function AddTransformationDialog({
@@ -87,8 +96,21 @@ export function AddTransformationDialog({
   projectId,
   sceneId,
   sceneScriptExcerpt,
+  externalOpen,
+  onExternalOpenChange,
+  initialTriggerShotId,
+  initialTransformationType,
+  initialCompletionShotId,
+  initialPostDescription,
+  initialNarrative,
 }: AddTransformationDialogProps) {
-  const [open, setOpen] = useState(false);
+  const isControlled = externalOpen !== undefined;
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = isControlled ? externalOpen : internalOpen;
+  const setOpen = isControlled
+    ? (v: boolean) => onExternalOpenChange?.(v)
+    : setInternalOpen;
+
   const [triggerShotId, setTriggerShotId] = useState('');
   const [completionShotId, setCompletionShotId] = useState('');
   const [type, setType] = useState<TransformationType>('instant');
@@ -112,6 +134,32 @@ export function AddTransformationDialog({
     userEditedPost.current = false;
     userEditedNarrative.current = false;
   };
+
+  // Apply initial values when opening with external control
+  const hasAppliedInitials = useRef(false);
+  useEffect(() => {
+    if (open && isControlled && !hasAppliedInitials.current) {
+      if (initialTriggerShotId) {
+        setTriggerShotId(initialTriggerShotId);
+        userEditedPost.current = false;
+        userEditedNarrative.current = false;
+      }
+      if (initialTransformationType) setType(initialTransformationType);
+      if (initialCompletionShotId) setCompletionShotId(initialCompletionShotId);
+      if (initialPostDescription) {
+        setPostDescription(initialPostDescription);
+        userEditedPost.current = true; // prevent auto-prefill overwrite
+      }
+      if (initialNarrative) {
+        setNarrative(initialNarrative);
+        userEditedNarrative.current = true; // prevent auto-prefill overwrite
+      }
+      hasAppliedInitials.current = true;
+    }
+    if (!open) {
+      hasAppliedInitials.current = false;
+    }
+  }, [open, isControlled, initialTriggerShotId, initialTransformationType, initialCompletionShotId, initialPostDescription, initialNarrative]);
 
   // Auto-prefill when trigger shot is selected
   useEffect(() => {
@@ -166,12 +214,14 @@ export function AddTransformationDialog({
 
   return (
     <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) reset(); }}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" disabled={disabled}>
-          <Plus className="w-4 h-4 mr-1" />
-          Add Transformation
-        </Button>
-      </DialogTrigger>
+      {!isControlled && (
+        <DialogTrigger asChild>
+          <Button variant="outline" size="sm" disabled={disabled}>
+            <Plus className="w-4 h-4 mr-1" />
+            Add Transformation
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add Transformation Event</DialogTitle>

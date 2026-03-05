@@ -1,136 +1,32 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Rules
+- Run `npm run lint` after code changes
+- **NEVER** run `npm run migrate` or any supabase CLI commands — prompt user instead
+- Never use `&&` in commands; use separate commands
+- No implementation summary documents unless explicitly asked
+- Frontend path: `cd "C:\Users\Daniel Lopez\Desktop\Aiuteur\wizardirector\"`
+- Backend path: `cd "C:\Users\Daniel Lopez\Desktop\Aiuteur\wizardirector\backend"`
 
-## Development Commands
+## Project Overview
+**Aiuteur** — AI narrative-to-film pipeline with a deterministic 12-stage workflow. React 18 + TypeScript + Vite frontend, Supabase PostgreSQL backend, shadcn/ui + Tailwind CSS styling, Zustand + React Query state management.
 
-**Start development server:**
-```bash
-npm run dev
-```
-Server runs on http://localhost:8080 with proxy to backend API at http://localhost:3001
+## Key Directories
+- `src/components/pipeline/` — Stage components (Stage1–12)
+- `src/components/ui/` — shadcn/ui library
+- `src/lib/services/` — Service integrations
+- `src/lib/stores/` — Zustand stores
+- `src/types/` — TypeScript definitions
+- `._docs/` — Project documentation
 
-**Build and quality commands:**
-```bash
-npm run build          # Production build
-npm run build:dev      # Development build
-npm run lint           # ESLint check
-npm run preview        # Preview production build
-```
-
-**Run linting after code changes:**
-Always run `npm run lint` after making code changes to ensure code quality.
-- NEVER RUN: `npm run migrate` - NEVER Run database migrations
-- Always run commands using the full file location path:
----For fronted/project root: cd "C:\Users\Daniel Lopez\Desktop\Aiuteur\wizardirector\"
----For backend: cd "C:\Users\Daniel Lopez\Desktop\Aiuteur\wizardirector\backend"
-
-## Project Architecture
-
-**Aiuteur** is an AI-powered narrative-to-film pipeline with a deterministic 12-stage workflow. The application transforms written narratives into professional-quality AI-generated short films through strategic cost optimization and narrative continuity.
-
-### Core Architecture Principles
-- **Global-to-Local Context Management**: Phase A (Stages 1-5) establishes immutable global truth; Phase B (Stages 6-12) adds scene-specific context
-- **Deterministic Invalidation**: Upstream changes trigger cascading invalidation with cost estimation
-- **Asset State Inheritance**: Master assets → Scene instances with status tags and continuity tracking
-- **12-Stage Pipeline**: Each stage is self-contained with explicit TypeScript interfaces for context passing
-
-### Tech Stack
-- **Frontend**: React 18 + TypeScript + Vite
-- **UI**: shadcn/ui components with Tailwind CSS
-- **State Management**: Zustand (local state) + React Query (server state)
-- **Animation**: Framer Motion
-- **Database**: Supabase PostgreSQL with RLS policies
-- **AI Integration**: Google Veo3 (video), Gemini/Nano Banana (images), multiple LLM providers
-
-### Key Directories
-- `src/components/pipeline/` - Pipeline stage components (Stage1InputMode.tsx, Stage2Treatment.tsx, etc.)
-- `src/components/ui/` - shadcn/ui component library
-- `src/components/styleCapsules/` - Style capsule system components
-- `src/lib/services/` - External service integrations (projectService.ts, styleCapsuleService.ts, etc.)
-- `src/lib/stores/` - Zustand state management
-- `src/types/` - TypeScript type definitions (project.ts, styleCapsule.ts)
-- `._docs/` - Comprehensive project documentation
-
-### Important Types and Concepts
-
-**Project Pipeline:**
-- 12-stage deterministic workflow (Stages 1-12)
-- Stage statuses: 'locked' | 'active' | 'pending' | 'outdated'
-- Input modes: 'expansion' | 'condensation' | 'transformation' | 'script-skip'
-
-**Style Capsules:**
-- Deterministic style injection system for writing and visuals
-- Stored in Supabase with structured data
-- Applied globally and per-scene for consistency
-
-**State Management:**
-- Project state managed through Zustand stores
-- Server state cached with React Query
-- Stage transitions trigger context inheritance
-
-### Development Guidelines
-
-**Component Architecture:**
-- Use shadcn/ui components as base primitives
-- Follow existing patterns in `src/components/pipeline/`
-- Maintain TypeScript strict mode compliance
-- Implement proper error boundaries
-
-**Pipeline Development:**
-- Each stage component should be self-contained
-- Use explicit TypeScript interfaces for stage context
-- Follow global-to-local inheritance patterns
-- Validate inputs/outputs at stage boundaries
-
-**Styling:**
-- Use Tailwind CSS classes
-- Follow established design system in shadcn/ui
-- Maintain responsive design patterns
-- Custom styles in `src/styles/screenplay.css` for screenplay formatting
-
-## Important File Locations
-
-- **Main entry:** `src/main.tsx`
-- **Route definitions:** Check `src/pages/` directory
-- **Project types:** `src/types/project.ts`
-- **Pipeline components:** `src/components/pipeline/Stage*.tsx`
-- **Style capsule system:** `src/components/styleCapsules/`
-- **Services:** `src/lib/services/`
-
-## Supabase Integration
-
-Uses Supabase for authentication, database, and file storage. Key features:
-- Row-level security (RLS) policies
-- Real-time subscriptions for collaborative features
-- Structured storage for style capsules and project data
-- File storage for generated assets
+## Development Guidelines
+- Follow existing pipeline patterns. UI design: ._docs/ui-and-theme-rules.md
+- Each stage component is self-contained with explicit TS interfaces
+- Follow global-to-local context inheritance (Phase A: Stages 1-5 global truth, Phase B: 6-12 scene-specific)
+- Tailwind CSS only; custom screenplay styles in `src/styles/screenplay.css`
 
 ## Testing
-
-**After making code changes, always run tests to catch regressions:**
-
-```bash
-# Frontend tests (from project root):
-cd "C:\Users\Daniel Lopez\Desktop\Aiuteur\wizardirector" && npm test
-
-# Backend tests (if backend code changed):
-cd "C:\Users\Daniel Lopez\Desktop\Aiuteur\wizardirector\backend" && npm test
-```
-
-If any test fails, fix the failure before considering the task complete.
-
-**Frontend**: Vitest + React Testing Library + MSW (Mock Service Worker)
-- Test config in `vite.config.ts` → `test` block
-- Setup file: `src/test/setup.ts`
-- Tests co-located in `__tests__/` dirs next to source (e.g. `src/lib/services/__tests__/`)
-
-**Backend**: Jest + ts-jest + Supertest
-- Config: `backend/jest.config.js`
-- Tests in `backend/src/tests/` and `backend/src/utils/__tests__/`
-
-**When to write new tests:**
-- Pure logic functions (parsing, validation, transformation) → unit test
-- New frontend service methods → service test with MSW mocks
-- New backend routes → supertest route test
-- Do NOT test: simple wrappers, styling, config changes
+- **Frontend**: Vitest + RTL + MSW — `npm test` from project root
+- **Backend**: Jest + ts-jest + Supertest — `npm test` from backend dir
+- Fix failures before completing tasks
+- Write tests for: pure logic, new service methods, new backend routes

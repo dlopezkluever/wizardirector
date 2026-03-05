@@ -65,3 +65,10 @@ backend/veo3-api.json
 ._docs/newest-tickets-while-in-master
 
 .mcp.json
+.claude/skills
+._docs/transformation-event/
+
+._docs/thoughts-during-SF-move/
+tmp-screenshots
+._docs/during-master-mvp-task-feb-mar
+._docs/prompting-guides

@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils';
 import { checkoutService } from '@/lib/services/checkoutService';
 import type { ModelVariant, ShotCheckoutDetail } from '@/types/scene';
 import { LockedStageHeader } from './LockedStageHeader';
+import { StageInfoButton } from './StageInfoButton';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
@@ -417,6 +418,8 @@ export function Stage11Confirmation({
         }}
         isConfirming={isConfirmingUnlock}
       />
+
+      <StageInfoButton infoKey="stage-11" />
     </div>
   );
 }

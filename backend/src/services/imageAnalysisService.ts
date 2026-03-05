@@ -115,6 +115,46 @@ Create a single, cohesive visual description that combines the best details from
         return result.response.text().trim();
     }
 
+    /**
+     * Analyze a reference frame image for visual continuity elements.
+     * Used during camera_change generation to ground the prompt in actual image content.
+     */
+    async analyzeReferenceFrame(imageUrl: string): Promise<string> {
+        console.log(`[ImageAnalysis] Analyzing reference frame for continuity`);
+
+        const imageData = await this.downloadImage(imageUrl);
+
+        const prompt = `You are a visual continuity analyst for film production. Analyze this frame and extract the following structured information for use in generating a new camera angle of the same scene moment.
+
+CHARACTERS: Count, frame positions (left/center/right), expressions, clothing details, body poses, facing direction.
+ENVIRONMENT: Location type, foreground/midground/background elements, props with positions.
+LIGHTING: Key light direction, color temperature, contrast level, any practical lights visible.
+ATMOSPHERE: Mood, dominant color palette, depth of field, overall composition style.
+
+Be specific and concise. Use labeled sections. 300-500 characters total. Describe only what is visually observable.`;
+
+        const model = this.client.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+        const result = await model.generateContent({
+            contents: [{
+                role: 'user',
+                parts: [
+                    {
+                        inlineData: {
+                            mimeType: imageData.mimeType,
+                            data: imageData.base64
+                        }
+                    },
+                    { text: prompt }
+                ]
+            }]
+        });
+
+        const analysis = result.response.text().trim();
+        console.log(`[ImageAnalysis] Reference frame analysis (${analysis.length} chars)`);
+        return analysis;
+    }
+
     private async downloadImage(imageUrl: string): Promise<{ base64: string; mimeType: string }> {
         const response = await fetch(imageUrl);
         if (!response.ok) {

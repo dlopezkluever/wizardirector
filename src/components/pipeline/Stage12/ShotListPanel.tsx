@@ -18,7 +18,8 @@ import { cn } from '@/lib/utils';
 import type { VideoGenerationJob, VideoJobStatus } from '@/types/scene';
 import type { ShotListPanelProps } from './types';
 import { getStatusLabel } from './utils';
-import { IssueResolutionSection } from './IssueResolutionSection';
+import { ExportSection } from './ExportSection';
+import { UnsatisfiedDropdown } from './UnsatisfiedDropdown';
 
 const statusColors: Record<VideoJobStatus, string> = {
   queued: 'text-muted-foreground border-border/30',
@@ -195,8 +196,13 @@ export function ShotListPanel({
         </div>
       </ScrollArea>
 
-      {/* Issue Resolution (only when all complete) */}
-      {allComplete && <IssueResolutionSection onReturnToStage={onReturnToStage} />}
+      {/* Export + Unsatisfied (only when all complete) */}
+      {allComplete && (
+        <>
+          <ExportSection />
+          <UnsatisfiedDropdown onReturnToStage={onReturnToStage} />
+        </>
+      )}
 
       {/* Complete Button */}
       <div className="p-4 border-t border-border/50 space-y-2">
