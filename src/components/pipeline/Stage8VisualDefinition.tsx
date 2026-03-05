@@ -4,7 +4,7 @@
  * Visual State Editor (center), Asset Drawer (right). Real API via sceneAssetService.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
@@ -14,13 +14,11 @@ import {
   Package,
   Check,
   ArrowLeft,
-  Sparkles,
   Plus,
   RefreshCw,
   Loader2,
   Brain,
 } from 'lucide-react';
-import { Card } from '@/components/ui/card';
 import { SceneAssetListPanel, type AssetFilters } from '@/components/pipeline/Stage8/SceneAssetListPanel';
 import { VisualStateEditorPanel } from '@/components/pipeline/Stage8/VisualStateEditorPanel';
 import { TagCarryForwardPrompt, type TagCarryForwardDecision } from '@/components/pipeline/Stage8/TagCarryForwardPrompt';
@@ -99,53 +97,6 @@ const statusColors: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Empty State: no assets – user chooses Detect or Add Manually (Task 8)
-// ---------------------------------------------------------------------------
-interface EmptyStatePanelProps {
-  onDetectAssets: () => void;
-  onAddManually: () => void;
-  isDetecting: boolean;
-}
-
-function EmptyStatePanel({ onDetectAssets, onAddManually, isDetecting }: EmptyStatePanelProps) {
-  return (
-    <div className="flex-1 flex items-center justify-center p-8">
-      <Card className="max-w-md text-center p-8">
-        <Sparkles className="w-16 h-16 mx-auto mb-4 text-primary" />
-        <h2 className="text-2xl font-bold mb-2">No Assets Defined Yet</h2>
-        <p className="text-muted-foreground mb-6">
-          Define which characters, props, and locations appear at the start of this scene.
-        </p>
-        <div className="space-y-3">
-          <Button
-            variant="gold"
-            className="w-full"
-            onClick={onDetectAssets}
-            disabled={isDetecting}
-          >
-            {isDetecting ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Detecting…
-              </>
-            ) : (
-              <>
-                <Brain className="w-4 h-4 mr-2" />
-                Detect Required Assets (AI)
-              </>
-            )}
-          </Button>
-          <Button variant="outline" className="w-full" onClick={onAddManually}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Assets Manually
-          </Button>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Asset Drawer Trigger Panel (right): Add from library, Create new, Back, Proceed
 // 3B.6: Supports inline create form via mode toggle
 // ---------------------------------------------------------------------------
@@ -160,6 +111,8 @@ interface AssetDrawerTriggerPanelProps {
   onCancelCreate: () => void;
   onSubmitCreate: (data: { name: string; assetType: 'character' | 'location' | 'prop'; description: string }) => void;
   isCreating?: boolean;
+  onDetectAssets?: () => void;
+  isDetecting?: boolean;
 }
 
 function AssetDrawerTriggerPanel({
@@ -171,6 +124,8 @@ function AssetDrawerTriggerPanel({
   onCancelCreate,
   onSubmitCreate,
   isCreating,
+  onDetectAssets,
+  isDetecting,
 }: AssetDrawerTriggerPanelProps) {
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<'character' | 'location' | 'prop'>('character');
@@ -264,6 +219,30 @@ function AssetDrawerTriggerPanel({
               <Plus className="w-6 h-6 text-muted-foreground mx-auto mb-1" />
               <span className="text-xs text-muted-foreground">Create new asset</span>
             </div>
+            {onDetectAssets && (
+              <>
+                <div className="border-t border-border/50" />
+                <Button
+                  variant="gold"
+                  size="sm"
+                  className="w-full"
+                  onClick={onDetectAssets}
+                  disabled={isDetecting}
+                >
+                  {isDetecting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Detecting…
+                    </>
+                  ) : (
+                    <>
+                      <Brain className="w-4 h-4 mr-2" />
+                      Detect with AI
+                    </>
+                  )}
+                </Button>
+              </>
+            )}
           </div>
         )}
       </ScrollArea>
@@ -402,6 +381,10 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
   // Convert to transformation state
   const [convertingAsset, setConvertingAsset] = useState<SceneAssetInstance | null>(null);
 
+  // Auto-populate on mount
+  const [isAutoPopulating, setIsAutoPopulating] = useState(false);
+  const autoPopulateAttempted = useRef(false);
+
   // Prior scene data for Continuity Header
   // Tag carry-forward prompt (Task 5, Feature 5.3)
   const [showTagCarryForwardPrompt, setShowTagCarryForwardPrompt] = useState(false);
@@ -425,6 +408,46 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
     queryFn: () => sceneAssetService.listSceneAssets(projectId, sceneId),
     enabled: Boolean(projectId && sceneId),
   });
+
+  // Reset auto-populate flag when scene changes
+  useEffect(() => {
+    autoPopulateAttempted.current = false;
+  }, [sceneId]);
+
+  // Auto-populate assets on first entry when scene has no assets
+  useEffect(() => {
+    if (isLoading || autoPopulateAttempted.current) return;
+    if (sceneAssets.length > 0) return;
+    if (stage8Locked || stage8Outdated) return;
+    if (!scenes) return; // scenes not loaded yet
+
+    autoPopulateAttempted.current = true;
+
+    const autoPopulate = async () => {
+      setIsAutoPopulating(true);
+      try {
+        const isFirstScene = priorSceneIndex < 0;
+
+        if (!isFirstScene) {
+          // Scene 2+: inherit from prior scene first, then fill gaps
+          await sceneAssetService.inheritAssets(projectId, sceneId);
+          await sceneAssetService.populateFromDependencies(projectId, sceneId);
+        } else {
+          // Scene 1: bootstrap from project assets matched by name
+          await sceneAssetService.populateFromDependencies(projectId, sceneId);
+        }
+
+        queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
+      } catch (error) {
+        console.error('Auto-populate failed:', error);
+        // Silently fail — user can still add assets manually via right panel
+      } finally {
+        setIsAutoPopulating(false);
+      }
+    };
+
+    autoPopulate();
+  }, [isLoading, sceneAssets.length, stage8Locked, stage8Outdated, scenes, priorSceneIndex, projectId, sceneId, queryClient]);
 
   // 3B.8: Persisted suggestions query
   const { data: suggestions = [] } = useQuery({
@@ -656,6 +679,44 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
     }
   }, [projectId, sceneId, queryClient]);
 
+  // AI-only detection (skips deterministic step since it already ran on mount)
+  const handleAIDetectAssets = useCallback(async () => {
+    setIsDetecting(true);
+    try {
+      const relevance = await sceneAssetService.detectRelevantAssets(projectId, sceneId);
+      const createPromises = relevance.relevant_assets.map(ra =>
+        sceneAssetService.createSceneAsset(projectId, {
+          sceneId,
+          projectAssetId: ra.project_asset_id,
+          descriptionOverride: ra.starting_description ? ra.starting_description : undefined,
+          statusTags: ra.status_tags_inherited ?? [],
+          carryForward: true,
+        })
+      );
+      await Promise.all(createPromises);
+      queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
+      toast.success(`Detected ${relevance.relevant_assets.length} relevant assets`);
+      if (relevance.new_assets_required?.length > 0) {
+        setNewAssetsRequired(relevance.new_assets_required);
+        try {
+          await sceneAssetService.saveSuggestions(projectId, sceneId, relevance.new_assets_required.map(a => ({
+            name: a.name,
+            assetType: a.asset_type,
+            description: a.description,
+            justification: a.justification,
+          })));
+          queryClient.invalidateQueries({ queryKey: ['scene-suggestions', projectId, sceneId] });
+        } catch {
+          // Non-critical
+        }
+      }
+    } catch (error) {
+      toast.error(`AI detection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsDetecting(false);
+    }
+  }, [projectId, sceneId, queryClient]);
+
   const handleToggleSelection = useCallback((instanceId: string) => {
     setSelectedForGeneration(prev =>
       prev.includes(instanceId) ? prev.filter(id => id !== instanceId) : [...prev, instanceId]
@@ -817,35 +878,13 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
     );
   }
 
-  if (isLoading) {
+  if (isLoading || isAutoPopulating) {
     return (
-      <div className="flex-1 flex items-center justify-center">
+      <div className="flex-1 flex items-center justify-center flex-col gap-2">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (sceneAssets.length === 0) {
-    return (
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <ContentAccessCarousel
-          projectId={projectId}
-          sceneId={sceneId}
-          stageNumber={8}
-        />
-        <EmptyStatePanel
-          onDetectAssets={handleDetectAndPopulateAssets}
-          onAddManually={() => setAssetDrawerOpen(true)}
-          isDetecting={isDetecting}
-        />
-        <AssetDrawer
-          projectId={projectId}
-          sceneId={sceneId}
-          isOpen={assetDrawerOpen}
-          onClose={() => setAssetDrawerOpen(false)}
-          onSceneInstanceCreated={handleSceneInstanceCreated}
-          shots={shots}
-        />
+        {isAutoPopulating && (
+          <p className="text-sm text-muted-foreground">Populating assets…</p>
+        )}
       </div>
     );
   }
@@ -930,6 +969,8 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           onCancelCreate={() => setRightPanelMode('default')}
           onSubmitCreate={handleCreateNewAssetSubmit}
           isCreating={createWithProjectAssetMutation.isPending}
+          onDetectAssets={handleAIDetectAssets}
+          isDetecting={isDetecting}
         />
       </div>
 

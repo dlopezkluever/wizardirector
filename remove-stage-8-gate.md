@@ -140,10 +140,35 @@ Here is Claude's plan:
  6. Run npm run lint
 ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
-New things to investigate: 
+## Implementation Summary:
+
+All changes are complete. Here's a summary of what was done in Stage8VisualDefinition.tsx:     
+
+  1. Auto-population effect on mount — Added isAutoPopulating state + autoPopulateAttempted ref. 
+  A useEffect fires when sceneAssets resolves to 0, stage is not locked/outdated, and it hasn't  
+  already attempted:
+    - Scene 2+: Calls inheritAssets() then populateFromDependencies()
+    - Scene 1: Calls populateFromDependencies() only
+    - Ref resets when sceneId changes
+  2. Removed EmptyStatePanel — Deleted the component (old lines 104-146) and its render branch   
+  (old lines 828-851). Removed unused Sparkles and Card imports.
+  3. Updated render logic — Merged loading: isLoading || isAutoPopulating shows spinner (with    
+  "Populating assets…" text during auto-populate). Otherwise renders the three-panel layout      
+  regardless of asset count.
+  4. Added "Detect with AI" button — Extended AssetDrawerTriggerPanel with onDetectAssets +      
+  isDetecting props. Added a gold Brain button below "Create new asset" with a divider. It       
+  triggers handleAIDetectAssets which calls only the AI path (detectRelevantAssets), skipping the   deterministic step that already ran on mount.
+  5. Lint passes clean.
+
+
+----------------
+
+## *New things to investigate*: 
 
 Note: I now want to think about adding a new functionality that will also be triggered when pressing the AI detection button (that currently searches for new suggested assets); this would be a new feature that I have been long desired, which would also use the context of the script and other story elemnts to infer the condition of the assets to like bascally suggest both status tags and perhaps update the description to imposed a more accurate description to be used in scene instance image generation, if the user deems it relevant to regenerate (they may not like the updated description and could then just choose to keep thier scene instance image from before (whether they had used a master refernce image or had generated it before using the ai detection tool)).. it could also be better to just have a seperate button for this feature; thus one button for ai detecting assets for suggestions (discovering new ones assets or findign that an existing asset should be brought into stage for the scene )
 
 Let's also investigate how good the current system is for finding which assets are being used as refernces in each shot Within a scene, liek right now I know it's pretty good at detecting/extracting which assets are in each scene, but how good is it at further categroizing the assets as which shot they are in, and is there any functionality in place for findign their status in a shot (whether thruoughout, entering/exiting or passing by, as this is important for tagging them in the starting and end prompt) ALso, do we even have any functionality to linking assets in end frame thats any different or unique to them being tagged in start frame; my impression is that, if an asset i stied to a start frame to be a reference, then, if an end frame is toggled to also be generated, the assets automatically gett transfered over. 
 
 carousel functionality for prompts & descriptions (only saved to caoursel by explicit save button OR whenever a generation button is pressed to overright what existed in the applicable text box (whehter a prompt or description) from before; only save in carousel the last 8 states) 
+
+Add the split variant to the edit detail menu of option in that little on screen thing popoever; and then for select tool, add buttons, to the row that currently has split variant & merge, for the option to delete & defer & change type (where if change type is choosen it moves all those assets into the type selected (so, for example if 3 characters and 1 location are selected and "prop" is choosen to change type to, they all get changed from their intial tyle to prop))
