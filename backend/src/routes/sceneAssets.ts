@@ -12,6 +12,7 @@ import { SceneAssetRelevanceService } from '../services/sceneAssetRelevanceServi
 import { SceneAssetAttemptsService } from '../services/sceneAssetAttemptsService.js';
 import { transformationEventService } from '../services/transformationEventService.js';
 import type { TransformationType, DetectedBy } from '../services/transformationEventService.js';
+import { textFieldVersionService } from '../services/textFieldVersionService.js';
 import multer from 'multer';
 import path from 'path';
 
@@ -1925,6 +1926,121 @@ router.get('/:projectId/assets/:projectAssetId/transformation-images', async (re
   } catch (err) {
     console.error('[TransformationImages] Error:', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================================
+// TEXT FIELD VERSION ROUTES (description_override for scene asset instances)
+// ============================================================================
+
+/**
+ * GET /:projectId/scenes/:sceneId/assets/:instanceId/field-versions/description_override
+ * List all versions for an asset's description_override
+ */
+router.get('/:projectId/scenes/:sceneId/assets/:instanceId/field-versions/description_override', async (req, res) => {
+  try {
+    const { projectId, instanceId } = req.params;
+    const userId = req.user!.id;
+
+    const { data: project } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Lazy backfill
+    const { data: instance } = await supabase
+      .from('scene_asset_instances')
+      .select('description_override')
+      .eq('id', instanceId)
+      .single();
+
+    if (instance) {
+      await textFieldVersionService.backfillIfNeeded(
+        'scene_asset_instance',
+        instanceId,
+        'description_override',
+        instance.description_override
+      );
+    }
+
+    const versions = await textFieldVersionService.listVersions(instanceId, 'description_override');
+    res.json({ versions });
+  } catch (error: any) {
+    console.error('Error listing asset field versions:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+/**
+ * POST /:projectId/scenes/:sceneId/assets/:instanceId/field-versions/description_override
+ * Create a new version for an asset's description_override
+ */
+router.post('/:projectId/scenes/:sceneId/assets/:instanceId/field-versions/description_override', async (req, res) => {
+  try {
+    const { projectId, instanceId } = req.params;
+    const { content, source } = req.body;
+    const userId = req.user!.id;
+
+    if (typeof content !== 'string') {
+      return res.status(400).json({ error: 'content is required and must be a string' });
+    }
+
+    const { data: project } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const version = await textFieldVersionService.createVersion(
+      'scene_asset_instance',
+      instanceId,
+      'description_override',
+      { content, source: source || 'user_save' }
+    );
+
+    res.json({ version });
+  } catch (error: any) {
+    console.error('Error creating asset field version:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+/**
+ * POST /:projectId/scenes/:sceneId/assets/:instanceId/field-versions/description_override/:versionId/select
+ * Select a specific version for an asset's description_override
+ */
+router.post('/:projectId/scenes/:sceneId/assets/:instanceId/field-versions/description_override/:versionId/select', async (req, res) => {
+  try {
+    const { projectId, instanceId, versionId } = req.params;
+    const userId = req.user!.id;
+
+    const { data: project } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const version = await textFieldVersionService.selectVersion(instanceId, 'description_override', versionId);
+    res.json({ version });
+  } catch (error: any) {
+    console.error('Error selecting asset field version:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 });
 
