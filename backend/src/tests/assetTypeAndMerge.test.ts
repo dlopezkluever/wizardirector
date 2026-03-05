@@ -102,7 +102,7 @@ describe('Asset Type & Cross-Type Merge', () => {
       expect(res.body.asset_type).toBe('location');
     });
 
-    it('should reject type change on locked asset (400)', async () => {
+    it('should allow type change on locked asset (asset_type is allowed when locked)', async () => {
       // 1. Project ownership
       mockFrom.mockReturnValueOnce(
         mockChain({ data: { id: 'proj-1' }, error: null })
@@ -114,14 +114,20 @@ describe('Asset Type & Cross-Type Merge', () => {
           error: null,
         })
       );
+      // 3. Update succeeds
+      mockFrom.mockReturnValueOnce(
+        mockChain({
+          data: { id: 'asset-1', asset_type: 'prop', locked: true },
+          error: null,
+        })
+      );
 
       const res = await request(app)
         .put('/api/projects/proj-1/assets/asset-1')
         .set('Authorization', 'Bearer test-token')
         .send({ asset_type: 'prop' });
 
-      expect(res.status).toBe(400);
-      expect(res.body.error).toContain('Cannot modify locked asset');
+      expect(res.status).toBe(200);
     });
 
     it('should allow deferred toggle on locked asset (not blocked)', async () => {
