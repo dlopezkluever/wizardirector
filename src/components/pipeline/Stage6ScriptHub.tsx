@@ -21,6 +21,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn, formatSceneHeader } from '@/lib/utils';
 import { toast } from 'sonner';
 import { sceneService } from '@/lib/services/sceneService';
@@ -320,9 +321,21 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
                           </Badge>
                         )}
                         {scene.continuityRisk && scene.continuityRisk !== 'safe' && (
-                          <span className={cn('text-[10px]', riskConfig[scene.continuityRisk].color)}>
-                            ⚠ {riskConfig[scene.continuityRisk].label}
-                          </span>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className={cn(
+                                  'inline-block w-2 h-2 rounded-full flex-shrink-0',
+                                  scene.continuityRisk === 'broken' ? 'bg-destructive' : 'bg-amber-400'
+                                )} />
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="text-xs">
+                                {scene.continuityRisk === 'broken'
+                                  ? 'Broken: upstream changes have invalidated this scene'
+                                  : 'Risky: upstream changes may affect continuity'}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         )}
                       </div>
                     </div>
