@@ -40,7 +40,7 @@ import { shotService } from '@/lib/services/shotService';
 import { frameService } from '@/lib/services/frameService';
 import { checkoutService } from '@/lib/services/checkoutService';
 import { cn } from '@/lib/utils';
-import type { Shot, FrameStatus } from '@/types/scene';
+import type { Scene, Shot, FrameStatus } from '@/types/scene';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -332,8 +332,92 @@ function SceneTabBar({
   );
 }
 
-function ScriptExcerptContent({ scriptExcerpt }: { scriptExcerpt?: string }) {
-  if (!scriptExcerpt) {
+const scriptLineStyles: Record<ScriptLineType, string> = {
+  heading: 'font-bold uppercase text-amber-400 mt-3 mb-0.5 text-xs',
+  action: 'text-foreground text-xs leading-relaxed mb-0.5',
+  character: 'text-blue-300 font-bold uppercase ml-16 mt-2 text-xs',
+  parenthetical: 'text-gray-400 italic ml-16 text-xs',
+  dialogue: 'text-foreground ml-10 text-xs leading-relaxed',
+  transition: 'uppercase text-amber-400 text-right mt-3 mb-3 text-xs',
+  empty: '',
+};
+
+function getSceneOpacity(distance: number): number {
+  if (distance === 0) return 1.0;
+  if (distance === 1) return 0.70;
+  if (distance === 2) return 0.55;
+  return 0.45;
+}
+
+interface FullScriptContentProps {
+  scenes: Scene[];
+  currentSceneId: string;
+  autoScrollTrigger: number;
+}
+
+function FullScriptContent({ scenes, currentSceneId, autoScrollTrigger }: FullScriptContentProps) {
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const currentSceneRef = useRef<HTMLDivElement>(null);
+  const [showBackButton, setShowBackButton] = useState(false);
+
+  const parsedSections = useMemo(() => {
+    const sorted = [...scenes]
+      .filter(s => s.scriptExcerpt)
+      .sort((a, b) => a.sceneNumber - b.sceneNumber);
+
+    const currentIndex = sorted.findIndex(s => s.id === currentSceneId);
+
+    return {
+      sections: sorted.map(s => ({
+        id: s.id,
+        sceneNumber: s.sceneNumber,
+        lines: parseScriptLines(s.scriptExcerpt),
+      })),
+      currentIndex,
+    };
+  }, [scenes, currentSceneId]);
+
+  const scrollToCurrentScene = useCallback(() => {
+    const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    if (!viewport || !currentSceneRef.current) return;
+    viewport.scrollTo({
+      top: currentSceneRef.current.offsetTop,
+      behavior: 'smooth',
+    });
+  }, []);
+
+  // Auto-scroll on trigger
+  useEffect(() => {
+    if (autoScrollTrigger === 0) return;
+    const timer = setTimeout(scrollToCurrentScene, 250);
+    return () => clearTimeout(timer);
+  }, [autoScrollTrigger, scrollToCurrentScene]);
+
+  // Track scroll position for back button visibility
+  useEffect(() => {
+    const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    if (!viewport) return;
+
+    const handleScroll = () => {
+      const sceneEl = currentSceneRef.current;
+      if (!sceneEl) {
+        setShowBackButton(false);
+        return;
+      }
+      const viewportRect = viewport.getBoundingClientRect();
+      const sceneRect = sceneEl.getBoundingClientRect();
+      const visibleTop = Math.max(sceneRect.top, viewportRect.top);
+      const visibleBottom = Math.min(sceneRect.bottom, viewportRect.bottom);
+      const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+      const visibleRatio = sceneRect.height > 0 ? visibleHeight / sceneRect.height : 1;
+      setShowBackButton(visibleRatio < 0.3);
+    };
+
+    viewport.addEventListener('scroll', handleScroll, { passive: true });
+    return () => viewport.removeEventListener('scroll', handleScroll);
+  }, [parsedSections.currentIndex]);
+
+  if (parsedSections.sections.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
         No script excerpt available for this scene.
@@ -341,37 +425,77 @@ function ScriptExcerptContent({ scriptExcerpt }: { scriptExcerpt?: string }) {
     );
   }
 
-  const lines = parseScriptLines(scriptExcerpt);
+  const { sections, currentIndex } = parsedSections;
 
   return (
-    <ScrollArea className="h-full">
-      <div
-        className="px-4 py-3 space-y-0.5"
-        style={{ fontFamily: "'Courier Prime', 'Courier New', monospace" }}
-      >
-        {lines.map((line, i) => {
-          if (line.type === 'empty') {
-            return <div key={i} className="h-2" />;
-          }
+    <div className="relative h-full">
+      <ScrollArea ref={scrollAreaRef} className="h-full">
+        <div
+          className="px-4 py-3"
+          style={{ fontFamily: "'Courier Prime', 'Courier New', monospace" }}
+        >
+          {sections.map((section, idx) => {
+            const distance = currentIndex >= 0 ? Math.abs(idx - currentIndex) : 0;
+            const opacity = currentIndex >= 0 ? getSceneOpacity(distance) : 1.0;
+            const isCurrent = idx === currentIndex;
 
-          const styles: Record<ScriptLineType, string> = {
-            heading: 'font-bold uppercase text-amber-400 mt-3 mb-0.5 text-xs',
-            action: 'text-foreground text-xs leading-relaxed mb-0.5',
-            character: 'text-blue-300 font-bold uppercase ml-16 mt-2 text-xs',
-            parenthetical: 'text-gray-400 italic ml-16 text-xs',
-            dialogue: 'text-foreground ml-10 text-xs leading-relaxed',
-            transition: 'uppercase text-amber-400 text-right mt-3 mb-3 text-xs',
-            empty: '',
-          };
+            return (
+              <div key={section.id}>
+                {/* Scene divider label (not before first) */}
+                {idx > 0 && (
+                  <div className="flex items-center gap-2 my-3">
+                    <div className="flex-1 h-px bg-border/30" />
+                    <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap">
+                      ——— Scene {section.sceneNumber} ———
+                    </span>
+                    <div className="flex-1 h-px bg-border/30" />
+                  </div>
+                )}
 
-          return (
-            <p key={i} className={styles[line.type]}>
-              {line.text}
-            </p>
-          );
-        })}
-      </div>
-    </ScrollArea>
+                {/* Amber boundary line before current */}
+                {isCurrent && <div className="h-px bg-amber-500/70 mb-2" />}
+
+                <div
+                  ref={isCurrent ? currentSceneRef : undefined}
+                  style={{ opacity }}
+                  className="space-y-0.5"
+                >
+                  {section.lines.map((line, i) => {
+                    if (line.type === 'empty') {
+                      return <div key={i} className="h-2" />;
+                    }
+                    return (
+                      <p key={i} className={scriptLineStyles[line.type]}>
+                        {line.text}
+                      </p>
+                    );
+                  })}
+                </div>
+
+                {/* Amber boundary line after current */}
+                {isCurrent && <div className="h-px bg-amber-500/70 mt-2" />}
+              </div>
+            );
+          })}
+        </div>
+      </ScrollArea>
+
+      {/* Back to excerpt floating button */}
+      <AnimatePresence>
+        {showBackButton && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            transition={{ duration: 0.15 }}
+            onClick={scrollToCurrentScene}
+            className="absolute bottom-3 right-3 px-3 py-1.5 rounded-full bg-amber-500/90 hover:bg-amber-500 text-black text-[11px] font-medium shadow-lg transition-colors"
+          >
+            Back to excerpt
+          </motion.button>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 
@@ -850,6 +974,7 @@ export function ContentAccessCarousel({
   const [isDragging, setIsDragging] = useState(false);
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
+  const [scriptScrollTrigger, setScriptScrollTrigger] = useState(0);
 
   // ---------------------------------------------------------------------------
   // Data fetching (must precede tab/carousel state for initializer access)
@@ -1021,8 +1146,11 @@ export function ContentAccessCarousel({
     (index: number) => {
       setActiveTabIndex(index);
       carouselApi?.scrollTo(index);
+      if (availableTabs[index]?.id === 'script') {
+        setScriptScrollTrigger(c => c + 1);
+      }
     },
-    [carouselApi]
+    [carouselApi, availableTabs]
   );
 
   // Double-click resize handle → reset to default height
@@ -1053,7 +1181,12 @@ export function ContentAccessCarousel({
           )}
         </div>
         <button
-          onClick={() => setIsExpanded(prev => !prev)}
+          onClick={() => {
+            if (!isExpanded && activeTabId === 'script') {
+              setScriptScrollTrigger(c => c + 1);
+            }
+            setIsExpanded(prev => !prev);
+          }}
           className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
           aria-label={isExpanded ? 'Collapse panel' : 'Expand panel'}
         >
@@ -1083,7 +1216,11 @@ export function ContentAccessCarousel({
                   {availableTabs.map((tab) => (
                     <CarouselItem key={tab.id} className="h-full">
                       {tab.id === 'script' && (
-                        <ScriptExcerptContent scriptExcerpt={currentScene?.scriptExcerpt} />
+                        <FullScriptContent
+                          scenes={scenes ?? []}
+                          currentSceneId={sceneId}
+                          autoScrollTrigger={scriptScrollTrigger}
+                        />
                       )}
                       {tab.id === 'stills' && (
                         <StillsContent
