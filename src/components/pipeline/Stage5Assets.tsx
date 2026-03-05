@@ -658,6 +658,45 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
       ? 'Asset must appear in 2+ scenes to split'
       : '';
 
+  const handleBulkDelete = async () => {
+    if (selectedAssetIds.size === 0) return;
+    if (!confirm(`Remove ${selectedAssetIds.size} selected asset(s)? This cannot be undone.`)) return;
+    try {
+      await Promise.all([...selectedAssetIds].map(id => projectAssetService.deleteAsset(projectId, id)));
+      setAssets(prev => prev.filter(a => !selectedAssetIds.has(a.id)));
+      toast.success(`Removed ${selectedAssetIds.size} asset(s)`);
+      setSelectedAssetIds(new Set());
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete assets');
+    }
+  };
+
+  const handleBulkDefer = async () => {
+    if (selectedAssetIds.size === 0) return;
+    try {
+      await Promise.all([...selectedAssetIds].map(id => projectAssetService.deferAsset(projectId, id)));
+      setAssets(prev => prev.map(a => selectedAssetIds.has(a.id) ? { ...a, deferred: true } : a));
+      toast.success(`Deferred ${selectedAssetIds.size} asset(s)`);
+      setSelectedAssetIds(new Set());
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to defer assets');
+    }
+  };
+
+  const handleBulkChangeType = async (newType: AssetType) => {
+    if (selectedAssetIds.size === 0) return;
+    try {
+      await Promise.all([...selectedAssetIds].map(id =>
+        projectAssetService.updateAsset(projectId, id, { asset_type: newType })
+      ));
+      setAssets(prev => prev.map(a => selectedAssetIds.has(a.id) ? { ...a, asset_type: newType } : a));
+      toast.success(`Changed ${selectedAssetIds.size} asset(s) to ${newType === 'extra_archetype' ? 'Extra/Archetype' : newType}`);
+      setSelectedAssetIds(new Set());
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to change type');
+    }
+  };
+
   const handleMergeConfirm = async (survivorId: string, updatedName?: string, updatedDescription?: string) => {
     const absorbedIds = selectedAssets.filter(a => a.id !== survivorId).map(a => a.id);
     try {
@@ -1135,6 +1174,16 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                                         </DropdownMenuSubContent>
                                       </DropdownMenuSub>
                                     )}
+                                    {!isStageLockedOrOutdated && (asset.scene_numbers?.length || 0) > 1 && (
+                                      <DropdownMenuItem onClick={() => {
+                                        setSelectedAssetIds(new Set([asset.id]));
+                                        setSelectionMode(true);
+                                        setShowSplitWizard(true);
+                                      }}>
+                                        <SplitSquareHorizontal className="w-4 h-4 mr-2" />
+                                        Split Variant
+                                      </DropdownMenuItem>
+                                    )}
                                     {asset.asset_type === 'character' && (
                                       <DropdownMenuItem onClick={() => setAngleDialogAsset(asset)}>
                                         <RotateCw className="w-4 h-4 mr-2" />
@@ -1569,6 +1618,53 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                     <TooltipContent>{splitDisabledReason}</TooltipContent>
                   )}
                 </Tooltip>
+
+                <div className="w-px h-6 bg-border mx-1" />
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBulkDefer}
+                  disabled={selectedAssetIds.size === 0}
+                >
+                  <PauseCircle className="w-4 h-4 mr-1" />
+                  Defer
+                </Button>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={selectedAssetIds.size === 0}
+                    >
+                      <RefreshCw className="w-4 h-4 mr-1" />
+                      Change Type
+                      <ChevronDown className="w-3 h-3 ml-1" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    {(['character', 'prop', 'location', 'extra_archetype'] as const).map(t => (
+                      <DropdownMenuItem
+                        key={t}
+                        onClick={() => handleBulkChangeType(t)}
+                      >
+                        {t === 'extra_archetype' ? 'Extra/Archetype' : t.charAt(0).toUpperCase() + t.slice(1)}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBulkDelete}
+                  disabled={selectedAssetIds.size === 0}
+                  className="text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Delete
+                </Button>
 
                 <Button
                   variant="ghost"
