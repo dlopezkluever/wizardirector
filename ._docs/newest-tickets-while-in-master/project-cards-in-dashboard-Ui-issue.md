@@ -1,3 +1,10 @@
+
+  10. **Dashboard project cards** (actually worth doing l8r) — missing cover images
+
+  All project cards show dark/empty backgrounds with no visual differentiation. The cards rely entirely on text titles.
+  - Recommendation: Auto-generate or pull a representative frame/asset image as the card cover. Even a gradient or color based on project style would help.
+
+
 # Project Cards in Dashboard UI Issue:
 
 ## Preface:
