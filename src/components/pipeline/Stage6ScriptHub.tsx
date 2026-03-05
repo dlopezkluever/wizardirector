@@ -26,6 +26,7 @@ import { cn, formatSceneHeader } from '@/lib/utils';
 import { toast } from 'sonner';
 import { sceneService } from '@/lib/services/sceneService';
 import { checkoutService } from '@/lib/services/checkoutService';
+import { projectAssetService } from '@/lib/services/projectAssetService';
 import type { Scene, SceneStatus, ContinuityRisk } from '@/types/scene';
 import { ContentAccessCarousel } from './ContentAccessCarousel';
 import { StageInfoButton } from './StageInfoButton';
@@ -60,6 +61,7 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
   const [error, setError] = useState<string | null>(null);
   const [renderStatuses, setRenderStatuses] = useState<Record<string, string>>({});
   const [isDeferring, setIsDeferring] = useState(false);
+  const [assetNamesLower, setAssetNamesLower] = useState<Set<string>>(new Set());
 
   // Fetch scenes on mount
   useEffect(() => {
@@ -73,7 +75,11 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
       try {
         setIsLoading(true);
         setError(null);
-        const fetchedScenes = await sceneService.fetchScenes(projectId);
+        const [fetchedScenes, projectAssets] = await Promise.all([
+          sceneService.fetchScenes(projectId),
+          projectAssetService.listAssets(projectId).catch(() => []),
+        ]);
+        setAssetNamesLower(new Set(projectAssets.map(a => a.name.toLowerCase())));
         
         // Transform scenes to ensure all fields are properly set
         const transformedScenes = fetchedScenes.map((scene): Scene => ({
@@ -454,53 +460,67 @@ export function Stage6ScriptHub({ onEnterScene, onEnterSceneAtStage, onBack }: S
                     Scene Dependencies
                   </h3>
                   
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-card/50 rounded-lg p-4 border border-border/30">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Users className="w-4 h-4 text-primary" />
-                        <span className="text-xs font-medium text-foreground">Expected Characters</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {selectedScene.expectedCharacters && selectedScene.expectedCharacters.length > 0 ? (
-                          selectedScene.expectedCharacters.map(char => (
-                            <Badge key={char} variant="outline" className="text-xs">
-                              {char}
-                            </Badge>
-                          ))
-                        ) : (
-                          <span className="text-xs text-muted-foreground">Not yet extracted</span>
-                        )}
-                      </div>
-                    </div>
+                  {(() => {
+                    const resolvedChars = (selectedScene.expectedCharacters || []).filter(
+                      c => assetNamesLower.has(c.toLowerCase())
+                    );
+                    const resolvedLocation = selectedScene.expectedLocation && assetNamesLower.has(selectedScene.expectedLocation.toLowerCase())
+                      ? selectedScene.expectedLocation
+                      : '';
+                    const resolvedProps = (selectedScene.expectedProps || []).filter(
+                      p => assetNamesLower.has(p.toLowerCase())
+                    );
 
-                    <div className="bg-card/50 rounded-lg p-4 border border-border/30">
-                      <div className="flex items-center gap-2 mb-2">
-                        <MapPin className="w-4 h-4 text-primary" />
-                        <span className="text-xs font-medium text-foreground">Expected Location</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {selectedScene.expectedLocation || 'Not yet extracted'}
-                      </p>
-                    </div>
+                    return (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-card/50 rounded-lg p-4 border border-border/30">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Users className="w-4 h-4 text-primary" />
+                            <span className="text-xs font-medium text-foreground">Expected Characters</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {resolvedChars.length > 0 ? (
+                              resolvedChars.map(char => (
+                                <Badge key={char} variant="outline" className="text-xs">
+                                  {char}
+                                </Badge>
+                              ))
+                            ) : (
+                              <span className="text-xs text-muted-foreground">None</span>
+                            )}
+                          </div>
+                        </div>
 
-                    <div className="bg-card/50 rounded-lg p-4 border border-border/30 col-span-2">
-                      <div className="flex items-center gap-2 mb-2">
-                        <ImageIcon className="w-4 h-4 text-primary" />
-                        <span className="text-xs font-medium text-foreground">Expected Props</span>
+                        <div className="bg-card/50 rounded-lg p-4 border border-border/30">
+                          <div className="flex items-center gap-2 mb-2">
+                            <MapPin className="w-4 h-4 text-primary" />
+                            <span className="text-xs font-medium text-foreground">Expected Location</span>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {resolvedLocation || 'None'}
+                          </p>
+                        </div>
+
+                        <div className="bg-card/50 rounded-lg p-4 border border-border/30 col-span-2">
+                          <div className="flex items-center gap-2 mb-2">
+                            <ImageIcon className="w-4 h-4 text-primary" />
+                            <span className="text-xs font-medium text-foreground">Expected Props</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {resolvedProps.length > 0 ? (
+                              resolvedProps.map((prop, idx) => (
+                                <Badge key={idx} variant="outline" className="text-xs">
+                                  {prop}
+                                </Badge>
+                              ))
+                            ) : (
+                              <span className="text-xs text-muted-foreground">None</span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex flex-wrap gap-1">
-                        {selectedScene.expectedProps && selectedScene.expectedProps.length > 0 ? (
-                          selectedScene.expectedProps.map((prop, idx) => (
-                            <Badge key={idx} variant="outline" className="text-xs">
-                              {prop}
-                            </Badge>
-                          ))
-                        ) : (
-                          <span className="text-xs text-muted-foreground">Not yet extracted</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Content Access Carousel */}
