@@ -582,8 +582,8 @@ router.put('/:projectId/assets/:assetId', async (req, res) => {
 
         // Allow deferred toggling regardless of lock state
         // For other fields, check locked status
-        const isOnlyDeferredUpdate = deferred !== undefined && name === undefined && description === undefined && image_prompt === undefined && asset_type === undefined;
-        if (existingAsset.locked && !isOnlyDeferredUpdate) {
+        const isAllowedWhenLocked = (deferred !== undefined || asset_type !== undefined) && name === undefined && description === undefined && image_prompt === undefined;
+        if (existingAsset.locked && !isAllowedWhenLocked) {
             return res.status(400).json({
                 error: 'Cannot modify locked asset'
             });
