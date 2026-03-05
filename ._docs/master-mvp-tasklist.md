@@ -940,7 +940,7 @@ Adding assets manaully (which is an option when first arriving on stage 8) resul
 
 ### 4A — Content Access Space (Rearview Expansion)
 
-#### 4A.1 — Multi-Tab Content Access Carousel
+#### 4A.1 — Multi-Tab Content Access Carousel  ✅ *Done!*
 **Tickets**: Multi-stage rearview enhancement, OT-2
 **Priority**: HIGH
 
@@ -965,7 +965,7 @@ Adding assets manaully (which is an option when first arriving on stage 8) resul
 
 ### 4B — Stage 6 & 7 Improvements
 
-#### 4B.1 — Script Hub UI Overflow Fix
+#### 4B.1 —  ✅ Script Hub UI Overflow Fix ✅ *Done!*
 **Ticket**: 6.1
 **Priority**: HIGH
 
@@ -984,7 +984,7 @@ Adding assets manaully (which is an option when first arriving on stage 8) resul
 
 ---
 
-#### 4B.2 — Scene Header Formatting Fix
+#### 4B.2 — Scene Header Formatting Fix  ✅ *Done!*
 **Ticket**: 6.2
 **Priority**: MEDIUM
 
@@ -1002,7 +1002,7 @@ Adding assets manaully (which is an option when first arriving on stage 8) resul
 
 ---
 
-#### 4B.3 — Scene Deferral/Sidelining
+#### 4B.3 — Scene Deferral/Sidelining  ✅ *Done!*
 **Ticket**: 6.3, 7.3
 **Priority**: MEDIUM
 
@@ -1042,7 +1042,7 @@ Ticket info: ### 7.1 — Shot List Extracted Action Too Concise
 The extracted action and information going into the shot list needs to be much more descriptive. Currently often only a line of dialogue with vague buzzwords. Needs camera directions, crew notes, and detailed action descriptions. This is the preamble to the two key prompts made in Stage 9.
 ---
 
-#### 4B.5 — Edit Merge Toggle Improvement
+#### 4B.5 — Edit Merge Toggle Improvement ✅ *Done!*
 **Ticket**: 7.2
 **Priority**: LOW
 
@@ -1079,7 +1079,7 @@ The extracted action and information going into the shot list needs to be much m
 
 ### 4C — Prompt Generation Overhaul (Stage 9)
 
-#### 4C.1 — Structured Image & Video Prompts
+#### 4C.1 — Structured Im age & Video Prompts
 **Ticket**: 9.1
 **Priority**: HIGH
 
@@ -1191,7 +1191,7 @@ The extracted action and information going into the shot list needs to be much m
 
 ---
 
-#### 4D.2 — Fix Asset Inheritance in Frame Generation
+#### 4D.2 — Fix Asset Inheritance in Frame Generation *
 **Ticket**: 10.1, DC-3
 **Priority**: HIGH
 
@@ -1210,7 +1210,7 @@ The extracted action and information going into the shot list needs to be much m
 
 ---
 
-#### 4D.3 — Stage 12 Side-by-Side View & Timeline Player
+#### 4D.3 — Stage 12 Side-by-Side View & Timeline Player *DONE* ✅ *Done!*
 **Ticket**: 12.1
 **Priority**: HIGH
 
@@ -1231,7 +1231,7 @@ The extracted action and information going into the shot list needs to be much m
 
 ---
 
-### 4E — Adaptive Asset Descriptions
+### 4E — Adaptive Asset Descriptions *CUED*
 
 #### 4E.1 — Context-Aware Asset Descriptions per Scene/Shot
 **Ticket**: Multi-stage asset extraction optimization
