@@ -377,19 +377,18 @@ function FullScriptContent({ scenes, currentSceneId, autoScrollTrigger }: FullSc
     };
   }, [scenes, currentSceneId]);
 
-  const scrollToCurrentScene = useCallback(() => {
+  const scrollToCurrentScene = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
     if (!viewport || !currentSceneRef.current) return;
-    viewport.scrollTo({
-      top: currentSceneRef.current.offsetTop,
-      behavior: 'smooth',
-    });
+    // Offset 24px so the amber boundary line and some breathing room are visible
+    const top = Math.max(0, currentSceneRef.current.offsetTop - 24);
+    viewport.scrollTo({ top, behavior });
   }, []);
 
-  // Auto-scroll on trigger
+  // Auto-scroll on trigger — instant (no visible animation)
   useEffect(() => {
     if (autoScrollTrigger === 0) return;
-    const timer = setTimeout(scrollToCurrentScene, 250);
+    const timer = setTimeout(() => scrollToCurrentScene('instant'), 250);
     return () => clearTimeout(timer);
   }, [autoScrollTrigger, scrollToCurrentScene]);
 
@@ -488,7 +487,7 @@ function FullScriptContent({ scenes, currentSceneId, autoScrollTrigger }: FullSc
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
             transition={{ duration: 0.15 }}
-            onClick={scrollToCurrentScene}
+            onClick={() => scrollToCurrentScene('smooth')}
             className="absolute bottom-3 right-3 px-3 py-1.5 rounded-full bg-amber-500/90 hover:bg-amber-500 text-black text-[11px] font-medium shadow-lg transition-colors"
           >
             Back to excerpt

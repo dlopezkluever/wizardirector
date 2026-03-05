@@ -205,3 +205,7 @@ dividers?
  bottom-right
    - Click button → smooth scroll back to excerpt start
    - Verify text never becomes illegible (45% opacity floor)
+
+   --
+
+   Can you just adjust it so it the default opening shows the above yellow line as well, like have it open a hair more down than it is, as it's too tight on the first line of the relevant script excert. and like make it so when the script tab is opened it auto mattically defaults to being open at the right part instead of scrolling down in that animation type look, like i dont want to see if scroll back when opened, but only when the but "Back to Excerpt" is pressed should it scoll back, do you understand?
