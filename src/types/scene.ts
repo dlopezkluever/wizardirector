@@ -121,7 +121,7 @@ export interface SceneAssetInstance {
   /** 3B.2: URL of the selected master reference image (migration 022). */
   selected_master_reference_url?: string | null;
   /** 3B.2: Source of master reference (migration 022). */
-  selected_master_reference_source?: 'stage5_master' | 'prior_scene_instance' | null;
+  selected_master_reference_source?: 'stage5_master' | 'prior_scene_instance' | 'transformation' | null;
   /** 3B.2: Instance ID if reference is from a prior scene instance (migration 022). */
   selected_master_reference_instance_id?: string | null;
   created_at: string;
