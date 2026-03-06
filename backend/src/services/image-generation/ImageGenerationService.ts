@@ -231,7 +231,7 @@ export class ImageGenerationService {
             assetId: instance.project_asset_id,
             sceneId: instance.scene_id,
             idempotencyKey: `scene-asset-${sceneInstanceId}-${Date.now()}`,
-            referenceImageUrl: projectAsset?.image_key_url ?? undefined,
+            referenceImageUrl: instance.selected_master_reference_url || projectAsset?.image_key_url || undefined,
         });
     }
 
