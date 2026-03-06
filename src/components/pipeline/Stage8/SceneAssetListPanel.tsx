@@ -8,12 +8,21 @@ import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { User, MapPin, Package, Lock, RefreshCw, Sparkles, Plus, X, Link2, Search, Filter, Copy, MoreVertical } from 'lucide-react';
+import { User, MapPin, Package, Lock, RefreshCw, Sparkles, Plus, X, Link2, Search, Filter, Copy, MoreVertical, Brain, Loader2, ArrowLeft, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -99,6 +108,18 @@ export interface SceneAssetListPanelProps {
   sceneSlug?: string;
   /** Convert asset to transformation on another asset */
   onConvertToTransformation?: (instance: SceneAssetInstance) => void;
+  /** Inline create new asset */
+  onCreateNewAsset?: () => void;
+  onSubmitCreate?: (data: { name: string; assetType: 'character' | 'location' | 'prop'; description: string }) => void;
+  onCancelCreate?: () => void;
+  isCreatingAsset?: boolean;
+  createMode?: boolean;
+  /** AI detect assets */
+  onDetectAssets?: () => void;
+  isDetecting?: boolean;
+  /** Navigation */
+  onBack?: () => void;
+  onComplete?: () => void;
 }
 
 function AssetTypeGroup({
@@ -295,9 +316,39 @@ export function SceneAssetListPanel({
   sceneNumber,
   sceneSlug,
   onConvertToTransformation,
+  onCreateNewAsset,
+  onSubmitCreate,
+  onCancelCreate,
+  isCreatingAsset,
+  createMode,
+  onDetectAssets,
+  isDetecting,
+  onBack,
+  onComplete,
 }: SceneAssetListPanelProps) {
   const [filters, setFilters] = useState<AssetFilters>(defaultFilters);
+  const [newName, setNewName] = useState('');
+  const [newType, setNewType] = useState<'character' | 'location' | 'prop'>('character');
+  const [newDescription, setNewDescription] = useState('');
   const queryClient = useQueryClient();
+
+  const handleCreateSubmit = () => {
+    if (!newName.trim()) {
+      toast.error('Name is required');
+      return;
+    }
+    onSubmitCreate?.({ name: newName.trim(), assetType: newType, description: newDescription.trim() });
+    setNewName('');
+    setNewType('character');
+    setNewDescription('');
+  };
+
+  const handleCreateCancel = () => {
+    setNewName('');
+    setNewType('character');
+    setNewDescription('');
+    onCancelCreate?.();
+  };
 
   const bulkMasterMutation = useMutation({
     mutationFn: () => {
@@ -409,6 +460,89 @@ export function SceneAssetListPanel({
               </>
             )}
           </Button>
+        )}
+
+        {/* Action buttons */}
+        <div className="flex flex-col gap-1.5 mt-2">
+          {onOpenAssetDrawer && (
+            <Button variant="outline" size="sm" className="w-full" onClick={onOpenAssetDrawer}>
+              <Plus className="w-4 h-4 mr-1" />
+              Add from existing assets
+            </Button>
+          )}
+          {onCreateNewAsset && (
+            <Button variant="ghost" size="sm" className="w-full" onClick={onCreateNewAsset}>
+              <Plus className="w-4 h-4 mr-1" />
+              Create new asset
+            </Button>
+          )}
+          {onDetectAssets && (
+            <Button
+              variant="gold"
+              size="sm"
+              className="w-full"
+              onClick={onDetectAssets}
+              disabled={isDetecting}
+            >
+              {isDetecting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  Detecting…
+                </>
+              ) : (
+                <>
+                  <Brain className="w-4 h-4 mr-1" />
+                  Detect with AI
+                </>
+              )}
+            </Button>
+          )}
+        </div>
+
+        {/* Inline create form */}
+        {createMode && onSubmitCreate && (
+          <div className="mt-2 p-3 rounded-lg border border-border/50 bg-card/50 space-y-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Name</Label>
+              <Input
+                placeholder="Asset name..."
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                disabled={isCreatingAsset}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Type</Label>
+              <Select value={newType} onValueChange={v => setNewType(v as 'character' | 'location' | 'prop')} disabled={isCreatingAsset}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="character">Character</SelectItem>
+                  <SelectItem value="location">Location</SelectItem>
+                  <SelectItem value="prop">Prop</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Description</Label>
+              <Textarea
+                placeholder="Visual description..."
+                value={newDescription}
+                onChange={e => setNewDescription(e.target.value)}
+                rows={3}
+                disabled={isCreatingAsset}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" className="flex-1" onClick={handleCreateCancel} disabled={isCreatingAsset}>
+                Cancel
+              </Button>
+              <Button variant="gold" size="sm" className="flex-1" onClick={handleCreateSubmit} disabled={isCreatingAsset}>
+                {isCreatingAsset ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create'}
+              </Button>
+            </div>
+          </div>
         )}
       </div>
 
@@ -621,6 +755,25 @@ export function SceneAssetListPanel({
               ? 'Applying...'
               : `Use Master As-Is (${selectedForGeneration.length})`}
           </Button>
+        )}
+        {(onBack || onComplete) && (
+          <>
+            <div className="border-t border-border/50 pt-2" />
+            <div className="flex gap-2">
+              {onBack && (
+                <Button variant="ghost" size="sm" className="flex-1" onClick={onBack}>
+                  <ArrowLeft className="w-4 h-4 mr-1" />
+                  Back
+                </Button>
+              )}
+              {onComplete && (
+                <Button variant="gold" size="sm" className="flex-1" onClick={onComplete}>
+                  <Check className="w-4 h-4 mr-1" />
+                  Proceed
+                </Button>
+              )}
+            </div>
+          </>
         )}
       </div>
     </motion.div>
