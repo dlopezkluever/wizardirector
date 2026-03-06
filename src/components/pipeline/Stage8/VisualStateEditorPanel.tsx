@@ -8,19 +8,18 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { User, MapPin, Package, Edit3, Lock, Sparkles, Loader2, History, Trash2 } from 'lucide-react';
+import { User, MapPin, Package, Edit3, Lock, Sparkles, Loader2, History, Trash2, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { StatusTagsEditor } from '@/components/pipeline/Stage8/StatusTagsEditor';
 import { GenerationAttemptCarousel } from '@/components/pipeline/Stage8/GenerationAttemptCarousel';
 import { MasterReferenceCarousel } from '@/components/pipeline/Stage8/MasterReferenceCarousel';
 import { SceneAssetImageUpload } from '@/components/pipeline/Stage8/SceneAssetImageUpload';
-import { UseMasterAsIsCheckbox } from '@/components/pipeline/Stage8/UseMasterAsIsCheckbox';
 import { TransformationEventCard } from '@/components/pipeline/Stage8/TransformationEventCard';
 import { AddTransformationDialog } from '@/components/pipeline/Stage8/AddTransformationDialog';
 import { TransformationImagePicker } from '@/components/pipeline/Stage8/TransformationImagePicker';
@@ -28,6 +27,7 @@ import { transformationEventService } from '@/lib/services/transformationEventSe
 import { sceneAssetService } from '@/lib/services/sceneAssetService';
 import { VersionedTextarea } from '@/components/pipeline/VersionedTextarea';
 import { textFieldVersionService } from '@/lib/services/textFieldVersionService';
+import { cn } from '@/lib/utils';
 import type { SceneAssetInstance, TransformationEvent, Shot } from '@/types/scene';
 
 type AssetTypeKey = 'character' | 'location' | 'prop';
@@ -58,6 +58,7 @@ export interface VisualStateEditorPanelProps {
   isGeneratingImage?: boolean;
   inheritedFromSceneNumber?: number | null;
   sceneScriptExcerpt?: string;
+  onMasterReferenceChanged?: (updated: SceneAssetInstance) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +102,7 @@ export function VisualStateEditorPanel({
   isGeneratingImage,
   inheritedFromSceneNumber,
   sceneScriptExcerpt,
+  onMasterReferenceChanged,
 }: VisualStateEditorPanelProps) {
   const [editedDescription, setEditedDescription] = useState('');
   const [statusTags, setStatusTags] = useState<string[]>([]);
@@ -303,6 +305,21 @@ export function VisualStateEditorPanel({
     toast.success('Asset locked');
   }, [selectedAsset, statusTags, onUpdateAsset]);
 
+  const useMasterAsIsMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedAsset) throw new Error('No asset selected');
+      return sceneAssetService.setUseMasterAsIs(projectId, sceneId, selectedAsset.id, true);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
+      if (selectedAsset) {
+        queryClient.invalidateQueries({ queryKey: ['scene-asset-attempts', projectId, sceneId, selectedAsset.id] });
+      }
+      toast.success('Using master reference as scene instance image');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   if (!selectedAsset) {
     return (
       <div className="flex-1 flex items-center justify-center bg-card/20">
@@ -339,13 +356,6 @@ export function VisualStateEditorPanel({
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <UseMasterAsIsCheckbox
-            projectId={projectId}
-            sceneId={sceneId}
-            instanceId={selectedAsset.id}
-            checked={useMasterAsIs}
-            disabled={isLocked}
-          />
           {onRemoveFromScene && (
             <Button
               variant="outline"
@@ -368,33 +378,56 @@ export function VisualStateEditorPanel({
               Lock Asset
             </Button>
           )}
-          <Button
-            variant="gold"
-            size="sm"
-            onClick={() => onGenerateImage(selectedAsset.id)}
-            disabled={isGeneratingImage || useMasterAsIs}
-          >
-            {isGeneratingImage ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4 mr-1" />
-                Generate Image
-              </>
-            )}
-          </Button>
         </div>
       </div>
 
       <ScrollArea className="flex-1">
         <div className="p-6 space-y-6">
-          {/* Master Reference Carousel (3B.2) — replaces old static MasterAssetReference */}
-          <MasterReferenceCarousel
-            projectId={projectId}
-            sceneId={sceneId}
-            instanceId={selectedAsset.id}
-            selectedMasterReferenceUrl={selectedAsset.selected_master_reference_url}
-          />
+          {/* Side-by-side carousels */}
+          <div className="flex gap-4">
+            <div className="flex-1 min-w-0">
+              <MasterReferenceCarousel
+                projectId={projectId}
+                sceneId={sceneId}
+                instanceId={selectedAsset.id}
+                selectedMasterReferenceUrl={selectedAsset.selected_master_reference_url}
+                onUseMasterAsIs={() => useMasterAsIsMutation.mutate()}
+                onMasterReferenceChanged={onMasterReferenceChanged}
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <GenerationAttemptCarousel
+                projectId={projectId}
+                sceneId={sceneId}
+                instanceId={selectedAsset.id}
+              />
+            </div>
+          </div>
+
+          {/* Generate Image + Upload row below carousels */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="gold"
+              size="sm"
+              onClick={() => onGenerateImage(selectedAsset.id)}
+              disabled={isGeneratingImage || useMasterAsIs}
+            >
+              {isGeneratingImage ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 mr-1" />
+                  Generate Image
+                </>
+              )}
+            </Button>
+            <SceneAssetImageUpload
+              projectId={projectId}
+              sceneId={sceneId}
+              instanceId={selectedAsset.id}
+              disabled={useMasterAsIs}
+            />
+          </div>
 
           {/* Master asset description */}
           {selectedAsset.project_asset?.description && (
@@ -415,7 +448,6 @@ export function VisualStateEditorPanel({
               }}
               onVersionChange={(content) => {
                 setEditedDescription(content);
-                // Also push to parent so it reflects in the UI
                 onUpdateAsset(selectedAsset.id, {
                   descriptionOverride: content,
                   modificationReason: 'Selected version from history',
@@ -426,73 +458,87 @@ export function VisualStateEditorPanel({
               placeholder="Starting look for this asset in this scene…"
               disabled={isLocked || useMasterAsIs}
             />
-            {/* Transformation Events Section */}
-            <div className="mt-2 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground flex items-center gap-1.5">
-                  Transformations
-                  {transformationEvents.length > 0 && (
-                    <span className="bg-primary/20 text-primary text-[10px] px-1.5 py-0.5 rounded-full">
-                      {transformationEvents.length}
-                    </span>
+
+            {/* Collapsible Transformations Section */}
+            <Collapsible defaultOpen>
+              <CollapsibleTrigger asChild>
+                <button type="button" className="w-full flex items-center justify-between py-2 group">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    Transformations
+                    {transformationEvents.length > 0 && (
+                      <span className="bg-primary/20 text-primary text-[10px] px-1.5 py-0.5 rounded-full">
+                        {transformationEvents.length}
+                      </span>
+                    )}
+                  </span>
+                  <ChevronDown className={cn(
+                    "w-4 h-4 text-muted-foreground transition-transform",
+                    "group-data-[state=open]:rotate-180"
+                  )} />
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="space-y-2">
+                  <div className="flex justify-end">
+                    <AddTransformationDialog
+                      shots={shots}
+                      assetInstanceId={selectedAsset.id}
+                      preDescription={editedDescription}
+                      onAdd={handleAddTransformation}
+                      disabled={isLocked}
+                      projectId={projectId}
+                      sceneId={sceneId}
+                      sceneScriptExcerpt={sceneScriptExcerpt}
+                    />
+                  </div>
+                  {transformationEvents.map(event => (
+                    <TransformationEventCard
+                      key={event.id}
+                      event={event}
+                      onConfirm={handleConfirmEvent}
+                      onDismiss={handleDismissEvent}
+                      onUpdate={handleUpdateEvent}
+                      onGeneratePostDescription={handleGeneratePostDescription}
+                      onGeneratePostImage={handleGeneratePostImage}
+                      onOpenImagePicker={(eventId) => setImagePickerEventId(eventId)}
+                      isUpdating={isUpdating}
+                      isGenerating={generatingEventId === event.id}
+                      isGeneratingImage={generatingImageEventId === event.id}
+                    />
+                  ))}
+                  {!isLoadingEvents && transformationEvents.length === 0 && (
+                    <p className="text-xs text-muted-foreground italic">
+                      No transformations detected. Add one if this asset changes visually mid-scene.
+                    </p>
                   )}
-                </span>
-                <AddTransformationDialog
-                  shots={shots}
-                  assetInstanceId={selectedAsset.id}
-                  preDescription={editedDescription}
-                  onAdd={handleAddTransformation}
-                  disabled={isLocked}
-                  projectId={projectId}
-                  sceneId={sceneId}
-                  sceneScriptExcerpt={sceneScriptExcerpt}
-                />
-              </div>
-              {transformationEvents.map(event => (
-                <TransformationEventCard
-                  key={event.id}
-                  event={event}
-                  onConfirm={handleConfirmEvent}
-                  onDismiss={handleDismissEvent}
-                  onUpdate={handleUpdateEvent}
-                  onGeneratePostDescription={handleGeneratePostDescription}
-                  onGeneratePostImage={handleGeneratePostImage}
-                  onOpenImagePicker={(eventId) => setImagePickerEventId(eventId)}
-                  isUpdating={isUpdating}
-                  isGenerating={generatingEventId === event.id}
-                  isGeneratingImage={generatingImageEventId === event.id}
-                />
-              ))}
-              {!isLoadingEvents && transformationEvents.length === 0 && (
-                <p className="text-xs text-muted-foreground italic">
-                  No transformations detected. Add one if this asset changes visually mid-scene.
-                </p>
-              )}
-            </div>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
           </div>
 
-          <StatusTagsEditor
-            tags={statusTags}
-            onChange={handleStatusTagsChange}
-            carryForward={carryForward}
-            onCarryForwardChange={handleCarryForwardChange}
-            disabled={isLocked || isUpdating}
-          />
-
-          {/* Generation Attempt Carousel (3B.1) — replaces old static image */}
-          <GenerationAttemptCarousel
-            projectId={projectId}
-            sceneId={sceneId}
-            instanceId={selectedAsset.id}
-          />
-
-          {/* Image Upload Zone (3B.3) */}
-          <SceneAssetImageUpload
-            projectId={projectId}
-            sceneId={sceneId}
-            instanceId={selectedAsset.id}
-            disabled={useMasterAsIs}
-          />
+          {/* Collapsible Status Tags Section */}
+          <Collapsible defaultOpen>
+            <CollapsibleTrigger asChild>
+              <button type="button" className="w-full flex items-center justify-between py-2 group">
+                <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  Status Tags (Conditions)
+                </span>
+                <ChevronDown className={cn(
+                  "w-4 h-4 text-muted-foreground transition-transform",
+                  "group-data-[state=open]:rotate-180"
+                )} />
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <StatusTagsEditor
+                tags={statusTags}
+                onChange={handleStatusTagsChange}
+                carryForward={carryForward}
+                onCarryForwardChange={handleCarryForwardChange}
+                disabled={isLocked || isUpdating}
+              />
+            </CollapsibleContent>
+          </Collapsible>
 
           {showAudit && (
             <AuditTrail
