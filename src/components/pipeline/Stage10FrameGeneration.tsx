@@ -11,16 +11,15 @@ import {
   AlertCircle,
   Sparkles,
   RefreshCw,
-  Save,
   Loader2,
   Link2,
   Camera,
   Info,
   Upload,
+  Video,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -36,7 +35,9 @@ import { SliderComparison } from './SliderComparison';
 import { InpaintingModal } from './InpaintingModal';
 import { FrameGrid } from './FrameGrid';
 import { FrameUploadModal } from './FrameUploadModal';
+import { VersionedTextarea } from './VersionedTextarea';
 import { frameService, type FetchFramesResponse } from '@/lib/services/frameService';
+import { textFieldVersionService } from '@/lib/services/textFieldVersionService';
 import { sceneService } from '@/lib/services/sceneService';
 import { promptService } from '@/lib/services/promptService';
 import { toast } from '@/hooks/use-toast';
@@ -94,8 +95,12 @@ export function Stage10FrameGeneration({
     frameType: 'start' | 'end';
   } | null>(null);
 
-  // End frame prompt editor state
+  // Prompt editor state
   const [editedEndPrompt, setEditedEndPrompt] = useState('');
+  const [editedFramePrompt, setEditedFramePrompt] = useState('');
+  const [editedVideoPrompt, setEditedVideoPrompt] = useState('');
+  const [framePromptLocked, setFramePromptLocked] = useState(true);
+  const [videoPromptLocked, setVideoPromptLocked] = useState(true);
   const [showEndUploadModal, setShowEndUploadModal] = useState(false);
 
   // Prior scene data (for comparison feature — display handled by ContentAccessCarousel)
@@ -198,15 +203,6 @@ export function Stage10FrameGeneration({
       frameService.generateEndFramePrompt(projectId, sceneId, shotId),
     onSuccess: (data) => {
       setEditedEndPrompt(data.endFramePrompt);
-      queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
-    },
-  });
-
-  // Save end frame prompt mutation
-  const saveEndFramePromptMutation = useMutation({
-    mutationFn: ({ shotId, prompt }: { shotId: string; prompt: string }) =>
-      frameService.saveEndFramePrompt(projectId, sceneId, shotId, prompt),
-    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
     },
   });
@@ -394,16 +390,14 @@ export function Stage10FrameGeneration({
   // Get selected shot
   const selectedShot = shots.find((s) => s.id === selectedShotId);
 
-  // Sync edited end prompt when selected shot changes
+  // Sync edited prompts when selected shot changes
   useEffect(() => {
-    if (selectedShot?.endFramePrompt) {
-      setEditedEndPrompt(selectedShot.endFramePrompt);
-    } else {
-      setEditedEndPrompt('');
-    }
-  }, [selectedShot?.id, selectedShot?.endFramePrompt]);
-
-  const endPromptHasChanges = selectedShot?.endFramePrompt !== editedEndPrompt && editedEndPrompt !== '';
+    setEditedEndPrompt(selectedShot?.endFramePrompt || '');
+    setEditedFramePrompt(selectedShot?.framePrompt || '');
+    setEditedVideoPrompt(selectedShot?.videoPrompt || '');
+    setFramePromptLocked(true);
+    setVideoPromptLocked(true);
+  }, [selectedShot?.id]);
 
   // Get previous shot for continuity comparison
   const getPreviousShot = useCallback(
@@ -1133,15 +1127,15 @@ export function Stage10FrameGeneration({
                       </div>
                     )}
 
-                    {/* Bottom-left: Shot Context */}
+                    {/* Bottom-left: Shot Context + Editable Prompts */}
                     <div className={cn(
-                      'p-4 rounded-lg bg-muted/30 border border-border/30',
+                      'p-4 rounded-lg bg-muted/30 border border-border/30 space-y-3',
                       !selectedShot.requiresEndFrame && 'col-span-2'
                     )}>
                       <h4 className="text-sm font-medium text-foreground mb-2">
                         Shot Context
                       </h4>
-                      <div className="space-y-2 text-sm">
+                      <div className="space-y-1 text-sm">
                         <div>
                           <span className="text-muted-foreground">Setting: </span>
                           <span className="text-foreground">{selectedShot.setting}</span>
@@ -1154,137 +1148,184 @@ export function Stage10FrameGeneration({
                           <span className="text-muted-foreground">Action: </span>
                           <span className="text-foreground">{selectedShot.action}</span>
                         </div>
-                        {/* Frame Prompt — tabbed view when camera_change continuity is active */}
-                        {selectedShot.startContinuity === 'camera_change' && selectedShot.framePrompt ? (
-                          <div>
-                            <Tabs defaultValue="continuity" className="w-full">
-                              <TabsList className="h-8 w-full">
-                                <TabsTrigger value="continuity" className="text-xs flex-1 gap-1">
-                                  <Camera className="w-3 h-3 text-purple-400" />
-                                  Continuity Prompt
-                                  <Check className="w-3 h-3 text-emerald-400 ml-0.5" />
-                                </TabsTrigger>
-                                <TabsTrigger value="original" className="text-xs flex-1">
-                                  Original Prompt
-                                </TabsTrigger>
-                              </TabsList>
-                              <TabsContent value="continuity">
-                                {selectedShot.continuityFramePrompt ? (
-                                  <div className="space-y-2">
-                                    <p className="text-foreground text-xs leading-relaxed rounded-md bg-purple-500/5 border border-purple-500/20 p-2">
-                                      {selectedShot.continuityFramePrompt}
-                                    </p>
-                                    <div className="flex gap-2">
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="text-xs h-7"
-                                        onClick={() => regenerateContinuityPromptMutation.mutate(selectedShot.id)}
-                                        disabled={regenerateContinuityPromptMutation.isPending}
-                                      >
-                                        {regenerateContinuityPromptMutation.isPending ? (
-                                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                                        ) : (
-                                          <RefreshCw className="w-3 h-3 mr-1" />
-                                        )}
-                                        Regenerate
-                                      </Button>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="text-xs text-muted-foreground p-2 rounded-md border border-dashed border-border/50">
-                                    No continuity prompt generated yet.
+                      </div>
+
+                      {/* Frame Prompt — editable with version carousel */}
+                      {selectedShot.startContinuity === 'camera_change' && selectedShot.framePrompt ? (
+                        <div>
+                          <Tabs defaultValue="continuity" className="w-full">
+                            <TabsList className="h-8 w-full">
+                              <TabsTrigger value="continuity" className="text-xs flex-1 gap-1">
+                                <Camera className="w-3 h-3 text-purple-400" />
+                                Continuity Prompt
+                                <Check className="w-3 h-3 text-emerald-400 ml-0.5" />
+                              </TabsTrigger>
+                              <TabsTrigger value="original" className="text-xs flex-1">
+                                Original Prompt
+                              </TabsTrigger>
+                            </TabsList>
+                            <TabsContent value="continuity">
+                              {selectedShot.continuityFramePrompt ? (
+                                <div className="space-y-2">
+                                  <p className="text-foreground text-xs leading-relaxed rounded-md bg-purple-500/5 border border-purple-500/20 p-2">
+                                    {selectedShot.continuityFramePrompt}
+                                  </p>
+                                  <div className="flex gap-2">
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      className="text-xs h-7 ml-2"
+                                      className="text-xs h-7"
                                       onClick={() => regenerateContinuityPromptMutation.mutate(selectedShot.id)}
                                       disabled={regenerateContinuityPromptMutation.isPending}
                                     >
                                       {regenerateContinuityPromptMutation.isPending ? (
                                         <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                                       ) : (
-                                        <Sparkles className="w-3 h-3 mr-1" />
+                                        <RefreshCw className="w-3 h-3 mr-1" />
                                       )}
-                                      Generate
+                                      Regenerate
                                     </Button>
                                   </div>
-                                )}
-                              </TabsContent>
-                              <TabsContent value="original">
-                                <p className="text-foreground text-xs leading-relaxed rounded-md bg-muted/20 border border-border/30 p-2">
-                                  {selectedShot.framePrompt}
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  This prompt is used as fallback if continuity is removed.
-                                </p>
-                              </TabsContent>
-                            </Tabs>
-                          </div>
-                        ) : selectedShot.startContinuity === 'match' ? (
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-blue-300 flex items-center gap-1">
-                                <Link2 className="w-3 h-3" />
-                                Match mode
-                              </span>
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <button className="text-muted-foreground hover:text-foreground transition-colors">
-                                    <Info className="w-3.5 h-3.5" />
-                                  </button>
-                                </PopoverTrigger>
-                                <PopoverContent side="top" className="w-64 p-3 text-xs space-y-1.5">
-                                  <p className="font-medium">Match Continuity</p>
-                                  <p className="text-muted-foreground">
-                                    Use the "Match" buttons on the start frame to pixel-copy an adjacent frame into the carousel.
-                                    Regenerating will re-copy from the previous shot's end frame.
-                                  </p>
-                                </PopoverContent>
-                              </Popover>
-                            </div>
-                            {selectedShot.framePrompt && (
-                              <div>
-                                <span className="text-muted-foreground text-xs">Original Prompt (fallback): </span>
-                                <span className="text-foreground text-xs opacity-60">
-                                  {selectedShot.framePrompt}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        ) : selectedShot.framePrompt ? (
-                          <div>
-                            <span className="text-muted-foreground">Frame Prompt: </span>
-                            <span className="text-foreground text-xs">
-                              {selectedShot.framePrompt}
+                                </div>
+                              ) : (
+                                <div className="text-xs text-muted-foreground p-2 rounded-md border border-dashed border-border/50">
+                                  No continuity prompt generated yet.
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-xs h-7 ml-2"
+                                    onClick={() => regenerateContinuityPromptMutation.mutate(selectedShot.id)}
+                                    disabled={regenerateContinuityPromptMutation.isPending}
+                                  >
+                                    {regenerateContinuityPromptMutation.isPending ? (
+                                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                    ) : (
+                                      <Sparkles className="w-3 h-3 mr-1" />
+                                    )}
+                                    Generate
+                                  </Button>
+                                </div>
+                              )}
+                            </TabsContent>
+                            <TabsContent value="original">
+                              <VersionedTextarea
+                                fetchVersions={() => textFieldVersionService.listShotFieldVersions(projectId, sceneId, selectedShot.id, 'frame_prompt')}
+                                createVersion={(content, source) => textFieldVersionService.createShotFieldVersion(projectId, sceneId, selectedShot.id, 'frame_prompt', content, source)}
+                                selectVersion={(versionId) => textFieldVersionService.selectShotFieldVersion(projectId, sceneId, selectedShot.id, 'frame_prompt', versionId)}
+                                queryKey={['field-versions', selectedShot.id, 'frame_prompt']}
+                                value={editedFramePrompt}
+                                onChange={setEditedFramePrompt}
+                                onVersionChange={(content) => {
+                                  setEditedFramePrompt(content);
+                                  queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+                                }}
+                                label={<><ImageIcon className="w-4 h-4 text-blue-400" /> Frame Prompt</>}
+                                showLockToggle
+                                locked={framePromptLocked}
+                                onLockChange={setFramePromptLocked}
+                                maxLength={1000}
+                                warnLength={500}
+                                rows={3}
+                                placeholder="No frame prompt generated yet..."
+                              />
+                            </TabsContent>
+                          </Tabs>
+                        </div>
+                      ) : selectedShot.startContinuity === 'match' ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-blue-300 flex items-center gap-1">
+                              <Link2 className="w-3 h-3" />
+                              Match mode
                             </span>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <button className="text-muted-foreground hover:text-foreground transition-colors">
+                                  <Info className="w-3.5 h-3.5" />
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent side="top" className="w-64 p-3 text-xs space-y-1.5">
+                                <p className="font-medium">Match Continuity</p>
+                                <p className="text-muted-foreground">
+                                  Use the "Match" buttons on the start frame to pixel-copy an adjacent frame into the carousel.
+                                  Regenerating will re-copy from the previous shot's end frame.
+                                </p>
+                              </PopoverContent>
+                            </Popover>
                           </div>
-                        ) : null}
-                      </div>
+                          <VersionedTextarea
+                            fetchVersions={() => textFieldVersionService.listShotFieldVersions(projectId, sceneId, selectedShot.id, 'frame_prompt')}
+                            createVersion={(content, source) => textFieldVersionService.createShotFieldVersion(projectId, sceneId, selectedShot.id, 'frame_prompt', content, source)}
+                            selectVersion={(versionId) => textFieldVersionService.selectShotFieldVersion(projectId, sceneId, selectedShot.id, 'frame_prompt', versionId)}
+                            queryKey={['field-versions', selectedShot.id, 'frame_prompt']}
+                            value={editedFramePrompt}
+                            onChange={setEditedFramePrompt}
+                            onVersionChange={(content) => {
+                              setEditedFramePrompt(content);
+                              queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+                            }}
+                            label={<><ImageIcon className="w-4 h-4 text-blue-400" /> Frame Prompt (fallback)</>}
+                            showLockToggle
+                            locked={framePromptLocked}
+                            onLockChange={setFramePromptLocked}
+                            maxLength={1000}
+                            warnLength={500}
+                            rows={3}
+                            placeholder="No frame prompt generated yet..."
+                          />
+                        </div>
+                      ) : (
+                        <VersionedTextarea
+                          fetchVersions={() => textFieldVersionService.listShotFieldVersions(projectId, sceneId, selectedShot.id, 'frame_prompt')}
+                          createVersion={(content, source) => textFieldVersionService.createShotFieldVersion(projectId, sceneId, selectedShot.id, 'frame_prompt', content, source)}
+                          selectVersion={(versionId) => textFieldVersionService.selectShotFieldVersion(projectId, sceneId, selectedShot.id, 'frame_prompt', versionId)}
+                          queryKey={['field-versions', selectedShot.id, 'frame_prompt']}
+                          value={editedFramePrompt}
+                          onChange={setEditedFramePrompt}
+                          onVersionChange={(content) => {
+                            setEditedFramePrompt(content);
+                            queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+                          }}
+                          label={<><ImageIcon className="w-4 h-4 text-blue-400" /> Frame Prompt</>}
+                          showLockToggle
+                          locked={framePromptLocked}
+                          onLockChange={setFramePromptLocked}
+                          maxLength={1000}
+                          warnLength={500}
+                          rows={3}
+                          placeholder="No frame prompt generated yet..."
+                        />
+                      )}
+
+                      {/* Video Prompt — editable with version carousel */}
+                      <VersionedTextarea
+                        fetchVersions={() => textFieldVersionService.listShotFieldVersions(projectId, sceneId, selectedShot.id, 'video_prompt')}
+                        createVersion={(content, source) => textFieldVersionService.createShotFieldVersion(projectId, sceneId, selectedShot.id, 'video_prompt', content, source)}
+                        selectVersion={(versionId) => textFieldVersionService.selectShotFieldVersion(projectId, sceneId, selectedShot.id, 'video_prompt', versionId)}
+                        queryKey={['field-versions', selectedShot.id, 'video_prompt']}
+                        value={editedVideoPrompt}
+                        onChange={setEditedVideoPrompt}
+                        onVersionChange={(content) => {
+                          setEditedVideoPrompt(content);
+                          queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+                        }}
+                        label={<><Video className="w-4 h-4 text-purple-400" /> Video Prompt</>}
+                        showLockToggle
+                        locked={videoPromptLocked}
+                        onLockChange={setVideoPromptLocked}
+                        maxLength={800}
+                        warnLength={400}
+                        rows={3}
+                        placeholder="No video prompt generated yet..."
+                      />
                     </div>
 
                     {/* Bottom-right: End Frame Prompt Editor (only when end frame is on) */}
                     {selectedShot.requiresEndFrame && (
                       <div className="p-4 rounded-lg bg-muted/30 border border-border/30 flex flex-col h-full gap-3">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-sm font-medium text-foreground">
-                            End Frame Prompt
-                          </h4>
-                          <Badge
-                            variant="secondary"
-                            className={cn(
-                              'text-xs',
-                              selectedShot.endFramePrompt
-                                ? 'bg-emerald-500/20 text-emerald-400'
-                                : 'bg-muted text-muted-foreground'
-                            )}
-                          >
-                            {selectedShot.endFramePrompt ? 'Set' : 'Empty'}
-                          </Badge>
-                        </div>
-
                         {!selectedShot.endFramePrompt && !editedEndPrompt ? (
                           <div className="flex flex-col flex-1 items-center justify-center gap-3">
+                            <h4 className="text-sm font-medium text-foreground">End Frame Prompt</h4>
                             <p className="text-xs text-muted-foreground">
                               Generate a dedicated end frame prompt using LLM.
                             </p>
@@ -1305,47 +1346,34 @@ export function Stage10FrameGeneration({
                           </div>
                         ) : (
                           <div className="flex flex-col flex-1 min-h-0 gap-3">
-                            <Textarea
+                            <VersionedTextarea
+                              fetchVersions={() => textFieldVersionService.listShotFieldVersions(projectId, sceneId, selectedShot.id, 'end_frame_prompt')}
+                              createVersion={(content, source) => textFieldVersionService.createShotFieldVersion(projectId, sceneId, selectedShot.id, 'end_frame_prompt', content, source)}
+                              selectVersion={(versionId) => textFieldVersionService.selectShotFieldVersion(projectId, sceneId, selectedShot.id, 'end_frame_prompt', versionId)}
+                              queryKey={['field-versions', selectedShot.id, 'end_frame_prompt']}
                               value={editedEndPrompt}
-                              onChange={(e) => setEditedEndPrompt(e.target.value)}
+                              onChange={setEditedEndPrompt}
+                              onVersionChange={(content) => {
+                                setEditedEndPrompt(content);
+                                queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+                              }}
+                              label="End Frame Prompt"
+                              rows={4}
                               placeholder="End frame prompt..."
-                              className="resize-none text-xs flex-1 min-h-[100px]"
                             />
-                            <div className="flex gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="flex-1"
-                                onClick={() => generateEndFramePromptMutation.mutate(selectedShot.id)}
-                                disabled={generateEndFramePromptMutation.isPending}
-                              >
-                                {generateEndFramePromptMutation.isPending ? (
-                                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                                ) : (
-                                  <Sparkles className="w-3 h-3 mr-1" />
-                                )}
-                                Regenerate Prompt
-                              </Button>
-                              {endPromptHasChanges && (
-                                <Button
-                                  variant="gold"
-                                  size="sm"
-                                  className="flex-1"
-                                  onClick={() => saveEndFramePromptMutation.mutate({
-                                    shotId: selectedShot.id,
-                                    prompt: editedEndPrompt,
-                                  })}
-                                  disabled={saveEndFramePromptMutation.isPending}
-                                >
-                                  {saveEndFramePromptMutation.isPending ? (
-                                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                                  ) : (
-                                    <Save className="w-3 h-3 mr-1" />
-                                  )}
-                                  Save
-                                </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => generateEndFramePromptMutation.mutate(selectedShot.id)}
+                              disabled={generateEndFramePromptMutation.isPending}
+                            >
+                              {generateEndFramePromptMutation.isPending ? (
+                                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                              ) : (
+                                <Sparkles className="w-3 h-3 mr-1" />
                               )}
-                            </div>
+                              {selectedShot.endFramePrompt ? 'Regenerate Prompt' : 'Generate Prompt'}
+                            </Button>
                           </div>
                         )}
                       </div>

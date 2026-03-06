@@ -7,6 +7,8 @@ import { promptGenerationService, enrichAssetsWithAngleMatch } from '../services
 import type { ShotData, SceneAssetInstanceData } from '../services/promptGenerationService.js';
 import { StyleCapsuleService } from '../services/styleCapsuleService.js';
 import { transformationEventService } from '../services/transformationEventService.js';
+import { textFieldVersionService } from '../services/textFieldVersionService.js';
+import type { FieldName } from '../services/textFieldVersionService.js';
 
 // Configure multer for frame image uploads
 const frameStorage = multer.memoryStorage();
@@ -601,6 +603,14 @@ router.post('/:projectId/scenes/:sceneId/shots/:shotId/generate-end-frame-prompt
             .from('shots')
             .update({ end_frame_prompt: endFramePrompt, updated_at: new Date().toISOString() })
             .eq('id', shotId);
+
+        // Create text field version for AI-generated end frame prompt
+        await textFieldVersionService.createVersion('shot', shotId, 'end_frame_prompt', {
+            content: endFramePrompt,
+            source: 'ai_generation',
+        }).catch(err => {
+            console.warn('[Frames] Failed to create end_frame_prompt version:', err.message);
+        });
 
         res.json({ endFramePrompt });
     } catch (error: any) {
@@ -2100,6 +2110,130 @@ router.delete('/:projectId/scenes/:sceneId/frame-links/:linkId', async (req, res
         res.json({ success: true });
     } catch (error: any) {
         console.error('Error in DELETE frame-links:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
+// ============================================================================
+// TEXT FIELD VERSION ROUTES (shot-based fields: frame_prompt, video_prompt, end_frame_prompt)
+// ============================================================================
+
+const SHOT_FIELD_NAMES = ['frame_prompt', 'video_prompt', 'end_frame_prompt'];
+
+/**
+ * GET /:projectId/scenes/:sceneId/shots/:shotId/field-versions/:fieldName
+ * List all versions for a shot field
+ */
+router.get('/:projectId/scenes/:sceneId/shots/:shotId/field-versions/:fieldName', async (req, res) => {
+    try {
+        const { projectId, shotId, fieldName } = req.params;
+        const userId = req.user!.id;
+
+        if (!SHOT_FIELD_NAMES.includes(fieldName)) {
+            return res.status(400).json({ error: `Invalid field name: ${fieldName}` });
+        }
+
+        const { data: project } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (!project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Lazy backfill: get current field value from shot
+        const { data: shot } = await supabase
+            .from('shots')
+            .select(fieldName)
+            .eq('id', shotId)
+            .single();
+
+        if (shot) {
+            await textFieldVersionService.backfillIfNeeded('shot', shotId, fieldName as FieldName, (shot as Record<string, any>)[fieldName]);
+        }
+
+        const versions = await textFieldVersionService.listVersions(shotId, fieldName as FieldName);
+        res.json({ versions });
+    } catch (error: any) {
+        console.error('Error listing shot field versions:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
+/**
+ * POST /:projectId/scenes/:sceneId/shots/:shotId/field-versions/:fieldName
+ * Create a new version for a shot field
+ */
+router.post('/:projectId/scenes/:sceneId/shots/:shotId/field-versions/:fieldName', async (req, res) => {
+    try {
+        const { projectId, shotId, fieldName } = req.params;
+        const { content, source } = req.body;
+        const userId = req.user!.id;
+
+        if (!SHOT_FIELD_NAMES.includes(fieldName)) {
+            return res.status(400).json({ error: `Invalid field name: ${fieldName}` });
+        }
+
+        if (typeof content !== 'string') {
+            return res.status(400).json({ error: 'content is required and must be a string' });
+        }
+
+        const { data: project } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (!project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const version = await textFieldVersionService.createVersion(
+            'shot',
+            shotId,
+            fieldName as FieldName,
+            { content, source: source || 'user_save' }
+        );
+
+        res.json({ version });
+    } catch (error: any) {
+        console.error('Error creating shot field version:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+
+/**
+ * POST /:projectId/scenes/:sceneId/shots/:shotId/field-versions/:fieldName/:versionId/select
+ * Select a specific version for a shot field
+ */
+router.post('/:projectId/scenes/:sceneId/shots/:shotId/field-versions/:fieldName/:versionId/select', async (req, res) => {
+    try {
+        const { projectId, shotId, fieldName, versionId } = req.params;
+        const userId = req.user!.id;
+
+        if (!SHOT_FIELD_NAMES.includes(fieldName)) {
+            return res.status(400).json({ error: `Invalid field name: ${fieldName}` });
+        }
+
+        const { data: project } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (!project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const version = await textFieldVersionService.selectVersion(shotId, fieldName as FieldName, versionId);
+        res.json({ version });
+    } catch (error: any) {
+        console.error('Error selecting shot field version:', error);
         res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });

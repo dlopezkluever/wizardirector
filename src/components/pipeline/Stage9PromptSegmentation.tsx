@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MessageSquare,
@@ -47,6 +48,8 @@ import { useSceneInfo } from '@/hooks/useSceneInfo';
 import { ShotAssetPanel } from './Stage9/ShotAssetPanel';
 import { BulkPresenceTemplates } from './Stage9/BulkPresenceTemplates';
 import { ShotAssetTimeline } from './Stage9/ShotAssetTimeline';
+import { VersionedTextarea } from './VersionedTextarea';
+import { textFieldVersionService } from '@/lib/services/textFieldVersionService';
 import { shotService } from '@/lib/services/shotService';
 import type { Shot } from '@/types/scene';
 
@@ -80,6 +83,7 @@ const VIDEO_PROMPT_MAX = 800;
 const VIDEO_PROMPT_WARN = 400;
 
 export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBack, onNext }: Stage9PromptSegmentationProps) {
+  const queryClient = useQueryClient();
   const { slug: sceneSlug } = useSceneInfo(sceneId);
   const { isLocked: isStageLocked, isOutdated: isStageOutdated, lockStage, unlockStage, confirmUnlock, relockStage } = useSceneStageLock({ projectId, sceneId });
   const [showUnlockWarning, setShowUnlockWarning] = useState(false);
@@ -114,8 +118,7 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
   // View mode: card (default) or timeline matrix
   const [viewMode, setViewMode] = useState<'cards' | 'timeline'>('cards');
 
-  // Track initial load
-  const hasLoadedRef = useRef(false);
+  // Track initial load (removed hasLoadedRef to allow re-fetching on navigation back)
 
   // Load assignments + scene assets + shots
   useEffect(() => {
@@ -156,10 +159,8 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
     return acc;
   }, {});
 
-  // Load prompts on mount
+  // Load prompts on mount (runs every mount — component unmounts on navigation away)
   useEffect(() => {
-    if (hasLoadedRef.current) return;
-    hasLoadedRef.current = true;
     loadPrompts();
   }, [projectId, sceneId]);
 
@@ -208,6 +209,8 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
       });
 
       await Promise.all(promises);
+      // Invalidate frames query so Stage 10 sees updated prompts
+      queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
     } catch (err) {
       console.error('Error saving updates:', err);
       toast({
@@ -754,81 +757,53 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
 
                         {/* Frame Prompt */}
                         <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <label className="text-sm font-medium text-foreground flex items-center gap-2">
-                              <ImageIcon className="w-4 h-4 text-blue-400" />
-                              Frame Prompt
-                              <span className="text-xs text-muted-foreground">(Image Generation)</span>
-                            </label>
-                            <div className="flex items-center gap-3">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => promptSet.shotUuid && handleRegenerateShotPrompt(promptSet.shotUuid, promptSet.shotId)}
-                                disabled={isRegenerating || !promptSet.shotUuid}
-                                className="h-7 px-2"
-                              >
-                                {isRegenerating ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                ) : (
-                                  <RefreshCw className="w-3 h-3" />
-                                )}
-                              </Button>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-muted-foreground">
-                                  {isEditingFrame ? 'Editing' : 'Locked'}
-                                </span>
-                                <Switch
-                                  checked={isEditingFrame}
-                                  onCheckedChange={() => toggleFrameEditing(promptSet.shotId)}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                          <div className={cn(
-                            'relative rounded-lg border transition-colors',
-                            isEditingFrame ? 'border-blue-500/50' : 'border-border/30 bg-muted/20',
-                            frameStatus === 'error' && 'border-destructive/50',
-                            frameStatus === 'warning' && 'border-amber-500/50'
-                          )}>
-                            <Textarea
-                              value={promptSet.framePrompt}
-                              onChange={(e) => promptSet.shotUuid && handlePromptUpdate(
-                                promptSet.shotUuid,
-                                promptSet.shotId,
-                                'framePrompt',
-                                e.target.value
+                          <div className="flex items-center justify-end mb-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => promptSet.shotUuid && handleRegenerateShotPrompt(promptSet.shotUuid, promptSet.shotId)}
+                              disabled={isRegenerating || !promptSet.shotUuid}
+                              className="h-7 px-2"
+                              title="Regenerate prompt"
+                            >
+                              {isRegenerating ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <RefreshCw className="w-3 h-3" />
                               )}
-                              disabled={!isEditingFrame}
-                              rows={4}
-                              placeholder="No frame prompt generated yet..."
-                              className={cn(
-                                'resize-none border-0',
-                                !isEditingFrame && 'cursor-not-allowed opacity-80'
-                              )}
-                            />
-                            {!isEditingFrame && (
-                              <div className="absolute top-2 right-2">
-                                <Lock className="w-4 h-4 text-muted-foreground" />
-                              </div>
-                            )}
+                            </Button>
                           </div>
-                          <div className="flex items-center justify-between mt-1">
-                            <span className={cn(
-                              'text-xs',
-                              frameStatus === 'error' ? 'text-destructive' :
-                              frameStatus === 'warning' ? 'text-amber-400' :
-                              'text-muted-foreground'
-                            )}>
-                              {promptSet.framePrompt.length}/{FRAME_PROMPT_MAX} characters
-                            </span>
-                            {frameStatus !== 'ok' && (
-                              <span className="text-xs text-amber-400 flex items-center gap-1">
-                                <AlertTriangle className="w-3 h-3" />
-                                {frameStatus === 'error' ? 'Prompt too long' : 'Consider shortening'}
-                              </span>
+                          <VersionedTextarea
+                            fetchVersions={() => promptSet.shotUuid
+                              ? textFieldVersionService.listShotFieldVersions(projectId, sceneId, promptSet.shotUuid, 'frame_prompt')
+                              : Promise.resolve([])}
+                            createVersion={(content, source) =>
+                              textFieldVersionService.createShotFieldVersion(projectId, sceneId, promptSet.shotUuid!, 'frame_prompt', content, source)}
+                            selectVersion={(versionId) =>
+                              textFieldVersionService.selectShotFieldVersion(projectId, sceneId, promptSet.shotUuid!, 'frame_prompt', versionId)}
+                            queryKey={['field-versions', promptSet.shotUuid || '', 'frame_prompt']}
+                            value={promptSet.framePrompt}
+                            onChange={(val) => promptSet.shotUuid && handlePromptUpdate(
+                              promptSet.shotUuid,
+                              promptSet.shotId,
+                              'framePrompt',
+                              val
                             )}
-                          </div>
+                            onVersionChange={(content) => {
+                              const updated = [...promptSets];
+                              updated[index] = { ...updated[index], framePrompt: content };
+                              setPromptSets(updated);
+                            }}
+                            label={<><ImageIcon className="w-4 h-4 text-blue-400" /> Frame Prompt <span className="text-xs text-muted-foreground font-normal">(Image Generation)</span></>}
+                            showLockToggle
+                            locked={!isEditingFrame}
+                            onLockChange={() => toggleFrameEditing(promptSet.shotId)}
+                            maxLength={FRAME_PROMPT_MAX}
+                            warnLength={FRAME_PROMPT_WARN}
+                            rows={4}
+                            placeholder="No frame prompt generated yet..."
+                            disabled={!promptSet.shotUuid}
+                          />
                         </div>
 
                         {/* Continuity Prompt (camera_change only) */}
@@ -879,54 +854,34 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                         )}
 
                         {/* Video Prompt */}
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <label className="text-sm font-medium text-foreground flex items-center gap-2">
-                              <Video className="w-4 h-4 text-purple-400" />
-                              Video Prompt
-                              <span className="text-xs text-muted-foreground">(Video Generation)</span>
-                            </label>
-                            <Badge variant="outline" className="text-xs">
-                              <Unlock className="w-3 h-3 mr-1" />
-                              Always Editable
-                            </Badge>
-                          </div>
-                          <div className={cn(
-                            'rounded-lg border transition-colors',
-                            'border-purple-500/30',
-                            videoStatus === 'error' && 'border-destructive/50',
-                            videoStatus === 'warning' && 'border-amber-500/50'
-                          )}>
-                            <Textarea
-                              value={promptSet.videoPrompt}
-                              onChange={(e) => promptSet.shotUuid && handlePromptUpdate(
-                                promptSet.shotUuid,
-                                promptSet.shotId,
-                                'videoPrompt',
-                                e.target.value
-                              )}
-                              rows={4}
-                              placeholder="No video prompt generated yet..."
-                              className="resize-none border-0"
-                            />
-                          </div>
-                          <div className="flex items-center justify-between mt-1">
-                            <span className={cn(
-                              'text-xs',
-                              videoStatus === 'error' ? 'text-destructive' :
-                              videoStatus === 'warning' ? 'text-amber-400' :
-                              'text-muted-foreground'
-                            )}>
-                              {promptSet.videoPrompt.length}/{VIDEO_PROMPT_MAX} characters
-                            </span>
-                            {videoStatus !== 'ok' && (
-                              <span className="text-xs text-amber-400 flex items-center gap-1">
-                                <AlertTriangle className="w-3 h-3" />
-                                {videoStatus === 'error' ? 'Prompt too long' : 'Consider shortening'}
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                        <VersionedTextarea
+                          fetchVersions={() => promptSet.shotUuid
+                            ? textFieldVersionService.listShotFieldVersions(projectId, sceneId, promptSet.shotUuid, 'video_prompt')
+                            : Promise.resolve([])}
+                          createVersion={(content, source) =>
+                            textFieldVersionService.createShotFieldVersion(projectId, sceneId, promptSet.shotUuid!, 'video_prompt', content, source)}
+                          selectVersion={(versionId) =>
+                            textFieldVersionService.selectShotFieldVersion(projectId, sceneId, promptSet.shotUuid!, 'video_prompt', versionId)}
+                          queryKey={['field-versions', promptSet.shotUuid || '', 'video_prompt']}
+                          value={promptSet.videoPrompt}
+                          onChange={(val) => promptSet.shotUuid && handlePromptUpdate(
+                            promptSet.shotUuid,
+                            promptSet.shotId,
+                            'videoPrompt',
+                            val
+                          )}
+                          onVersionChange={(content) => {
+                            const updated = [...promptSets];
+                            updated[index] = { ...updated[index], videoPrompt: content };
+                            setPromptSets(updated);
+                          }}
+                          label={<><Video className="w-4 h-4 text-purple-400" /> Video Prompt <span className="text-xs text-muted-foreground font-normal">(Video Generation)</span></>}
+                          maxLength={VIDEO_PROMPT_MAX}
+                          warnLength={VIDEO_PROMPT_WARN}
+                          rows={4}
+                          placeholder="No video prompt generated yet..."
+                          disabled={!promptSet.shotUuid}
+                        />
 
                         {promptSet.promptsGeneratedAt && (
                           <div className="pt-2 border-t border-border/30">

@@ -26,6 +26,8 @@ import { AddTransformationDialog } from '@/components/pipeline/Stage8/AddTransfo
 import { TransformationImagePicker } from '@/components/pipeline/Stage8/TransformationImagePicker';
 import { transformationEventService } from '@/lib/services/transformationEventService';
 import { sceneAssetService } from '@/lib/services/sceneAssetService';
+import { VersionedTextarea } from '@/components/pipeline/VersionedTextarea';
+import { textFieldVersionService } from '@/lib/services/textFieldVersionService';
 import type { SceneAssetInstance, TransformationEvent, Shot } from '@/types/scene';
 
 type AssetTypeKey = 'character' | 'location' | 'prop';
@@ -402,18 +404,27 @@ export function VisualStateEditorPanel({
           )}
 
           <div className="space-y-2">
-            <Label className="text-sm font-medium flex items-center gap-2">
-              <Edit3 className="w-4 h-4 text-primary" />
-              Visual state description
-            </Label>
-            <Textarea
+            <VersionedTextarea
+              fetchVersions={() => textFieldVersionService.listAssetFieldVersions(projectId, sceneId, selectedAsset.id)}
+              createVersion={(content, source) => textFieldVersionService.createAssetFieldVersion(projectId, sceneId, selectedAsset.id, content, source)}
+              selectVersion={(versionId) => textFieldVersionService.selectAssetFieldVersion(projectId, sceneId, selectedAsset.id, versionId)}
+              queryKey={['field-versions', selectedAsset.id, 'description_override']}
               value={editedDescription}
-              onChange={e => setEditedDescription(e.target.value)}
-              onBlur={handleSaveDescription}
-              placeholder="Starting look for this asset in this scene…"
+              onChange={(val) => {
+                setEditedDescription(val);
+              }}
+              onVersionChange={(content) => {
+                setEditedDescription(content);
+                // Also push to parent so it reflects in the UI
+                onUpdateAsset(selectedAsset.id, {
+                  descriptionOverride: content,
+                  modificationReason: 'Selected version from history',
+                });
+              }}
+              label={<><Edit3 className="w-4 h-4 text-primary" /> Visual state description</>}
               rows={6}
+              placeholder="Starting look for this asset in this scene…"
               disabled={isLocked || useMasterAsIs}
-              className="resize-y"
             />
             {/* Transformation Events Section */}
             <div className="mt-2 space-y-2">

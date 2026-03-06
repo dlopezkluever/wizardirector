@@ -10,6 +10,7 @@ import { promptGenerationService, type ShotData, type SceneAssetInstanceData, ty
 import { shotAssetAssignmentService } from '../services/shotAssetAssignmentService.js';
 import { StyleCapsuleService } from '../services/styleCapsuleService.js';
 import { ContextManager } from '../services/contextManager.js';
+import { textFieldVersionService } from '../services/textFieldVersionService.js';
 
 const router = Router();
 
@@ -2400,6 +2401,34 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
       );
 
     await Promise.all(updatePromises);
+
+    // Create text field versions for AI-generated prompts
+    const versionPromises = results
+      .filter(r => r.success)
+      .flatMap(r => {
+        const versions = [];
+        if (r.framePrompt) {
+          versions.push(
+            textFieldVersionService.createVersion('shot', r.shotId, 'frame_prompt', {
+              content: r.framePrompt,
+              source: 'ai_generation',
+            })
+          );
+        }
+        if (r.videoPrompt) {
+          versions.push(
+            textFieldVersionService.createVersion('shot', r.shotId, 'video_prompt', {
+              content: r.videoPrompt,
+              source: 'ai_generation',
+            })
+          );
+        }
+        return versions;
+      });
+
+    await Promise.all(versionPromises).catch(err => {
+      console.warn('[Stage9] Failed to create some text field versions:', err.message);
+    });
 
     // Fetch updated shots
     const { data: updatedShots } = await supabase
