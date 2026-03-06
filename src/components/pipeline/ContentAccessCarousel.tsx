@@ -100,7 +100,7 @@ let sessionActiveTabId: TabId | null = null;
 // Data aggregation functions
 // ---------------------------------------------------------------------------
 
-async function fetchAllStartFrames(
+async function fetchAllStills(
   projectId: string,
   excludeSceneId: string,
   scenes: { id: string; sceneNumber: number }[]
@@ -111,17 +111,35 @@ async function fetchAllStartFrames(
     otherScenes.map(async (scene) => {
       try {
         const framesData = await frameService.fetchFrames(projectId, scene.id);
-        return {
-          sceneId: scene.id,
-          sceneNumber: scene.sceneNumber,
-          stills: framesData.shots
-            .filter(shot => shot.startFrame?.imageUrl)
-            .map(shot => ({
+        const stills: SceneStillsData['stills'] = [];
+        const shots = framesData.shots;
+        for (let i = 0; i < shots.length; i++) {
+          const shot = shots[i];
+          const nextShot = shots[i + 1];
+
+          // Skip start frame if it's a match-duplicate of the previous shot's end frame
+          const isMatchedToPrevious = shot.startContinuity === 'match';
+          if (!isMatchedToPrevious && shot.startFrame?.imageUrl) {
+            stills.push({
               shotId: shot.shotId,
-              imageUrl: shot.startFrame!.imageUrl!,
-              frameStatus: shot.startFrame!.status,
-            })),
-        };
+              imageUrl: shot.startFrame.imageUrl,
+              frameStatus: shot.startFrame.status,
+            });
+          }
+
+          if (shot.endFrame?.imageUrl) {
+            // If next shot is matched to this end frame, use arrow label
+            const nextIsMatched = nextShot?.startContinuity === 'match';
+            stills.push({
+              shotId: nextIsMatched
+                ? `${shot.shotId}-e→${nextShot.shotId}`
+                : `${shot.shotId}-e`,
+              imageUrl: shot.endFrame.imageUrl,
+              frameStatus: shot.endFrame.status,
+            });
+          }
+        }
+        return { sceneId: scene.id, sceneNumber: scene.sceneNumber, stills };
       } catch {
         return { sceneId: scene.id, sceneNumber: scene.sceneNumber, stills: [] };
       }
@@ -526,7 +544,7 @@ function StillCard({
         ) : (
           <img
             src={imageUrl}
-            alt={`Shot ${shotId} start frame`}
+            alt={`Shot ${shotId}`}
             className="w-32 h-20 object-cover"
             loading="lazy"
             onError={() => setLoadError(true)}
@@ -684,7 +702,7 @@ function StillsContent({
   if (allStills.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-sm text-muted-foreground px-4 text-center">
-        No stills available yet. Start frames are generated in Stage 10.
+        No stills available yet. Frames are generated in Stage 10.
       </div>
     );
   }
@@ -1081,8 +1099,8 @@ export function ContentAccessCarousel({
   );
 
   const { data: allStills = [], isLoading: stillsLoading } = useQuery({
-    queryKey: ['all-start-frames', projectId, sceneId],
-    queryFn: () => fetchAllStartFrames(projectId, sceneId, scenesForFetch),
+    queryKey: ['all-stills', projectId, sceneId],
+    queryFn: () => fetchAllStills(projectId, sceneId, scenesForFetch),
     enabled: !!projectId && !!sceneId && activeTabId === 'stills' && scenesForFetch.length > 0,
     staleTime: 120_000,
   });
