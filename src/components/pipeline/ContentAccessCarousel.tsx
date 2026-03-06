@@ -999,6 +999,7 @@ export function ContentAccessCarousel({
   const [isDragging, setIsDragging] = useState(false);
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
+  const effectiveHeightRef = useRef(panelHeight);
   const [scriptScrollTrigger, setScriptScrollTrigger] = useState(0);
   const [hasManualHeight, setHasManualHeight] = useState(false);
 
@@ -1103,6 +1104,14 @@ export function ContentAccessCarousel({
     }
   }, [availableTabs.length, activeTabIndex, carouselApi]);
 
+  // Fire initial script scroll on mount (trigger starts at 0, which the scroll effect skips)
+  useEffect(() => {
+    if (activeTabId === 'script') {
+      setScriptScrollTrigger(c => c + 1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ---------------------------------------------------------------------------
   // Lazy-loaded stills & clips data
   // ---------------------------------------------------------------------------
@@ -1157,12 +1166,15 @@ export function ContentAccessCarousel({
     (e: React.MouseEvent | React.TouchEvent) => {
       e.preventDefault();
       const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+      const currentHeight = effectiveHeightRef.current;
       dragStartY.current = clientY;
-      dragStartHeight.current = panelHeight;
+      dragStartHeight.current = currentHeight;
+      setPanelHeight(currentHeight);
+      sessionPanelHeight = currentHeight;
       setIsDragging(true);
       setHasManualHeight(true);
     },
-    [panelHeight]
+    []
   );
 
   useEffect(() => {
@@ -1224,6 +1236,7 @@ export function ContentAccessCarousel({
   const effectiveHeight = (!hasManualHeight && autoContentHeight !== null)
     ? Math.max(MIN_HEIGHT, Math.min(panelHeight, autoContentHeight + HANDLE_HEIGHT))
     : panelHeight;
+  effectiveHeightRef.current = effectiveHeight;
 
   // ---------------------------------------------------------------------------
   // Render
