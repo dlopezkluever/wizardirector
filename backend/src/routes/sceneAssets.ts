@@ -1443,40 +1443,18 @@ router.post('/:projectId/scenes/:sceneId/assets/:instanceId/select-master-refere
       selected_master_reference_url: imageUrl,
       selected_master_reference_source: source,
       selected_master_reference_instance_id: refInstanceId || null,
+      use_master_as_is: false,  // Reset — user must explicitly re-click "Use as Scene Instance Image"
     };
 
-    // If use_master_as_is is true, also update image_key_url + create master_copy attempt
-    const { data: instance } = await supabase
-      .from('scene_asset_instances')
-      .select('use_master_as_is')
-      .eq('id', instanceId)
-      .eq('scene_id', sceneId)
-      .single();
-
-    if (instance?.use_master_as_is) {
-      updatePayload.image_key_url = imageUrl;
-
-      const attemptsService = new SceneAssetAttemptsService();
-      await attemptsService.enforceAttemptCap(instanceId);
-
-      await supabase
-        .from('scene_asset_generation_attempts')
-        .update({ is_selected: false })
-        .eq('scene_asset_instance_id', instanceId)
-        .eq('is_selected', true);
-
-      await attemptsService.createAttempt(instanceId, {
-        image_url: imageUrl,
-        source: 'master_copy',
-        is_selected: true,
-        copied_from_url: imageUrl,
-      });
-    }
-
-    await supabase
+    const { error: updateError } = await supabase
       .from('scene_asset_instances')
       .update(updatePayload)
       .eq('id', instanceId);
+
+    if (updateError) {
+      console.error('[SceneAssets] Select master reference update error:', updateError);
+      return res.status(500).json({ error: updateError.message || 'Failed to update master reference' });
+    }
 
     const { data: updated } = await supabase
       .from('scene_asset_instances')
