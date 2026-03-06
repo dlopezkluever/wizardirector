@@ -6,29 +6,18 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import {
   Users,
   MapPin,
   Package,
-  Check,
-  ArrowLeft,
-  Plus,
-  RefreshCw,
   Loader2,
-  Brain,
 } from 'lucide-react';
 import { SceneAssetListPanel, type AssetFilters } from '@/components/pipeline/Stage8/SceneAssetListPanel';
 import { VisualStateEditorPanel } from '@/components/pipeline/Stage8/VisualStateEditorPanel';
 import { TagCarryForwardPrompt, type TagCarryForwardDecision } from '@/components/pipeline/Stage8/TagCarryForwardPrompt';
 import { ConvertToTransformationDialog } from '@/components/pipeline/Stage8/ConvertToTransformationDialog';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Dialog,
   DialogContent,
@@ -47,13 +36,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { ContentAccessCarousel } from '@/components/pipeline/ContentAccessCarousel';
 import { AssetDrawer } from '@/components/pipeline/AssetDrawer';
 import { sceneAssetService } from '@/lib/services/sceneAssetService';
@@ -61,8 +43,7 @@ import { sceneService } from '@/lib/services/sceneService';
 import { shotService } from '@/lib/services/shotService';
 import { transformationEventService } from '@/lib/services/transformationEventService';
 import { useShotAssetAutoPopulate } from '@/lib/hooks/useShotAssetAutoPopulate';
-import { cn, formatSceneHeader } from '@/lib/utils';
-import type { SceneAssetInstance, SceneAssetRelevanceResult, SceneAssetSuggestion, TransformationEvent } from '@/types/scene';
+import type { SceneAssetInstance, SceneAssetRelevanceResult, SceneAssetSuggestion } from '@/types/scene';
 import { LockedStageHeader } from './LockedStageHeader';
 import { StageInfoButton } from './StageInfoButton';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
@@ -95,171 +76,6 @@ const statusColors: Record<string, string> = {
   edited: 'bg-amber-500/20 text-amber-400',
   locked: 'bg-emerald-500/20 text-emerald-400',
 };
-
-// ---------------------------------------------------------------------------
-// Asset Drawer Trigger Panel (right): Add from library, Create new, Back, Proceed
-// 3B.6: Supports inline create form via mode toggle
-// ---------------------------------------------------------------------------
-type RightPanelMode = 'default' | 'creating';
-
-interface AssetDrawerTriggerPanelProps {
-  onOpenAssetDrawer: () => void;
-  onCreateNewAsset: () => void;
-  onBack: () => void;
-  onComplete: () => void;
-  mode: RightPanelMode;
-  onCancelCreate: () => void;
-  onSubmitCreate: (data: { name: string; assetType: 'character' | 'location' | 'prop'; description: string }) => void;
-  isCreating?: boolean;
-  onDetectAssets?: () => void;
-  isDetecting?: boolean;
-}
-
-function AssetDrawerTriggerPanel({
-  onOpenAssetDrawer,
-  onCreateNewAsset,
-  onBack,
-  onComplete,
-  mode,
-  onCancelCreate,
-  onSubmitCreate,
-  isCreating,
-  onDetectAssets,
-  isDetecting,
-}: AssetDrawerTriggerPanelProps) {
-  const [newName, setNewName] = useState('');
-  const [newType, setNewType] = useState<'character' | 'location' | 'prop'>('character');
-  const [newDescription, setNewDescription] = useState('');
-
-  const handleSubmit = () => {
-    if (!newName.trim()) {
-      toast.error('Name is required');
-      return;
-    }
-    onSubmitCreate({ name: newName.trim(), assetType: newType, description: newDescription.trim() });
-    setNewName('');
-    setNewType('character');
-    setNewDescription('');
-  };
-
-  const handleCancel = () => {
-    setNewName('');
-    setNewType('character');
-    setNewDescription('');
-    onCancelCreate();
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      className="w-64 border-l border-border/50 bg-card/30 backdrop-blur-sm flex flex-col shrink-0"
-    >
-      <div className="p-4 border-b border-border/50">
-        <h3 className="font-display text-sm font-semibold text-foreground">Add new assets</h3>
-        <p className="text-xs text-muted-foreground mt-1">
-          {mode === 'creating' ? 'Create a new asset from scratch' : 'Add from project or create new'}
-        </p>
-      </div>
-
-      <ScrollArea className="flex-1">
-        {mode === 'creating' ? (
-          <div className="p-3 space-y-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Name</Label>
-              <Input
-                placeholder="Asset name..."
-                value={newName}
-                onChange={e => setNewName(e.target.value)}
-                disabled={isCreating}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Type</Label>
-              <Select value={newType} onValueChange={v => setNewType(v as 'character' | 'location' | 'prop')} disabled={isCreating}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="character">Character</SelectItem>
-                  <SelectItem value="location">Location</SelectItem>
-                  <SelectItem value="prop">Prop</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Description</Label>
-              <Textarea
-                placeholder="Visual description..."
-                value={newDescription}
-                onChange={e => setNewDescription(e.target.value)}
-                rows={4}
-                disabled={isCreating}
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button variant="ghost" size="sm" className="flex-1" onClick={handleCancel} disabled={isCreating}>
-                Cancel
-              </Button>
-              <Button variant="gold" size="sm" className="flex-1" onClick={handleSubmit} disabled={isCreating}>
-                {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create'}
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="p-3 space-y-3">
-            <Button variant="outline" size="sm" className="w-full" onClick={onOpenAssetDrawer}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add from project assets
-            </Button>
-            <div
-              className="bg-card/50 rounded-lg p-3 border border-dashed border-border/50 text-center cursor-pointer hover:border-primary/30 transition-colors"
-              onClick={onCreateNewAsset}
-            >
-              <Plus className="w-6 h-6 text-muted-foreground mx-auto mb-1" />
-              <span className="text-xs text-muted-foreground">Create new asset</span>
-            </div>
-            {onDetectAssets && (
-              <>
-                <div className="border-t border-border/50" />
-                <Button
-                  variant="gold"
-                  size="sm"
-                  className="w-full"
-                  onClick={onDetectAssets}
-                  disabled={isDetecting}
-                >
-                  {isDetecting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Detecting…
-                    </>
-                  ) : (
-                    <>
-                      <Brain className="w-4 h-4 mr-2" />
-                      Detect with AI
-                    </>
-                  )}
-                </Button>
-              </>
-            )}
-          </div>
-        )}
-      </ScrollArea>
-
-      <div className="p-4 border-t border-border/50 space-y-2">
-        <Button variant="ghost" size="sm" className="w-full" onClick={onBack}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back
-        </Button>
-        <Button variant="gold" size="sm" className="w-full" onClick={onComplete}>
-          <Check className="w-4 h-4 mr-2" />
-          Proceed
-        </Button>
-      </div>
-    </motion.div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Cost confirmation modal (stub for Task 7.0)
@@ -374,8 +190,8 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
   const [isDetecting, setIsDetecting] = useState(false);
   const [newAssetsRequired, setNewAssetsRequired] = useState<SceneAssetRelevanceResult['new_assets_required']>([]);
   const [assetFilters, setAssetFilters] = useState<AssetFilters | null>(null);
-  // 3B.6: Right panel mode for inline create form
-  const [rightPanelMode, setRightPanelMode] = useState<RightPanelMode>('default');
+  // 3B.6: Create mode for inline create form (now in left sidebar)
+  const [createMode, setCreateMode] = useState(false);
   // 3B.7: Remove asset confirmation
   const [removeConfirmAssetId, setRemoveConfirmAssetId] = useState<string | null>(null);
   // Convert to transformation state
@@ -789,7 +605,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
   );
 
   const handleCreateNewAsset = useCallback(() => {
-    setRightPanelMode('creating');
+    setCreateMode(true);
   }, []);
 
   const createWithProjectAssetMutation = useMutation({
@@ -798,7 +614,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
     onSuccess: (instance) => {
       queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
       toast.success(`Created ${instance.project_asset?.name ?? 'asset'} and added to scene`);
-      setRightPanelMode('default');
+      setCreateMode(false);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -944,6 +760,15 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           onRemoveAsset={handleRemoveFromScene}
           shotPresenceMap={shotPresenceMap}
           onConvertToTransformation={setConvertingAsset}
+          onCreateNewAsset={handleCreateNewAsset}
+          onSubmitCreate={handleCreateNewAssetSubmit}
+          onCancelCreate={() => setCreateMode(false)}
+          isCreatingAsset={createWithProjectAssetMutation.isPending}
+          createMode={createMode}
+          onDetectAssets={handleAIDetectAssets}
+          isDetecting={isDetecting}
+          onBack={onBack}
+          onComplete={handleProceedToStage9}
         />
 
         <VisualStateEditorPanel
@@ -958,19 +783,7 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           isGeneratingImage={isGeneratingSingle}
           inheritedFromSceneNumber={priorSceneNumber ?? null}
           sceneScriptExcerpt={currentScene?.scriptExcerpt}
-        />
-
-        <AssetDrawerTriggerPanel
-          onOpenAssetDrawer={() => setAssetDrawerOpen(true)}
-          onCreateNewAsset={handleCreateNewAsset}
-          onBack={onBack}
-          onComplete={handleProceedToStage9}
-          mode={rightPanelMode}
-          onCancelCreate={() => setRightPanelMode('default')}
-          onSubmitCreate={handleCreateNewAssetSubmit}
-          isCreating={createWithProjectAssetMutation.isPending}
-          onDetectAssets={handleAIDetectAssets}
-          isDetecting={isDetecting}
+          onMasterReferenceChanged={setSelectedAsset}
         />
       </div>
 
