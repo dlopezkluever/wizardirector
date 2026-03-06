@@ -115,11 +115,16 @@ async function fetchAllStills(
         const shots = framesData.shots;
         for (let i = 0; i < shots.length; i++) {
           const shot = shots[i];
+          const prevShot = shots[i - 1];
           const nextShot = shots[i + 1];
 
-          // Skip start frame if it's a match-duplicate of the previous shot's end frame
-          const isMatchedToPrevious = shot.startContinuity === 'match';
-          if (!isMatchedToPrevious && shot.startFrame?.imageUrl) {
+          // Duplicate if metadata says 'match' OR URLs are identical
+          const prevEndUrl = prevShot?.endFrame?.imageUrl;
+          const isDuplicate =
+            (shot.startContinuity === 'match' && !!prevEndUrl) ||
+            (!!prevEndUrl && prevEndUrl === shot.startFrame?.imageUrl);
+
+          if (!isDuplicate && shot.startFrame?.imageUrl) {
             stills.push({
               shotId: shot.shotId,
               imageUrl: shot.startFrame.imageUrl,
@@ -128,10 +133,13 @@ async function fetchAllStills(
           }
 
           if (shot.endFrame?.imageUrl) {
-            // If next shot is matched to this end frame, use arrow label
-            const nextIsMatched = nextShot?.startContinuity === 'match';
+            // Check if next shot's start is a duplicate of this end frame
+            const nextStartUrl = nextShot?.startFrame?.imageUrl;
+            const nextIsDuplicate =
+              nextShot?.startContinuity === 'match' ||
+              (!!nextStartUrl && nextStartUrl === shot.endFrame.imageUrl);
             stills.push({
-              shotId: nextIsMatched
+              shotId: nextIsDuplicate
                 ? `${shot.shotId}-e→${nextShot.shotId}`
                 : `${shot.shotId}-e`,
               imageUrl: shot.endFrame.imageUrl,
@@ -992,6 +1000,7 @@ export function ContentAccessCarousel({
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
   const [scriptScrollTrigger, setScriptScrollTrigger] = useState(0);
+  const [hasManualHeight, setHasManualHeight] = useState(false);
 
   // ---------------------------------------------------------------------------
   // Data fetching (must precede tab/carousel state for initializer access)
@@ -1081,6 +1090,11 @@ export function ContentAccessCarousel({
     sessionActiveTabId = availableTabs[activeTabIndex]?.id ?? null;
   }, [activeTabIndex, availableTabs]);
 
+  // Reset manual height override on tab change
+  useEffect(() => {
+    setHasManualHeight(false);
+  }, [activeTabIndex]);
+
   // Reset active tab when available tabs change
   useEffect(() => {
     if (activeTabIndex >= availableTabs.length) {
@@ -1113,6 +1127,29 @@ export function ContentAccessCarousel({
   });
 
   // ---------------------------------------------------------------------------
+  // Auto-size content height
+  // ---------------------------------------------------------------------------
+
+  const autoContentHeight = useMemo(() => {
+    switch (activeTabId) {
+      case 'script':
+        return null;
+      case 'stills':
+        if (stillsLoading) return null;
+        if (allStills.length === 0) return 60;
+        return 160;
+      case 'clips':
+        if (clipsLoading) return null;
+        if (allClips.length === 0) return 60;
+        return 160;
+      case 'shots':
+        return null;
+      default:
+        return null;
+    }
+  }, [activeTabId, stillsLoading, allStills.length, clipsLoading, allClips.length]);
+
+  // ---------------------------------------------------------------------------
   // Drag-to-resize
   // ---------------------------------------------------------------------------
 
@@ -1123,6 +1160,7 @@ export function ContentAccessCarousel({
       dragStartY.current = clientY;
       dragStartHeight.current = panelHeight;
       setIsDragging(true);
+      setHasManualHeight(true);
     },
     [panelHeight]
   );
@@ -1175,7 +1213,17 @@ export function ContentAccessCarousel({
     const defaultHeight = window.innerHeight * DEFAULT_HEIGHT_RATIO;
     setPanelHeight(defaultHeight);
     sessionPanelHeight = defaultHeight;
+    setHasManualHeight(false);
   }, []);
+
+  // ---------------------------------------------------------------------------
+  // Effective height (auto-size when content is small, unless user dragged)
+  // ---------------------------------------------------------------------------
+
+  const HANDLE_HEIGHT = 12;
+  const effectiveHeight = (!hasManualHeight && autoContentHeight !== null)
+    ? Math.max(MIN_HEIGHT, Math.min(panelHeight, autoContentHeight + HANDLE_HEIGHT))
+    : panelHeight;
 
   // ---------------------------------------------------------------------------
   // Render
@@ -1217,7 +1265,7 @@ export function ContentAccessCarousel({
           <motion.div
             key="content"
             initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: panelHeight }}
+            animate={{ opacity: 1, height: effectiveHeight }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: isDragging ? 0 : 0.2, ease: 'easeInOut' }}
             className="overflow-hidden flex flex-col"
