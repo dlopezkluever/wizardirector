@@ -1407,7 +1407,16 @@ router.get('/:projectId/scenes/:sceneId/assets/:instanceId/reference-chain', asy
       }
     }
 
-    res.json(chain);
+    // Deduplicate: if multiple chain entries share the same imageUrl
+    // (e.g. several scenes used the master as-is), keep only the first occurrence.
+    const seen = new Set<string>();
+    const dedupedChain = chain.filter(item => {
+      if (seen.has(item.imageUrl)) return false;
+      seen.add(item.imageUrl);
+      return true;
+    });
+
+    res.json(dedupedChain);
   } catch (err) {
     console.error('[SceneAssets] Reference chain error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -1443,40 +1452,18 @@ router.post('/:projectId/scenes/:sceneId/assets/:instanceId/select-master-refere
       selected_master_reference_url: imageUrl,
       selected_master_reference_source: source,
       selected_master_reference_instance_id: refInstanceId || null,
+      use_master_as_is: false,  // Reset — user must explicitly re-click "Use as Scene Instance Image"
     };
 
-    // If use_master_as_is is true, also update image_key_url + create master_copy attempt
-    const { data: instance } = await supabase
-      .from('scene_asset_instances')
-      .select('use_master_as_is')
-      .eq('id', instanceId)
-      .eq('scene_id', sceneId)
-      .single();
-
-    if (instance?.use_master_as_is) {
-      updatePayload.image_key_url = imageUrl;
-
-      const attemptsService = new SceneAssetAttemptsService();
-      await attemptsService.enforceAttemptCap(instanceId);
-
-      await supabase
-        .from('scene_asset_generation_attempts')
-        .update({ is_selected: false })
-        .eq('scene_asset_instance_id', instanceId)
-        .eq('is_selected', true);
-
-      await attemptsService.createAttempt(instanceId, {
-        image_url: imageUrl,
-        source: 'master_copy',
-        is_selected: true,
-        copied_from_url: imageUrl,
-      });
-    }
-
-    await supabase
+    const { error: updateError } = await supabase
       .from('scene_asset_instances')
       .update(updatePayload)
       .eq('id', instanceId);
+
+    if (updateError) {
+      console.error('[SceneAssets] Select master reference update error:', updateError);
+      return res.status(500).json({ error: updateError.message || 'Failed to update master reference' });
+    }
 
     const { data: updated } = await supabase
       .from('scene_asset_instances')
@@ -1844,11 +1831,17 @@ router.post('/:projectId/scenes/:sceneId/transformation-events/:eventId/generate
     // Use the asset's current image as reference for identity
     const referenceImageUrl = assetInstance?.image_key_url || projectAsset?.image_key_url;
 
+    // Include post_status_tags in the prompt (e.g., "scarred", "aged", "in new outfit")
+    const postStatusTags: string[] = event.post_status_tags ?? [];
+    const postPrompt = postStatusTags.length > 0
+      ? `${event.post_description}. Visual modifiers: ${postStatusTags.join(', ')}.`
+      : event.post_description;
+
     const result = await imageService.createImageJob({
       projectId,
       branchId: project.active_branch_id,
       jobType: 'transformation_post',
-      prompt: event.post_description,
+      prompt: postPrompt,
       visualStyleCapsuleId: visualStyleId,
       manualVisualTone,
       width: projectAsset.asset_type === 'location' ? 1024 : projectAsset.asset_type === 'prop' ? 512 : 512,

@@ -20,13 +20,15 @@ import {
 } from '@/components/ui/carousel';
 import { cn } from '@/lib/utils';
 import { sceneAssetService } from '@/lib/services/sceneAssetService';
-import type { MasterReferenceItem } from '@/types/scene';
+import type { MasterReferenceItem, SceneAssetInstance } from '@/types/scene';
 
 interface MasterReferenceCarouselProps {
   projectId: string;
   sceneId: string;
   instanceId: string;
   selectedMasterReferenceUrl?: string | null;
+  onUseMasterAsIs?: () => void;
+  onMasterReferenceChanged?: (updated: SceneAssetInstance) => void;
 }
 
 function referenceLabel(item: MasterReferenceItem): string {
@@ -40,6 +42,8 @@ export function MasterReferenceCarousel({
   sceneId,
   instanceId,
   selectedMasterReferenceUrl,
+  onUseMasterAsIs,
+  onMasterReferenceChanged,
 }: MasterReferenceCarouselProps) {
   const queryClient = useQueryClient();
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -55,7 +59,8 @@ export function MasterReferenceCarousel({
   const selectMutation = useMutation({
     mutationFn: (item: MasterReferenceItem) =>
       sceneAssetService.selectMasterReference(projectId, sceneId, instanceId, item),
-    onSuccess: () => {
+    onSuccess: (updatedInstance: SceneAssetInstance) => {
+      onMasterReferenceChanged?.(updatedInstance);
       queryClient.invalidateQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
       queryClient.invalidateQueries({ queryKey: ['scene-asset-attempts', projectId, sceneId, instanceId] });
@@ -80,7 +85,7 @@ export function MasterReferenceCarousel({
           <ImageIcon className="w-4 h-4 text-primary" />
           Master reference
         </Label>
-        <div className="aspect-video max-w-xs rounded-lg border border-border/30 bg-muted/50 flex items-center justify-center">
+        <div className="aspect-video rounded-lg border border-border/30 bg-muted/50 flex items-center justify-center">
           <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
         </div>
       </div>
@@ -94,7 +99,7 @@ export function MasterReferenceCarousel({
           <ImageIcon className="w-4 h-4 text-primary" />
           Master reference
         </Label>
-        <div className="aspect-video max-w-xs rounded-lg border border-dashed border-border/50 bg-muted/30 flex items-center justify-center">
+        <div className="aspect-video rounded-lg border border-dashed border-border/50 bg-muted/30 flex items-center justify-center">
           <p className="text-xs text-muted-foreground">No master reference available.</p>
         </div>
       </div>
@@ -115,7 +120,7 @@ export function MasterReferenceCarousel({
       </div>
 
       <Carousel
-        className="max-w-xs"
+        className="w-full"
         opts={{ startIndex: defaultStartIndex }}
         setApi={(api) => {
           if (!api) return;
@@ -174,7 +179,7 @@ export function MasterReferenceCarousel({
                     </Badge>
                   )}
 
-                  {/* Select action overlay */}
+                  {/* Select action overlay (unselected) */}
                   {!isActive && (
                     <div className="absolute inset-0 z-20 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                       <Button
@@ -190,8 +195,24 @@ export function MasterReferenceCarousel({
                         {selectMutation.isPending ? (
                           <Loader2 className="w-3 h-3 animate-spin" />
                         ) : (
-                          'Use This Reference'
+                          'Select as Reference'
                         )}
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Use as scene instance overlay (active) */}
+                  {isActive && onUseMasterAsIs && (
+                    <div className="absolute inset-0 z-20 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <Button
+                        size="sm"
+                        variant="gold"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onUseMasterAsIs();
+                        }}
+                      >
+                        Use as Scene Instance Image
                       </Button>
                     </div>
                   )}

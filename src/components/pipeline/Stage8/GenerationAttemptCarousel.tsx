@@ -119,7 +119,7 @@ export function GenerationAttemptCarousel({
           <ImageIcon className="w-4 h-4 text-primary" />
           Scene instance image
         </Label>
-        <div className="aspect-video max-w-xs rounded-lg border border-border/30 bg-muted/50 flex items-center justify-center">
+        <div className="aspect-video rounded-lg border border-border/30 bg-muted/50 flex items-center justify-center">
           <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
         </div>
       </div>
@@ -133,7 +133,7 @@ export function GenerationAttemptCarousel({
           <ImageIcon className="w-4 h-4 text-primary" />
           Scene instance image
         </Label>
-        <div className="aspect-video max-w-xs rounded-lg border border-dashed border-border/50 bg-muted/30 flex items-center justify-center">
+        <div className="aspect-video rounded-lg border border-dashed border-border/50 bg-muted/30 flex items-center justify-center">
           <p className="text-xs text-muted-foreground">No image yet. Generate above.</p>
         </div>
       </div>
@@ -153,7 +153,7 @@ export function GenerationAttemptCarousel({
 
       <TooltipProvider>
         <Carousel
-          className="max-w-xs"
+          className="w-full"
           opts={{ startIndex: attempts.findIndex(a => a.is_selected) }}
           setApi={(api) => {
             if (!api) return;
