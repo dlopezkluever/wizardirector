@@ -706,6 +706,85 @@ class SceneAssetService {
     return response.json();
   }
   // ===========================================================================
+  // EDIT IMAGE (3.7 Phase 1)
+  // ===========================================================================
+
+  /**
+   * Start an edit-image job for a scene asset instance (returns jobId for external polling).
+   */
+  async startEditImageJob(
+    projectId: string,
+    sceneId: string,
+    instanceId: string,
+    params: {
+      referenceImageUrl?: string;
+      editInstructions?: string;
+      description: string;
+      removeBackground?: boolean;
+    }
+  ): Promise<{ jobId: string; status: string }> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/assets/${instanceId}/edit-image`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(params),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to edit image');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Analyze an uploaded scene asset image via Gemini Vision
+   */
+  async analyzeSceneAssetImage(
+    projectId: string,
+    sceneId: string,
+    instanceId: string
+  ): Promise<{
+    extractedDescription: string;
+    suggestedMerge: string;
+    confidence: number;
+  }> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/assets/${instanceId}/analyze-image`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to analyze image');
+    }
+
+    return response.json();
+  }
+
+  // ===========================================================================
   // SUGGESTIONS (3B.8)
   // ===========================================================================
 
