@@ -443,25 +443,6 @@ export function SceneAssetListPanel({
         <p className="text-xs text-muted-foreground mt-1">
           {filteredAssets.length} asset{filteredAssets.length !== 1 ? 's' : ''} • {withVisuals} with visuals • {assetsWithTags} with tags ({totalTags} total)
         </p>
-        {onInherit && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="mt-2 w-full"
-            onClick={onInherit}
-            disabled={isInheriting}
-          >
-            {isInheriting ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
-            ) : (
-              <>
-                <RefreshCw className="w-4 h-4 mr-1" />
-                Inherit from prior scene
-              </>
-            )}
-          </Button>
-        )}
-
         {/* Action buttons */}
         <div className="flex flex-col gap-1.5 mt-2">
           {onOpenAssetDrawer && (
@@ -470,31 +451,53 @@ export function SceneAssetListPanel({
               Add from existing assets
             </Button>
           )}
+          {(onInherit || onDetectAssets) && (
+            <div className="flex gap-1.5">
+              {onInherit && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="flex-1"
+                  onClick={onInherit}
+                  disabled={isInheriting}
+                >
+                  {isInheriting ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-1" />
+                      Inherit
+                    </>
+                  )}
+                </Button>
+              )}
+              {onDetectAssets && (
+                <Button
+                  variant="gold"
+                  size="sm"
+                  className="flex-1"
+                  onClick={onDetectAssets}
+                  disabled={isDetecting}
+                >
+                  {isDetecting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      Detecting…
+                    </>
+                  ) : (
+                    <>
+                      <Brain className="w-4 h-4 mr-1" />
+                      Detect with AI
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          )}
           {onCreateNewAsset && (
             <Button variant="ghost" size="sm" className="w-full" onClick={onCreateNewAsset}>
               <Plus className="w-4 h-4 mr-1" />
               Create new asset
-            </Button>
-          )}
-          {onDetectAssets && (
-            <Button
-              variant="gold"
-              size="sm"
-              className="w-full"
-              onClick={onDetectAssets}
-              disabled={isDetecting}
-            >
-              {isDetecting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                  Detecting…
-                </>
-              ) : (
-                <>
-                  <Brain className="w-4 h-4 mr-1" />
-                  Detect with AI
-                </>
-              )}
             </Button>
           )}
         </div>
@@ -547,23 +550,30 @@ export function SceneAssetListPanel({
       </div>
 
       <div className="space-y-2 px-4 pb-3 border-b border-border/50">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Search assets by name..."
-            value={filters.searchQuery}
-            onChange={e => updateFilters({ searchQuery: e.target.value })}
-            className="pl-9 pr-9"
-          />
-          {filters.searchQuery && (
-            <button
-              type="button"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              onClick={() => updateFilters({ searchQuery: '' })}
-              aria-label="Clear search"
-            >
-              <X className="w-4 h-4" />
-            </button>
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search assets by name..."
+              value={filters.searchQuery}
+              onChange={e => updateFilters({ searchQuery: e.target.value })}
+              className="pl-9 pr-9"
+            />
+            {filters.searchQuery && (
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                onClick={() => updateFilters({ searchQuery: '' })}
+                aria-label="Clear search"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          {(filters.searchQuery || filters.tagFilters.length > 0 || filters.hasTagsOnly || filters.carryForwardOnly) && (
+            <Button variant="ghost" size="sm" className="shrink-0" onClick={clearFilters}>
+              Clear
+            </Button>
           )}
         </div>
 
@@ -618,12 +628,29 @@ export function SceneAssetListPanel({
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-
-          {(filters.searchQuery || filters.tagFilters.length > 0 || filters.hasTagsOnly || filters.carryForwardOnly) && (
-            <Button variant="ghost" size="sm" onClick={clearFilters}>
-              Clear all
-            </Button>
-          )}
+          <div className="flex-1" />
+          <Button
+            variant="gold"
+            size="sm"
+            disabled={selectedForGeneration.length === 0 || isGenerating}
+            onClick={onBulkGenerate}
+          >
+            {isGenerating ? (
+              <>
+                <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+                {bulkProgress
+                  ? `${bulkProgress.completed}/${bulkProgress.total}`
+                  : `${selectedForGeneration.length}…`}
+              </>
+            ) : selectedForGeneration.length > 0 ? (
+              <>
+                <Sparkles className="w-4 h-4 mr-1" />
+                Generate ({selectedForGeneration.length})
+              </>
+            ) : (
+              <Sparkles className="w-4 h-4 text-muted-foreground" />
+            )}
+          </Button>
         </div>
 
         {filters.tagFilters.length > 0 && (
@@ -653,7 +680,7 @@ export function SceneAssetListPanel({
       </div>
 
       <ScrollArea className="flex-1">
-        <div className="p-2">
+        <div className="px-3 py-2">
           {order.map(type => (
             <AssetTypeGroup
               key={type}
@@ -722,27 +749,7 @@ export function SceneAssetListPanel({
         </div>
       </ScrollArea>
 
-      <div className="p-4 border-t border-border/50 space-y-2">
-        <Button
-          variant="gold"
-          className="w-full"
-          disabled={selectedForGeneration.length === 0 || isGenerating}
-          onClick={onBulkGenerate}
-        >
-          {isGenerating ? (
-            <>
-              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-              {bulkProgress
-                ? `Generating (${bulkProgress.completed}/${bulkProgress.total})…`
-                : `Generating (${selectedForGeneration.length})…`}
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-4 h-4 mr-2" />
-              Generate Visuals ({selectedForGeneration.length})
-            </>
-          )}
-        </Button>
+      <div className="p-3 border-t border-border/50 space-y-2">
         {projectId && sceneId && selectedForGeneration.length > 0 && (
           <Button
             variant="outline"
@@ -757,23 +764,20 @@ export function SceneAssetListPanel({
           </Button>
         )}
         {(onBack || onComplete) && (
-          <>
-            <div className="border-t border-border/50 pt-2" />
-            <div className="flex gap-2">
-              {onBack && (
-                <Button variant="ghost" size="sm" className="flex-1" onClick={onBack}>
-                  <ArrowLeft className="w-4 h-4 mr-1" />
-                  Back
-                </Button>
-              )}
-              {onComplete && (
-                <Button variant="gold" size="sm" className="flex-1" onClick={onComplete}>
-                  <Check className="w-4 h-4 mr-1" />
-                  Proceed
-                </Button>
-              )}
-            </div>
-          </>
+          <div className="flex gap-2">
+            {onBack && (
+              <Button variant="ghost" size="sm" className="flex-1" onClick={onBack}>
+                <ArrowLeft className="w-4 h-4 mr-1" />
+                Back
+              </Button>
+            )}
+            {onComplete && (
+              <Button variant="gold" size="sm" className="flex-1" onClick={onComplete}>
+                <Check className="w-4 h-4 mr-1" />
+                Proceed
+              </Button>
+            )}
+          </div>
         )}
       </div>
     </motion.div>
