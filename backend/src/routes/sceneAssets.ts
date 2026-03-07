@@ -1831,11 +1831,17 @@ router.post('/:projectId/scenes/:sceneId/transformation-events/:eventId/generate
     // Use the asset's current image as reference for identity
     const referenceImageUrl = assetInstance?.image_key_url || projectAsset?.image_key_url;
 
+    // Include post_status_tags in the prompt (e.g., "scarred", "aged", "in new outfit")
+    const postStatusTags: string[] = event.post_status_tags ?? [];
+    const postPrompt = postStatusTags.length > 0
+      ? `${event.post_description}. Visual modifiers: ${postStatusTags.join(', ')}.`
+      : event.post_description;
+
     const result = await imageService.createImageJob({
       projectId,
       branchId: project.active_branch_id,
       jobType: 'transformation_post',
-      prompt: event.post_description,
+      prompt: postPrompt,
       visualStyleCapsuleId: visualStyleId,
       manualVisualTone,
       width: projectAsset.asset_type === 'location' ? 1024 : projectAsset.asset_type === 'prop' ? 512 : 512,

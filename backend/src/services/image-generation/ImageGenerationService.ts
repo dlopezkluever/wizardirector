@@ -215,8 +215,14 @@ export class ImageGenerationService {
             throw new Error(`Scene asset instance ${sceneInstanceId} has no project_asset`);
         }
 
+        // Include status tags in the prompt (e.g., "muddy", "torn clothing", "bleeding")
+        const statusTags: string[] = instance.status_tags ?? [];
+        const baseDescription = statusTags.length > 0
+            ? `${instance.effective_description}. Visual modifiers: ${statusTags.join(', ')}.`
+            : instance.effective_description;
+
         // 3C.1: Inject background isolation for isolatable asset types
-        const prompt = this.injectBackgroundContext(instance.effective_description, projectAsset.asset_type, 'scene_asset');
+        const prompt = this.injectBackgroundContext(baseDescription, projectAsset.asset_type, 'scene_asset');
         const dimensions = this.ASPECT_RATIOS[projectAsset.asset_type];
 
         return await this.createImageJob({
