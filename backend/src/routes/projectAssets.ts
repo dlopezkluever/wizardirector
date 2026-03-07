@@ -1416,6 +1416,98 @@ router.post('/:projectId/assets/:assetId/analyze-image', async (req, res) => {
 });
 
 /**
+ * POST /api/projects/:projectId/assets/:assetId/edit-image
+ * Edit/transform an asset image using reference image + instructions.
+ * Supports: edit with instructions, apply style, remove background, regenerate from description.
+ */
+router.post('/:projectId/assets/:assetId/edit-image', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, assetId } = req.params;
+        const { referenceImageUrl, editInstructions, description, removeBackground } = req.body;
+
+        if (!description) {
+            return res.status(400).json({ error: 'Description is required' });
+        }
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Get asset details
+        const { data: asset, error: assetError } = await supabase
+            .from('project_assets')
+            .select('id, asset_type, visual_style_capsule_id')
+            .eq('id', assetId)
+            .eq('project_id', projectId)
+            .single();
+
+        if (assetError || !asset) {
+            return res.status(404).json({ error: 'Asset not found' });
+        }
+
+        // Get visual style from Stage 5 if not on asset
+        let visualStyleId = asset.visual_style_capsule_id;
+        let manualVisualTone: string | undefined;
+
+        if (!visualStyleId) {
+            const { data: stage5States } = await supabase
+                .from('stage_states')
+                .select('content')
+                .eq('branch_id', project.active_branch_id)
+                .eq('stage_number', 5)
+                .order('version', { ascending: false })
+                .limit(1);
+
+            const stageContent = stage5States?.[0]?.content;
+            visualStyleId = stageContent?.locked_visual_style_capsule_id;
+            if (!visualStyleId) {
+                manualVisualTone = stageContent?.manual_visual_tone;
+            }
+        }
+
+        // Construct prompt
+        let prompt = description;
+        if (editInstructions) {
+            prompt = `${editInstructions}. Context: ${description}`;
+        }
+        if (removeBackground) {
+            prompt += '. Isolated on a plain white background, no environment, no other characters or objects.';
+        }
+
+        console.log(`[ProjectAssets] Edit image for asset ${assetId}, hasRef=${!!referenceImageUrl}, hasEdit=${!!editInstructions}, removeBg=${!!removeBackground}`);
+
+        const result = await imageService.createImageJob({
+            projectId,
+            branchId: project.active_branch_id,
+            jobType: 'master_asset',
+            prompt,
+            visualStyleCapsuleId: visualStyleId,
+            manualVisualTone,
+            assetId,
+            idempotencyKey: `edit-asset-${assetId}-${Date.now()}`,
+            referenceImageUrl: referenceImageUrl || undefined,
+        });
+
+        res.json(result);
+    } catch (error) {
+        console.error('[ProjectAssets] Edit image error:', error);
+        res.status(500).json({
+            error: 'Image editing failed',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+
+/**
  * POST /api/projects/:projectId/assets/:assetId/lock
  * Lock individual asset
  */
