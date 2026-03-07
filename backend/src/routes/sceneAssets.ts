@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { supabase } from '../config/supabase.js';
 import { AssetInheritanceService } from '../services/assetInheritanceService.js';
 import { ImageGenerationService } from '../services/image-generation/ImageGenerationService.js';
+import { ImageAnalysisService } from '../services/imageAnalysisService.js';
 import { SceneAssetRelevanceService } from '../services/sceneAssetRelevanceService.js';
 import { SceneAssetAttemptsService } from '../services/sceneAssetAttemptsService.js';
 import { transformationEventService } from '../services/transformationEventService.js';
@@ -392,6 +393,179 @@ router.post('/:projectId/scenes/:sceneId/assets/:instanceId/generate-image', asy
     console.error('[SceneAssets] Image generation error:', error);
     res.status(500).json({
       error: 'Image generation failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/assets/:instanceId/edit-image
+ * Edit/transform a scene asset image using reference image + instructions.
+ */
+router.post('/:projectId/scenes/:sceneId/assets/:instanceId/edit-image', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId, instanceId } = req.params;
+    const { referenceImageUrl, editInstructions, description, removeBackground } = req.body;
+
+    if (!description) {
+      return res.status(400).json({ error: 'Description is required' });
+    }
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Get instance + parent asset type
+    const { data: instance, error: instanceError } = await supabase
+      .from('scene_asset_instances')
+      .select(`
+        id, project_asset_id, scene_id,
+        project_asset:project_assets(asset_type, visual_style_capsule_id)
+      `)
+      .eq('id', instanceId)
+      .eq('scene_id', sceneId)
+      .single();
+
+    if (instanceError || !instance) {
+      return res.status(404).json({ error: 'Scene asset instance not found' });
+    }
+
+    const projectAsset = (instance as any).project_asset as { asset_type: string; visual_style_capsule_id?: string } | null;
+    if (!projectAsset) {
+      return res.status(400).json({ error: 'Scene asset has no parent project asset' });
+    }
+
+    // Get visual style from Stage 5
+    const { data: stage5States } = await supabase
+      .from('stage_states')
+      .select('content')
+      .eq('branch_id', project.active_branch_id)
+      .eq('stage_number', 5)
+      .order('version', { ascending: false })
+      .limit(1);
+
+    const stage5Content = stage5States?.[0]?.content;
+    const visualStyleId = stage5Content?.locked_visual_style_capsule_id;
+    const manualVisualTone = stage5Content?.manual_visual_tone;
+
+    if (!visualStyleId && !manualVisualTone) {
+      return res.status(400).json({
+        error: 'Visual style not found. Complete Stage 5 first.',
+      });
+    }
+
+    // Construct prompt
+    let prompt = description;
+    if (editInstructions) {
+      prompt = `${editInstructions}. Context: ${description}`;
+    }
+    if (removeBackground) {
+      prompt += '. Isolated on a plain white background, no environment, no other characters or objects.';
+    }
+
+    // Auto-inject background for non-location asset types (matches injectBackgroundContext behavior)
+    const ISOLATABLE_TYPES = ['character', 'prop', 'extra_archetype'];
+    if (ISOLATABLE_TYPES.includes(projectAsset.asset_type) && !removeBackground) {
+      prompt += '. Isolated on a plain white background, no environment, no other characters or objects.';
+    }
+
+    // Determine dimensions based on asset type
+    const ASPECT_RATIOS: Record<string, { width: number; height: number }> = {
+      character: { width: 512, height: 768 },
+      prop: { width: 512, height: 512 },
+      location: { width: 1024, height: 576 },
+      extra_archetype: { width: 512, height: 768 },
+    };
+    const dimensions = ASPECT_RATIOS[projectAsset.asset_type] || { width: 512, height: 512 };
+
+    console.log(`[SceneAssets] Edit image for instance ${instanceId}, hasRef=${!!referenceImageUrl}, hasEdit=${!!editInstructions}, removeBg=${!!removeBackground}`);
+
+    const imageService = new ImageGenerationService();
+    const result = await imageService.createImageJob({
+      projectId,
+      branchId: project.active_branch_id,
+      jobType: 'scene_asset',
+      prompt,
+      visualStyleCapsuleId: visualStyleId,
+      manualVisualTone,
+      assetId: instance.project_asset_id,
+      sceneId: instance.scene_id,
+      width: dimensions.width,
+      height: dimensions.height,
+      idempotencyKey: `edit-scene-asset-${instanceId}-${Date.now()}`,
+      referenceImageUrl: referenceImageUrl || undefined,
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('[SceneAssets] Edit image error:', error);
+    res.status(500).json({
+      error: 'Image editing failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/assets/:instanceId/analyze-image
+ * Analyze uploaded scene asset image via Gemini Vision
+ */
+router.post('/:projectId/scenes/:sceneId/assets/:instanceId/analyze-image', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId, instanceId } = req.params;
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const { data: instance, error: instanceError } = await supabase
+      .from('scene_asset_instances')
+      .select(`
+        id, effective_description, image_key_url,
+        project_asset:project_assets(name, asset_type, description)
+      `)
+      .eq('id', instanceId)
+      .eq('scene_id', sceneId)
+      .single();
+
+    if (instanceError || !instance) {
+      return res.status(404).json({ error: 'Scene asset instance not found' });
+    }
+
+    if (!instance.image_key_url) {
+      return res.status(400).json({ error: 'Scene asset has no image to analyze' });
+    }
+
+    const projectAsset = (instance as any).project_asset as { name: string; asset_type: string; description?: string } | null;
+    const analysisService = new ImageAnalysisService();
+    const result = await analysisService.analyzeAssetImage(
+      instance.image_key_url,
+      instance.effective_description || projectAsset?.description || '',
+      projectAsset?.asset_type || 'character',
+      projectAsset?.name || 'Unknown'
+    );
+
+    res.json(result);
+  } catch (error) {
+    console.error('[SceneAssets] Analyze image error:', error);
+    res.status(500).json({
+      error: 'Image analysis failed',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
