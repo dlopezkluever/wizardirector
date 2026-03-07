@@ -445,12 +445,6 @@ export function SceneAssetListPanel({
         </p>
         {/* Action buttons */}
         <div className="flex flex-col gap-1.5 mt-2">
-          {onOpenAssetDrawer && (
-            <Button variant="outline" size="sm" className="w-full" onClick={onOpenAssetDrawer}>
-              <Plus className="w-4 h-4 mr-1" />
-              Add from existing assets
-            </Button>
-          )}
           {(onInherit || onDetectAssets) && (
             <div className="flex gap-1.5">
               {onInherit && (
@@ -493,6 +487,12 @@ export function SceneAssetListPanel({
                 </Button>
               )}
             </div>
+          )}
+          {onOpenAssetDrawer && (
+            <Button variant="outline" size="sm" className="w-full" onClick={onOpenAssetDrawer}>
+              <Plus className="w-4 h-4 mr-1" />
+              Add from existing assets
+            </Button>
           )}
           {onCreateNewAsset && (
             <Button variant="ghost" size="sm" className="w-full" onClick={onCreateNewAsset}>
@@ -679,7 +679,7 @@ export function SceneAssetListPanel({
         )}
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 [&>div>div]:!block">
         <div className="px-3 py-2">
           {order.map(type => (
             <AssetTypeGroup
