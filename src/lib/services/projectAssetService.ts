@@ -806,6 +806,107 @@ class ProjectAssetService {
     return result.mergedDescription;
   }
 
+  /**
+   * Edit/transform an asset image using reference image + instructions.
+   * Supports: edit with instructions, apply style, remove background, regenerate.
+   */
+  async editImage(
+    projectId: string,
+    assetId: string,
+    params: {
+      referenceImageUrl?: string;
+      editInstructions?: string;
+      description: string;
+      removeBackground?: boolean;
+    }
+  ): Promise<ImageGenerationJobResponse> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/edit-image`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to edit image');
+    }
+
+    const jobResponse = await response.json();
+    return this.pollImageJob(jobResponse.jobId, session.access_token);
+  }
+
+  /**
+   * Start an edit-image job without polling (returns jobId for external polling).
+   */
+  async startEditImageJob(
+    projectId: string,
+    assetId: string,
+    params: {
+      referenceImageUrl?: string;
+      editInstructions?: string;
+      description: string;
+      removeBackground?: boolean;
+    }
+  ): Promise<{ jobId: string; status: string }> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/edit-image`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to edit image');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Get image generation job status (for external polling)
+   */
+  async getImageJobStatus(jobId: string): Promise<{
+    status: string;
+    publicUrl?: string;
+    error?: { message?: string };
+  }> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/images/jobs/${jobId}`, {
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch job status');
+    }
+
+    return response.json();
+  }
+
   // ============================================================================
   // 3C.2: Angle Variant Methods
   // ============================================================================
