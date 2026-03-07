@@ -25,6 +25,7 @@ import { AddTransformationDialog } from '@/components/pipeline/Stage8/AddTransfo
 import { TransformationImagePicker } from '@/components/pipeline/Stage8/TransformationImagePicker';
 import { transformationEventService } from '@/lib/services/transformationEventService';
 import { sceneAssetService } from '@/lib/services/sceneAssetService';
+import { EnhancedUploadModal } from '@/components/pipeline/shared/EnhancedUploadModal';
 import { VersionedTextarea } from '@/components/pipeline/VersionedTextarea';
 import { textFieldVersionService } from '@/lib/services/textFieldVersionService';
 import { cn } from '@/lib/utils';
@@ -112,6 +113,16 @@ export function VisualStateEditorPanel({
   const [generatingEventId, setGeneratingEventId] = useState<string | null>(null);
   const [generatingImageEventId, setGeneratingImageEventId] = useState<string | null>(null);
   const [imagePickerEventId, setImagePickerEventId] = useState<string | null>(null);
+  const [uploadAnalysisModal, setUploadAnalysisModal] = useState<{
+    instanceId: string;
+    assetName: string;
+    assetType: string;
+    currentDescription: string;
+    extractedDescription: string;
+    suggestedMerge: string;
+    confidence: number;
+    imageUrl: string;
+  } | null>(null);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -305,6 +316,44 @@ export function VisualStateEditorPanel({
     toast.success('Asset locked');
   }, [selectedAsset, statusTags, onUpdateAsset]);
 
+  // Enhanced upload modal: triggered after SceneAssetImageUpload succeeds
+  const handleUploadComplete = useCallback(async (imageUrl: string) => {
+    if (!selectedAsset) return;
+    const assetName = selectedAsset.project_asset?.name || 'Unknown';
+    const assetTypeStr = selectedAsset.project_asset?.asset_type || 'character';
+    const currentDesc = selectedAsset.effective_description || selectedAsset.project_asset?.description || '';
+
+    try {
+      const analysis = await sceneAssetService.analyzeSceneAssetImage(projectId, sceneId, selectedAsset.id);
+      setUploadAnalysisModal({
+        instanceId: selectedAsset.id,
+        assetName: assetName,
+        assetType: assetTypeStr,
+        currentDescription: currentDesc,
+        extractedDescription: analysis.extractedDescription,
+        suggestedMerge: analysis.suggestedMerge,
+        confidence: analysis.confidence,
+        imageUrl,
+      });
+    } catch (err) {
+      console.error('Image analysis failed (non-blocking):', err);
+      // If analysis fails, don't block — the image is already uploaded
+    }
+  }, [selectedAsset, projectId, sceneId]);
+
+  const handleUploadAccept = useCallback(async (finalDescription: string, _finalImageUrl: string) => {
+    if (!selectedAsset || !uploadAnalysisModal) return;
+
+    // Save the description as an override
+    onUpdateAsset(selectedAsset.id, { descriptionOverride: finalDescription });
+
+    // Refresh queries
+    queryClient.invalidateQueries({ queryKey: ['scene-asset-attempts', projectId, sceneId, selectedAsset.id] });
+    queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
+
+    setUploadAnalysisModal(null);
+  }, [selectedAsset, uploadAnalysisModal, onUpdateAsset, queryClient, projectId, sceneId]);
+
   const useMasterAsIsMutation = useMutation({
     mutationFn: () => {
       if (!selectedAsset) throw new Error('No asset selected');
@@ -426,6 +475,7 @@ export function VisualStateEditorPanel({
               sceneId={sceneId}
               instanceId={selectedAsset.id}
               disabled={useMasterAsIs}
+              onUploadComplete={handleUploadComplete}
             />
           </div>
 
@@ -568,6 +618,48 @@ export function VisualStateEditorPanel({
           projectId={projectId}
           projectAssetId={selectedAsset.project_asset_id}
           onSelect={(imageUrl) => handlePickExistingImage(imagePickerEventId, imageUrl)}
+        />
+      )}
+
+      {/* Enhanced Upload Modal (3.7 Phase 1) */}
+      {uploadAnalysisModal && (
+        <EnhancedUploadModal
+          isOpen={!!uploadAnalysisModal}
+          onClose={() => setUploadAnalysisModal(null)}
+          assetName={uploadAnalysisModal.assetName}
+          assetType={uploadAnalysisModal.assetType}
+          currentDescription={uploadAnalysisModal.currentDescription}
+          extractedDescription={uploadAnalysisModal.extractedDescription}
+          suggestedMerge={uploadAnalysisModal.suggestedMerge}
+          confidence={uploadAnalysisModal.confidence}
+          initialImageUrl={uploadAnalysisModal.imageUrl}
+          onEditImage={(params) =>
+            sceneAssetService.startEditImageJob(projectId, sceneId, uploadAnalysisModal.instanceId, {
+              referenceImageUrl: params.referenceImageUrl,
+              editInstructions: params.editInstructions,
+              description: params.description,
+            })
+          }
+          onApplyStyle={(params) =>
+            sceneAssetService.startEditImageJob(projectId, sceneId, uploadAnalysisModal.instanceId, {
+              referenceImageUrl: params.referenceImageUrl,
+              description: params.description,
+            })
+          }
+          onRemoveBackground={(params) =>
+            sceneAssetService.startEditImageJob(projectId, sceneId, uploadAnalysisModal.instanceId, {
+              referenceImageUrl: params.referenceImageUrl,
+              description: params.description,
+              removeBackground: true,
+            })
+          }
+          onRegenerate={(params) =>
+            sceneAssetService.startEditImageJob(projectId, sceneId, uploadAnalysisModal.instanceId, {
+              description: params.description,
+            })
+          }
+          onPollJob={(jobId) => sceneAssetService.getImageJobStatus(jobId)}
+          onAccept={handleUploadAccept}
         />
       )}
     </motion.div>
