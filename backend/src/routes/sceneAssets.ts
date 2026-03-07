@@ -1407,7 +1407,16 @@ router.get('/:projectId/scenes/:sceneId/assets/:instanceId/reference-chain', asy
       }
     }
 
-    res.json(chain);
+    // Deduplicate: if multiple chain entries share the same imageUrl
+    // (e.g. several scenes used the master as-is), keep only the first occurrence.
+    const seen = new Set<string>();
+    const dedupedChain = chain.filter(item => {
+      if (seen.has(item.imageUrl)) return false;
+      seen.add(item.imageUrl);
+      return true;
+    });
+
+    res.json(dedupedChain);
   } catch (err) {
     console.error('[SceneAssets] Reference chain error:', err);
     res.status(500).json({ error: 'Internal server error' });
