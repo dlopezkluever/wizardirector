@@ -58,6 +58,7 @@ import { EnhancedUploadModal } from './shared/EnhancedUploadModal';
 import { StyleChangeWarningDialog } from './StyleChangeWarningDialog';
 import { ProjectAssetCarousel } from './ProjectAssetCarousel';
 import { AngleVariantsDialog } from './AngleVariantsDialog';
+import { LocationViewsDialog } from './LocationViewsDialog';
 import { MergeDialog } from './MergeDialog';
 import { SplitWizard } from './SplitWizard';
 import type { ProjectAsset, AssetPreviewEntity, AssetType, AssetDecision } from '@/types/asset';
@@ -151,6 +152,9 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
 
   // Angle variants dialog state (3C.2)
   const [angleDialogAsset, setAngleDialogAsset] = useState<ProjectAsset | null>(null);
+
+  // Location views dialog state (3.7 Phase C)
+  const [locationViewsAsset, setLocationViewsAsset] = useState<ProjectAsset | null>(null);
 
   // Selection mode state (merge / split)
   const [selectionMode, setSelectionMode] = useState(false);
@@ -1206,6 +1210,12 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                                         Manage Angles
                                       </DropdownMenuItem>
                                     )}
+                                    {asset.asset_type === 'location' && (
+                                      <DropdownMenuItem onClick={() => setLocationViewsAsset(asset)}>
+                                        <MapPin className="w-4 h-4 mr-2" />
+                                        Camera Directions
+                                      </DropdownMenuItem>
+                                    )}
                                     {asset.image_key_url && (
                                       <DropdownMenuItem onClick={() => handlePromoteToGlobal(asset.id)}>
                                         <Upload className="w-4 h-4 mr-2" />
@@ -1588,6 +1598,16 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
           asset={angleDialogAsset}
           open={!!angleDialogAsset}
           onOpenChange={(open) => { if (!open) setAngleDialogAsset(null); }}
+        />
+      )}
+
+      {/* 3.7 Phase C: Location Views Dialog */}
+      {locationViewsAsset && (
+        <LocationViewsDialog
+          projectId={projectId}
+          asset={locationViewsAsset}
+          open={!!locationViewsAsset}
+          onOpenChange={(open) => { if (!open) setLocationViewsAsset(null); }}
         />
       )}
 
