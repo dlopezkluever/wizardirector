@@ -1,9 +1,10 @@
 /**
- * Stage 8 Location Coverage Panel — Phase E
+ * Stage 8 Location Coverage Panel — Phases E + H
  *
  * Shows per-location coverage status: which camera directions have reference
  * images, which shots are assigned to each direction, and highlights gaps.
  * Also provides an editable direction assignment table for shots.
+ * Phase H: "Generate Missing Views" batch generation from coverage gaps.
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -18,6 +19,8 @@ import {
   Image as ImageIcon,
   MapPin,
   Eye,
+  Sparkles,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,6 +35,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { projectAssetService } from '@/lib/services/projectAssetService';
 import { shotService } from '@/lib/services/shotService';
 import type { Shot, SceneAssetInstance } from '@/types/scene';
@@ -119,6 +127,8 @@ export function LocationCoveragePanel({
 }: LocationCoveragePanelProps) {
   const queryClient = useQueryClient();
   const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
+  // Phase H: track generating state per view ID
+  const [generatingViewIds, setGeneratingViewIds] = useState<Set<string>>(new Set());
 
   // Find all location assets in the scene
   const locationAssets = useMemo(
@@ -238,6 +248,59 @@ export function LocationCoveragePanel({
     [projectId, sceneId, queryClient]
   );
 
+  // Phase H: Generate a single location view image
+  const handleGenerateViewImage = useCallback(
+    async (assetId: string, viewId: string) => {
+      setGeneratingViewIds(prev => new Set(prev).add(viewId));
+      try {
+        const result = await projectAssetService.generateLocationViewImage(projectId, assetId, viewId);
+        if (result.status === 'completed') {
+          toast.success('View image generated');
+          queryClient.invalidateQueries({ queryKey: ['location-coverage-views'] });
+          queryClient.invalidateQueries({ queryKey: ['location-views'] });
+        } else {
+          toast.error('Generation failed: ' + (result.error?.message || 'Unknown error'));
+        }
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Failed to generate view image');
+      } finally {
+        setGeneratingViewIds(prev => {
+          const next = new Set(prev);
+          next.delete(viewId);
+          return next;
+        });
+      }
+    },
+    [projectId, queryClient]
+  );
+
+  // Phase H: Batch generate all missing view images for a location
+  const handleGenerateMissing = useCallback(
+    async (coverage: LocationCoverage) => {
+      const assetId = coverage.locationAsset.project_asset_id;
+      // Find directions without images (excluding establishing)
+      const missingDirections = coverage.directionGroups
+        .filter(g => !g.hasImage && g.direction.view_type === 'direction')
+        .map(g => g.direction);
+
+      // Also check establishing
+      if (coverage.establishingView && !coverage.establishingView.image_key_url) {
+        missingDirections.unshift(coverage.establishingView);
+      }
+
+      if (missingDirections.length === 0) {
+        toast.info('All directions already have images');
+        return;
+      }
+
+      // Generate sequentially to avoid overwhelming the API
+      for (const dir of missingDirections) {
+        await handleGenerateViewImage(assetId, dir.id);
+      }
+    },
+    [handleGenerateViewImage]
+  );
+
   if (locationAssets.length === 0) return null;
   if (coverageData.every(c => c.totalShots === 0)) return null;
 
@@ -299,6 +362,16 @@ export function LocationCoveragePanel({
                       key={group.direction.id}
                       group={group}
                       allDirections={coverage.locationViews.filter(v => v.view_type === 'direction')}
+                      isGenerating={generatingViewIds.has(group.direction.id)}
+                      onGenerate={() => handleGenerateViewImage(
+                        coverage.locationAsset.project_asset_id,
+                        group.direction.id
+                      )}
+                      hasStyleReference={
+                        !!(coverage.establishingView?.image_key_url) ||
+                        !!coverage.directionGroups.some(g => g.hasImage) ||
+                        !!(coverage.locationAsset.project_asset?.image_key_url)
+                      }
                     />
                   ))}
 
@@ -329,6 +402,38 @@ export function LocationCoveragePanel({
                       </div>
                     </div>
                   )}
+
+                  {/* Phase H: Generate Missing Views button */}
+                  {(() => {
+                    const missingCount = coverage.directionGroups.filter(g => !g.hasImage).length +
+                      (coverage.establishingView && !coverage.establishingView.image_key_url ? 1 : 0);
+                    const hasAnyRef = !!(coverage.establishingView?.image_key_url) ||
+                      coverage.directionGroups.some(g => g.hasImage) ||
+                      !!(coverage.locationAsset.project_asset?.image_key_url);
+                    const isAnyGenerating = coverage.directionGroups.some(g => generatingViewIds.has(g.direction.id)) ||
+                      (coverage.establishingView && generatingViewIds.has(coverage.establishingView.id));
+
+                    if (missingCount === 0 || !hasAnyRef) return null;
+
+                    return (
+                      <div className="mt-2 pt-2 border-t border-border/20">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full h-7 text-xs"
+                          onClick={() => handleGenerateMissing(coverage)}
+                          disabled={!!isAnyGenerating}
+                        >
+                          {isAnyGenerating ? (
+                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-3 h-3 mr-1" />
+                          )}
+                          Generate {missingCount} Missing View{missingCount !== 1 ? 's' : ''}
+                        </Button>
+                      </div>
+                    );
+                  })()}
                 </div>
               </CollapsibleContent>
             </Collapsible>
@@ -341,7 +446,19 @@ export function LocationCoveragePanel({
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-function DirectionRow({ group, allDirections }: { group: DirectionGroup; allDirections: LocationView[] }) {
+function DirectionRow({
+  group,
+  allDirections,
+  isGenerating,
+  onGenerate,
+  hasStyleReference,
+}: {
+  group: DirectionGroup;
+  allDirections: LocationView[];
+  isGenerating?: boolean;
+  onGenerate?: () => void;
+  hasStyleReference?: boolean;
+}) {
   const [showShots, setShowShots] = useState(false);
   const label = getDirectionLabel(group.direction);
 
@@ -359,6 +476,10 @@ function DirectionRow({ group, allDirections }: { group: DirectionGroup; allDire
               className="w-full h-full object-cover"
             />
           </div>
+        ) : isGenerating ? (
+          <div className="w-6 h-6 rounded shrink-0 border border-blue-500/30 flex items-center justify-center">
+            <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />
+          </div>
         ) : (
           <div className="w-6 h-6 rounded shrink-0 border border-dashed border-border/50 flex items-center justify-center">
             <ImageIcon className="w-3 h-3 text-muted-foreground/50" />
@@ -372,9 +493,25 @@ function DirectionRow({ group, allDirections }: { group: DirectionGroup; allDire
         </span>
 
         <div className="ml-auto flex items-center gap-1.5">
+          {/* Phase H: per-direction generate button */}
+          {!group.hasImage && !isGenerating && onGenerate && hasStyleReference && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onGenerate(); }}
+                  className="inline-flex items-center justify-center w-5 h-5 rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Sparkles className="w-3 h-3" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="text-xs">Generate view image</TooltipContent>
+            </Tooltip>
+          )}
           {getSourceBadge(group.direction.source)}
           {group.hasImage ? (
             <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+          ) : isGenerating ? (
+            <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />
           ) : (
             <AlertTriangle className="w-3 h-3 text-amber-400" />
           )}
