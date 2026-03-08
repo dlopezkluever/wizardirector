@@ -115,17 +115,32 @@ function extractScenes(doc: TipTapNode): ParsedScene[] {
   let current: ParsedScene | null = null;
   let sceneNum = 0;
 
+  // Known time-of-day tokens for scene headings
+  const TIME_OF_DAY_PATTERN = /\s*-\s*(DAY|NIGHT|CONTINUOUS|LATER|MOMENTS LATER|DAWN|DUSK|MORNING|AFTERNOON|EVENING)$/i;
+
   for (const node of doc.content || []) {
     if (node.type === 'sceneHeading') {
       sceneNum++;
       const text = getNodeText(node);
-      const match = text.match(/^(INT|EXT)\.?\s+(.+?)(?:\s*-\s*(.+))?$/i);
+      // 3.7: Support compound location headings with sub-locations
+      // e.g. "INT. GINGERBREAD HOUSE - KITCHEN - DAY" → location = "GINGERBREAD HOUSE - KITCHEN"
+      // Strategy: strip INT/EXT prefix, then strip known time-of-day suffix,
+      // everything in between is the full location (including sub-locations)
+      const prefixMatch = text.match(/^(INT|EXT)\.?\s+/i);
+      const intExt = (prefixMatch?.[1]?.toUpperCase() || 'INT') as 'INT' | 'EXT';
+      const afterPrefix = prefixMatch ? text.slice(prefixMatch[0].length) : text;
+
+      const timeMatch = afterPrefix.match(TIME_OF_DAY_PATTERN);
+      const timeOfDay = timeMatch ? timeMatch[1].trim() : null;
+      const location = timeMatch
+        ? afterPrefix.slice(0, timeMatch.index!).trim()
+        : afterPrefix.trim();
 
       current = {
         sceneNumber: sceneNum,
-        intExt: (match?.[1]?.toUpperCase() || 'INT') as 'INT' | 'EXT',
-        location: match?.[2]?.trim() || text,
-        timeOfDay: match?.[3]?.trim() || null,
+        intExt,
+        location: location || text,
+        timeOfDay,
         nodes: [node],
       };
       scenes.push(current);
