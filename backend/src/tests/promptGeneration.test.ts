@@ -8,6 +8,7 @@ import {
   buildFrameReferenceManifests,
   buildNumberedImageManifest,
   extractTraitSummary,
+  parseCameraMetadata,
   type SceneAssetInstanceData,
   type ShotAssetAssignmentForPrompt,
 } from '../services/promptGenerationService.js';
@@ -286,5 +287,66 @@ describe('extractTraitSummary', () => {
   it('should handle descriptions with question marks', () => {
     const result = extractTraitSummary('Who is this mysterious stranger? Nobody knows.');
     expect(result).toBe('Who is this mysterious stranger?');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseCameraMetadata (3.7 Phase D)
+// ---------------------------------------------------------------------------
+
+describe('parseCameraMetadata', () => {
+  it('should parse wide shot at eye level static', () => {
+    const result = parseCameraMetadata('WS - Eye Level - Static');
+    expect(result.distance).toBe('wide');
+    expect(result.height).toBe('eye_level');
+    expect(result.movement).toBe('static');
+  });
+
+  it('should parse close-up at low angle with dolly', () => {
+    const result = parseCameraMetadata('CU - Low Angle - Slow Dolly In');
+    expect(result.distance).toBe('close');
+    expect(result.height).toBe('low_angle');
+    expect(result.movement).toMatch(/dolly_in/);
+  });
+
+  it('should parse medium shot at high angle with pan', () => {
+    const result = parseCameraMetadata('MS - High Angle - Slow Pan Right');
+    expect(result.distance).toBe('medium');
+    expect(result.height).toBe('high_angle');
+    expect(result.movement).toMatch(/pan_right/);
+  });
+
+  it('should parse extreme wide shot as wide', () => {
+    const result = parseCameraMetadata('EWS - Bird\'s Eye - Crane Down');
+    expect(result.distance).toBe('wide');
+    expect(result.height).toBe('overhead');
+    expect(result.movement).toMatch(/crane_down/);
+  });
+
+  it('should parse MCU as close', () => {
+    const result = parseCameraMetadata('MCU - Eye Level - Static');
+    expect(result.distance).toBe('close');
+    expect(result.height).toBe('eye_level');
+  });
+
+  it('should handle ground level / worm\'s eye', () => {
+    const result = parseCameraMetadata('WS - Worm\'s Eye - Handheld');
+    expect(result.distance).toBe('wide');
+    expect(result.height).toBe('ground_level');
+    expect(result.movement).toBe('handheld');
+  });
+
+  it('should default to medium/eye_level/static for ambiguous input', () => {
+    const result = parseCameraMetadata('something weird');
+    expect(result.distance).toBe('medium');
+    expect(result.height).toBe('eye_level');
+    expect(result.movement).toBe('static');
+  });
+
+  it('should handle dutch angle as eye_level', () => {
+    const result = parseCameraMetadata('MS - Dutch Angle - Steadicam');
+    expect(result.distance).toBe('medium');
+    expect(result.height).toBe('eye_level');
+    expect(result.movement).toBe('steadicam');
   });
 });
