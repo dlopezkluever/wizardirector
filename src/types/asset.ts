@@ -155,6 +155,31 @@ export const ANGLE_PROMPTS: Record<AngleType, string> = {
   back: 'rear view from behind, showing the back of the character',
 };
 
+// 3.7: Multi-view location reference types
+export type LocationViewType = 'establishing' | 'direction';
+export type CameraDistance = 'wide' | 'medium' | 'close';
+export type CameraHeight = 'eye_level' | 'high_angle' | 'low_angle' | 'overhead' | 'ground_level';
+export type LocationViewSource = 'user' | 'established' | 'stage7_inferred';
+
+export interface LocationView {
+  id: string;
+  project_asset_id: string;
+  name: string;                           // "establishing", "direction_1", "direction_2"
+  alias?: string;                         // "stove wall", "window side"
+  description?: string;                   // "Kitchen seen from the stove side, facing the window"
+  view_type: LocationViewType;
+  camera_distance: CameraDistance;
+  camera_height: CameraHeight;
+  image_key_url?: string;                 // null for stage7_inferred directions awaiting images
+  is_primary: boolean;                    // Fallback direction — eye-level Direction 1, NOT establishing
+  source: LocationViewSource;
+  established_from_scene?: string;
+  established_from_shot_id?: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // Two-pass extraction types (3A.1)
 export interface AssetPreviewEntity {
   name: string;
