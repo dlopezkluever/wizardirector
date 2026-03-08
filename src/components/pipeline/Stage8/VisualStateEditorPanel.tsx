@@ -11,7 +11,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { User, MapPin, Package, Edit3, Lock, Sparkles, Loader2, History, Trash2, ChevronDown } from 'lucide-react';
+import { User, MapPin, Package, Edit3, Lock, Sparkles, Loader2, History, Trash2, ChevronDown, BookOpen, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
@@ -29,7 +29,8 @@ import { EnhancedUploadModal } from '@/components/pipeline/shared/EnhancedUpload
 import { VersionedTextarea } from '@/components/pipeline/VersionedTextarea';
 import { textFieldVersionService } from '@/lib/services/textFieldVersionService';
 import { cn } from '@/lib/utils';
-import type { SceneAssetInstance, TransformationEvent, Shot } from '@/types/scene';
+import { Badge } from '@/components/ui/badge';
+import type { SceneAssetInstance, TransformationEvent, Shot, StoryContextSuggestion } from '@/types/scene';
 
 type AssetTypeKey = 'character' | 'location' | 'prop';
 
@@ -123,6 +124,8 @@ export function VisualStateEditorPanel({
     confidence: number;
     imageUrl: string;
   } | null>(null);
+  const [contextSuggestion, setContextSuggestion] = useState<StoryContextSuggestion | null>(null);
+  const [isInferringContext, setIsInferringContext] = useState(false);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -130,6 +133,7 @@ export function VisualStateEditorPanel({
       setEditedDescription(selectedAsset.description_override ?? selectedAsset.effective_description ?? selectedAsset.project_asset?.description ?? '');
       setStatusTags(selectedAsset.status_tags ?? []);
       setCarryForward(selectedAsset.carry_forward ?? true);
+      setContextSuggestion(null);
     }
   }, [selectedAsset?.id, selectedAsset?.description_override, selectedAsset?.effective_description, selectedAsset?.status_tags, selectedAsset?.carry_forward]);
 
@@ -354,6 +358,49 @@ export function VisualStateEditorPanel({
     setUploadAnalysisModal(null);
   }, [selectedAsset, uploadAnalysisModal, onUpdateAsset, queryClient, projectId, sceneId]);
 
+  // Story context inference handler
+  const handleInferFromStory = useCallback(async () => {
+    if (!selectedAsset) return;
+    setIsInferringContext(true);
+    setContextSuggestion(null);
+    try {
+      const result = await sceneAssetService.inferContext(projectId, sceneId, selectedAsset.id);
+      setContextSuggestion(result);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to infer from story context');
+    } finally {
+      setIsInferringContext(false);
+    }
+  }, [selectedAsset, projectId, sceneId]);
+
+  const handleAcceptDescription = useCallback(() => {
+    if (!selectedAsset || !contextSuggestion) return;
+    setEditedDescription(contextSuggestion.suggested_description);
+    onUpdateAsset(selectedAsset.id, {
+      descriptionOverride: contextSuggestion.suggested_description,
+      modificationReason: 'Accepted story context suggestion',
+    });
+    toast.success('Description updated from story context');
+  }, [selectedAsset, contextSuggestion, onUpdateAsset]);
+
+  const handleAcceptTags = useCallback(() => {
+    if (!selectedAsset || !contextSuggestion) return;
+    // Merge: add suggested tags to existing, deduplicate
+    const merged = Array.from(new Set([...statusTags, ...contextSuggestion.suggested_tags]));
+    setStatusTags(merged);
+    onUpdateAsset(selectedAsset.id, {
+      statusTags: merged,
+      modificationReason: 'Accepted story context tag suggestions',
+    });
+    toast.success('Tags updated from story context');
+  }, [selectedAsset, contextSuggestion, statusTags, onUpdateAsset]);
+
+  const handleAcceptBoth = useCallback(() => {
+    handleAcceptDescription();
+    handleAcceptTags();
+    setContextSuggestion(null);
+  }, [handleAcceptDescription, handleAcceptTags]);
+
   const useMasterAsIsMutation = useMutation({
     mutationFn: () => {
       if (!selectedAsset) throw new Error('No asset selected');
@@ -508,6 +555,120 @@ export function VisualStateEditorPanel({
               placeholder="Starting look for this asset in this scene…"
               disabled={isLocked || useMasterAsIs}
             />
+
+            {/* Infer from Story Context button + suggestion preview */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleInferFromStory}
+                disabled={isLocked || useMasterAsIs || isInferringContext}
+              >
+                {isInferringContext ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                ) : (
+                  <BookOpen className="w-4 h-4 mr-1" />
+                )}
+                {isInferringContext ? 'Analyzing…' : 'Infer from Story'}
+              </Button>
+            </div>
+
+            {contextSuggestion && (
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-primary flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5" />
+                    Story Context Suggestion
+                  </span>
+                  <button
+                    type="button"
+                    className="p-0.5 rounded hover:bg-muted text-muted-foreground"
+                    onClick={() => setContextSuggestion(null)}
+                    aria-label="Dismiss suggestion"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Description suggestion */}
+                {contextSuggestion.suggested_description && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-muted-foreground">Suggested Description</span>
+                    <p className="text-xs text-foreground bg-card/80 rounded p-2 border border-border/30">
+                      {contextSuggestion.suggested_description}
+                    </p>
+                  </div>
+                )}
+
+                {/* Tags suggestion */}
+                {contextSuggestion.suggested_tags.length > 0 && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-muted-foreground">Suggested Tags</span>
+                    <div className="flex flex-wrap gap-1">
+                      {contextSuggestion.suggested_tags.map((tag) => (
+                        <Badge
+                          key={tag}
+                          variant="secondary"
+                          className="text-[10px] bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                        >
+                          +{tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Reasoning (collapsible) */}
+                {contextSuggestion.reasoning && (
+                  <Collapsible>
+                    <CollapsibleTrigger asChild>
+                      <button type="button" className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1">
+                        <ChevronDown className="w-3 h-3" />
+                        Reasoning
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <p className="text-[11px] text-muted-foreground/80 italic mt-1">
+                        {contextSuggestion.reasoning}
+                      </p>
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+
+                {/* Accept buttons */}
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => { handleAcceptDescription(); setContextSuggestion(null); }}
+                  >
+                    <Check className="w-3 h-3 mr-1" />
+                    Accept Description
+                  </Button>
+                  {contextSuggestion.suggested_tags.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => { handleAcceptTags(); setContextSuggestion(null); }}
+                    >
+                      <Check className="w-3 h-3 mr-1" />
+                      Accept Tags
+                    </Button>
+                  )}
+                  <Button
+                    variant="gold"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={handleAcceptBoth}
+                  >
+                    <Check className="w-3 h-3 mr-1" />
+                    Accept Both
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {/* Collapsible Transformations Section */}
             <Collapsible defaultOpen>
