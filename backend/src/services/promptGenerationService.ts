@@ -108,6 +108,73 @@ export function mapCameraToAngleType(camera: string): string {
 }
 
 /**
+ * 3.7 Phase D: Parse structured camera metadata from free-text camera field.
+ * Extracts distance, height, and movement from camera strings like:
+ *   "WS - high angle crane down" → { distance: 'wide', height: 'high_angle', movement: 'crane down' }
+ *   "CU - eye level static"     → { distance: 'close', height: 'eye_level', movement: 'static' }
+ *   "MS - Low Angle - Slow Dolly In" → { distance: 'medium', height: 'low_angle', movement: 'slow dolly in' }
+ */
+export function parseCameraMetadata(camera: string): {
+  distance: 'wide' | 'medium' | 'close';
+  height: 'eye_level' | 'high_angle' | 'low_angle' | 'overhead' | 'ground_level';
+  movement: string;
+} {
+  const lower = camera.toLowerCase().trim();
+
+  // --- Distance ---
+  let distance: 'wide' | 'medium' | 'close' = 'medium';
+  if (/\b(ews|ew|wide\s*shot|ws)\b/.test(lower)) distance = 'wide';
+  else if (/\b(ecu|cu\b|close[\s-]*up|extreme\s*close)/.test(lower)) distance = 'close';
+  else if (/\b(mcu|medium\s*close)/.test(lower)) distance = 'close';
+  else if (/\b(ms\b|medium\s*shot)/.test(lower)) distance = 'medium';
+  // Explicit full-shot variants → wide
+  else if (/\b(full\s*shot|fs\b)/.test(lower)) distance = 'wide';
+
+  // --- Height ---
+  let height: 'eye_level' | 'high_angle' | 'low_angle' | 'overhead' | 'ground_level' = 'eye_level';
+  if (/\b(bird'?s[\s-]*eye|overhead|top[\s-]*down|aerial)\b/.test(lower)) height = 'overhead';
+  else if (/\b(high[\s-]*angle)\b/.test(lower)) height = 'high_angle';
+  else if (/\b(worm'?s[\s-]*eye|ground[\s-]*level)\b/.test(lower)) height = 'ground_level';
+  else if (/\b(low[\s-]*angle)\b/.test(lower)) height = 'low_angle';
+  else if (/\b(dutch[\s-]*angle|tilted)\b/.test(lower)) height = 'eye_level'; // dutch is eye-level with tilt
+
+  // --- Movement ---
+  let movement = 'static';
+  const movementPatterns = [
+    /\b(static)\b/,
+    /\b(dolly\s*(?:in|out|forward|back))\b/,
+    /\b(pan\s*(?:left|right))\b/,
+    /\b(tilt\s*(?:up|down))\b/,
+    /\b(truck\s*(?:left|right))\b/,
+    /\b(crane\s*(?:up|down))\b/,
+    /\b(zoom\s*(?:in|out))\b/,
+    /\b(push\s*in)\b/,
+    /\b(pull\s*(?:back|out))\b/,
+    /\b(handheld)\b/,
+    /\b(steadicam)\b/,
+    /\b(tracking)\b/,
+    /\b(orbit(?:ing)?)\b/,
+    /\b(whip\s*pan)\b/,
+  ];
+  for (const pat of movementPatterns) {
+    const m = lower.match(pat);
+    if (m) {
+      movement = m[1].replace(/\s+/g, '_');
+      break;
+    }
+  }
+  // Also check if there's a slow/fast prefix
+  if (movement !== 'static') {
+    const speedMatch = lower.match(/\b(slow|fast|quick)\b/);
+    if (speedMatch && !movement.includes(speedMatch[1])) {
+      movement = `${speedMatch[1]}_${movement}`;
+    }
+  }
+
+  return { distance, height, movement };
+}
+
+/**
  * 3C.2: Enrich scene assets with angle-matched reference URLs for a given shot camera.
  * For each character asset with angle variants, select the best matching angle
  * variant image based on the shot's camera angle.
