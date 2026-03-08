@@ -10,6 +10,7 @@ import { AssetInheritanceService } from '../services/assetInheritanceService.js'
 import { ImageGenerationService } from '../services/image-generation/ImageGenerationService.js';
 import { ImageAnalysisService } from '../services/imageAnalysisService.js';
 import { SceneAssetRelevanceService } from '../services/sceneAssetRelevanceService.js';
+import { StoryContextService } from '../services/storyContextService.js';
 import { SceneAssetAttemptsService } from '../services/sceneAssetAttemptsService.js';
 import { transformationEventService } from '../services/transformationEventService.js';
 import type { TransformationType, DetectedBy } from '../services/transformationEventService.js';
@@ -2208,6 +2209,120 @@ router.post('/:projectId/scenes/:sceneId/assets/:instanceId/field-versions/descr
   } catch (error: any) {
     console.error('Error selecting asset field version:', error);
     res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+// ============================================================================
+// STORY CONTEXT INFERENCE (Phase 2, Task 2)
+// ============================================================================
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/assets/:instanceId/infer-context
+ * Infer description and tag updates for a single asset based on story context.
+ */
+router.post('/:projectId/scenes/:sceneId/assets/:instanceId/infer-context', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId, instanceId } = req.params;
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const { data: scene, error: sceneError } = await supabase
+      .from('scenes')
+      .select('id, branch_id')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+
+    if (sceneError || !scene) {
+      return res.status(404).json({ error: 'Scene not found' });
+    }
+
+    const storyContextService = new StoryContextService();
+    const result = await storyContextService.inferAssetContext(
+      sceneId,
+      project.active_branch_id,
+      instanceId
+    );
+
+    res.json(result);
+  } catch (error) {
+    console.error('[SceneAssets] Story context inference error:', error);
+    res.status(500).json({
+      error: 'Story context inference failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/bulk-infer-context
+ * Bulk infer description and tag updates for multiple assets based on story context.
+ */
+router.post('/:projectId/scenes/:sceneId/bulk-infer-context', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId } = req.params;
+
+    const bodySchema = z.object({
+      instanceIds: z.array(z.string().uuid()).min(1).max(50),
+    });
+
+    const validation = bodySchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        details: validation.error.errors,
+      });
+    }
+
+    const { instanceIds } = validation.data;
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const { data: scene, error: sceneError } = await supabase
+      .from('scenes')
+      .select('id, branch_id')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+
+    if (sceneError || !scene) {
+      return res.status(404).json({ error: 'Scene not found' });
+    }
+
+    const storyContextService = new StoryContextService();
+    const results = await storyContextService.bulkInferAssetContext(
+      sceneId,
+      project.active_branch_id,
+      instanceIds
+    );
+
+    res.json({ results });
+  } catch (error) {
+    console.error('[SceneAssets] Bulk story context inference error:', error);
+    res.status(500).json({
+      error: 'Bulk story context inference failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
 });
 
