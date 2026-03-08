@@ -1157,7 +1157,7 @@ router.post('/:id/scenes/:sceneId/shots/extract', async (req, res) => {
 
     const { data: scene } = await supabase
       .from('scenes')
-      .select('id, scene_number, script_excerpt')
+      .select('id, scene_number, script_excerpt, expected_location')
       .eq('id', sceneId)
       .eq('branch_id', project.active_branch_id)
       .single();
@@ -1214,18 +1214,124 @@ router.post('/:id/scenes/:sceneId/shots/extract', async (req, res) => {
       if (summaryLines.length > 0) masterScriptSummary = summaryLines.join('\n');
     }
 
+    // 3.7 Phase D: Fetch existing location views for this scene's location asset
+    let locationDirections: { name: string; alias?: string; description?: string }[] = [];
+    let locationAssetId: string | undefined;
+    const locationName = scene.expected_location || '';
+
+    if (locationName) {
+      // Find the matching location asset by name (case-insensitive)
+      const { data: locationAssets } = await supabase
+        .from('project_assets')
+        .select('id, name')
+        .eq('branch_id', project.active_branch_id)
+        .eq('asset_type', 'location');
+
+      const matchedAsset = (locationAssets || []).find(
+        (a: any) => a.name.toLowerCase() === locationName.toLowerCase()
+      );
+
+      if (matchedAsset) {
+        locationAssetId = matchedAsset.id;
+
+        // Fetch existing location views
+        const { data: existingViews } = await supabase
+          .from('location_views')
+          .select('id, name, alias, description')
+          .eq('project_asset_id', matchedAsset.id)
+          .order('sort_order', { ascending: true });
+
+        if (existingViews && existingViews.length > 0) {
+          locationDirections = existingViews.map((v: any) => ({
+            name: v.name,
+            alias: v.alias || undefined,
+            description: v.description || undefined,
+          }));
+        }
+      }
+    }
+
     const shotExtractionService = new ShotExtractionService();
-    const extractedShots = await shotExtractionService.extractShots(
+    const { shots: extractedShots, newDirections } = await shotExtractionService.extractShots(
       sceneId,
       scene.script_excerpt || '',
       scene.scene_number,
       {
         priorSceneEndState: priorScene?.end_state_summary ?? null,
         beatSheetSummary,
-        masterScriptSummary
+        masterScriptSummary,
+        locationDirections: locationDirections.length > 0 ? locationDirections : undefined,
+        locationName: locationName || undefined,
       }
     );
 
+    // 3.7 Phase D: Create stage7_inferred location_views for new directions
+    const directionNameToId = new Map<string, string>();
+
+    // Map existing direction names to their IDs
+    if (locationAssetId && locationDirections.length > 0) {
+      const { data: existingViews } = await supabase
+        .from('location_views')
+        .select('id, name')
+        .eq('project_asset_id', locationAssetId);
+
+      for (const v of (existingViews || [])) {
+        directionNameToId.set(v.name, v.id);
+      }
+    }
+
+    // Create new inferred directions
+    if (locationAssetId && newDirections.length > 0) {
+      // Get current max sort_order
+      const { data: maxRow } = await supabase
+        .from('location_views')
+        .select('sort_order')
+        .eq('project_asset_id', locationAssetId)
+        .order('sort_order', { ascending: false })
+        .limit(1);
+      let nextOrder = (maxRow?.[0]?.sort_order ?? -1) + 1;
+
+      // Check if any is_primary already set
+      const { data: primaryCheck } = await supabase
+        .from('location_views')
+        .select('id')
+        .eq('project_asset_id', locationAssetId)
+        .eq('is_primary', true)
+        .limit(1);
+      let hasPrimary = (primaryCheck?.length ?? 0) > 0;
+
+      for (const nd of newDirections) {
+        // Skip if name already exists (shouldn't happen, but safety check)
+        if (directionNameToId.has(nd.name)) continue;
+
+        const isDirection = !nd.name.includes('establishing');
+        const { data: created, error: createErr } = await supabase
+          .from('location_views')
+          .insert({
+            project_asset_id: locationAssetId,
+            name: nd.name,
+            alias: nd.alias || null,
+            description: nd.description || null,
+            view_type: isDirection ? 'direction' : 'establishing',
+            camera_distance: 'wide',
+            camera_height: isDirection ? 'eye_level' : 'overhead',
+            is_primary: isDirection && !hasPrimary,
+            source: 'stage7_inferred',
+            sort_order: nextOrder++,
+          })
+          .select('id, name')
+          .single();
+
+        if (created) {
+          directionNameToId.set(created.name, created.id);
+          if (isDirection && !hasPrimary) hasPrimary = true;
+        } else if (createErr) {
+          console.warn(`[ShotExtraction] Failed to create inferred direction "${nd.name}":`, createErr.message);
+        }
+      }
+    }
+
+    // Build shots to insert with structured camera metadata
     const shotsToInsert = extractedShots.map((shot, index) => ({
       scene_id: sceneId,
       shot_id: shot.shotId,
@@ -1237,6 +1343,12 @@ router.post('/:id/scenes/:sceneId/shots/extract', async (req, res) => {
       characters_background: shot.charactersBackground,
       setting: shot.setting,
       camera: shot.camera,
+      camera_distance: shot.camera_distance || null,
+      camera_height: shot.camera_height || null,
+      camera_movement: shot.camera_movement || null,
+      camera_direction_id: shot.camera_direction_name
+        ? (directionNameToId.get(shot.camera_direction_name) || null)
+        : null,
       continuity_flags: shot.continuityFlags,
       beat_reference: shot.beatReference ?? null,
       transformation_flags: shot.transformationFlags ? JSON.stringify(shot.transformationFlags) : null,
