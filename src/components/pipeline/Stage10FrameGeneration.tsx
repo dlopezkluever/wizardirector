@@ -49,7 +49,11 @@ import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
 import { SceneIndicator } from './SceneIndicator';
+import { EstablishViewPrompt } from './EstablishViewPrompt';
 import { useSceneInfo } from '@/hooks/useSceneInfo';
+import { sceneAssetService } from '@/lib/services/sceneAssetService';
+import { projectAssetService } from '@/lib/services/projectAssetService';
+import type { LocationView } from '@/types/asset';
 
 interface Stage10FrameGenerationProps {
   projectId: string;
@@ -144,6 +148,58 @@ export function Stage10FrameGeneration({
 
   // Calculate progress
   const progress = frameService.calculateProgress(shots);
+
+  // Phase G: Fetch location views for established view prompts
+  // Collect unique camera_direction_ids from shots
+  const directionIds = useMemo(
+    () => [...new Set(shots.map(s => s.cameraDirectionId).filter(Boolean))] as string[],
+    [shots]
+  );
+
+  // Fetch scene assets to find location assets and their views
+  const { data: sceneAssetsData } = useQuery({
+    queryKey: ['scene-assets-stage10', projectId, sceneId],
+    queryFn: () => sceneAssetService.listSceneAssets(projectId, sceneId),
+    enabled: directionIds.length > 0,
+    staleTime: 60_000,
+  });
+
+  // Fetch location views for all location assets in the scene
+  const locationAssets = useMemo(
+    () => (sceneAssetsData || []).filter(a => a.project_asset?.asset_type === 'location'),
+    [sceneAssetsData]
+  );
+
+  const { data: locationViewsMap } = useQuery({
+    queryKey: ['location-views-stage10', projectId, locationAssets.map(a => a.project_asset_id)],
+    queryFn: async () => {
+      const result = new Map<string, LocationView>();
+      for (const asset of locationAssets) {
+        const views = await projectAssetService.listLocationViews(projectId, asset.project_asset_id);
+        for (const view of views) {
+          result.set(view.id, view);
+        }
+      }
+      return result;
+    },
+    enabled: locationAssets.length > 0 && directionIds.length > 0,
+    staleTime: 30_000,
+  });
+
+  // Build lookup: direction view ID → { view, assetId, locationName }
+  const directionLookup = useMemo(() => {
+    if (!locationViewsMap) return new Map<string, { view: LocationView; assetId: string; locationName: string }>();
+    const lookup = new Map<string, { view: LocationView; assetId: string; locationName: string }>();
+    for (const asset of locationAssets) {
+      const assetName = asset.project_asset?.name ?? 'Unknown';
+      for (const [viewId, view] of locationViewsMap) {
+        if (view.project_asset_id === asset.project_asset_id) {
+          lookup.set(viewId, { view, assetId: asset.project_asset_id, locationName: assetName });
+        }
+      }
+    }
+    return lookup;
+  }, [locationViewsMap, locationAssets]);
 
   // Select first shot by default
   useEffect(() => {
@@ -984,6 +1040,25 @@ export function Stage10FrameGeneration({
                       }
                       isUploadPending={uploadFrameMutation.isPending}
                     />
+
+                    {/* Phase G: Establish View Prompt — for start frame */}
+                    {(() => {
+                      const dirId = selectedShot.cameraDirectionId;
+                      const info = dirId ? directionLookup.get(dirId) : undefined;
+                      if (!info) return null;
+                      return (
+                        <EstablishViewPrompt
+                          projectId={projectId}
+                          sceneId={sceneId}
+                          shotId={selectedShot.id}
+                          frameImageUrl={selectedShot.startFrame?.imageUrl ?? null}
+                          frameStatus={selectedShot.startFrame?.status ?? 'pending'}
+                          directionView={info.view}
+                          locationAssetId={info.assetId}
+                          locationName={info.locationName}
+                        />
+                      );
+                    })()}
 
                     {/* Top-right: End Frame */}
                     {selectedShot.requiresEndFrame ? (
