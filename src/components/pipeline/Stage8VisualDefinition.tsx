@@ -44,6 +44,7 @@ import { shotService } from '@/lib/services/shotService';
 import { transformationEventService } from '@/lib/services/transformationEventService';
 import { useShotAssetAutoPopulate } from '@/lib/hooks/useShotAssetAutoPopulate';
 import { BulkContextUpdateModal } from '@/components/pipeline/Stage8/BulkContextUpdateModal';
+import { LocationCoveragePanel } from '@/components/pipeline/Stage8/LocationCoveragePanel';
 import type { SceneAssetInstance, SceneAssetRelevanceResult, SceneAssetSuggestion, BulkStoryContextResult } from '@/types/scene';
 import { LockedStageHeader } from './LockedStageHeader';
 import { StageInfoButton } from './StageInfoButton';
@@ -836,6 +837,13 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           onMasterReferenceChanged={setSelectedAsset}
         />
       </div>
+
+      <LocationCoveragePanel
+        projectId={projectId}
+        sceneId={sceneId}
+        shots={shots}
+        sceneAssets={sceneAssets}
+      />
 
       <AssetDrawer
         projectId={projectId}
