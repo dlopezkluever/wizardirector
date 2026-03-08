@@ -1097,6 +1097,7 @@ class ProjectAssetService {
       camera_distance?: string;
       camera_height?: string;
       is_primary?: boolean;
+      image_key_url?: string;
     }
   ): Promise<LocationView> {
     const { data: { session } } = await supabase.auth.getSession();
@@ -1157,6 +1158,107 @@ class ProjectAssetService {
     }
 
     return response.json();
+  }
+
+  // ============================================================================
+  // 3.7 Phase G: Establish View from Generated Frame
+  // ============================================================================
+
+  /**
+   * Lock a generated frame as an established view reference for a camera direction.
+   */
+  async establishViewFromFrame(
+    projectId: string,
+    assetId: string,
+    viewId: string,
+    data: {
+      frameImageUrl: string;
+      shotId: string;
+      sceneId: string;
+    }
+  ): Promise<LocationView> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/assets/${assetId}/location-views/${viewId}/establish-from-frame`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to establish view from frame');
+    }
+
+    return response.json();
+  }
+
+  // ============================================================================
+  // 3.7 Phase H: Generate Location View Image
+  // ============================================================================
+
+  /**
+   * Generate an image for a location view using the establishing/primary image
+   * as a style reference. Polls for completion and updates the view's image_key_url.
+   */
+  async generateLocationViewImage(
+    projectId: string,
+    assetId: string,
+    viewId: string
+  ): Promise<ImageGenerationJobResponse> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/assets/${assetId}/location-views/${viewId}/generate-image`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to generate location view image');
+    }
+
+    const jobResponse = await response.json();
+
+    // Poll for completion
+    const result = await this.pollImageJob(jobResponse.jobId, session.access_token);
+
+    // If completed, set the location_view's image_key_url to the generated image
+    if (result.status === 'completed' && result.publicUrl) {
+      await fetch(
+        `/api/projects/${projectId}/assets/${assetId}/location-views/${viewId}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ image_key_url: result.publicUrl }),
+        }
+      );
+    }
+
+    return result;
   }
 
   /**
