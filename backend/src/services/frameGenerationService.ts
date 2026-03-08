@@ -112,7 +112,8 @@ export class FrameGenerationService {
                 end_frame_prompt,
                 start_continuity,
                 ai_start_continuity,
-                continuity_frame_prompt
+                continuity_frame_prompt,
+                camera_direction_id
             `)
             .eq('scene_id', sceneId)
             .order('shot_order', { ascending: true });
@@ -238,6 +239,7 @@ export class FrameGenerationService {
                 startContinuity: shot.start_continuity || 'none',
                 aiStartContinuity: shot.ai_start_continuity || null,
                 continuityFramePrompt: shot.continuity_frame_prompt || null,
+                cameraDirectionId: shot.camera_direction_id || null,
                 startFrame: frameEntry.start,
                 endFrame: frameEntry.end,
             };
