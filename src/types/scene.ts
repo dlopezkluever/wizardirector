@@ -172,6 +172,25 @@ export interface SceneAssetSuggestion {
   created_at: string;
 }
 
+/** Phase 2: Story context suggestion for a single asset. */
+export interface StoryContextSuggestion {
+  suggested_description: string;
+  suggested_tags: string[];
+  reasoning: string;
+}
+
+/** Phase 2: Bulk story context suggestion result per asset. */
+export interface BulkStoryContextResult {
+  instanceId: string;
+  assetName: string;
+  assetType: string;
+  current_description: string;
+  suggested_description: string;
+  current_tags: string[];
+  suggested_tags: string[];
+  reasoning: string;
+}
+
 export interface CreateSceneAssetInstanceRequest {
   sceneId: string;
   projectAssetId: string;
