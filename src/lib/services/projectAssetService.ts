@@ -4,7 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
-import type { ProjectAsset, CloneAssetRequest, AssetVersionStatus, AssetPreviewResponse, AssetType, AssetDecision, ProjectAssetGenerationAttempt, AngleType, AssetAngleVariant, MergeAssetsRequest, MergeAssetsResponse, SplitAssetRequest, SplitAssetResponse } from '@/types/asset';
+import type { ProjectAsset, CloneAssetRequest, AssetVersionStatus, AssetPreviewResponse, AssetType, AssetDecision, ProjectAssetGenerationAttempt, AngleType, AssetAngleVariant, MergeAssetsRequest, MergeAssetsResponse, SplitAssetRequest, SplitAssetResponse, LocationView } from '@/types/asset';
 
 export interface ExtractAssetsResponse {
   assets: ProjectAsset[];
@@ -987,6 +987,198 @@ class ProjectAssetService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to delete angle variant');
+    }
+  }
+  // ============================================================================
+  // 3.7 Phase C: Location View Methods
+  // ============================================================================
+
+  /**
+   * List all location views for a location asset
+   */
+  async listLocationViews(projectId: string, assetId: string): Promise<LocationView[]> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/location-views`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to list location views');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Create a new location view
+   */
+  async createLocationView(
+    projectId: string,
+    assetId: string,
+    data: {
+      name: string;
+      view_type: 'establishing' | 'direction';
+      alias?: string;
+      description?: string;
+      camera_distance?: string;
+      camera_height?: string;
+      is_primary?: boolean;
+      source?: string;
+    }
+  ): Promise<LocationView> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/location-views`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create location view');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Suggest and create default views (establishing + 2 directions)
+   */
+  async suggestDefaultViews(projectId: string, assetId: string): Promise<LocationView[]> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/location-views/suggest-defaults`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to suggest default views');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Update a location view
+   */
+  async updateLocationView(
+    projectId: string,
+    assetId: string,
+    viewId: string,
+    updates: {
+      alias?: string;
+      description?: string;
+      camera_distance?: string;
+      camera_height?: string;
+      is_primary?: boolean;
+    }
+  ): Promise<LocationView> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/location-views/${viewId}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(updates),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to update location view');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Upload an image for a location view
+   */
+  async uploadLocationViewImage(
+    projectId: string,
+    assetId: string,
+    viewId: string,
+    imageFile: File
+  ): Promise<LocationView> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const formData = new FormData();
+    formData.append('image', imageFile);
+
+    const response = await fetch(
+      `/api/projects/${projectId}/assets/${assetId}/location-views/${viewId}/upload-image`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: formData,
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to upload location view image');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Delete a location view
+   */
+  async deleteLocationView(projectId: string, assetId: string, viewId: string): Promise<void> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/location-views/${viewId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to delete location view');
     }
   }
 }
