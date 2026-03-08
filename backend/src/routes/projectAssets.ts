@@ -2969,7 +2969,7 @@ router.put('/:projectId/assets/:assetId/location-views/:viewId', async (req, res
     try {
         const userId = req.user!.id;
         const { projectId, assetId, viewId } = req.params;
-        const { alias, description, camera_distance, camera_height, is_primary } = req.body;
+        const { alias, description, camera_distance, camera_height, is_primary, image_key_url } = req.body;
 
         // Verify project ownership
         const { data: project, error: projectError } = await supabase
@@ -3010,6 +3010,7 @@ router.put('/:projectId/assets/:assetId/location-views/:viewId', async (req, res
         if (camera_distance !== undefined) updates.camera_distance = camera_distance;
         if (camera_height !== undefined) updates.camera_height = camera_height;
         if (is_primary !== undefined) updates.is_primary = is_primary;
+        if (image_key_url !== undefined) updates.image_key_url = image_key_url;
 
         const { data: view, error: updateError } = await supabase
             .from('location_views')
@@ -3163,6 +3164,260 @@ router.delete('/:projectId/assets/:assetId/location-views/:viewId', async (req, 
     } catch (error) {
         console.error('[ProjectAssets] Delete location view error:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============================================================================
+// 3.7 Phase G: ESTABLISH VIEW FROM GENERATED FRAME
+// ============================================================================
+
+/**
+ * POST /api/projects/:projectId/assets/:assetId/location-views/:viewId/establish-from-frame
+ * Lock a generated frame as an established view reference for a camera direction.
+ * Sets the view's image_key_url to the frame's image, marks source as 'established',
+ * and records provenance (scene/shot).
+ */
+router.post('/:projectId/assets/:assetId/location-views/:viewId/establish-from-frame', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, assetId, viewId } = req.params;
+        const { frameImageUrl, shotId, sceneId } = req.body;
+
+        if (!frameImageUrl || !shotId || !sceneId) {
+            return res.status(400).json({ error: 'frameImageUrl, shotId, and sceneId are required' });
+        }
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Verify view exists for this asset
+        const { data: existingView, error: viewError } = await supabase
+            .from('location_views')
+            .select('id, project_asset_id, image_key_url')
+            .eq('id', viewId)
+            .eq('project_asset_id', assetId)
+            .single();
+
+        if (viewError || !existingView) {
+            return res.status(404).json({ error: 'Location view not found' });
+        }
+
+        // Fetch shot for provenance info
+        const { data: shot } = await supabase
+            .from('shots')
+            .select('shot_order, camera_distance, camera_height, camera_movement')
+            .eq('id', shotId)
+            .single();
+
+        // Fetch scene for provenance info
+        const { data: scene } = await supabase
+            .from('scenes')
+            .select('scene_number')
+            .eq('id', sceneId)
+            .single();
+
+        const sceneLabel = scene ? `Scene ${scene.scene_number}` : 'Unknown scene';
+        const shotLabel = shot ? `Shot ${shot.shot_order}` : 'Unknown shot';
+
+        // Update the location view with the frame image and established metadata
+        const updates: Record<string, unknown> = {
+            image_key_url: frameImageUrl,
+            source: 'established',
+            established_from_scene: `${sceneLabel}, ${shotLabel}`,
+            established_from_shot_id: shotId,
+            updated_at: new Date().toISOString(),
+        };
+
+        // Inherit camera metadata from the shot if available
+        if (shot?.camera_distance) updates.camera_distance = shot.camera_distance;
+        if (shot?.camera_height) updates.camera_height = shot.camera_height;
+
+        const { data: view, error: updateError } = await supabase
+            .from('location_views')
+            .update(updates)
+            .eq('id', viewId)
+            .select()
+            .single();
+
+        if (updateError) {
+            console.error('[ProjectAssets] Establish view from frame error:', updateError);
+            return res.status(500).json({ error: 'Failed to establish view from frame' });
+        }
+
+        res.json(view);
+    } catch (error) {
+        console.error('[ProjectAssets] Establish view from frame error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============================================================================
+// 3.7 Phase H: GENERATE IMAGE FOR LOCATION VIEW
+// ============================================================================
+
+/**
+ * POST /api/projects/:projectId/assets/:assetId/location-views/:viewId/generate-image
+ * Generate an image for a location view direction using the establishing/primary
+ * image as a STYLE reference. Returns a job ID for polling.
+ */
+router.post('/:projectId/assets/:assetId/location-views/:viewId/generate-image', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, assetId, viewId } = req.params;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Get the asset
+        const { data: asset, error: assetError } = await supabase
+            .from('project_assets')
+            .select('id, asset_type, name, description, image_key_url, visual_style_capsule_id')
+            .eq('id', assetId)
+            .eq('project_id', projectId)
+            .single();
+
+        if (assetError || !asset) {
+            return res.status(404).json({ error: 'Asset not found' });
+        }
+
+        if (asset.asset_type !== 'location') {
+            return res.status(400).json({ error: 'Asset is not a location' });
+        }
+
+        // Get the target view
+        const { data: targetView, error: viewError } = await supabase
+            .from('location_views')
+            .select('*')
+            .eq('id', viewId)
+            .eq('project_asset_id', assetId)
+            .single();
+
+        if (viewError || !targetView) {
+            return res.status(404).json({ error: 'Location view not found' });
+        }
+
+        // Find style reference image: establishing view first, then primary direction, then master asset image
+        let styleReferenceUrl: string | null = null;
+
+        // 1. Try establishing view
+        const { data: establishingView } = await supabase
+            .from('location_views')
+            .select('image_key_url')
+            .eq('project_asset_id', assetId)
+            .eq('view_type', 'establishing')
+            .not('image_key_url', 'is', null)
+            .limit(1)
+            .single();
+
+        if (establishingView?.image_key_url) {
+            styleReferenceUrl = establishingView.image_key_url;
+        }
+
+        // 2. Fallback: primary direction view
+        if (!styleReferenceUrl) {
+            const { data: primaryView } = await supabase
+                .from('location_views')
+                .select('image_key_url')
+                .eq('project_asset_id', assetId)
+                .eq('is_primary', true)
+                .not('image_key_url', 'is', null)
+                .limit(1)
+                .single();
+
+            if (primaryView?.image_key_url) {
+                styleReferenceUrl = primaryView.image_key_url;
+            }
+        }
+
+        // 3. Fallback: master asset image
+        if (!styleReferenceUrl && asset.image_key_url) {
+            styleReferenceUrl = asset.image_key_url;
+        }
+
+        if (!styleReferenceUrl) {
+            return res.status(400).json({
+                error: 'No reference image available. Upload or generate at least one reference image first.'
+            });
+        }
+
+        // Build generation prompt
+        const viewAlias = targetView.alias ? ` "${targetView.alias}"` : '';
+        const viewDesc = targetView.description || `A view of ${asset.name}`;
+        const heightLabel = (targetView.camera_height || 'eye_level').replace(/_/g, ' ');
+        const distanceLabel = targetView.camera_distance || 'wide';
+
+        const prompt = [
+            `${viewDesc}.`,
+            `Same ${asset.name} seen from${viewAlias} perspective,`,
+            `${heightLabel} camera height, ${distanceLabel} shot.`,
+            `Maintain the same color palette, architectural details, materials, and lighting conditions as the reference.`,
+            asset.description ? `Location description: ${asset.description}` : '',
+        ].filter(Boolean).join(' ');
+
+        // Check for visual style
+        let manualVisualTone: string | undefined;
+        if (!asset.visual_style_capsule_id) {
+            const { data: stage5States } = await supabase
+                .from('stage_states')
+                .select('content')
+                .eq('branch_id', project.active_branch_id)
+                .eq('stage_number', 5)
+                .order('version', { ascending: false })
+                .limit(1);
+
+            const stageContent = stage5States?.[0]?.content;
+            if (stageContent?.manual_visual_tone) {
+                manualVisualTone = stageContent.manual_visual_tone;
+            }
+        }
+
+        console.log(`[ProjectAssets] Generating location view image for view ${viewId} of asset ${assetId}`);
+
+        const localImageService = new ImageGenerationService();
+        // NOTE: Do NOT pass assetId — that triggers master_asset completion handler
+        // which updates project_assets.image_key_url instead of location_views.image_key_url.
+        // The frontend polls for completion and updates the view record.
+        const result = await localImageService.createImageJob({
+            projectId,
+            branchId: project.active_branch_id,
+            jobType: 'scene_asset', // scene_asset doesn't auto-update project_assets
+            prompt,
+            visualStyleCapsuleId: asset.visual_style_capsule_id || undefined,
+            manualVisualTone,
+            width: 1024,
+            height: 576, // 16:9 cinematic for locations
+            referenceImageUrls: [{
+                url: styleReferenceUrl,
+                role: 'style',
+            }],
+            idempotencyKey: `location-view-${viewId}-${Date.now()}`,
+        });
+
+        res.json({ ...result, viewId });
+    } catch (error) {
+        console.error('[ProjectAssets] Generate location view image error:', error);
+        res.status(500).json({
+            error: 'Image generation failed',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
     }
 });
 
