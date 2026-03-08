@@ -1,5 +1,5 @@
 // Aligned with database schema (migration 003)
-import type { ProjectAsset } from './asset';
+import type { ProjectAsset, CameraDistance, CameraHeight } from './asset';
 
 export type SceneStatus = 
   | 'draft'
@@ -57,6 +57,11 @@ export interface Shot {
   charactersBackground: string[];
   setting: string;
   camera: string;
+  // 3.7: Structured camera metadata (generated at Stage 7, parsed as fallback)
+  camera_distance?: CameraDistance;
+  camera_height?: CameraHeight;
+  camera_movement?: string;
+  camera_direction_id?: string;           // FK to location_views.id — assigned camera direction
   continuityFlags?: string[];
   beatReference?: string;
   transformationFlags?: TransformationFlag[];
