@@ -118,20 +118,26 @@ export class SceneDependencyExtractionService {
 
   /**
    * Fallback regex parser for location
-   * Extracts location from scene heading (e.g., "INT. KITCHEN - DAY" → "KITCHEN")
+   * 3.7: Supports compound headings with sub-locations
+   * e.g., "INT. GINGERBREAD HOUSE - KITCHEN - DAY" → "GINGERBREAD HOUSE - KITCHEN"
    */
   private parseLocationFromHeading(heading: string): string {
-    // Pattern: INT./EXT. LOCATION - DAY/NIGHT/etc.
-    const headingRegex = /^(?:INT\.|EXT\.)\s+(.+?)(?:\s*-\s*(?:DAY|NIGHT|CONTINUOUS|LATER|MOMENTS LATER|DAWN|DUSK|MORNING|AFTERNOON|EVENING))?$/i;
-    
-    const match = heading.trim().match(headingRegex);
-    
-    if (match && match[1]) {
-      return match[1].trim();
-    }
-    
-    // Fallback: return the entire heading
-    return heading.trim();
+    const trimmed = heading.trim();
+
+    // Strip INT./EXT. prefix
+    const prefixMatch = trimmed.match(/^(?:INT|EXT)\.?\s+/i);
+    if (!prefixMatch) return trimmed;
+
+    const afterPrefix = trimmed.slice(prefixMatch[0].length);
+
+    // Strip known time-of-day suffix, keep everything else as location (including sub-locations)
+    const timePattern = /\s*-\s*(?:DAY|NIGHT|CONTINUOUS|LATER|MOMENTS LATER|DAWN|DUSK|MORNING|AFTERNOON|EVENING)$/i;
+    const timeMatch = afterPrefix.match(timePattern);
+    const location = timeMatch
+      ? afterPrefix.slice(0, timeMatch.index!).trim()
+      : afterPrefix.trim();
+
+    return location || trimmed;
   }
 
   /**
