@@ -22,12 +22,30 @@ export interface ShotData {
   camera: string;
   continuity_flags?: string[];
   beat_reference?: string;
+  // 3.7 Phase A: Structured camera metadata
+  camera_distance?: 'wide' | 'medium' | 'close';
+  camera_height?: 'eye_level' | 'high_angle' | 'low_angle' | 'overhead' | 'ground_level';
+  camera_movement?: string;
+  camera_direction_id?: string;
 }
 
 export interface AngleVariantData {
   angle_type: string;
   image_url: string | null;
   status: string;
+}
+
+export interface LocationViewData {
+  id: string;
+  name: string;
+  alias?: string;
+  description?: string;
+  view_type: 'establishing' | 'direction';
+  camera_distance: 'wide' | 'medium' | 'close';
+  camera_height: 'eye_level' | 'high_angle' | 'low_angle' | 'overhead' | 'ground_level';
+  image_key_url?: string;
+  is_primary: boolean;
+  source: 'user' | 'established' | 'stage7_inferred';
 }
 
 export interface SceneAssetInstanceData {
@@ -48,6 +66,11 @@ export interface SceneAssetInstanceData {
   inherited_from_instance_id?: string;
   angle_variants?: AngleVariantData[];
   matched_angle_url?: string;
+  // 3.7 Phase F: Location views for location assets
+  location_views?: LocationViewData[];
+  matched_direction_view?: LocationViewData;
+  establishing_view?: LocationViewData;
+  location_delta_description?: string;
 }
 
 export interface ReferenceImageOrderEntry {
@@ -55,6 +78,7 @@ export interface ReferenceImageOrderEntry {
   assetName: string;
   url: string;
   type: string;
+  role?: 'identity' | 'style';
 }
 
 export type PresenceType = 'throughout' | 'enters' | 'exits' | 'passes_through';
@@ -175,33 +199,168 @@ export function parseCameraMetadata(camera: string): {
 }
 
 /**
- * 3C.2: Enrich scene assets with angle-matched reference URLs for a given shot camera.
- * For each character asset with angle variants, select the best matching angle
- * variant image based on the shot's camera angle.
+ * 3.7 Phase F: Match a shot to the best location view (camera direction) based on
+ * metadata scoring. Deterministic, no LLM, no API cost.
+ *
+ * Scoring:
+ *   - camera_height match: +2 points
+ *   - camera_distance match: +1 point
+ *   - action text contains alias keywords: +3 points
+ *   - Pick highest-scoring direction; if score = 0 → use is_primary fallback
+ */
+export function matchShotToLocationView(
+  shot: ShotData,
+  directionViews: LocationViewData[]
+): LocationViewData | undefined {
+  if (directionViews.length === 0) return undefined;
+
+  // If shot already has a direction assignment, use it directly
+  if (shot.camera_direction_id) {
+    const assigned = directionViews.find(v => v.id === shot.camera_direction_id);
+    if (assigned) return assigned;
+  }
+
+  // Parse shot camera to get structured metadata (use existing fields if available)
+  const shotDistance = shot.camera_distance ?? parseCameraMetadata(shot.camera).distance;
+  const shotHeight = shot.camera_height ?? parseCameraMetadata(shot.camera).height;
+
+  let bestView: LocationViewData | undefined;
+  let bestScore = 0;
+
+  for (const view of directionViews) {
+    let score = 0;
+
+    // camera_height match: +2 points
+    if (view.camera_height === shotHeight) score += 2;
+
+    // camera_distance match: +1 point
+    if (view.camera_distance === shotDistance) score += 1;
+
+    // action text contains alias keywords: +3 points
+    if (view.alias && shot.action) {
+      const aliasWords = view.alias.toLowerCase().split(/\s+/);
+      const actionLower = shot.action.toLowerCase();
+      const settingLower = (shot.setting || '').toLowerCase();
+      for (const word of aliasWords) {
+        if (word.length >= 3 && (actionLower.includes(word) || settingLower.includes(word))) {
+          score += 3;
+          break;
+        }
+      }
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestView = view;
+    }
+  }
+
+  // If score = 0, fall back to is_primary direction
+  if (bestScore === 0) {
+    return directionViews.find(v => v.is_primary) ?? directionViews[0];
+  }
+
+  return bestView;
+}
+
+/**
+ * 3.7 Phase F: Build a delta description when the reference image doesn't perfectly
+ * match the shot's camera angle. Instructs the image generator about the difference.
+ */
+export function buildLocationDeltaDescription(
+  matchedView: LocationViewData,
+  shot: ShotData,
+  locationName: string
+): string | undefined {
+  const shotHeight = shot.camera_height ?? parseCameraMetadata(shot.camera).height;
+  const shotDistance = shot.camera_distance ?? parseCameraMetadata(shot.camera).distance;
+
+  const heightMatch = matchedView.camera_height === shotHeight;
+  const distanceMatch = matchedView.camera_distance === shotDistance;
+
+  if (heightMatch && distanceMatch) return undefined;
+
+  const parts: string[] = [];
+  const viewLabel = matchedView.alias
+    ? `${matchedView.name.replace('_', ' ')} "${matchedView.alias}"`
+    : matchedView.name.replace('_', ' ');
+
+  parts.push(`The attached location reference shows ${locationName} ${viewLabel}`);
+
+  if (!heightMatch) {
+    const refH = matchedView.camera_height.replace('_', ' ');
+    const shotH = shotHeight.replace('_', ' ');
+    parts.push(`at ${refH}. Frame this shot from a ${shotH.toUpperCase()} perspective`);
+  }
+
+  if (!distanceMatch) {
+    const shotD = shotDistance === 'wide' ? 'WIDE' : shotDistance === 'close' ? 'CLOSE-UP' : 'MEDIUM';
+    parts.push(`as a ${shotD} shot`);
+  }
+
+  parts.push('Maintain the same color palette, architectural details, and spatial layout.');
+
+  return parts.join('. ') + '.';
+}
+
+/**
+ * 3C.2 + 3.7 Phase F: Enrich scene assets with angle-matched reference URLs.
+ * - Characters: selects best angle variant based on camera angle
+ * - Locations: selects best direction view + establishing view based on shot metadata
  */
 export function enrichAssetsWithAngleMatch(
   assets: SceneAssetInstanceData[],
-  shotCamera: string
+  shotCamera: string,
+  shot?: ShotData
 ): SceneAssetInstanceData[] {
   const targetAngle = mapCameraToAngleType(shotCamera);
 
   return assets.map(asset => {
-    if (
-      asset.project_asset?.asset_type !== 'character' ||
-      !asset.angle_variants?.length
-    ) {
-      return asset;
+    // Character angle matching (existing 3C.2 logic)
+    if (asset.project_asset?.asset_type === 'character' && asset.angle_variants?.length) {
+      const match =
+        asset.angle_variants.find(v => v.angle_type === targetAngle && v.status === 'completed' && v.image_url) ||
+        asset.angle_variants.find(v => v.angle_type === 'front' && v.status === 'completed' && v.image_url);
+
+      return {
+        ...asset,
+        matched_angle_url: match?.image_url ?? undefined,
+      };
     }
 
-    // Find the target angle variant, fall back to front
-    const match =
-      asset.angle_variants.find(v => v.angle_type === targetAngle && v.status === 'completed' && v.image_url) ||
-      asset.angle_variants.find(v => v.angle_type === 'front' && v.status === 'completed' && v.image_url);
+    // Location view matching (3.7 Phase F)
+    if (asset.project_asset?.asset_type === 'location' && asset.location_views?.length) {
+      const directions = asset.location_views.filter(v => v.view_type === 'direction');
+      const establishing = asset.location_views.find(v => v.view_type === 'establishing');
 
-    return {
-      ...asset,
-      matched_angle_url: match?.image_url ?? undefined,
-    };
+      // Build a synthetic ShotData if not provided
+      const shotData: ShotData = shot ?? {
+        id: '', shot_id: '', duration: 8, dialogue: '', action: '',
+        characters_foreground: [], characters_background: [],
+        setting: '', camera: shotCamera,
+      };
+
+      const matchedDirection = matchShotToLocationView(shotData, directions);
+
+      // Build delta description if match is imperfect
+      let deltaDesc: string | undefined;
+      if (matchedDirection) {
+        deltaDesc = buildLocationDeltaDescription(
+          matchedDirection,
+          shotData,
+          asset.project_asset.name ?? 'location'
+        );
+      }
+
+      return {
+        ...asset,
+        matched_direction_view: matchedDirection,
+        establishing_view: establishing,
+        location_delta_description: deltaDesc,
+      };
+    }
+
+    return asset;
   });
 }
 
@@ -248,16 +407,78 @@ export function buildNumberedImageManifest(
   let index = 1;
 
   for (const asset of sorted) {
+    const name = asset.project_asset?.name ?? 'Unknown';
+    const type = asset.project_asset?.asset_type ?? 'unknown';
+
+    // 3.7 Phase F: Location assets get 2 refs (direction + establishing) with role: 'style'
+    if (type === 'location' && (asset.matched_direction_view || asset.establishing_view)) {
+      // 1. Best-matching direction view (MAIN REFERENCE)
+      if (asset.matched_direction_view?.image_key_url) {
+        const dirLabel = asset.matched_direction_view.alias
+          ? `${asset.matched_direction_view.name.replace('_', ' ')} "${asset.matched_direction_view.alias}"`
+          : asset.matched_direction_view.name.replace('_', ' ');
+        imageOrder.push({
+          label: `Image #${index}`,
+          assetName: name,
+          url: asset.matched_direction_view.image_key_url,
+          type: 'location',
+          role: 'style',
+        });
+        let line = `Image #${index}: ${name} - ${dirLabel} (location, MAIN REFERENCE)`;
+        if (asset.matched_direction_view.description) {
+          line += ` — ${extractTraitSummary(asset.matched_direction_view.description)}`;
+        }
+        if (asset.location_delta_description) {
+          line += ` [DELTA: ${asset.location_delta_description}]`;
+        }
+        lines.push(line);
+        index++;
+      }
+
+      // 2. Establishing view (SPATIAL CONTEXT) — always included alongside
+      if (asset.establishing_view?.image_key_url) {
+        imageOrder.push({
+          label: `Image #${index}`,
+          assetName: name,
+          url: asset.establishing_view.image_key_url,
+          type: 'location',
+          role: 'style',
+        });
+        lines.push(`Image #${index}: ${name} - establishing (location, SPATIAL CONTEXT)`);
+        index++;
+      }
+
+      // If neither direction nor establishing has an image, fall back to master
+      if (!asset.matched_direction_view?.image_key_url && !asset.establishing_view?.image_key_url) {
+        const fallbackUrl = asset.image_key_url || asset.master_image_url;
+        if (fallbackUrl) {
+          imageOrder.push({
+            label: `Image #${index}`,
+            assetName: name,
+            url: fallbackUrl,
+            type: 'location',
+            role: 'style',
+          });
+          let line = `Image #${index}: ${name} (location)`;
+          const traitSummary = extractTraitSummary(asset.effective_description);
+          if (traitSummary) line += ` — ${traitSummary}`;
+          lines.push(line);
+          index++;
+        }
+      }
+      continue;
+    }
+
+    // Non-location assets (characters, props) — existing logic
     const url = asset.matched_angle_url || asset.image_key_url || asset.master_image_url;
     if (!url) continue;
 
-    const name = asset.project_asset?.name ?? 'Unknown';
-    const type = asset.project_asset?.asset_type ?? 'unknown';
     imageOrder.push({
       label: `Image #${index}`,
       assetName: name,
       url,
       type,
+      role: 'identity',
     });
 
     // Build manifest line with trait summary for better LLM anchoring
@@ -393,7 +614,29 @@ function buildAssetContext(
 
   if (locationAssets.length) {
     parts.push('\nLOCATIONS:');
-    locationAssets.forEach(a => parts.push(formatAssetEntry(a)));
+    locationAssets.forEach(a => {
+      parts.push(formatAssetEntry(a));
+
+      // 3.7 Phase F: Direction-aware location context (scene bible pattern)
+      if (a.matched_direction_view) {
+        const dirLabel = a.matched_direction_view.alias
+          ? `"${a.matched_direction_view.alias}"`
+          : a.matched_direction_view.name.replace('_', ' ');
+        parts.push(`  Camera direction: ${dirLabel}`);
+        if (a.matched_direction_view.description) {
+          parts.push(`  View shows: ${a.matched_direction_view.description}`);
+        }
+        if (a.matched_direction_view.image_key_url) {
+          parts.push('  Direction reference image available (STYLE ref).');
+        }
+      }
+      if (a.establishing_view?.image_key_url) {
+        parts.push('  Establishing/spatial context image available (STYLE ref).');
+      }
+      if (a.location_delta_description) {
+        parts.push(`  ANGLE DELTA: ${a.location_delta_description}`);
+      }
+    });
   }
 
   if (propAssets.length) {
@@ -539,8 +782,8 @@ export class PromptGenerationService {
   ): Promise<GeneratedPromptSet> {
     console.log(`[PromptGeneration] Generating prompts for shot ${shot.shot_id}`);
 
-    // 3C.2: Enrich assets with angle-matched reference URLs based on shot camera
-    let enrichedAssets = enrichAssetsWithAngleMatch(sceneAssets, shot.camera);
+    // 3C.2 + 3.7 Phase F: Enrich assets with angle-matched reference URLs based on shot camera
+    let enrichedAssets = enrichAssetsWithAngleMatch(sceneAssets, shot.camera, shot);
 
     // Apply transformation image overrides to the enriched assets
     if (shotOverrides?.length) {
@@ -931,7 +1174,7 @@ Write the video prompt. Focus on action, movement, dialogue delivery, and sound.
   ): Promise<string> {
     console.log(`[PromptGeneration] Generating end frame prompt for shot ${shot.shot_id}`);
 
-    const enrichedAssets = enrichAssetsWithAngleMatch(sceneAssets, shot.camera);
+    const enrichedAssets = enrichAssetsWithAngleMatch(sceneAssets, shot.camera, shot);
 
     // For end frame: transforming assets should use POST description
     const endFrameOverrides = shotOverrides?.map(o => {
@@ -1020,7 +1263,7 @@ The next shot's camera is: ${nextShotContinuity.camera || 'same'}` : ''} Output 
   ): Promise<string> {
     console.log(`[PromptGeneration] Generating continuity frame prompt for shot ${shot.shot_id}`);
 
-    const enrichedAssets = enrichAssetsWithAngleMatch(sceneAssets, shot.camera);
+    const enrichedAssets = enrichAssetsWithAngleMatch(sceneAssets, shot.camera, shot);
     const assetContext = buildAssetContext(enrichedAssets);
     const styleContext = buildStyleContext(styleCapsule);
 
