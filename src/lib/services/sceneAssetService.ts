@@ -13,6 +13,8 @@ import type {
   SceneAssetGenerationAttempt,
   MasterReferenceItem,
   SceneAssetSuggestion,
+  StoryContextSuggestion,
+  BulkStoryContextResult,
 } from '@/types/scene';
 
 export interface BulkImageGenerationRequest {
@@ -779,6 +781,75 @@ class SceneAssetService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to analyze image');
+    }
+
+    return response.json();
+  }
+
+  // ===========================================================================
+  // STORY CONTEXT INFERENCE (Phase 2, Task 2)
+  // ===========================================================================
+
+  /**
+   * Infer description and tag updates for a single asset based on story context
+   */
+  async inferContext(
+    projectId: string,
+    sceneId: string,
+    instanceId: string
+  ): Promise<StoryContextSuggestion> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/assets/${instanceId}/infer-context`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to infer story context');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Bulk infer description and tag updates for multiple assets
+   */
+  async bulkInferContext(
+    projectId: string,
+    sceneId: string,
+    instanceIds: string[]
+  ): Promise<{ results: BulkStoryContextResult[] }> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/bulk-infer-context`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ instanceIds }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to bulk infer story context');
     }
 
     return response.json();
