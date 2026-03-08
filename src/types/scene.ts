@@ -344,6 +344,8 @@ export interface ShotWithFrames {
   startContinuity?: ContinuityMode;
   aiStartContinuity?: ContinuityMode | null;
   continuityFramePrompt?: string | null;
+  // Camera direction (Phase G — established views)
+  cameraDirectionId?: string | null;
   startFrame: Frame | null;
   endFrame: Frame | null;
 }
