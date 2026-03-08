@@ -525,9 +525,10 @@ export class FrameGenerationService {
             return [];
         }
 
-        return shot.reference_image_order.map((entry: { url: string }) => ({
+        // 3.7 Phase F: Respect role from reference_image_order (style for locations, identity for others)
+        return shot.reference_image_order.map((entry: { url: string; role?: string; type?: string }) => ({
             url: entry.url,
-            role: 'identity' as const,
+            role: (entry.role === 'style' ? 'style' : 'identity') as 'identity' | 'style',
         }));
     }
 
