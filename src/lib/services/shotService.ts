@@ -16,6 +16,10 @@ function normalizeShot(raw: Record<string, unknown>): Shot {
     camera: String(raw.camera ?? ''),
     continuityFlags: (raw.continuityFlags ?? raw.continuity_flags ?? []) as string[],
     beatReference: raw.beatReference != null ? String(raw.beatReference) : raw.beat_reference != null ? String(raw.beat_reference) : undefined,
+    camera_distance: (raw.camera_distance as string) || undefined,
+    camera_height: (raw.camera_height as string) || undefined,
+    camera_movement: (raw.camera_movement as string) || undefined,
+    camera_direction_id: (raw.camera_direction_id as string) || undefined,
   };
 }
 
@@ -34,6 +38,10 @@ function toBackendShotUpdate(updates: Partial<Shot>): Record<string, unknown> {
   if (updates.camera !== undefined) out.camera = updates.camera;
   if (updates.continuityFlags !== undefined) out.continuity_flags = updates.continuityFlags;
   if (updates.beatReference !== undefined) out.beat_reference = updates.beatReference;
+  if (updates.camera_distance !== undefined) out.camera_distance = updates.camera_distance;
+  if (updates.camera_height !== undefined) out.camera_height = updates.camera_height;
+  if (updates.camera_movement !== undefined) out.camera_movement = updates.camera_movement;
+  if (updates.camera_direction_id !== undefined) out.camera_direction_id = updates.camera_direction_id;
   return out;
 }
 
