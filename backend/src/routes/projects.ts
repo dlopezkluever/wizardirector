@@ -1457,7 +1457,8 @@ router.put('/:id/scenes/:sceneId/shots/:shotId', async (req, res) => {
     const allowedFields = [
       'duration', 'dialogue', 'action',
       'characters_foreground', 'characters_background',
-      'setting', 'camera', 'continuity_flags', 'beat_reference'
+      'setting', 'camera', 'continuity_flags', 'beat_reference',
+      'camera_distance', 'camera_height', 'camera_movement', 'camera_direction_id'
     ];
     const invalidFields = Object.keys(updates).filter((f: string) => !allowedFields.includes(f));
     if (invalidFields.length > 0) {
@@ -2397,6 +2398,46 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
       }
     }
 
+    // 3.7 Phase F: Fetch location views for location assets and attach to scene asset data
+    const locationAssetIds = sceneAssets
+      .filter(a => a.project_asset?.asset_type === 'location' && a.project_asset?.id)
+      .map(a => a.project_asset!.id);
+
+    if (locationAssetIds.length > 0) {
+      const { data: locationViews } = await supabase
+        .from('location_views')
+        .select('id, project_asset_id, name, alias, description, view_type, camera_distance, camera_height, image_key_url, is_primary, source')
+        .in('project_asset_id', locationAssetIds);
+
+      if (locationViews && locationViews.length > 0) {
+        const viewsByAsset = new Map<string, any[]>();
+        for (const v of locationViews) {
+          if (!viewsByAsset.has(v.project_asset_id)) {
+            viewsByAsset.set(v.project_asset_id, []);
+          }
+          viewsByAsset.get(v.project_asset_id)!.push({
+            id: v.id,
+            name: v.name,
+            alias: v.alias || undefined,
+            description: v.description || undefined,
+            view_type: v.view_type,
+            camera_distance: v.camera_distance,
+            camera_height: v.camera_height,
+            image_key_url: v.image_key_url || undefined,
+            is_primary: v.is_primary,
+            source: v.source,
+          });
+        }
+
+        for (const asset of sceneAssets) {
+          if (asset.project_asset?.id && viewsByAsset.has(asset.project_asset.id)) {
+            asset.location_views = viewsByAsset.get(asset.project_asset.id);
+          }
+        }
+        console.log(`[Stage9] Attached location views for ${viewsByAsset.size} location asset(s)`);
+      }
+    }
+
     // Fetch visual style capsule if applied to the project
     let styleCapsule = null;
     if (project.visual_style_capsule_id) {
@@ -2434,6 +2475,11 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
       camera: shot.camera,
       continuity_flags: shot.continuity_flags,
       beat_reference: shot.beat_reference,
+      // 3.7 Phase F: Structured camera metadata
+      camera_distance: shot.camera_distance || undefined,
+      camera_height: shot.camera_height || undefined,
+      camera_movement: shot.camera_movement || undefined,
+      camera_direction_id: shot.camera_direction_id || undefined,
     })) as (ShotData & { shot_order: number })[];
 
     // Fetch confirmed transformation events for this scene
