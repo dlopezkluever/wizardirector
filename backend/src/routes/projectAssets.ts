@@ -2681,5 +2681,490 @@ router.delete('/:projectId/assets/:assetId/angle-variants/:variantId', async (re
     }
 });
 
+// ============================================================================
+// 3.7 Phase C: LOCATION VIEW ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /api/projects/:projectId/assets/:assetId/location-views
+ * List all location views for a location asset
+ */
+router.get('/:projectId/assets/:assetId/location-views', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, assetId } = req.params;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Verify asset exists and is a location
+        const { data: asset, error: assetError } = await supabase
+            .from('project_assets')
+            .select('id, asset_type')
+            .eq('id', assetId)
+            .eq('project_id', projectId)
+            .single();
+
+        if (assetError || !asset) {
+            return res.status(404).json({ error: 'Asset not found' });
+        }
+
+        if (asset.asset_type !== 'location') {
+            return res.status(400).json({ error: 'Asset is not a location' });
+        }
+
+        const { data: views, error } = await supabase
+            .from('location_views')
+            .select('*')
+            .eq('project_asset_id', assetId)
+            .order('sort_order', { ascending: true })
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            console.error('[ProjectAssets] List location views error:', error);
+            return res.status(500).json({ error: 'Failed to fetch location views' });
+        }
+
+        res.json(views || []);
+    } catch (error) {
+        console.error('[ProjectAssets] List location views error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/assets/:assetId/location-views
+ * Create a new location view for a location asset
+ */
+router.post('/:projectId/assets/:assetId/location-views', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, assetId } = req.params;
+        const { name, alias, description, view_type, camera_distance, camera_height, is_primary, source } = req.body;
+
+        if (!name || !view_type) {
+            return res.status(400).json({ error: 'name and view_type are required' });
+        }
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Verify asset exists and is a location
+        const { data: asset, error: assetError } = await supabase
+            .from('project_assets')
+            .select('id, asset_type')
+            .eq('id', assetId)
+            .eq('project_id', projectId)
+            .single();
+
+        if (assetError || !asset) {
+            return res.status(404).json({ error: 'Asset not found' });
+        }
+
+        if (asset.asset_type !== 'location') {
+            return res.status(400).json({ error: 'Asset is not a location' });
+        }
+
+        // If setting is_primary, unset any existing primary
+        if (is_primary) {
+            await supabase
+                .from('location_views')
+                .update({ is_primary: false })
+                .eq('project_asset_id', assetId)
+                .eq('is_primary', true);
+        }
+
+        // Determine sort_order
+        const { data: maxOrderRow } = await supabase
+            .from('location_views')
+            .select('sort_order')
+            .eq('project_asset_id', assetId)
+            .order('sort_order', { ascending: false })
+            .limit(1);
+
+        const nextOrder = (maxOrderRow?.[0]?.sort_order ?? -1) + 1;
+
+        const { data: view, error: insertError } = await supabase
+            .from('location_views')
+            .insert({
+                project_asset_id: assetId,
+                name,
+                alias: alias || null,
+                description: description || null,
+                view_type,
+                camera_distance: camera_distance || 'wide',
+                camera_height: camera_height || (view_type === 'establishing' ? 'overhead' : 'eye_level'),
+                is_primary: is_primary || false,
+                source: source || 'user',
+                sort_order: nextOrder,
+            })
+            .select()
+            .single();
+
+        if (insertError) {
+            if (insertError.code === '23505') {
+                return res.status(409).json({ error: `A view named "${name}" already exists for this location` });
+            }
+            console.error('[ProjectAssets] Create location view error:', insertError);
+            return res.status(500).json({ error: 'Failed to create location view' });
+        }
+
+        res.status(201).json(view);
+    } catch (error) {
+        console.error('[ProjectAssets] Create location view error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/assets/:assetId/location-views/suggest-defaults
+ * Suggest default views based on INT/EXT type
+ */
+router.post('/:projectId/assets/:assetId/location-views/suggest-defaults', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, assetId } = req.params;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Get asset with scene context
+        const { data: asset, error: assetError } = await supabase
+            .from('project_assets')
+            .select('id, asset_type, name')
+            .eq('id', assetId)
+            .eq('project_id', projectId)
+            .single();
+
+        if (assetError || !asset) {
+            return res.status(404).json({ error: 'Asset not found' });
+        }
+
+        if (asset.asset_type !== 'location') {
+            return res.status(400).json({ error: 'Asset is not a location' });
+        }
+
+        // Check if views already exist
+        const { data: existingViews } = await supabase
+            .from('location_views')
+            .select('id')
+            .eq('project_asset_id', assetId);
+
+        if (existingViews && existingViews.length > 0) {
+            return res.status(400).json({ error: 'Location already has views defined. Delete existing views first.' });
+        }
+
+        // Determine INT/EXT from scene headings
+        // Look at scene expected_location to determine if INT or EXT
+        const { data: scenes } = await supabase
+            .from('scenes')
+            .select('script_excerpt')
+            .eq('branch_id', project.active_branch_id);
+
+        let isExterior = false;
+        const assetNameLower = asset.name.toLowerCase();
+        for (const scene of (scenes || [])) {
+            const header = (scene.script_excerpt || '').split('\n')[0] || '';
+            if (header.toLowerCase().includes(assetNameLower)) {
+                isExterior = header.trim().toUpperCase().startsWith('EXT');
+                break;
+            }
+        }
+
+        // Create 3 default views per spec
+        const defaults = [
+            {
+                project_asset_id: assetId,
+                name: 'establishing',
+                alias: isExterior ? 'Full view' : 'Overhead view',
+                description: isExterior
+                    ? `Full establishing view of ${asset.name}`
+                    : `Overhead view of ${asset.name} showing full room layout`,
+                view_type: 'establishing',
+                camera_distance: 'wide',
+                camera_height: isExterior ? 'eye_level' : 'overhead',
+                is_primary: false,
+                source: 'user',
+                sort_order: 0,
+            },
+            {
+                project_asset_id: assetId,
+                name: 'direction_1',
+                alias: '',
+                description: isExterior
+                    ? `Approach view facing ${asset.name}`
+                    : `Main wall view of ${asset.name}`,
+                view_type: 'direction',
+                camera_distance: 'wide',
+                camera_height: 'eye_level',
+                is_primary: true,
+                source: 'user',
+                sort_order: 1,
+            },
+            {
+                project_asset_id: assetId,
+                name: 'direction_2',
+                alias: '',
+                description: isExterior
+                    ? `Reverse view from ${asset.name} outward`
+                    : `Opposite wall / reverse view of ${asset.name}`,
+                view_type: 'direction',
+                camera_distance: 'wide',
+                camera_height: 'eye_level',
+                is_primary: false,
+                source: 'user',
+                sort_order: 2,
+            },
+        ];
+
+        const { data: views, error: insertError } = await supabase
+            .from('location_views')
+            .insert(defaults)
+            .select();
+
+        if (insertError) {
+            console.error('[ProjectAssets] Suggest defaults error:', insertError);
+            return res.status(500).json({ error: 'Failed to create default views' });
+        }
+
+        res.status(201).json(views);
+    } catch (error) {
+        console.error('[ProjectAssets] Suggest defaults error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * PUT /api/projects/:projectId/assets/:assetId/location-views/:viewId
+ * Update a location view
+ */
+router.put('/:projectId/assets/:assetId/location-views/:viewId', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, assetId, viewId } = req.params;
+        const { alias, description, camera_distance, camera_height, is_primary } = req.body;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Verify view exists for this asset
+        const { data: existingView, error: viewError } = await supabase
+            .from('location_views')
+            .select('id, project_asset_id')
+            .eq('id', viewId)
+            .eq('project_asset_id', assetId)
+            .single();
+
+        if (viewError || !existingView) {
+            return res.status(404).json({ error: 'Location view not found' });
+        }
+
+        // If setting is_primary, unset any existing primary
+        if (is_primary) {
+            await supabase
+                .from('location_views')
+                .update({ is_primary: false })
+                .eq('project_asset_id', assetId)
+                .eq('is_primary', true);
+        }
+
+        const updates: Record<string, unknown> = {};
+        if (alias !== undefined) updates.alias = alias;
+        if (description !== undefined) updates.description = description;
+        if (camera_distance !== undefined) updates.camera_distance = camera_distance;
+        if (camera_height !== undefined) updates.camera_height = camera_height;
+        if (is_primary !== undefined) updates.is_primary = is_primary;
+
+        const { data: view, error: updateError } = await supabase
+            .from('location_views')
+            .update(updates)
+            .eq('id', viewId)
+            .select()
+            .single();
+
+        if (updateError) {
+            console.error('[ProjectAssets] Update location view error:', updateError);
+            return res.status(500).json({ error: 'Failed to update location view' });
+        }
+
+        res.json(view);
+    } catch (error) {
+        console.error('[ProjectAssets] Update location view error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/projects/:projectId/assets/:assetId/location-views/:viewId/upload-image
+ * Upload an image for a location view
+ */
+router.post('/:projectId/assets/:assetId/location-views/:viewId/upload-image', upload.single('image'), async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, assetId, viewId } = req.params;
+
+        if (!req.file) {
+            return res.status(400).json({ error: 'No image file provided' });
+        }
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Verify view exists
+        const { data: existingView, error: viewError } = await supabase
+            .from('location_views')
+            .select('id, project_asset_id')
+            .eq('id', viewId)
+            .eq('project_asset_id', assetId)
+            .single();
+
+        if (viewError || !existingView) {
+            return res.status(404).json({ error: 'Location view not found' });
+        }
+
+        // Upload to Supabase Storage
+        const fileExt = path.extname(req.file.originalname);
+        const fileName = `project/${projectId}/location-views/${assetId}/${viewId}-${Date.now()}${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+            .from('asset-images')
+            .upload(fileName, req.file.buffer, {
+                contentType: req.file.mimetype,
+                upsert: false,
+            });
+
+        if (uploadError) {
+            console.error('[ProjectAssets] Upload location view image error:', uploadError);
+            return res.status(500).json({ error: 'Failed to upload image' });
+        }
+
+        const { data: urlData } = supabase.storage
+            .from('asset-images')
+            .getPublicUrl(fileName);
+
+        // Update the view record with the image URL
+        const { data: view, error: updateError } = await supabase
+            .from('location_views')
+            .update({ image_key_url: urlData.publicUrl })
+            .eq('id', viewId)
+            .select()
+            .single();
+
+        if (updateError) {
+            console.error('[ProjectAssets] Update location view image error:', updateError);
+            return res.status(500).json({ error: 'Failed to update location view' });
+        }
+
+        res.json(view);
+    } catch (error) {
+        console.error('[ProjectAssets] Upload location view image error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * DELETE /api/projects/:projectId/assets/:assetId/location-views/:viewId
+ * Delete a location view
+ */
+router.delete('/:projectId/assets/:assetId/location-views/:viewId', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { projectId, assetId, viewId } = req.params;
+
+        // Verify project ownership
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        // Verify view exists
+        const { data: existingView, error: viewError } = await supabase
+            .from('location_views')
+            .select('id, project_asset_id, image_key_url')
+            .eq('id', viewId)
+            .eq('project_asset_id', assetId)
+            .single();
+
+        if (viewError || !existingView) {
+            return res.status(404).json({ error: 'Location view not found' });
+        }
+
+        // Delete storage file if exists
+        if (existingView.image_key_url) {
+            const storagePath = existingView.image_key_url.split('/asset-images/')[1];
+            if (storagePath) {
+                await supabase.storage.from('asset-images').remove([storagePath]);
+            }
+        }
+
+        // Delete the view record
+        const { error: deleteError } = await supabase
+            .from('location_views')
+            .delete()
+            .eq('id', viewId);
+
+        if (deleteError) {
+            console.error('[ProjectAssets] Delete location view error:', deleteError);
+            return res.status(500).json({ error: 'Failed to delete location view' });
+        }
+
+        res.status(204).send();
+    } catch (error) {
+        console.error('[ProjectAssets] Delete location view error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 export const projectAssetsRouter = router;
 
