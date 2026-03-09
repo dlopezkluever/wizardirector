@@ -144,6 +144,13 @@ describe('EnhancedUploadModal', () => {
       render(<EnhancedUploadModal {...defaultProps({ assetType: 'location' })} />);
       expect(screen.queryByText('Remove BG')).not.toBeInTheDocument();
     });
+
+    it('should show reference toggle checkbox defaulting to checked', () => {
+      render(<EnhancedUploadModal {...defaultProps()} />);
+      const checkbox = screen.getByRole('checkbox', { name: /use as ref/i });
+      expect(checkbox).toBeInTheDocument();
+      expect(checkbox).toBeChecked();
+    });
   });
 
   // =========================================================================
@@ -259,9 +266,28 @@ describe('EnhancedUploadModal', () => {
       });
     });
 
-    it('should call onRegenerate with description only', async () => {
+    it('should call onRegenerate with description and referenceImageUrl by default', async () => {
       const props = defaultProps();
       render(<EnhancedUploadModal {...props} />);
+      fireEvent.click(screen.getByText('Regenerate'));
+
+      await waitFor(() => {
+        expect(props.onRegenerate).toHaveBeenCalledWith({
+          description: 'A tall man with dark hair wearing a blue suit',
+          referenceImageUrl: 'https://storage.example.com/uploaded.png',
+        });
+      });
+    });
+
+    it('should call onRegenerate without referenceImageUrl when toggle unchecked', async () => {
+      const user = userEvent.setup();
+      const props = defaultProps();
+      render(<EnhancedUploadModal {...props} />);
+
+      // Uncheck the "Use as ref" checkbox
+      const checkbox = screen.getByRole('checkbox', { name: /use as ref/i });
+      await user.click(checkbox);
+
       fireEvent.click(screen.getByText('Regenerate'));
 
       await waitFor(() => {
