@@ -26,7 +26,10 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  Info,
 } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -55,6 +58,7 @@ export interface EnhancedUploadModalProps {
   }) => Promise<{ jobId: string }>;
   onRegenerate: (params: {
     description: string;
+    referenceImageUrl?: string;
   }) => Promise<{ jobId: string }>;
   onPollJob: (jobId: string) => Promise<{
     status: string;
@@ -99,6 +103,7 @@ export function EnhancedUploadModal({
   const [showEditInput, setShowEditInput] = useState(false);
   const [editInstructions, setEditInstructions] = useState('');
   const cancelledRef = useRef(false);
+  const [useImageAsReference, setUseImageAsReference] = useState(true);
 
   const currentImageUrl = imageHistory[currentImageIndex];
   const showBackgroundButton = assetType !== 'location';
@@ -191,9 +196,12 @@ export function EnhancedUploadModal({
   const handleRegenerate = useCallback(() => {
     handleAction(
       'regenerate',
-      onRegenerate({ description: finalDescription })
+      onRegenerate({
+        description: finalDescription,
+        ...(useImageAsReference ? { referenceImageUrl: currentImageUrl } : {}),
+      })
     );
-  }, [handleAction, onRegenerate, finalDescription]);
+  }, [handleAction, onRegenerate, finalDescription, useImageAsReference, currentImageUrl]);
 
   const handleAccept = useCallback(() => {
     onAccept(finalDescription, currentImageUrl);
@@ -211,13 +219,24 @@ export function EnhancedUploadModal({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleCancel()}>
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col gap-0">
+      <TooltipProvider delayDuration={300}>
         <DialogHeader className="pb-4">
           <DialogTitle className="text-base">Review Uploaded Image</DialogTitle>
           <div className="text-sm text-muted-foreground flex items-center gap-2">
             {assetName}
-            <Badge variant="secondary" className="text-[10px]">
-              {Math.round(confidence * 100)}% match
-            </Badge>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex cursor-help">
+                  <Badge variant="secondary" className="text-[10px]">
+                    {Math.round(confidence * 100)}% match
+                    <Info className="w-3 h-3 ml-1 inline-block opacity-50" />
+                  </Badge>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-[220px] text-xs">
+                How closely the AI thinks this image matches the existing asset description
+              </TooltipContent>
+            </Tooltip>
           </div>
         </DialogHeader>
 
@@ -289,8 +308,16 @@ export function EnhancedUploadModal({
               )}
 
               <div className="space-y-1">
-                <Label className="text-xs text-primary font-medium">
+                <Label className="text-xs text-primary font-medium flex items-center gap-1">
                   Extracted from Image
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="w-3 h-3 opacity-50 cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="max-w-[220px] text-xs">
+                      AI-generated description of what&apos;s visible in the uploaded image
+                    </TooltipContent>
+                  </Tooltip>
                 </Label>
                 <div className="rounded-md border border-primary/30 bg-primary/5 p-2.5 text-xs leading-relaxed max-h-[72px] overflow-auto">
                   {extractedDescription}
@@ -298,8 +325,16 @@ export function EnhancedUploadModal({
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs font-medium">
+                <Label className="text-xs font-medium flex items-center gap-1">
                   Final Description
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="w-3 h-3 opacity-50 cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="max-w-[220px] text-xs">
+                      This is the description that will be saved when you click Accept
+                    </TooltipContent>
+                  </Tooltip>
                 </Label>
                 <Textarea
                   value={finalDescription}
@@ -316,60 +351,98 @@ export function EnhancedUploadModal({
                   Image Actions
                 </Label>
                 <div className="flex flex-wrap gap-1.5">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 text-xs"
-                    onClick={() => setShowEditInput(!showEditInput)}
-                    disabled={!!activeAction}
-                  >
-                    <Edit3 className="w-3.5 h-3.5 mr-1.5" />
-                    Edit Image
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 text-xs"
-                    onClick={handleApplyStyle}
-                    disabled={!!activeAction}
-                  >
-                    {activeAction === 'style' ? (
-                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                    ) : (
-                      <Palette className="w-3.5 h-3.5 mr-1.5" />
-                    )}
-                    Apply Style
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs"
+                        onClick={() => setShowEditInput(!showEditInput)}
+                        disabled={!!activeAction}
+                      >
+                        <Edit3 className="w-3.5 h-3.5 mr-1.5" />
+                        Edit Image
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-[220px] text-xs">
+                      Modify the current image with text instructions
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs"
+                        onClick={handleApplyStyle}
+                        disabled={!!activeAction}
+                      >
+                        {activeAction === 'style' ? (
+                          <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                        ) : (
+                          <Palette className="w-3.5 h-3.5 mr-1.5" />
+                        )}
+                        Apply Style
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-[220px] text-xs">
+                      Re-render the current image in this project&apos;s visual style
+                    </TooltipContent>
+                  </Tooltip>
                   {showBackgroundButton && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 text-xs"
-                      onClick={handleRemoveBackground}
-                      disabled={!!activeAction}
-                    >
-                      {activeAction === 'background' ? (
-                        <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                      ) : (
-                        <Eraser className="w-3.5 h-3.5 mr-1.5" />
-                      )}
-                      Remove BG
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs"
+                          onClick={handleRemoveBackground}
+                          disabled={!!activeAction}
+                        >
+                          {activeAction === 'background' ? (
+                            <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                          ) : (
+                            <Eraser className="w-3.5 h-3.5 mr-1.5" />
+                          )}
+                          Remove BG
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-[220px] text-xs">
+                        Remove the background, keeping only the subject
+                      </TooltipContent>
+                    </Tooltip>
                   )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 text-xs"
-                    onClick={handleRegenerate}
-                    disabled={!!activeAction}
-                  >
-                    {activeAction === 'regenerate' ? (
-                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                    ) : (
-                      <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-                    )}
-                    Regenerate
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs"
+                        onClick={handleRegenerate}
+                        disabled={!!activeAction}
+                      >
+                        {activeAction === 'regenerate' ? (
+                          <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                        )}
+                        Regenerate
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-[260px] text-xs">
+                      Generate a new image from the Final Description. When &quot;Use as ref&quot; is on, the current image guides style and composition.
+                    </TooltipContent>
+                  </Tooltip>
+                  <div className="flex items-center gap-1.5">
+                    <Checkbox
+                      id="use-as-ref"
+                      checked={useImageAsReference}
+                      onCheckedChange={(checked) => setUseImageAsReference(checked === true)}
+                    />
+                    <label htmlFor="use-as-ref" className="text-[10px] text-muted-foreground cursor-pointer select-none">
+                      Use as ref
+                    </label>
+                  </div>
                 </div>
 
                 {showEditInput && (
@@ -407,17 +480,32 @@ export function EnhancedUploadModal({
         </div>
 
         <DialogFooter className="pt-4 gap-2">
-          <Button
-            variant="outline"
-            onClick={handleCancel}
-            disabled={!!activeAction}
-          >
-            Cancel
-          </Button>
-          <Button onClick={handleAccept} disabled={!!activeAction}>
-            Accept
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                onClick={handleCancel}
+                disabled={!!activeAction}
+              >
+                Cancel
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">
+              Discard all changes and close
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button onClick={handleAccept} disabled={!!activeAction}>
+                Accept
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-[240px] text-xs">
+              Save the Final Description and currently displayed image to this asset
+            </TooltipContent>
+          </Tooltip>
         </DialogFooter>
+      </TooltipProvider>
       </DialogContent>
     </Dialog>
   );
