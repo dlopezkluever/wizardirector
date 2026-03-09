@@ -82,9 +82,9 @@ interface FramePanelProps {
   isGenerateDisabled?: boolean;
   disabledReason?: string;
   onGenerate: () => void;
-  onRegenerate: () => void;
-  onRegenerateWithCorrection?: (correction: string) => void;
-  onRegenerateWithEditedPrompt?: (prompt: string) => void;
+  onRegenerate: (options?: { referenceImageUrl?: string }) => void;
+  onRegenerateWithCorrection?: (correction: string, options?: { referenceImageUrl?: string }) => void;
+  onRegenerateWithEditedPrompt?: (prompt: string, options?: { referenceImageUrl?: string }) => void;
   currentPrompt?: string;
   onInpaint: () => void;
   onCompare?: () => void;
@@ -165,6 +165,7 @@ export function FramePanel({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [replacingRefIndex, setReplacingRefIndex] = useState<number | null>(null);
+  const [useCurrentAsRef, setUseCurrentAsRef] = useState(false);
 
   // Fetch available references when replacing
   const { data: availableRefs } = useQuery({
@@ -241,7 +242,8 @@ export function FramePanel({
 
   const handleCorrectionSubmit = () => {
     if (correctionText.trim() && onRegenerateWithCorrection) {
-      onRegenerateWithCorrection(correctionText.trim());
+      const opts = useCurrentAsRef && frame?.imageUrl ? { referenceImageUrl: frame.imageUrl } : undefined;
+      onRegenerateWithCorrection(correctionText.trim(), opts);
       setShowRegenOptions(false);
       setCorrectionText('');
     }
@@ -249,7 +251,8 @@ export function FramePanel({
 
   const handleManualPromptSubmit = () => {
     if (editedPrompt.trim() && onRegenerateWithEditedPrompt) {
-      onRegenerateWithEditedPrompt(editedPrompt.trim());
+      const opts = useCurrentAsRef && frame?.imageUrl ? { referenceImageUrl: frame.imageUrl } : undefined;
+      onRegenerateWithEditedPrompt(editedPrompt.trim(), opts);
       setShowRegenOptions(false);
       setEditedPrompt('');
       setShowManualEdit(false);
@@ -804,6 +807,16 @@ export function FramePanel({
       {/* Regeneration correction area */}
       {showRegenOptions && canRegenerate && (
         <div className="mt-3 p-3 rounded-lg border border-border/50 bg-card/50 space-y-3">
+          {frame?.imageUrl && (
+            <div className="flex items-center gap-1.5 pb-1">
+              <Checkbox id={`use-ref-${frameType}`} checked={useCurrentAsRef}
+                onCheckedChange={(c) => setUseCurrentAsRef(c === true)} />
+              <label htmlFor={`use-ref-${frameType}`}
+                className="text-[10px] text-muted-foreground cursor-pointer select-none">
+                Use current image as reference
+              </label>
+            </div>
+          )}
           {!showManualEdit ? (
             <>
               <div className="space-y-2">
@@ -830,7 +843,7 @@ export function FramePanel({
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      onRegenerate();
+                      onRegenerate(useCurrentAsRef && frame?.imageUrl ? { referenceImageUrl: frame.imageUrl } : undefined);
                       setShowRegenOptions(false);
                     }}
                   >
