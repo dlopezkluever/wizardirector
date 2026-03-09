@@ -195,7 +195,8 @@ class FrameService {
   async regenerateFrame(
     projectId: string,
     sceneId: string,
-    frameId: string
+    frameId: string,
+    referenceImageUrl?: string
   ): Promise<FrameActionResponse> {
     const headers = await this.getAuthHeaders();
 
@@ -204,6 +205,7 @@ class FrameService {
       {
         method: 'POST',
         headers,
+        body: JSON.stringify(referenceImageUrl ? { referenceImageUrl } : {}),
       }
     );
 
@@ -304,7 +306,8 @@ class FrameService {
     projectId: string,
     sceneId: string,
     frameId: string,
-    correction: string
+    correction: string,
+    referenceImageUrl?: string
   ): Promise<FrameActionResponse & { updatedPrompt?: string }> {
     const headers = await this.getAuthHeaders();
 
@@ -313,7 +316,7 @@ class FrameService {
       {
         method: 'POST',
         headers,
-        body: JSON.stringify({ correction }),
+        body: JSON.stringify({ correction, ...(referenceImageUrl ? { referenceImageUrl } : {}) }),
       }
     );
 
@@ -332,7 +335,8 @@ class FrameService {
     projectId: string,
     sceneId: string,
     frameId: string,
-    prompt: string
+    prompt: string,
+    referenceImageUrl?: string
   ): Promise<FrameActionResponse> {
     const headers = await this.getAuthHeaders();
 
@@ -341,7 +345,7 @@ class FrameService {
       {
         method: 'POST',
         headers,
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt, ...(referenceImageUrl ? { referenceImageUrl } : {}) }),
       }
     );
 
