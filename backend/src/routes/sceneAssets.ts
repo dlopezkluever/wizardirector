@@ -380,13 +380,15 @@ router.post('/:projectId/scenes/:sceneId/assets/:instanceId/generate-image', asy
       });
     }
 
+    const { referenceImageUrl: userReferenceImageUrl } = req.body || {};
     const imageService = new ImageGenerationService();
     const result = await imageService.createSceneAssetImageJob(
       instanceId,
       projectId,
       project.active_branch_id,
       visualStyleId,
-      manualVisualTone
+      manualVisualTone,
+      userReferenceImageUrl
     );
 
     res.json(result);
@@ -2003,8 +2005,9 @@ router.post('/:projectId/scenes/:sceneId/transformation-events/:eventId/generate
     // Generate image using ImageGenerationService
     const imageService = new ImageGenerationService();
 
-    // Use the asset's current image as reference for identity
-    const referenceImageUrl = assetInstance?.image_key_url || projectAsset?.image_key_url;
+    // Use user-provided reference, or fall back to asset's current image for identity
+    const { referenceImageUrl: userReferenceImageUrl } = req.body || {};
+    const referenceImageUrl = userReferenceImageUrl || assetInstance?.image_key_url || projectAsset?.image_key_url;
 
     // Include post_status_tags in the prompt (e.g., "scarred", "aged", "in new outfit")
     const postStatusTags: string[] = event.post_status_tags ?? [];
