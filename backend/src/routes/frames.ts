@@ -357,13 +357,15 @@ router.post('/:projectId/scenes/:sceneId/frames/:frameId/regenerate', async (req
         await supabase.from('frame_links').delete().eq('target_frame_id', frameId);
 
         // Regenerate frame
+        const { referenceImageUrl } = req.body || {};
         const frame = await frameGenerationService.regenerateFrame(
             frameId,
             projectId,
             project.active_branch_id,
             sceneId,
             visualStyleCapsuleId,
-            project.aspect_ratio || '16:9'
+            project.aspect_ratio || '16:9',
+            referenceImageUrl
         );
 
         // If this frame is a SOURCE, propagate to linked targets
@@ -670,7 +672,7 @@ router.put('/:projectId/scenes/:sceneId/shots/:shotId/end-frame-prompt', async (
 router.post('/:projectId/scenes/:sceneId/frames/:frameId/regenerate-with-correction', async (req, res) => {
     try {
         const { projectId, sceneId, frameId } = req.params;
-        const { correction } = req.body;
+        const { correction, referenceImageUrl } = req.body;
         const userId = req.user!.id;
 
         if (!correction || typeof correction !== 'string') {
@@ -740,7 +742,8 @@ router.post('/:projectId/scenes/:sceneId/frames/:frameId/regenerate-with-correct
             project.active_branch_id,
             sceneId,
             visualStyleCapsuleId,
-            project.aspect_ratio || '16:9'
+            project.aspect_ratio || '16:9',
+            referenceImageUrl
         );
 
         res.json({
@@ -761,7 +764,7 @@ router.post('/:projectId/scenes/:sceneId/frames/:frameId/regenerate-with-correct
 router.post('/:projectId/scenes/:sceneId/frames/:frameId/regenerate-with-prompt', async (req, res) => {
     try {
         const { projectId, sceneId, frameId } = req.params;
-        const { prompt } = req.body;
+        const { prompt, referenceImageUrl } = req.body;
         const userId = req.user!.id;
 
         if (!prompt || typeof prompt !== 'string') {
@@ -817,7 +820,8 @@ router.post('/:projectId/scenes/:sceneId/frames/:frameId/regenerate-with-prompt'
             project.active_branch_id,
             sceneId,
             visualStyleCapsuleId,
-            project.aspect_ratio || '16:9'
+            project.aspect_ratio || '16:9',
+            referenceImageUrl
         );
 
         res.json({
