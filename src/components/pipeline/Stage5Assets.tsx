@@ -1511,6 +1511,7 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
           onRegenerate={(params) =>
             projectAssetService.startEditImageJob(projectId, imageAnalysisModal.assetId, {
               description: params.description,
+              ...(params.referenceImageUrl ? { referenceImageUrl: params.referenceImageUrl } : {}),
             })
           }
           onPollJob={(jobId) => projectAssetService.getImageJobStatus(jobId)}
