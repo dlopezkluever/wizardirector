@@ -840,3 +840,51 @@ Anything that didn't fit above — edge cases, open questions that are acceptabl
 Begin by reading the attached spec file and the relevant codebase areas. Then start the interview.
 
 ----
+
+# ------- NEW AND USEFUL------------------------------------------------------------------------------------------------
+
+## Run Playwright and give recs:
+
+❯ okay great, now I have completed Phases 5-8 as well, as you can read about here: 'c:/Users/Daniel    
+Lopez/Desktop/Aiuteur/wizardirector/._docs/3.7-location-session-compact-EF.md' and 'c:/Users/Daniel    
+Lopez/Desktop/Aiuteur/wizardirector/._docs/3.7-location-session-compact-GH.md' , can you please run    
+thurough playwright tests for the functionality changes they introduced, and once you checked the      
+status of how they perform, output for me a summary of thier E2E tesing results.. After that, I want   
+you to then further analyze your findings acroccss all the screenshots you took and your analysis of   
+the UI as you tested, and output me a document with UI / functionality Improvement recommendations     
+regarding this location system overhaul with did, like what do you find poorly designed, or 
+unintuitive for the user, in regards to the changes we made, and what more could we possibly add on to 
+ again, make this easier for the user to use?
+
+
+## Help Me Test (Quick):
+
+
+❯ now that we have implemented the whole of 
+'c:/Users/Daniel Lopez/Desktop/Aiuteur/wizardirector/._docs 
+/3.7-location-system-enhancement.md' (like we have 
+completed all the phases from the  implementation priority  
+list (a->H) can you write me a guide on how to test that    
+all the functionality works, like manually through the UI,  
+don't go overboard, I don't want to spend a ton of time,    
+instead Try to make the tests time efficent
+
+
+## Any Descripencies versus master plan and phased build:
+
+
+❯ I recently attempted to implement the following plan: 'c:/Users/Daniel 
+Lopez/Desktop/Aiuteur/wizardirector/._docs/3.7-location-system-enhancement.md' by   
+following the order of the implementation priority phases, as summarized in these   
+summaries: 'c:/Users/Daniel Lopez/Desktop/Aiuteur/wizardirector/._docs/3.7-location 
+-session-compact-AB.md''c:/Users/Daniel Lopez/Desktop/Aiuteur/wizardirector/._docs/ 
+3.7-location-session-compact-CD.md''c:/Users/Daniel Lopez/Desktop/Aiuteur/wizardire 
+ctor/._docs/3.7-location-session-compact-EF.md''c:/Users/Daniel 
+Lopez/Desktop/Aiuteur/wizardirector/._docs/3.7-location-session-compact-GH.md' I    
+recently implemented the plan, in the order of the implementation priority phases,  
+as summarized in these summaries... 
+Can you check my work as it exists within the codebase and find if there was        
+anything I missed from the master plan doc?additionally can you write me a guide    
+for testing the functionality and UI manually for the new features and changes.     
+Don;t write any code, just analyze the implementation, and check my work to see if  
+I missed anything, and then list any descrepencies out here:
