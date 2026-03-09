@@ -230,8 +230,8 @@ export function Stage10FrameGeneration({
 
   // Regenerate frame mutation
   const regenerateMutation = useMutation({
-    mutationFn: (frameId: string) =>
-      frameService.regenerateFrame(projectId, sceneId, frameId),
+    mutationFn: ({ frameId, referenceImageUrl }: { frameId: string; referenceImageUrl?: string }) =>
+      frameService.regenerateFrame(projectId, sceneId, frameId, referenceImageUrl),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
     },
@@ -265,8 +265,8 @@ export function Stage10FrameGeneration({
 
   // Regenerate with correction mutation
   const regenerateWithCorrectionMutation = useMutation({
-    mutationFn: ({ frameId, correction }: { frameId: string; correction: string }) =>
-      frameService.regenerateWithCorrection(projectId, sceneId, frameId, correction),
+    mutationFn: ({ frameId, correction, referenceImageUrl }: { frameId: string; correction: string; referenceImageUrl?: string }) =>
+      frameService.regenerateWithCorrection(projectId, sceneId, frameId, correction, referenceImageUrl),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
     },
@@ -274,8 +274,8 @@ export function Stage10FrameGeneration({
 
   // Regenerate with edited prompt mutation
   const regenerateWithPromptMutation = useMutation({
-    mutationFn: ({ frameId, prompt }: { frameId: string; prompt: string }) =>
-      frameService.regenerateWithPrompt(projectId, sceneId, frameId, prompt),
+    mutationFn: ({ frameId, prompt, referenceImageUrl }: { frameId: string; prompt: string; referenceImageUrl?: string }) =>
+      frameService.regenerateWithPrompt(projectId, sceneId, frameId, prompt, referenceImageUrl),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
     },
@@ -956,22 +956,24 @@ export function Stage10FrameGeneration({
                       projectId={projectId}
                       sceneId={sceneId}
                       onGenerate={() => handleGenerateShot(selectedShot.id, true)}
-                      onRegenerate={() =>
+                      onRegenerate={(options) =>
                         selectedShot.startFrame &&
-                        regenerateMutation.mutate(selectedShot.startFrame.id)
+                        regenerateMutation.mutate({ frameId: selectedShot.startFrame.id, referenceImageUrl: options?.referenceImageUrl })
                       }
-                      onRegenerateWithCorrection={(correction) =>
+                      onRegenerateWithCorrection={(correction, options) =>
                         selectedShot.startFrame &&
                         regenerateWithCorrectionMutation.mutate({
                           frameId: selectedShot.startFrame.id,
                           correction,
+                          referenceImageUrl: options?.referenceImageUrl,
                         })
                       }
-                      onRegenerateWithEditedPrompt={(prompt) =>
+                      onRegenerateWithEditedPrompt={(prompt, options) =>
                         selectedShot.startFrame &&
                         regenerateWithPromptMutation.mutate({
                           frameId: selectedShot.startFrame.id,
                           prompt,
+                          referenceImageUrl: options?.referenceImageUrl,
                         })
                       }
                       currentPrompt={selectedShot.framePrompt ?? undefined}
@@ -1105,22 +1107,24 @@ export function Stage10FrameGeneration({
                           isGenerateDisabled={selectedShot.startFrame?.status !== 'approved' && selectedShot.startFrame?.status !== 'generated'}
                           disabledReason="Start frame must be ready first"
                           onGenerate={() => handleGenerateShot(selectedShot.id, false)}
-                          onRegenerate={() =>
+                          onRegenerate={(options) =>
                             selectedShot.endFrame &&
-                            regenerateMutation.mutate(selectedShot.endFrame.id)
+                            regenerateMutation.mutate({ frameId: selectedShot.endFrame.id, referenceImageUrl: options?.referenceImageUrl })
                           }
-                          onRegenerateWithCorrection={(correction) =>
+                          onRegenerateWithCorrection={(correction, options) =>
                             selectedShot.endFrame &&
                             regenerateWithCorrectionMutation.mutate({
                               frameId: selectedShot.endFrame.id,
                               correction,
+                              referenceImageUrl: options?.referenceImageUrl,
                             })
                           }
-                          onRegenerateWithEditedPrompt={(prompt) =>
+                          onRegenerateWithEditedPrompt={(prompt, options) =>
                             selectedShot.endFrame &&
                             regenerateWithPromptMutation.mutate({
                               frameId: selectedShot.endFrame.id,
                               prompt,
+                              referenceImageUrl: options?.referenceImageUrl,
                             })
                           }
                           currentPrompt={selectedShot.endFramePrompt ?? undefined}
