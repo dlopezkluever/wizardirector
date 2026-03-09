@@ -817,6 +817,7 @@ export function VisualStateEditorPanel({
           onRegenerate={(params) =>
             sceneAssetService.startEditImageJob(projectId, sceneId, uploadAnalysisModal.instanceId, {
               description: params.description,
+              ...(params.referenceImageUrl ? { referenceImageUrl: params.referenceImageUrl } : {}),
             })
           }
           onPollJob={(jobId) => sceneAssetService.getImageJobStatus(jobId)}
