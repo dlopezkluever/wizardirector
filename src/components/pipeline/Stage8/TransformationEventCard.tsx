@@ -11,6 +11,7 @@ import { Check, X, Sparkles, Loader2, Trash2, ArrowRight, Image as ImageIcon, Al
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import type { TransformationEvent } from '@/types/scene';
 
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
@@ -25,7 +26,7 @@ export interface TransformationEventCardProps {
   onDismiss: (eventId: string) => void;
   onUpdate: (eventId: string, updates: { post_description?: string; transformation_narrative?: string }) => void;
   onGeneratePostDescription: (eventId: string) => void;
-  onGeneratePostImage?: (eventId: string) => void;
+  onGeneratePostImage?: (eventId: string, referenceImageUrl?: string) => void;
   onOpenImagePicker?: (eventId: string) => void;
   isUpdating?: boolean;
   isGenerating?: boolean;
@@ -47,6 +48,7 @@ export function TransformationEventCard({
   const [postDesc, setPostDesc] = useState(event.post_description);
   const [narrative, setNarrative] = useState(event.transformation_narrative ?? '');
   const [showFullImage, setShowFullImage] = useState(false);
+  const [usePostImageAsRef, setUsePostImageAsRef] = useState(false);
 
   const typeInfo = TYPE_LABELS[event.transformation_type] ?? TYPE_LABELS.instant;
   const isConfirmed = event.confirmed;
@@ -202,7 +204,7 @@ export function TransformationEventCard({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => onGeneratePostImage(event.id)}
+                onClick={() => onGeneratePostImage(event.id, usePostImageAsRef ? event.post_image_key_url : undefined)}
                 disabled={isGeneratingImage || !postDesc.trim()}
                 className="text-xs h-7"
               >
@@ -213,6 +215,16 @@ export function TransformationEventCard({
                 )}
                 Generate Image
               </Button>
+            )}
+            {event.post_image_key_url && onGeneratePostImage && (
+              <div className="flex items-center gap-1.5">
+                <Checkbox id={`use-ref-transform-${event.id}`} checked={usePostImageAsRef}
+                  onCheckedChange={(c) => setUsePostImageAsRef(c === true)} />
+                <label htmlFor={`use-ref-transform-${event.id}`}
+                  className="text-[10px] text-muted-foreground cursor-pointer select-none">
+                  Use as ref
+                </label>
+              </div>
             )}
             {onOpenImagePicker && (
               <Button
