@@ -297,7 +297,8 @@ class SceneAssetService {
   async generateSceneAssetImage(
     projectId: string,
     sceneId: string,
-    instanceId: string
+    instanceId: string,
+    referenceImageUrl?: string
   ): Promise<{ jobId: string; status: string }> {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) {
@@ -310,7 +311,9 @@ class SceneAssetService {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify(referenceImageUrl ? { referenceImageUrl } : {}),
       }
     );
 
