@@ -806,7 +806,8 @@ export class FrameGenerationService {
         branchId: string,
         sceneId: string,
         visualStyleCapsuleId?: string,
-        aspectRatio: string = '16:9'
+        aspectRatio: string = '16:9',
+        referenceImageUrl?: string
     ): Promise<Frame> {
         // Get frame and shot info
         const { data: frame, error: frameError } = await supabase
@@ -997,6 +998,11 @@ export class FrameGenerationService {
             if (startFrame?.image_url) {
                 refImages.unshift({ url: startFrame.image_url, role: 'identity' as const });
             }
+        }
+
+        // Inject user-supplied reference image for style/composition guidance
+        if (referenceImageUrl) {
+            refImages.unshift({ url: referenceImageUrl, role: 'style' as const });
         }
 
         // Start regeneration
