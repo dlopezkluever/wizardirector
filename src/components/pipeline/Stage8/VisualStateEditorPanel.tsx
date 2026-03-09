@@ -12,6 +12,7 @@ import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { User, MapPin, Package, Edit3, Lock, Sparkles, Loader2, History, Trash2, ChevronDown, BookOpen, Check, X } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
@@ -51,7 +52,7 @@ export interface VisualStateEditorPanelProps {
       carryForward?: boolean;
     }
   ) => void;
-  onGenerateImage: (instanceId: string) => void;
+  onGenerateImage: (instanceId: string, referenceImageUrl?: string) => void;
   onRemoveFromScene?: (instanceId: string) => void;
   projectId: string;
   sceneId: string;
@@ -126,6 +127,7 @@ export function VisualStateEditorPanel({
   } | null>(null);
   const [contextSuggestion, setContextSuggestion] = useState<StoryContextSuggestion | null>(null);
   const [isInferringContext, setIsInferringContext] = useState(false);
+  const [useCurrentAsRef, setUseCurrentAsRef] = useState(false);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -197,10 +199,10 @@ export function VisualStateEditorPanel({
     finally { setGeneratingEventId(null); }
   }, [projectId, sceneId]);
 
-  const handleGeneratePostImage = useCallback(async (eventId: string) => {
+  const handleGeneratePostImage = useCallback(async (eventId: string, referenceImageUrl?: string) => {
     try {
       setGeneratingImageEventId(eventId);
-      const { jobId } = await transformationEventService.generatePostImage(projectId, sceneId, eventId);
+      const { jobId } = await transformationEventService.generatePostImage(projectId, sceneId, eventId, referenceImageUrl);
       // Poll for completion
       const maxAttempts = 60;
       const pollIntervalMs = 2000;
@@ -505,7 +507,10 @@ export function VisualStateEditorPanel({
             <Button
               variant="gold"
               size="sm"
-              onClick={() => onGenerateImage(selectedAsset.id)}
+              onClick={() => onGenerateImage(
+                selectedAsset.id,
+                useCurrentAsRef ? selectedAsset.image_key_url : undefined
+              )}
               disabled={isGeneratingImage || useMasterAsIs}
             >
               {isGeneratingImage ? (
@@ -517,6 +522,16 @@ export function VisualStateEditorPanel({
                 </>
               )}
             </Button>
+            {selectedAsset.image_key_url && (
+              <div className="flex items-center gap-1.5">
+                <Checkbox id="use-ref-scene-gen" checked={useCurrentAsRef}
+                  onCheckedChange={(c) => setUseCurrentAsRef(c === true)} />
+                <label htmlFor="use-ref-scene-gen"
+                  className="text-[10px] text-muted-foreground cursor-pointer select-none">
+                  Use as ref
+                </label>
+              </div>
+            )}
             <SceneAssetImageUpload
               projectId={projectId}
               sceneId={sceneId}
