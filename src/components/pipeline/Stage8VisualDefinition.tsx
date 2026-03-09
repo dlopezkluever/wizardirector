@@ -636,10 +636,10 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
   );
 
   const handleGenerateImage = useCallback(
-    async (instanceId: string) => {
+    async (instanceId: string, referenceImageUrl?: string) => {
       setIsGeneratingSingle(true);
       try {
-        const result = await sceneAssetService.generateSceneAssetImage(projectId, sceneId, instanceId);
+        const result = await sceneAssetService.generateSceneAssetImage(projectId, sceneId, instanceId, referenceImageUrl);
         await pollSingleImageJob(result.jobId);
         await queryClient.invalidateQueries({ queryKey: ['scene-asset-attempts', projectId, sceneId, instanceId] });
         await queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
