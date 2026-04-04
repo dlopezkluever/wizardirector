@@ -1,0 +1,161 @@
+World Model Hackathon
+Mar
+13
+Friday, March 13
+5:00 PM - Mar 15, 8:30 PM PDT
+Founders, Inc. | San Francisco Lab
+San Francisco, California
+Starting in 15h 53m
+You’re In
+Ticket: Hacker Access
+
+Add to Calendar
+
+
+
+Invite a Friend
+No longer able to attend? Notify the host by canceling your registration.
+Profile Complete · Reminder: SMS & Email
+About Event
+​World Model Hackathon
+​Join us in Fort Mason for the first hackathon built entirely around world models.
+
+You will have one goal: actually ship (with) world models.
+
+
+User Uploaded Image
+​Tracks
+
+​Best Filmmaking, Entertainment, Simulation App
+
+​Best Gaming, UGC Experience
+
+​Best World Models Implementation with PICO
+
+​Best Agentic Mission Control with PICO
+
+​Best Emulator Project with PICO
+
+​Best WebSpatial Project with PICO
+
+​What We Will Provide:
+
+​Access to World Labs Marble API
+
+​Unity/Unreal/WebXR World Model kits
+
+​WebSpatial cross-platform deployment
+
+​Mentors and technical support
+
+​17 PICO devkits + SDK support
+
+​To get up to speed, sign up for the pre-hack workshops and join us on Friday evening.
+
+​Judges at the Hack evaluating the award categories:
+
+​Asim Ahmed, Head of Product Marketing (Spatial Solutions) at Niantic Spatial, Inc.
+
+​David Gene Oh, Global Developer Advocacy at ByteDance
+
+​Fasai Phuathavornskul, Senior Software Engineer for Android XR at Google
+
+​Ian Curtis, Product Designer at World Labs
+
+​Sherrie Cao, Product Manager for AI Experiences at Electronic Arts (EA)
+
+​Yiqi Zhao, Product Design Lead at Meta
+
+​Conway Anderson, Product & Design Leader, Startup Product Advisor
+
+​Felix Hartmann, Founder and Managing Partner of Hartmann Capital
+
+​Greg Madison, XR and Unity Illusionist
+
+​Jake Steinerman, XR/AI Strategic Advisor
+
+​John Dagdelen, Founder of Fluid
+
+​Marco DeMiroz, General Partner & Co-founder of The Venture Reality Fund
+
+​Michael Morran, Creator Relations Manager at VIVERSE
+
+​Sze Yuan Cheong, Co-Founder & CEO of Devol Robots
+
+​Yiliu Shen-Burke, Founder of Softspace Inc.
+
+​Founder's Inc Judges Team:
+
+​Ryan Chan, Co-founder, CEO of MakerMods
+
+​Hendrik Chiche, Co-founder & CEO of OMGrab
+
+​Isaac Sin, Cofounder, CTO of MakerMods
+
+​Hubert Thieblot, General Partner of Founders, Inc
+
+​Hugo Hernandez, Founder & CEO of Alakazam Studios
+
+​Cris Lenta, Founder & CEO of LifeSim
+
+​Pre-Hack Workshops
+​The Pre-Hack Master Class & Networking on the evening of the 13th is optional. Team formation and Workshops will be repeated on the morning of the 14th.
+
+Pre-Hack Master Class & Networking
+Fri, Mar 13 · San Francisco
+
+​Powered By
+
+​​XR Bootcamp global academy teaching XR, AI, and organizing SensAI Hacks across the world.
+
+​Pico/Bytedance is providing the Hack with awesome awards, exciting Devkits, and headsets!
+
+​Founder's Inc hosting and operating.
+
+​Need more inspiration on what to build? We will share some ideas post sign up!
+
+Questions? hello@sensaihack.com
+
+Blasts
+SensAI Hackademy
+Yesterday, 7:08 PM
+❗Registration Confirmation Needed❗
+​Thanks so much for signing up for the #WorldsinAction Hack!
+
+​We received far more applications than expected and only have 350 spots available. To secure your place, please confirm your spot using this link and the same email address you used to register on luma.
+
+​You’ll have 24 hours to confirm. After that, any unconfirmed spots will be released and offered to others on a first-come, first-served basis.
+
+​Looking forward to seeing you there 🚀
+
+SensAI Hackademy
+Yesterday, 3:27 PM
+Preparation reminder
+​Bring your laptop (PC recommended, ideally NVIDIA RTX GPU) and install the development tools our mentors will use: Unity 6000.2.10f1, Unreal 5.5, and Node ≥ 20.19. XR headsets (Meta Quest, PICO, etc.) are optional if you have one.
+You can prepare and fine-tune your world models in advance, but please do not integrate them into your engine/app before the hackathon.
+
+SensAI Hackademy
+Mar 10, 3:30 PM
+​We’re excited to kick off the Worlds in Action Hack this Friday! 🚀
+
+​We’ll start on the 13th with inspirational keynotes, workshops, and ideation sessions. The hackathon itself begins at 9:30 AM on Saturday, so please be on time!
+
+​Click here to find links and instructions to help you prepare and get the most out of the hack. Looking forward to meeting you all very soon!
+
+SensAI Hackademy
+Mar 3, 5:18 PM
+Get Ready for the Hack: World Model Integration Online Workshop Tomorrow!
+​Join tomorrow’s Worlds in Action Hack Online Workshop to avoid losing 25 hours at the hack figuring out world model integration.
+
+​We’ll cover production-ready world model integration across XR and Games.
+
+Integrate World Models into Games, XR & Web
+Wed, Mar 4 · Zoom
+​& this Thursday: pitch your idea, get clarity on the award categories, and find your team to hit the ground running.
+
+Worlds in Action Info Session, Ideation & Team Formation
+Thu, Mar 5 · Zoom
+Location
+Founders, Inc. | San Francisco Lab
+2 Marina Blvd B300, San Francisco, CA 94123, USA
+Building C, 3rd Floor
