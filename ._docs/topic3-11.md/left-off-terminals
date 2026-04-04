@@ -1,0 +1,474 @@
+Terminal 1:
+
+
+Terminal 2:
+
+
+❯ now that we have implemented the whole of 'c:/Users/Daniel Lopez/Deskto 
+p/Aiuteur/wizardirector/._docs/3.7-location-system-enhancement.md' (like  
+we have completed all the phases from the  implementation priority list   
+(a->H) can you write me a guide on how to test that all the functionality 
+ works, like manually through the UI, don't go overboard, I don't want to 
+ spend a ton of time, instead Try to make the tests time efficent
+
+● Let me quickly review the spec to make sure I cover all testable        
+  surfaces.
+
+● Read 1 file (ctrl+o to expand)
+
+● Now I have the full picture. Here's a focused manual testing guide:     
+
+  ---
+  Manual Testing Guide — Location System (Phases A–H)
+
+  Prereqs: A project with at least one scene that has a location asset    
+  with a reference image. If you don't have one, create a quick project   
+  and get through Stage 5 with a location uploaded.
+
+  ---
+  Test 1: Camera Directions CRUD (Phases A, C) — Stage 5
+
+  1. Go to Stage 5 (Assets) → find a location asset
+  2. Click the dropdown menu (⋯) → "Camera Directions"
+  3. Verify the dialog opens with 3 default views: Establishing +
+  Direction 1 + Direction 2
+  4. Edit Direction 1: set an alias (e.g. "Kitchen Counter"), add a       
+  description → Save
+  5. Upload an image to Direction 1 via the upload button
+  6. Mark as primary if not already → confirm the primary badge moves     
+  7. Close dialog, reopen → verify your edits persisted
+
+  Pass criteria: Views save, images upload, primary toggle works.
+
+  ---
+  Test 2: Sub-location Precision (Phase B) — Stages 3–4
+
+  1. Generate/regenerate a script (Stage 3→4) for a scene that logically  
+  has multiple rooms
+  2. Check the scene headings — they should include sub-location specifics   (e.g. INT. HOUSE - KITCHEN - DAY)
+  3. Go to Stage 4 → verify dependency extraction created separate        
+  location assets for each sub-location
+
+  Pass criteria: Script headings are spatially specific, each sub-location   extracts as its own asset.
+
+  ---
+  Test 3: Direction Assignment (Phase D) — Stage 7
+
+  1. Go to Stage 7 → run shot extraction for a scene with a location that 
+  has camera directions set up
+  2. After extraction, check the shots — each should have
+  camera_direction_id assigned
+  3. If the location had NO pre-existing directions, verify new
+  stage7_inferred directions were created (check back in Stage 5 Camera   
+  Directions dialog — you should see new entries with source
+  stage7_inferred)
+  4. Check that shots have structured camera metadata: camera_distance,   
+  camera_height, camera_movement
+
+  Pass criteria: Shots get direction assignments, new directions created  
+  when missing, metadata populated.
+
+  ---
+  Test 4: Coverage Panel (Phase E) — Stage 8
+
+  1. Go to Stage 8 → look for the Location Coverage Panel (should appear  
+  in the layout)
+  2. Expand a location → verify it shows:
+    - Each direction with shot count and source badge
+    - Directions with images show a green indicator, without show a gap   
+    - "Unmatched shots" section (if any) with direction assignment        
+  dropdowns
+  3. If a shot is unmatched, assign it a direction via the dropdown →     
+  confirm it updates
+
+  Pass criteria: Coverage panel renders, gap detection works, reassignment   dropdown functions.
+
+  ---
+  Test 5: Prompt Generation with Direction Refs (Phase F) — Stage 9→10    
+
+  1. In Stage 9, review the prompt for a shot that has a direction with an   image
+  2. Look for 2 location references in the asset context: matched
+  direction (MAIN REFERENCE) + establishing view (SPATIAL CONTEXT)        
+  3. Generate a frame in Stage 10 → verify the generated frame visually   
+  reflects the location references
+
+  Pass criteria: Prompt includes direction-specific references, generated 
+  frames show location consistency.
+
+  ---
+  Test 6: Established Views (Phase G) — Stage 10
+
+  1. In Stage 10, generate a frame for a shot whose direction has no image   (a coverage gap)
+  2. After frame generates → look for the emerald "This fills a coverage  
+  gap!" banner below the frame
+  3. Click "Lock as Established View" → confirm toast "View established"  
+  4. Go back to Stage 8 coverage panel → verify the direction now shows an   image (gap filled)
+  5. Now do the same for a shot whose direction already has an image:
+    - Look for the subtle "Lock as established view for..." text link     
+    - Click it → verify the replace dialog opens with side-by-side        
+  comparison
+    - Click "Replace" → confirm it updates
+
+  Pass criteria: Gap-fill banner appears, locking works, replace dialog   
+  shows comparison.
+
+  ---
+  Test 7: Batch Generation (Phase H) — Stage 8
+
+  1. In Stage 8 coverage panel, find a location that has at least one     
+  reference image but also has directions without images
+  2. Look for the "Generate N Missing Views" button at the bottom of the  
+  location
+  3. Click it → verify generation starts (loading spinners on each        
+  direction)
+  4. Alternatively, test the per-direction Sparkles button on a single    
+  empty direction
+  5. After generation completes → verify the direction now has an image   
+
+  Pass criteria: Batch button appears, generates images for gaps,
+  per-direction generate works.
+
+  ---
+  Quick Smoke Path (5 minutes)
+
+  If you're short on time, just do this single flow:
+
+  1. Stage 5: Open Camera Directions on a location → verify 3 defaults    
+  exist, upload 1 image
+  2. Stage 7: Extract shots → verify directions get assigned
+  3. Stage 8: Check coverage panel shows your gaps
+  4. Stage 10: Generate a frame → see the gap-fill banner → lock it       
+  5. Stage 8: Confirm the gap is now filled
+
+  This single loop touches all 8 phases end-to-end.
+
+
+*User*: Manual Testing Guide — Location System (Phases A–H) RESULT   
+
+
+
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXx
+
+Terminal 2:  Now let me compile the full E2E testing summary and UI/UX improvement recommendations
+
+  ---
+  E2E Testing Summary — Location System Enhancement (Phases A-H)
+
+  Combined Test Results (Pass 1 + Pass 2)
+
+  ┌─────┬──────────────────────────────────┬────────┬──────────────────────────────────
+  │  #  │               Test               │ Status │                   Details        
+  ├─────┼──────────────────────────────────┼────────┼──────────────────────────────────
+  │ 1   │ Login                            │ PASS   │ Supabase auth, redirects to /dash
+  ├─────┼──────────────────────────────────┼────────┼──────────────────────────────────
+  │ 2   │ Navigate to Project              │ PASS   │ Project page loads correctly     
+  ├─────┼──────────────────────────────────┼────────┼──────────────────────────────────
+  │ 3   │ Stage 5 — Camera Directions Menu │ WARN   │ No active location assets (only 2
+  │     │  (Active)                        │        │  active, 8 deferred) — menu corre
+  ├─────┼──────────────────────────────────┼────────┼──────────────────────────────────
+  │ 4   │ Stage 5 — Camera Directions Menu │ WARN   │ Deferred assets don't show kebab 
+  │     │  (Deferred)                      │        │ expected behavior                
+  ├─────┼──────────────────────────────────┼────────┼──────────────────────────────────
+  │ 5   │ Scene Dependencies — Phase B     │ PASS   │ "QLANKTON'S LAB" and "SANDY'S TRE
+  │     │ Location Parsing                 │        │ correctly parsed from compound he
+  ├─────┼──────────────────────────────────┼────────┼──────────────────────────────────
+  │     │                                  │        │ "MS - Eye Level - Slow Dolly In",
+  │ 6   │ Shot Camera Metadata — Phase A/D │ PASS   │ Level - Static", "MS - Eye Level 
+  │     │                                  │        │ visible                          
+  ├─────┼──────────────────────────────────┼────────┼──────────────────────────────────
+  │ 7   │ Enter Scene Pipeline             │ PASS   │ Scene pipeline navigation works  
+  ├─────┼──────────────────────────────────┼────────┼──────────────────────────────────
+  │ 8   │ Stage 8 — LocationCoveragePanel  │ PASS   │ "Location Coverage" header, camer
+  │     │ Visible (Phase E)                │        │ panel renders                    
+  ├─────┼──────────────────────────────────┼────────┼──────────────────────────────────
+  │     │ Stage 8 — Coverage Details       │        │ QLANKTON'S LAB: 0/3 shots covered
+  │ 9   │ (Phase E)                        │ PASS   │ unassigned shots (1A, 1B, 1C) wit
+  │     │                                  │        │ metadata                         
+  ├─────┼──────────────────────────────────┼────────┼──────────────────────────────────
+  │ 10  │ Stage 8 — Direction Assignment   │ PASS   │ "Unassigned" dropdowns open with 
+  │     │ Dropdown (Phase E)               │        │                                  
+  ├─────┼──────────────────────────────────┼────────┼──────────────────────────────────
+  │ 11  │ Stage 8 — EXT Scene Coverage     │ PASS   │ SANDY'S TREEDOME: 0/3 shots cover
+  │     │ (Phase E)                        │        │ unassigned shots                 
+  ├─────┼──────────────────────────────────┼────────┼──────────────────────────────────
+  │ 12  │ Stage 8 — Generate Missing Views │ WARN   │ Not visible — no direction views 
+  │     │  (Phase H)                       │        │ yet, so batch button correctly hi
+  ├─────┼──────────────────────────────────┼────────┼──────────────────────────────────
+  │ 13  │ Stage 10 — EstablishViewPrompt   │ WARN   │ Stage 10 locked (pipeline at Stag
+  │     │ (Phase G)                        │        │ cannot test until frames are gene
+  ├─────┼──────────────────────────────────┼────────┼──────────────────────────────────
+  │ 14  │ Pipeline Stage Status            │ PASS   │ Stages 7-8 available, 9-12 locked
+  │     │                                  │        │ pipeline gating                  
+  ├─────┼──────────────────────────────────┼────────┼──────────────────────────────────
+  │ 15  │ Scene 02 Coverage Panel          │ WARN   │ Only 1 character asset (SPONGEBON
+  │     │                                  │        │ location — coverage panel correct
+  ├─────┼──────────────────────────────────┼────────┼──────────────────────────────────
+  │     │                                  │        │ Cannot open from Stage 5 — no act
+  │ 16  │ LocationViewsDialog (Phase C)    │ WARN   │ location assets have kebab menu i
+  │     │                                  │        │ project-level view               
+  └─────┴──────────────────────────────────┴────────┴──────────────────────────────────
+
+  Final Score: 10 PASS, 0 FAIL, 6 WARN
+
+  All WARNs are expected behavior given the test project state:
+  - No active location assets in Stage 5 (all locations deferred) → Camera Directions m
+  - No direction views created yet → Generate Missing Views button hidden
+  - Pipeline locked at Stage 8 → Stage 10 EstablishViewPrompt untestable
+  - Scene 02 has no location asset → Coverage panel absent
+
+  ---
+  UI/UX Improvement Recommendations — Location System Overhaul
+
+  Critical Issues
+
+  1. "Camera Directions" is completely inaccessible for deferred locations
+  The "Camera Directions" menu item only appears on the kebab dropdown for active asset
+  Since the asset extraction deferred all 8 location assets, there is literally no way 
+  set up camera directions until they manually activate a location. This is a major wor
+  user may not even know the feature exists.
+
+  Recommendation: Either (a) add a "Camera Directions" menu item to deferred asset rows   a prominent "Set Up Camera Directions" entry point from Stage 8's LocationCoveragePa
+  (since that's where the user first encounters the problem of unassigned shots), or (c
+  locations to active when they appear in scene dependencies.
+
+  2. LocationCoveragePanel shows "0/3 shots covered" but gives no guidance on what to d
+  The amber warning banner ("3 unassigned shot(s)") is visible, but the dropdowns all s
+  with no direction options. The user sees a problem but has no way to fix it because n
+  have been defined yet. There's no link or call-to-action to "Go define camera directi
+
+  Recommendation: Add an empty-state message when there are 0 directions defined: "No c   defined for this location. [Set up directions in Stage 5] to enable shot assignment.
+  direct link/button that opens the LocationViewsDialog or navigates to Stage 5.
+
+  3. Coverage Panel direction dropdown shows only "Unassigned" when no views exist
+  The dropdown for assigning shots to directions opens but only shows "Unassigned" as t
+  This is confusing — the user clicks expecting to assign a shot but has nothing to ass
+
+  Recommendation: When there are 0 directions, either (a) hide the dropdown entirely an   directions first" message, or (b) show a disabled state with tooltip explaining why,
+  inline "Create direction" quick-action in the dropdown.
+
+  Moderate Issues
+
+  4. No visual connection between Stage 5 Camera Directions and Stage 8 Coverage Panel
+  These are two separate features that are tightly coupled (you define directions in St
+  assign shots in Stage 8), but there's no navigation or visual link between them. The 
+  manually figure out the workflow.
+
+  Recommendation: Add bidirectional navigation: from Coverage Panel → "Define direction   5 LocationViewsDialog; from LocationViewsDialog → "See shot assignments" link to Sta
+  Panel.
+
+  5. Scene 02 (and other continuation scenes) has no location asset despite being in QL
+  Scene 02 shows "INT. QLANKTON'S LAB - CONTINUOUS" but its Stage 8 has only 1 characte
+  location. The LocationCoveragePanel doesn't appear. This means continuation scenes do
+  location coverage analysis, even though they share the same physical space.
+
+  Recommendation: Either (a) auto-inherit the location asset from the previous scene in
+  sequences, or (b) show the coverage panel for scenes that have a recognized Expected    no location asset is explicitly linked, or (c) add a "Inherit assets from Scene 1" b
+  more prominent.
+
+  6. "Deferred Assets (8)" section at bottom of Stage 5 buries important location asset
+  All 8 location-related assets are in the deferred section, collapsed by default. User
+  expand this section will never discover that Camera Directions exists. The current pr   active characters and 0 active locations, which means the location system features a
+  invisible.
+
+  Recommendation: (a) When the user is on Stage 8 and sees unassigned shots, show a pro
+  notification: "This scene's location 'QLANKTON'S LAB' is deferred. [Activate it] to e
+  direction assignment." (b) Consider auto-activating location assets that appear in sc
+  dependencies, since they're clearly needed for production.
+
+  7. Camera metadata display is text-only and could be more scannable
+  Shot cards show "MS - Eye Level - Slow Dolly In" as plain text. While accurate, this    at a glance across many shots. There's no visual differentiation between distance, h
+  movement.
+
+  Recommendation: Use color-coded badges or structured tags: [MS] [Eye Level] [Slow Dol
+  distinct visual treatment for each category. Or use icons — a small camera icon for d
+  arrow for height, a motion indicator for movement.
+
+  Minor / Polish
+
+  8. Coverage Panel "0/3 shots covered" uses warning icon but no progress indicator
+  The coverage status is just text. A visual progress bar (even a thin one) would make    immediately obvious at a glance.
+
+  Recommendation: Add a thin progress bar (emerald fill) next to the "X/Y shots covered
+  Red/amber when 0%, partial amber, full emerald at 100%.
+
+  9. The right sidebar stage navigation doesn't indicate which stages have location-rel
+  Stages 8, 10 have new location coverage/establish features, but there's no visual ind
+  these stages have pending actions related to the location system.
+
+  Recommendation: Add a small badge or dot on the Stage 8 sidebar icon when there are u
+  (location coverage gaps), similar to how "Shot List" shows status dots.
+
+  10. EstablishViewPrompt (Phase G) can't be tested but design concern noted
+  The "Lock as Established View" feature requires a generated/approved frame + directio
+  Given that most shots in this project are unassigned to any direction, the feature ma   even when Stage 10 is reached.
+
+  Recommendation: Consider showing the establish prompt even for unassigned shots, with
+  select which direction to establish the frame for. This turns a passive feature into 
+  workflow step.
+
+  11. No "Quick Setup" wizard for the location direction system
+  The entire location direction system requires the user to: (1) activate location asse
+  Camera Directions dialog, (3) define directions, (4) go to Stage 8 Coverage Panel, (5
+  This is 5 manual steps across 2 different stages with no guided flow.
+
+  Recommendation: Add a "Set Up Location Directions" guided workflow that can be trigge
+  Stage 5 or Stage 8. It would walk through: pick location → suggest default views → as
+  in a single dialog/wizard flow. The "Suggest Default Views" feature already exists —    be more discoverable and connected to the assignment step.
+
+  Potential Additions
+
+  12. Auto-suggest direction assignments based on camera metadata
+  Shots already have camera metadata (distance, height, movement). Directions have came
+  camera_height. The matchShotToLocationView() scoring function exists in the backend b   as a UI feature.
+
+  Recommendation: Add an "Auto-Assign Shots" button in the Coverage Panel that uses the
+  matching algorithm to pre-fill direction assignments based on camera metadata similar
+  user the proposed assignments for review before committing.
+
+  13. Coverage summary at the Script Hub level
+  Currently, coverage is only visible per-scene in Stage 8. There's no project-wide vie
+  scenes have location coverage gaps.
+
+  Recommendation: Add a coverage indicator (red/amber/green dot) on each scene row in t
+  Script Hub sidebar, showing whether that scene has unresolved location coverage gaps.
+  user prioritize which scenes need attention.
+
+  XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXx
+
+  how can I test this myself in the UI, (in a time effeicent manner, like give me the steps I should do in the front end      
+myself)
+
+● Quick Manual Test Steps
+
+  Per-Asset: "Infer from Story"
+
+  1. Open your project → Script Hub → click a scene with "Shot List" badge → Enter Scene Pipeline
+  2. Navigate to Stage 8 (if not already there)
+  3. Click any asset in the left sidebar to select it
+  4. In the editor panel, scroll to just below the description textarea — you'll see the "Infer from Story" button
+  5. Click it → watch for "Analyzing..." loading state → a green suggestion panel appears with:
+    - Suggested description (side-by-side with current)
+    - Suggested tags (green badges with + prefix)
+    - Collapsible reasoning
+    - Accept Description / Accept Tags / Accept Both buttons
+  6. Click "Accept Both" to apply, or the X to dismiss
+
+  Bulk: "Update from Context"
+
+  1. Same Stage 8 view — check the checkboxes on 2-3 assets in the left sidebar
+  2. A new button appears: "Update from Context (N)" — click it
+  3. Wait for the LLM to finish (shows "Inferring...")
+  4. A review modal opens showing all assets with:
+    - Current vs suggested descriptions side-by-side
+    - New tags highlighted in green
+    - Per-asset checkboxes to accept/reject
+    - Select All / Deselect All at top
+  5. Toggle which suggestions to keep → click "Applyected"
+
+  That's it — two flows, ~2 minutes total to verify both.
+
+
+## Probably just f it and sra Now the aborted anwsering questions about implementing recommendatiosn. 
+
+
+
+
+The spec says Stage 7 should let users 'review/edit direction assignments after shot list generation.' But Stage 8's coverage panel already handles direction editing with full  
+context (coverage status, image previews, unmatched shot dropdowns). Adding full editing in Stage 7 duplicates this. My recommendation: Stage 7 gets a read-only direction badge 
+in the shot inspector (shows assigned direction name/alias), with a lightweight dropdown to reassign if needed — but Stage 8 remains the primary editing surface. What's your    
+preference?
+
+❯ 1. Read-only badge + light edit (Recommended)
+     Show assigned direction as a tag/badge in the shot inspector. Clicking it opens a simple dropdown to reassign. No coverage context — that stays in Stage 8.
+  2. Full direction editing UI
+     Add a dedicated direction assignment section in Stage 7 with thumbnails, coverage hints, and per-shot dropdowns. More duplication with Stage 8 but gives immediate control. 
+  3. Read-only only, no editing
+     Just show the assigned direction name/alias as a non-interactive label. All editing deferred to Stage 8. Minimal scope.
+  4. Type something.
+
+
+The spec says Stage 9 directions should be 'visible AND editable' — but Stage 9 is the prompt review stage. If a user changes a direction assignment here, it invalidates the    
+generated prompt (different reference images, different delta description). They'd need to regenerate, which defeats the purpose of reviewing. My recommendation: Stage 9 gets   
+read-only visibility (direction labels on reference thumbnails, delta warning badges) but NOT editing. Does that match your intent, or do you actually want editing here?        
+
+❯ 1. Read-only visibility (Recommended)
+     Label reference thumbnails with role (MAIN REFERENCE / SPATIAL CONTEXT), show direction alias, display delta warnings. No editing — changing directions would invalidate    
+     prompts.
+  2. Visible + editable with regen
+     Show direction info AND allow reassignment. Changing a direction marks the shot's prompts as stale and requires regeneration. More complex but matches spec literally.      
+  3. Skip Stage 9 changes entirely
+     The prompt text already contains delta descriptions and direction context. Users can read it in the prompt. No structured UI needed.
+  4. Type something.
+───────────────────────────────
+
+
+The spec mentions 'scene-specific view overrides' (e.g., damaged kitchen for one scene). This would require new DB fields/table, new UI in the coverage panel, and prompt        
+generation changes. The character override pattern (description_override on SceneAssetInstance) doesn't directly translate — location views are image-based, not text-based. A   
+per-scene location view override would need per-scene image variants. Should we build this now, or defer?
+
+❯ 1. Defer to future iteration (Recommended)
+     This is an edge-case feature for advanced workflows. The system works correctly without it. Scope it as a separate future enhancement.
+  2. Build description override only
+     Add a text description_override for location views per-scene (like characters have today). No per-scene image variants — just description changes that affect prompts.      
+  3. Build full image + description override
+     Full per-scene location view variants: different images and descriptions per scene. Significant scope — new table, new UI, prompt generation changes.
+  4. Type something.
+
+The spec describes a propose → review → confirm flow for batch generation.        
+Currently it's o ☐ Stage 9 UI  ☐ View overrides  ☐ Batch gen flow  7 already      
+creates directions with names/aliases/descriptions, there's nothing to 'propose' — the viewsays Stage 9 directions should be 'visible AND editable' — but Stage 9 is the prompt review stage. If a user changes a direction assignment here, it       
+invalidates the generated prompt (different reference images, different delta     
+description). They'd need to regenerate, which defeats the purpose of reviewing.  
+My recommendation: Stage 9 gets read-only visibility (direction labels on     ck  
+reference thumbnails, delta warning badges) but NOT editing. Does that match your 
+intent, or do you actually want editing here?
+
+❯ 1. Read-only visibility (Recommended)                                           
+     Label reference thumbnails with role (MAIN REFERENCE / SPATIAL CONTEXT), show      direction alias, display delta warnings. No editing — changing directions   
+  3. would invalidate prompts.
+  2. Visible + editable with regen                                                
+     Show direction info AND allow reassignment. Changing a direction marks the es     shot's prompts as stale and requires regeneration. More complex but matches  
+  4. spec literally.
+──3.─Skip Stage 9 changes entirely
+     The prompt text already contains delta descriptions and direction context.   
+     Users can read it in the prompt. No structured UI needed.
+  4. Type something.
+
+#### **LAST ONE**:
+
+  New Files
+
+  1. backend/src/services/storyContextService.ts — Assembles scene story context from Stages 2/3/7 and calls LLM to infer     
+  asset descriptions and tags. Supports single-asset and bulk inference (batches ≤4 assets into one LLM call, parallelizes    
+  larger sets).
+  2. src/components/pipeline/Stage8/BulkContextUpdateModal.tsx — Review modal with per-asset accept/reject checkboxes,        
+  side-by-side current vs suggested descriptions, tag diffs with +new indicators, collapsible reasoning, and Select
+  All/Deselect All controls.
+
+  Modified Files
+
+  3. backend/src/routes/sceneAssets.ts — Added two endpoints:
+    - POST /:projectId/scenes/:sceneId/assets/:instanceId/infer-context (single asset)
+    - POST /:projectId/scenes/:sceneId/bulk-infer-context (bulk, with Zod validation)
+  4. src/types/scene.ts — Added StoryContextSuggestion and BulkStoryContextResult interfaces.
+  5. src/lib/services/sceneAssetService.ts — Added inferContext() and bulkInferContext() API client methods.
+  6. src/components/pipeline/Stage8/VisualStateEditorPanel.tsx — Added "Infer from Story" button next to the description      
+  textarea, with inline suggestion preview (description, tags, collapsible reasoning) and Accept Description / Accept Tags /  
+  Accept Both / Dismiss buttons.
+  7. src/components/pipeline/Stage8/SceneAssetListPanel.tsx — Added "Update from Context (N)" bulk button, visible when assets   are checkbox-selected.
+  8. src/components/pipeline/Stage8VisualDefinition.tsx — Wired up bulk context inference state, handlers
+  (handleBulkInferContext, handleApplyBulkContext), and the BulkContextUpdateModal.
+
+  Key Design Decisions
+
+  - Tags are ADDITIVE: Suggested tags merge with existing (deduplicated), never replace
+  - Batching: ≤4 assets → single LLM call; >4 → parallel individual calls
+  - Non-destructive: Accepted descriptions save via the existing onUpdateAsset flow (which creates version history entries via   textFieldVersionService)
+  - Context reuse: Story context (script, beats, treatment, shots) is fetched once per bulk call, reused across all assets    
+
+✻ Worked for 15m 11s
+
+❯ can you please make and run some programmatic tests to verify this features works in the backend, and then test the         
+frontend using the playwright mcp/skill (the .env variables neccessary (E2E_EMAIL,       
+E2E_PASSWORD, E2E_PROJECT_ID env vars)  are in both my the project  root and the backend folder .env file
+  ⎿  ⧉ Selected 1 lines from ._docs\prompts-to-reuse.md in Cursor

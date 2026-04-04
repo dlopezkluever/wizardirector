@@ -845,10 +845,10 @@ Begin by reading the attached spec file and the relevant codebase areas. Then st
 
 ## Run Playwright and give recs:
 
-❯ okay great, now I have completed Phases 5-8 as well, as you can read about here: 'c:/Users/Daniel    
-Lopez/Desktop/Aiuteur/wizardirector/._docs/3.7-location-session-compact-EF.md' and 'c:/Users/Daniel    
-Lopez/Desktop/Aiuteur/wizardirector/._docs/3.7-location-session-compact-GH.md' , can you please run    
-thurough playwright tests for the functionality changes they introduced, and once you checked the      
+❯ okay great, now I have completed the building (of _____), as you can read about here: _____, 
+
+can you please make and run    
+thurough playwright tests for Ui experience for the use & the frontend functionality changes they introduced, using the playwright skill, and once you checked the      
 status of how they perform, output for me a summary of thier E2E tesing results.. After that, I want   
 you to then further analyze your findings acroccss all the screenshots you took and your analysis of   
 the UI as you tested, and output me a document with UI / functionality Improvement recommendations     
@@ -856,7 +856,12 @@ regarding this location system overhaul with did, like what do you find poorly d
 unintuitive for the user, in regards to the changes we made, and what more could we possibly add on to 
  again, make this easier for the user to use?
 
-
+Great, now that we have completed the building regarding:  the Tooltip and    
+  Toogle for Use of Reference Image in Regenerations both just in the image upload
+  modal And then later, the Adding same Toogle & funcitonality for attaching        
+  reference image to 3 other Regnerations location (here are the files changed:     
+  'c:/Users/Daniel Lopez/Desktop/Aiuteur/wizardirector/._docs/._files-changed-that  
+  -need-PlayWright-tests.md') can you   
 ## Help Me Test (Quick):
 
 
@@ -870,7 +875,7 @@ don't go overboard, I don't want to spend a ton of time,
 instead Try to make the tests time efficent
 
 
-## Any Descripencies versus master plan and phased build:
+## **Any Descripencies versus master plan and phased build**:
 
 
 ❯ I recently attempted to implement the following plan: 'c:/Users/Daniel 
@@ -888,3 +893,69 @@ anything I missed from the master plan doc?additionally can you write me a guide
 for testing the functionality and UI manually for the new features and changes.     
 Don;t write any code, just analyze the implementation, and check my work to see if  
 I missed anything, and then list any descrepencies out here:
+
+## **Start prompt for dealing with discreptencaies**:
+
+You are a senior engineer and product architect. Your job is NOT to write code — it's to
+produce self-contained planning / spec documents so implementation can happen in clean, focused sessions, based off a complete understanding of the situation and help me build a tight, implementable spec for what we must do to reconcile the situation.
+
+Here is the situation:  We have found the following discrepacies (read: 'c:/Users/Daniel     
+  Lopez/Desktop/Aiuteur/wizardirector/._docs/topic-location/3.7-locat  
+  ion-rd-1-discrepancies.md') in the way we have built out the tasks   
+  so far in relation to our source of truth planning/ spec  document:  
+  'c:/Users/Daniel Lopez/Desktop/Aiuteur/wizardirector/._docs/topic-   
+  location/3.7-location-system-enhancement-(master-doc).md' Our task is to determine what we must still do to be complete with the location system enhancement, by doing the following:
+
+---
+
+STEP 1 — Investigate first.
+Make sure you understand the relevant parts of the codebase this feature deals with. Understand what exists today before forming any opinions.
+
+STEP 2 — STEP 2 — Scrutinize the spec and Interview me.
+Flag contradictions, ambiguities, redundancies, concerns And recommendations.
+Use `askUserQuestion`. Ask about anything unclear, any tradeoffs worth surfacing, and your own recommendations. Cover all aespects of concern, from UX decisions, data model implications, scope and anything in my notes that conflicts or is underspecified. Share your opinions — don't just present neutral options when you have a better answer.
+Note: Make sure to Surface anything I missed.
+Before writing anything, flag: adjacent problems worth fixing now, potential regressions, and sequencing
+dependencies known rough edges, any partial implementations of spec features that were missed regard the subject at hand.
+
+Once all these fleshing out is done, and it is clear what is to be done;
+
+STEP 3 — Write one markdown planning doc per implementation phase.
+Each doc must be fully self-contained. Include:
+
+## Problem Statement / ## Core Goal / ## Relevant Files (path + why)
+## Current State / ## Implementation Notes / ## Dependencies / ## Notables
+
+
+
+ Okay now returning to your recommendations, Lets' first start with dealing with issues 3 & 4: I want to analysis this        
+    situation deeper, as I want to consider all options and concerns, so let's first plan this out, by having
+    you use the "AskUserQuestion" tool:  Ask about anything unclear, any tradeoffs worth surfacing, and your own
+  recommendations. Cover all aespects of concern,     (   3. CHECKBOX IS TOO SMALL AND EASY TO MISS - High Priority
+
+    Problem: The "Use as ref" checkbox uses text-[10px] styling, making it extremely small (visible in screenshots - it's a    
+  tiny
+    circle with tiny text). On the EnhancedUploadModal, it's placed on the second row of action buttons next to "Regenerate",  
+
+    visually subordinate. In Stage 8, it's between the "Generate Image" button and "Drop image or click to upload" -- easy to  
+
+    overlook entirely.  Recommendation:
+    - Increase to at least text-xs (12px) for readability
+    - Consider making it a more prominent toggle switch instead of a checkbox, or add a subtle highlight/border when checked   
+  to
+    give visual feedback
+    - In the EnhancedUploadModal, consider placing it inline with a tooltip that says "When checked, the AI uses the current   
+  image
+    as a style and composition guide for regeneration"  .......   4. NO EXPLANATION OF WHAT "USE AS REF" ACTUALLY DOES - High  
+  Priority
+
+    Problem: The Regenerate button has an excellent tooltip ("Generate a new image from the Final Description. When 'Use as    
+  ref' is   on, the current image guides style and composition.") but the checkbox itself has NO tooltip. A user seeing "Use 
+  as ref" for
+    the first time has no idea what it means. In Stage 8 and Stage 10, there's no explanatory tooltip at all.
+   
+    Recommendation: Add an info icon tooltip next to the "Use as ref" label (consistent with the info tooltips on "Extracted   
+  from
+    Image" and "Final Description" labels). The tooltip should explain: "When checked, the current image is sent as a style    
+   
+    reference to guide the generation, helping maintain visual consistency." .. 
