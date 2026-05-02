@@ -7,11 +7,12 @@
  */
 
 import { useState } from 'react';
-import { Check, X, Sparkles, Loader2, Trash2, ArrowRight, Image as ImageIcon, AlertTriangle } from 'lucide-react';
+import { Check, X, Sparkles, Loader2, Trash2, ArrowRight, Image as ImageIcon, AlertTriangle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import type { TransformationEvent } from '@/types/scene';
 
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
@@ -218,12 +219,21 @@ export function TransformationEventCard({
             )}
             {event.post_image_key_url && onGeneratePostImage && (
               <div className="flex items-center gap-1.5">
-                <Checkbox id={`use-ref-transform-${event.id}`} checked={usePostImageAsRef}
-                  onCheckedChange={(c) => setUsePostImageAsRef(c === true)} />
+                <Switch id={`use-ref-transform-${event.id}`} checked={usePostImageAsRef}
+                  onCheckedChange={(checked) => setUsePostImageAsRef(checked)}
+                  className="scale-75 origin-left" />
                 <label htmlFor={`use-ref-transform-${event.id}`}
-                  className="text-[10px] text-muted-foreground cursor-pointer select-none">
+                  className="text-xs text-muted-foreground cursor-pointer select-none">
                   Use as ref
                 </label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="w-3 h-3 opacity-50 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-[220px] text-xs">
+                    When enabled, the current image is sent as a style reference to guide generation, helping maintain visual consistency.
+                  </TooltipContent>
+                </Tooltip>
               </div>
             )}
             {onOpenImagePicker && (

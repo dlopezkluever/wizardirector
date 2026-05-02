@@ -15,6 +15,7 @@ import {
   Upload,
   ArrowDownToLine,
   ArrowUpFromLine,
+  Info,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +35,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import {
   Popover,
   PopoverContent,
@@ -809,12 +811,21 @@ export function FramePanel({
         <div className="mt-3 p-3 rounded-lg border border-border/50 bg-card/50 space-y-3">
           {frame?.imageUrl && (
             <div className="flex items-center gap-1.5 pb-1">
-              <Checkbox id={`use-ref-${frameType}`} checked={useCurrentAsRef}
-                onCheckedChange={(c) => setUseCurrentAsRef(c === true)} />
+              <Switch id={`use-ref-${frameType}`} checked={useCurrentAsRef}
+                onCheckedChange={(checked) => setUseCurrentAsRef(checked)}
+                className="scale-75 origin-left" />
               <label htmlFor={`use-ref-${frameType}`}
-                className="text-[10px] text-muted-foreground cursor-pointer select-none">
+                className="text-xs text-muted-foreground cursor-pointer select-none">
                 Use current image as reference
               </label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="w-3 h-3 opacity-50 cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent side="right" className="max-w-[220px] text-xs">
+                  When enabled, the current image is sent as a style reference to guide generation, helping maintain visual consistency.
+                </TooltipContent>
+              </Tooltip>
             </div>
           )}
           {!showManualEdit ? (

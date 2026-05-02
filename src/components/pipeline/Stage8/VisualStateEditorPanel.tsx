@@ -11,8 +11,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { User, MapPin, Package, Edit3, Lock, Sparkles, Loader2, History, Trash2, ChevronDown, BookOpen, Check, X } from 'lucide-react';
-import { Checkbox } from '@/components/ui/checkbox';
+import { User, MapPin, Package, Edit3, Lock, Sparkles, Loader2, History, Trash2, ChevronDown, BookOpen, Check, X, Info } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
@@ -524,12 +525,21 @@ export function VisualStateEditorPanel({
             </Button>
             {selectedAsset.image_key_url && (
               <div className="flex items-center gap-1.5">
-                <Checkbox id="use-ref-scene-gen" checked={useCurrentAsRef}
-                  onCheckedChange={(c) => setUseCurrentAsRef(c === true)} />
+                <Switch id="use-ref-scene-gen" checked={useCurrentAsRef}
+                  onCheckedChange={(checked) => setUseCurrentAsRef(checked)}
+                  className="scale-75 origin-left" />
                 <label htmlFor="use-ref-scene-gen"
-                  className="text-[10px] text-muted-foreground cursor-pointer select-none">
+                  className="text-xs text-muted-foreground cursor-pointer select-none">
                   Use as ref
                 </label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="w-3 h-3 opacity-50 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-[220px] text-xs">
+                    When enabled, the current image is sent as a style reference to guide generation, helping maintain visual consistency.
+                  </TooltipContent>
+                </Tooltip>
               </div>
             )}
             <SceneAssetImageUpload

@@ -145,11 +145,11 @@ describe('EnhancedUploadModal', () => {
       expect(screen.queryByText('Remove BG')).not.toBeInTheDocument();
     });
 
-    it('should show reference toggle checkbox defaulting to checked', () => {
+    it('should show reference toggle switch defaulting to checked', () => {
       render(<EnhancedUploadModal {...defaultProps()} />);
-      const checkbox = screen.getByRole('checkbox', { name: /use as ref/i });
-      expect(checkbox).toBeInTheDocument();
-      expect(checkbox).toBeChecked();
+      const toggle = screen.getByRole('switch', { name: /use as ref/i });
+      expect(toggle).toBeInTheDocument();
+      expect(toggle).toBeChecked();
     });
   });
 
@@ -284,8 +284,8 @@ describe('EnhancedUploadModal', () => {
       const props = defaultProps();
       render(<EnhancedUploadModal {...props} />);
 
-      // Uncheck the "Use as ref" checkbox
-      const checkbox = screen.getByRole('checkbox', { name: /use as ref/i });
+      // Uncheck the "Use as ref" switch
+      const checkbox = screen.getByRole('switch', { name: /use as ref/i });
       await user.click(checkbox);
 
       fireEvent.click(screen.getByText('Regenerate'));
