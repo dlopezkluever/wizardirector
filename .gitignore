@@ -74,3 +74,6 @@ tmp-screenshots
 ._docs/prompting-guides
 
 ui-images/
+
+.agents/
+.codex/
