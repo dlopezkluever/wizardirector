@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Plus, 
@@ -20,9 +20,11 @@ import {
   AlertTriangle,
   AlertCircle,
   Save,
-  GripVertical,
-  Lock,
-  EyeOff
+  EyeOff,
+  Link2,
+  RefreshCw,
+  Settings2,
+  Unlink
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,12 +32,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ContentAccessCarousel } from './ContentAccessCarousel';
 import { shotService } from '@/lib/services/shotService';
+import { projectAssetService } from '@/lib/services/projectAssetService';
 import { sceneService } from '@/lib/services/sceneService';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import type { Shot } from '@/types/scene';
+import type { ProjectAsset } from '@/types/asset';
+import type { LocationContinuityState, LocationMatchSource } from '@/types/locationContinuity';
 import { LockedStageHeader } from './LockedStageHeader';
 import { StageInfoButton } from './StageInfoButton';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
@@ -60,6 +67,8 @@ interface Stage7ShotListProps {
   onBack: () => void;
   onNext?: () => void;
 }
+
+const CLEAR_LOCATION_VALUE = '__clear_location__';
 
 // Debounce hook
 function useDebounce<T>(value: T, delay: number): T {
@@ -104,6 +113,11 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
   const [isLoading, setIsLoading] = useState(true);
   const [isExtracting, setIsExtracting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [locationAssets, setLocationAssets] = useState<ProjectAsset[]>([]);
+  const [sceneExpectedLocation, setSceneExpectedLocation] = useState<string>('');
+  const [isLoadingLocations, setIsLoadingLocations] = useState(false);
+  const [updatingLocationShotIds, setUpdatingLocationShotIds] = useState<Set<string>>(new Set());
+  const [isResolvingLocations, setIsResolvingLocations] = useState(false);
   
   // Auto-save state
   const [pendingUpdates, setPendingUpdates] = useState<Map<string, Partial<Shot>>>(new Map());
@@ -191,13 +205,14 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
     fetchOrExtractShots();
   }, [projectId, sceneId]);
 
-  // Fetch current scene lock status
+  // Fetch current scene lock status and expected location context
   useEffect(() => {
     const fetchLockStatus = async () => {
       try {
         const scenes = await sceneService.fetchScenes(projectId);
         const currentScene = scenes.find(s => s.id === sceneId);
         setIsSceneLocked(!!currentScene?.shotListLockedAt);
+        setSceneExpectedLocation(currentScene?.expectedLocation || '');
       } catch (error) {
         console.error('Failed to fetch lock status:', error);
       }
@@ -205,6 +220,34 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
 
     fetchLockStatus();
   }, [projectId, sceneId]);
+
+  useEffect(() => {
+    const fetchLocationAssets = async () => {
+      try {
+        setIsLoadingLocations(true);
+        const assets = await projectAssetService.listAssets(projectId, 'location');
+        setLocationAssets(assets.filter(asset => !asset.deferred));
+      } catch (error) {
+        console.error('Failed to fetch location assets:', error);
+        toast({
+          title: 'Failed to load locations',
+          description: error instanceof Error ? error.message : 'Location choices are unavailable right now',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoadingLocations(false);
+      }
+    };
+
+    fetchLocationAssets();
+  }, [projectId]);
+
+  const replaceShotInState = useCallback((updatedShot: Shot) => {
+    setShots(prev => prev.map(shot =>
+      shot.id === updatedShot.id ? updatedShot : shot
+    ));
+    setSelectedShot(prev => prev?.id === updatedShot.id ? updatedShot : prev);
+  }, []);
 
   // Auto-save effect
   useEffect(() => {
@@ -217,6 +260,9 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
       for (const [shotId, updates] of debouncedUpdates.entries()) {
         updatePromises.push(
           shotService.updateShot(projectId, sceneId, shotId, updates)
+            .then(updatedShot => {
+              if (updatedShot) replaceShotInState(updatedShot);
+            })
             .catch(error => {
               console.error(`Failed to save shot ${shotId}:`, error);
               toast({
@@ -237,7 +283,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
     };
     
     saveUpdates();
-  }, [debouncedUpdates, projectId, sceneId]);
+  }, [debouncedUpdates, projectId, replaceShotInState, sceneId]);
 
   // Handlers
   const handleShotUpdate = (shotId: string, field: keyof Shot, value: string | number | string[]) => {
@@ -257,6 +303,99 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
       updated.set(shotId, { ...existing, [field]: value });
       return updated;
     });
+  };
+
+  const locationAssetById = useMemo(() => {
+    return new Map(locationAssets.map(asset => [asset.id, asset]));
+  }, [locationAssets]);
+
+  const locationSummary = useMemo(() => {
+    const unresolvedCount = shots.filter(shot => shot.locationState?.state === 'unresolved').length;
+    const ambiguousCount = shots.filter(shot => shot.locationState?.state === 'ambiguous').length;
+    const mismatchCount = shots.filter(shot =>
+      !!shot.locationState?.expectedLocationAssetId &&
+      !!shot.locationState.locationAssetId &&
+      shot.locationState.locationAssetId !== shot.locationState.expectedLocationAssetId
+    ).length;
+
+    return {
+      unresolvedCount,
+      ambiguousCount,
+      mismatchCount,
+      totalIssueCount: unresolvedCount + ambiguousCount + mismatchCount,
+    };
+  }, [shots]);
+
+  const formatLocationIssueParts = () => {
+    const parts: string[] = [];
+    if (locationSummary.unresolvedCount > 0) parts.push(`${locationSummary.unresolvedCount} unresolved`);
+    if (locationSummary.ambiguousCount > 0) parts.push(`${locationSummary.ambiguousCount} ambiguous`);
+    if (locationSummary.mismatchCount > 0) parts.push(`${locationSummary.mismatchCount} scene mismatch`);
+    return parts;
+  };
+
+  const getShotLocationName = (shot: Shot): string => {
+    const stateName = shot.locationState?.locationName;
+    if (stateName) return stateName;
+
+    if (shot.location_asset_id) {
+      return locationAssetById.get(shot.location_asset_id)?.name || 'Linked location';
+    }
+
+    const topCandidate = shot.locationState?.candidates[0];
+    return topCandidate?.name || 'No linked location';
+  };
+
+  const getLocationStateLabel = (state?: LocationContinuityState): string => {
+    switch (state) {
+      case 'resolved':
+        return 'Resolved';
+      case 'suggested':
+        return 'Suggested';
+      case 'ambiguous':
+        return 'Ambiguous';
+      default:
+        return 'Unresolved';
+    }
+  };
+
+  const getLocationSourceLabel = (source?: LocationMatchSource | null): string => {
+    switch (source) {
+      case 'manual':
+        return 'Manual';
+      case 'resolver_exact':
+        return 'Exact';
+      case 'resolver_alias':
+        return 'Alias';
+      case 'resolver_fuzzy':
+        return 'Fuzzy';
+      case 'camera_direction_parent':
+        return 'Direction';
+      case 'stage7_inferred':
+        return 'Inferred';
+      case 'legacy_backfill':
+        return 'Backfill';
+      default:
+        return 'System';
+    }
+  };
+
+  const getLocationBadgeClass = (state?: LocationContinuityState) => {
+    switch (state) {
+      case 'resolved':
+        return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300';
+      case 'suggested':
+        return 'border-amber-500/40 bg-amber-500/10 text-amber-300';
+      case 'ambiguous':
+        return 'border-orange-500/40 bg-orange-500/10 text-orange-300';
+      default:
+        return 'border-red-500/40 bg-red-500/10 text-red-300';
+    }
+  };
+
+  const formatConfidence = (confidence?: number | null): string => {
+    if (confidence == null || Number.isNaN(confidence)) return 'No score';
+    return `${Math.round(confidence * 100)}%`;
   };
 
   const handleSplitShot = (shotId: string) => {
@@ -469,10 +608,79 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
       warnings.push({ shotId: 'scene', shotOrder: -1, field: 'total_duration', message: `Scene duration (${totalDuration}s) is very long for ${shots.length} shots`, severity: 'warning' });
     }
 
+    if (locationSummary.totalIssueCount > 0) {
+      warnings.push({
+        shotId: 'scene',
+        shotOrder: -1,
+        field: 'location',
+        message: `Location continuity needs review: ${formatLocationIssueParts().join(', ')}.`,
+        severity: 'warning',
+      });
+    }
+
     return { errors, warnings };
   };
 
   const canEdit = !isSceneLocked && isEditable;
+
+  const handleAssignShotLocation = async (shotId: string, locationAssetId: string | null) => {
+    if (!canEdit) return;
+
+    setUpdatingLocationShotIds(prev => new Set(prev).add(shotId));
+    try {
+      const updatedShot = await shotService.assignShotLocation(projectId, sceneId, shotId, locationAssetId);
+      replaceShotInState(updatedShot);
+      toast({
+        title: locationAssetId ? 'Location linked' : 'Location cleared',
+        description: locationAssetId
+          ? `${updatedShot.shotId} now uses ${getShotLocationName(updatedShot)}.`
+          : `${updatedShot.shotId} no longer has a linked location.`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Failed to update location',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setUpdatingLocationShotIds(prev => {
+        const next = new Set(prev);
+        next.delete(shotId);
+        return next;
+      });
+    }
+  };
+
+  const handleResolveLocations = async () => {
+    if (!canEdit) return;
+
+    try {
+      setIsResolvingLocations(true);
+      const result = await shotService.resolveShotLocations(projectId, sceneId, {
+        apply: true,
+        preserveManual: true,
+      });
+      setShots(result.shots);
+      setSelectedShot(prev => {
+        if (!prev) return result.shots[0] || null;
+        return result.shots.find(shot => shot.id === prev.id) || result.shots[0] || null;
+      });
+      toast({
+        title: result.appliedCount > 0 ? 'Location suggestions applied' : 'Locations refreshed',
+        description: result.appliedCount > 0
+          ? `${result.appliedCount} shot${result.appliedCount !== 1 ? 's' : ''} updated. Manual choices were kept.`
+          : 'No new high-confidence links were found.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Failed to resolve locations',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsResolvingLocations(false);
+    }
+  };
 
   const getFieldValidationState = (shot: Shot, field: string): 'valid' | 'warning' | 'error' => {
     if (!canEdit) return 'valid';
@@ -641,6 +849,7 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
 
   // Calculate total duration
   const totalDuration = shots.reduce((sum, shot) => sum + shot.duration, 0);
+  const isUpdatingSelectedLocation = selectedShot ? updatingLocationShotIds.has(selectedShot.id) : false;
 
   // Loading and error states
   if (isLoading || isExtracting) {
@@ -714,6 +923,50 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
         sceneId={sceneId}
         stageNumber={7}
       />
+
+      {locationSummary.totalIssueCount > 0 && (
+        <div className="border-b border-amber-500/20 bg-amber-500/[0.08] px-4 py-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+              <div>
+                <p className="text-sm font-medium text-foreground">Location links need a quick pass</p>
+                <p className="text-xs text-muted-foreground">
+                  {formatLocationIssueParts().join(', ')}
+                  {sceneExpectedLocation ? ` against scene location "${sceneExpectedLocation}"` : ''}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleResolveLocations}
+                disabled={!canEdit || isResolvingLocations || isSaving}
+                className="border-amber-500/30 text-amber-100 hover:bg-amber-500/10"
+              >
+                {isResolvingLocations ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Re-run Resolver
+              </Button>
+              {onNext && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onNext}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <Settings2 className="mr-1.5 h-3.5 w-3.5" />
+                  Advanced Tools
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 flex overflow-hidden">
         {/* Shot List - Left Panel */}
@@ -793,6 +1046,24 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
                         "{shot.dialogue}"
                       </p>
                     )}
+
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <MapPin className={cn(
+                        'h-3 w-3',
+                        shot.locationState?.state === 'resolved' ? 'text-emerald-300' : 'text-muted-foreground'
+                      )} />
+                      <span className="min-w-0 truncate text-[10px] text-muted-foreground">
+                        {getShotLocationName(shot)}
+                      </span>
+                      {shot.locationState?.state && shot.locationState.state !== 'resolved' && (
+                        <span className={cn(
+                          'shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-medium',
+                          getLocationBadgeClass(shot.locationState.state)
+                        )}>
+                          {getLocationStateLabel(shot.locationState.state)}
+                        </span>
+                      )}
+                    </div>
 
                     <div className="flex items-center gap-3 mt-2 flex-wrap">
                       {shot.charactersForeground.length > 0 && (
@@ -1029,6 +1300,142 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
                     <p className="text-xs text-muted-foreground mt-1">
                       Specific location and lighting conditions
                     </p>
+
+                    <div className="mt-3 rounded-lg border border-border/40 bg-card/35 p-3">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                              <Link2 className="h-3.5 w-3.5 text-primary" />
+                              Linked Location
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                'h-5 text-[10px]',
+                                getLocationBadgeClass(selectedShot.locationState?.state)
+                              )}
+                            >
+                              {getLocationStateLabel(selectedShot.locationState?.state)}
+                            </Badge>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge variant="outline" className="h-5 border-border/50 text-[10px] text-muted-foreground">
+                                    {formatConfidence(selectedShot.locationState?.confidence ?? selectedShot.location_match_confidence)}
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Resolver confidence for this shot-location link.</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            <Badge variant="outline" className="h-5 border-border/50 text-[10px] text-muted-foreground">
+                              {getLocationSourceLabel(selectedShot.locationState?.source ?? selectedShot.location_match_source)}
+                            </Badge>
+                          </div>
+
+                          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                            <Select
+                              value={selectedShot.location_asset_id || selectedShot.locationState?.locationAssetId || CLEAR_LOCATION_VALUE}
+                              onValueChange={(value) => {
+                                handleAssignShotLocation(
+                                  selectedShot.id,
+                                  value === CLEAR_LOCATION_VALUE ? null : value
+                                );
+                              }}
+                              disabled={!canEdit || isSaving || isUpdatingSelectedLocation || isLoadingLocations}
+                            >
+                              <SelectTrigger className="h-9 border-border/50 bg-background/60">
+                                <SelectValue placeholder="Choose location" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={CLEAR_LOCATION_VALUE}>No linked location</SelectItem>
+                                {locationAssets.map(asset => (
+                                  <SelectItem key={asset.id} value={asset.id}>
+                                    {asset.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleAssignShotLocation(selectedShot.id, null)}
+                              disabled={!canEdit || isSaving || isUpdatingSelectedLocation || !selectedShot.location_asset_id}
+                              className="h-9 text-muted-foreground hover:text-foreground"
+                            >
+                              {isUpdatingSelectedLocation ? (
+                                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Unlink className="mr-1.5 h-3.5 w-3.5" />
+                              )}
+                              Clear
+                            </Button>
+                          </div>
+
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            {selectedShot.locationState?.source === 'manual'
+                              ? 'Manual choice retained when the setting changes.'
+                              : selectedShot.locationState?.state === 'suggested'
+                                ? 'System suggestion available; choose it to lock the baseline location.'
+                                : selectedShot.locationState?.state === 'ambiguous'
+                                  ? 'Multiple locations look plausible. Pick the intended one before moving on.'
+                                  : selectedShot.locationState?.state === 'resolved'
+                                    ? 'This shot has a baseline location for later continuity stages.'
+                                    : 'No matching location asset is linked yet.'}
+                          </p>
+                        </div>
+
+                        {onNext && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={onNext}
+                            className="shrink-0 border-primary/20 hover:border-primary/40"
+                          >
+                            <Settings2 className="mr-1.5 h-3.5 w-3.5" />
+                            Advanced
+                          </Button>
+                        )}
+                      </div>
+
+                      {(selectedShot.locationState?.state === 'ambiguous' || selectedShot.locationState?.state === 'suggested') &&
+                        selectedShot.locationState.candidates.length > 0 && (
+                          <div className="mt-3 space-y-2 border-t border-border/40 pt-3">
+                            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                              Candidate Matches
+                            </p>
+                            {selectedShot.locationState.candidates.slice(0, 3).map(candidate => (
+                              <div
+                                key={candidate.locationAssetId}
+                                className="flex flex-col gap-2 rounded-md border border-border/30 bg-background/35 p-2 sm:flex-row sm:items-center sm:justify-between"
+                              >
+                                <div className="min-w-0">
+                                  <p className="truncate text-xs font-medium text-foreground">{candidate.name}</p>
+                                  <p className="line-clamp-1 text-[11px] text-muted-foreground">
+                                    {formatConfidence(candidate.confidence)} - {candidate.reason}
+                                  </p>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleAssignShotLocation(selectedShot.id, candidate.locationAssetId)}
+                                  disabled={!canEdit || isSaving || isUpdatingSelectedLocation}
+                                  className="h-7 shrink-0 border-emerald-500/30 text-emerald-100 hover:bg-emerald-500/10"
+                                >
+                                  <Check className="mr-1 h-3 w-3" />
+                                  Accept
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                    </div>
                   </div>
 
                   {/* Camera */}
@@ -1127,6 +1534,18 @@ export function Stage7ShotList({ projectId, sceneId, onComplete, onBack, onNext 
 
           <ScrollArea className="max-h-96">
             <div className="space-y-4">
+              {locationSummary.totalIssueCount > 0 && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+                  <h4 className="mb-1 flex items-center gap-2 text-sm font-medium text-amber-200">
+                    <MapPin className="h-4 w-4" />
+                    Location Warnings
+                  </h4>
+                  <p className="text-sm text-muted-foreground">
+                    {formatLocationIssueParts().join(', ')}. These are advisory for now, but fixing them makes Stage 8 and generation continuity more reliable.
+                  </p>
+                </div>
+              )}
+
               {validationErrors.length > 0 && (
                 <div>
                   <h4 className="text-sm font-medium text-destructive mb-2 flex items-center gap-2">

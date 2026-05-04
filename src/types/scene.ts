@@ -1,6 +1,6 @@
 // Aligned with database schema (migration 003)
 import type { ProjectAsset, CameraDistance, CameraHeight } from './asset';
-import type { LocationMatchSource } from './locationContinuity';
+import type { LocationMatchSource, ShotLocationState } from './locationContinuity';
 
 export type SceneStatus = 
   | 'draft'
@@ -67,6 +67,7 @@ export interface Shot {
   location_match_confidence?: number | null;
   location_match_source?: LocationMatchSource | null;
   location_match_notes?: string | null;
+  locationState?: ShotLocationState;
   continuityFlags?: string[];
   beatReference?: string;
   transformationFlags?: TransformationFlag[];
