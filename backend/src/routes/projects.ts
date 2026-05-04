@@ -11,8 +11,85 @@ import { shotAssetAssignmentService } from '../services/shotAssetAssignmentServi
 import { StyleCapsuleService } from '../services/styleCapsuleService.js';
 import { ContextManager } from '../services/contextManager.js';
 import { textFieldVersionService } from '../services/textFieldVersionService.js';
+import { locationResolverService, type LocationResolveResult, type LocationResolverContext } from '../services/locationResolverService.js';
 
 const router = Router();
+
+type LocationResolvableShotRow = Record<string, unknown> & {
+  setting?: string | null;
+  camera_direction_id?: string | null;
+  location_match_source?: string | null;
+};
+
+function asString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function asNullableString(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function transformShotForClient(shot: Record<string, unknown>) {
+  return {
+    id: asString(shot.id),
+    sceneId: asString(shot.scene_id),
+    shotId: asString(shot.shot_id),
+    duration: Number(shot.duration ?? 8),
+    dialogue: asString(shot.dialogue),
+    action: asString(shot.action),
+    charactersForeground: asStringArray(shot.characters_foreground),
+    charactersBackground: asStringArray(shot.characters_background),
+    setting: asString(shot.setting),
+    camera: asString(shot.camera),
+    camera_distance: asNullableString(shot.camera_distance) || undefined,
+    camera_height: asNullableString(shot.camera_height) || undefined,
+    camera_movement: asNullableString(shot.camera_movement) || undefined,
+    camera_direction_id: asNullableString(shot.camera_direction_id) || undefined,
+    location_asset_id: asNullableString(shot.location_asset_id),
+    location_match_confidence: shot.location_match_confidence != null
+      ? Number(shot.location_match_confidence)
+      : null,
+    location_match_source: asNullableString(shot.location_match_source),
+    location_match_notes: asNullableString(shot.location_match_notes),
+    continuityFlags: asStringArray(shot.continuity_flags),
+    beatReference: asNullableString(shot.beat_reference) || undefined,
+  };
+}
+
+function applyShotLocationResolution(
+  row: LocationResolvableShotRow,
+  context: LocationResolverContext,
+  sceneExpectedLocation?: string | null,
+  options?: { preserveManual?: boolean }
+): { row: LocationResolvableShotRow; result: LocationResolveResult | null; wasApplied: boolean } {
+  if (options?.preserveManual && row.location_match_source === 'manual') {
+    return { row, result: null, wasApplied: false };
+  }
+
+  const result = locationResolverService.resolveShotLocation(
+    {
+      setting: row.setting,
+      sceneExpectedLocation,
+      cameraDirectionId: row.camera_direction_id,
+    },
+    context
+  );
+  const patch = locationResolverService.toShotLocationPatch(result);
+  const wasApplied = locationResolverService.shouldApplyResolution(result);
+
+  return {
+    row: {
+      ...row,
+      ...patch,
+    },
+    result,
+    wasApplied,
+  };
+}
 
 // GET /api/projects - List all projects for the authenticated user
 router.get('/', async (req, res) => {
@@ -1118,20 +1195,7 @@ router.get('/:id/scenes/:sceneId/shots', async (req, res) => {
 
     if (error) return res.status(500).json({ error: 'Failed to fetch shots' });
 
-    const transformedShots = (shots || []).map((shot: any) => ({
-      id: shot.id,
-      sceneId: shot.scene_id,
-      shotId: shot.shot_id,
-      duration: shot.duration,
-      dialogue: shot.dialogue || '',
-      action: shot.action,
-      charactersForeground: shot.characters_foreground || [],
-      charactersBackground: shot.characters_background || [],
-      setting: shot.setting,
-      camera: shot.camera,
-      continuityFlags: shot.continuity_flags || [],
-      beatReference: shot.beat_reference
-    }));
+    const transformedShots = (shots || []).map((shot: any) => transformShotForClient(shot));
 
     res.json({ shots: transformedShots });
   } catch (error) {
@@ -1214,31 +1278,28 @@ router.post('/:id/scenes/:sceneId/shots/extract', async (req, res) => {
       if (summaryLines.length > 0) masterScriptSummary = summaryLines.join('\n');
     }
 
-    // 3.7 Phase D: Fetch existing location views for this scene's location asset
+    const locationContext = await locationResolverService.loadProjectLocationContext(project.active_branch_id);
+
+    // 3.7 Phase D + location continuity Phase 1: Fetch existing location views
+    // for the resolved scene location asset.
     let locationDirections: { name: string; alias?: string; description?: string }[] = [];
     let locationAssetId: string | undefined;
     const locationName = scene.expected_location || '';
 
     if (locationName) {
-      // Find the matching location asset by name (case-insensitive)
-      const { data: locationAssets } = await supabase
-        .from('project_assets')
-        .select('id, name')
-        .eq('branch_id', project.active_branch_id)
-        .eq('asset_type', 'location');
-
-      const matchedAsset = (locationAssets || []).find(
-        (a: any) => a.name.toLowerCase() === locationName.toLowerCase()
+      const sceneLocationResolution = locationResolverService.resolveShotLocation(
+        { sceneExpectedLocation: locationName },
+        locationContext
       );
 
-      if (matchedAsset) {
-        locationAssetId = matchedAsset.id;
+      if (locationResolverService.shouldApplyResolution(sceneLocationResolution)) {
+        locationAssetId = sceneLocationResolution.locationAssetId || undefined;
 
         // Fetch existing location views
         const { data: existingViews } = await supabase
           .from('location_views')
           .select('id, name, alias, description')
-          .eq('project_asset_id', matchedAsset.id)
+          .eq('project_asset_id', locationAssetId)
           .order('sort_order', { ascending: true });
 
         if (existingViews && existingViews.length > 0) {
@@ -1324,6 +1385,13 @@ router.post('/:id/scenes/:sceneId/shots/extract', async (req, res) => {
 
         if (created) {
           directionNameToId.set(created.name, created.id);
+          if (locationAssetId) {
+            locationContext.cameraDirectionParents.set(created.id, {
+              cameraDirectionId: created.id,
+              locationAssetId,
+              locationName: locationName || 'Unknown location',
+            });
+          }
           if (isDirection && !hasPrimary) hasPrimary = true;
         } else if (createErr) {
           console.warn(`[ShotExtraction] Failed to create inferred direction "${nd.name}":`, createErr.message);
@@ -1332,27 +1400,36 @@ router.post('/:id/scenes/:sceneId/shots/extract', async (req, res) => {
     }
 
     // Build shots to insert with structured camera metadata
-    const shotsToInsert = extractedShots.map((shot, index) => ({
-      scene_id: sceneId,
-      shot_id: shot.shotId,
-      shot_order: index,
-      duration: shot.duration,
-      dialogue: shot.dialogue,
-      action: shot.action,
-      characters_foreground: shot.charactersForeground,
-      characters_background: shot.charactersBackground,
-      setting: shot.setting,
-      camera: shot.camera,
-      camera_distance: shot.camera_distance || null,
-      camera_height: shot.camera_height || null,
-      camera_movement: shot.camera_movement || null,
-      camera_direction_id: shot.camera_direction_name
-        ? (directionNameToId.get(shot.camera_direction_name) || null)
-        : null,
-      continuity_flags: shot.continuityFlags,
-      beat_reference: shot.beatReference ?? null,
-      transformation_flags: shot.transformationFlags ? JSON.stringify(shot.transformationFlags) : null,
-    }));
+    const shotResolutionResults: Array<LocationResolveResult | null> = [];
+    const shotResolutionApplied: boolean[] = [];
+    const shotsToInsert = extractedShots.map((shot, index) => {
+      const baseRow = {
+        scene_id: sceneId,
+        shot_id: shot.shotId,
+        shot_order: index,
+        duration: shot.duration,
+        dialogue: shot.dialogue,
+        action: shot.action,
+        characters_foreground: shot.charactersForeground,
+        characters_background: shot.charactersBackground,
+        setting: shot.setting,
+        camera: shot.camera,
+        camera_distance: shot.camera_distance || null,
+        camera_height: shot.camera_height || null,
+        camera_movement: shot.camera_movement || null,
+        camera_direction_id: shot.camera_direction_name
+          ? (directionNameToId.get(shot.camera_direction_name) || null)
+          : null,
+        continuity_flags: shot.continuityFlags,
+        beat_reference: shot.beatReference ?? null,
+        transformation_flags: shot.transformationFlags ? JSON.stringify(shot.transformationFlags) : null,
+      };
+
+      const resolved = applyShotLocationResolution(baseRow, locationContext, scene.expected_location);
+      shotResolutionResults.push(resolved.result);
+      shotResolutionApplied.push(resolved.wasApplied);
+      return resolved.row;
+    });
 
     if (shotsToInsert.length === 0) {
       return res.json({ success: true, shotCount: 0, shots: [] });
@@ -1364,6 +1441,22 @@ router.post('/:id/scenes/:sceneId/shots/extract', async (req, res) => {
       .select('*');
 
     if (error) return res.status(500).json({ error: 'Failed to persist shots' });
+
+    await Promise.all((insertedShots || []).map((shot: any, index: number) => {
+      const result = shotResolutionResults[index];
+      if (!result) return Promise.resolve();
+      return locationResolverService.recordMatchEvent({
+        projectId,
+        branchId: project.active_branch_id,
+        sceneId,
+        shotId: shot.id,
+        rawSetting: shot.setting,
+        sceneExpectedLocation: scene.expected_location,
+        cameraDirectionId: shot.camera_direction_id,
+        result,
+        wasApplied: shotResolutionApplied[index] || false,
+      });
+    }));
 
     res.json({ success: true, shotCount: insertedShots!.length, shots: insertedShots });
   } catch (error: any) {
@@ -1448,7 +1541,7 @@ router.put('/:id/scenes/:sceneId/shots/:shotId', async (req, res) => {
 
     const { data: scene } = await supabase
       .from('scenes')
-      .select('id')
+      .select('id, expected_location')
       .eq('id', sceneId)
       .eq('branch_id', project.active_branch_id)
       .single();
@@ -1465,15 +1558,75 @@ router.put('/:id/scenes/:sceneId/shots/:shotId', async (req, res) => {
       return res.status(400).json({ error: `Invalid fields: ${invalidFields.join(', ')}` });
     }
 
+    const shouldResolveLocation =
+      Object.prototype.hasOwnProperty.call(updates, 'setting') ||
+      Object.prototype.hasOwnProperty.call(updates, 'camera_direction_id');
+    let locationResolution: LocationResolveResult | null = null;
+    let locationWasApplied = false;
+    const updateData = { ...updates, updated_at: new Date().toISOString() };
+
+    if (shouldResolveLocation) {
+      const { data: existingShot, error: existingShotError } = await supabase
+        .from('shots')
+        .select('id, setting, camera_direction_id, location_match_source')
+        .eq('id', shotId)
+        .eq('scene_id', sceneId)
+        .single();
+
+      if (existingShotError || !existingShot) {
+        return res.status(404).json({ error: 'Shot not found' });
+      }
+
+      if (existingShot.location_match_source !== 'manual') {
+        const locationContext = await locationResolverService.loadProjectLocationContext(project.active_branch_id);
+        const rowForResolution = {
+          setting: Object.prototype.hasOwnProperty.call(updates, 'setting')
+            ? updates.setting
+            : existingShot.setting,
+          camera_direction_id: Object.prototype.hasOwnProperty.call(updates, 'camera_direction_id')
+            ? updates.camera_direction_id
+            : existingShot.camera_direction_id,
+        };
+        const resolved = applyShotLocationResolution(
+          rowForResolution,
+          locationContext,
+          scene.expected_location
+        );
+        Object.assign(updateData, {
+          location_asset_id: resolved.row.location_asset_id,
+          location_match_confidence: resolved.row.location_match_confidence,
+          location_match_source: resolved.row.location_match_source,
+          location_match_notes: resolved.row.location_match_notes,
+        });
+        locationResolution = resolved.result;
+        locationWasApplied = resolved.wasApplied;
+      }
+    }
+
     const { data: updatedShot, error } = await supabase
       .from('shots')
-      .update({ ...updates, updated_at: new Date().toISOString() })
+      .update(updateData)
       .eq('id', shotId)
       .eq('scene_id', sceneId)
       .select()
       .single();
 
     if (error) return res.status(500).json({ error: 'Failed to update shot' });
+
+    if (locationResolution) {
+      await locationResolverService.recordMatchEvent({
+        projectId,
+        branchId: project.active_branch_id,
+        sceneId,
+        shotId: updatedShot.id,
+        rawSetting: updatedShot.setting,
+        sceneExpectedLocation: scene.expected_location,
+        cameraDirectionId: updatedShot.camera_direction_id,
+        result: locationResolution,
+        wasApplied: locationWasApplied,
+      });
+    }
+
     res.json({ success: true, shot: updatedShot });
   } catch (error) {
     console.error('Error in PUT /api/projects/:id/scenes/:sceneId/shots/:shotId:', error);
@@ -1497,6 +1650,14 @@ router.post('/:id/scenes/:sceneId/shots/:shotId/split', async (req, res) => {
       .single();
     if (!project) return res.status(404).json({ error: 'Project not found' });
 
+    const { data: scene } = await supabase
+      .from('scenes')
+      .select('id, expected_location')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+    if (!scene) return res.status(404).json({ error: 'Scene not found' });
+
     const { data: originalShot } = await supabase
       .from('shots')
       .select('*')
@@ -1513,6 +1674,7 @@ router.post('/:id/scenes/:sceneId/shots/:shotId/split', async (req, res) => {
 
     const shotSplitService = new ShotSplitService();
     const newShotsPayload = await shotSplitService.splitShot(originalShot, userGuidance, count);
+    const locationContext = await locationResolverService.loadProjectLocationContext(project.active_branch_id);
 
     const { error: deleteError } = await supabase
       .from('shots')
@@ -1532,26 +1694,50 @@ router.post('/:id/scenes/:sceneId/shots/:shotId/split', async (req, res) => {
       }
     }
 
-    const insertRows = newShotsPayload.map((shot, i) => ({
-      scene_id: sceneId,
-      shot_id: shot.shot_id,
-      shot_order: originalShot.shot_order + i,
-      duration: shot.duration,
-      dialogue: shot.dialogue,
-      action: shot.action,
-      characters_foreground: shot.characters_foreground,
-      characters_background: shot.characters_background,
-      setting: shot.setting,
-      camera: shot.camera,
-      continuity_flags: shot.continuity_flags,
-      beat_reference: shot.beat_reference
-    }));
+    const shotResolutionResults: Array<LocationResolveResult | null> = [];
+    const shotResolutionApplied: boolean[] = [];
+    const insertRows = newShotsPayload.map((shot, i) => {
+      const baseRow = {
+        scene_id: sceneId,
+        shot_id: shot.shot_id,
+        shot_order: originalShot.shot_order + i,
+        duration: shot.duration,
+        dialogue: shot.dialogue,
+        action: shot.action,
+        characters_foreground: shot.characters_foreground,
+        characters_background: shot.characters_background,
+        setting: shot.setting,
+        camera: shot.camera,
+        continuity_flags: shot.continuity_flags,
+        beat_reference: shot.beat_reference,
+      };
+      const resolved = applyShotLocationResolution(baseRow, locationContext, scene.expected_location);
+      shotResolutionResults.push(resolved.result);
+      shotResolutionApplied.push(resolved.wasApplied);
+      return resolved.row;
+    });
 
     const { data: insertedShots, error: insertError } = await supabase
       .from('shots')
       .insert(insertRows)
       .select('*');
     if (insertError) return res.status(500).json({ error: 'Failed to insert split shots' });
+
+    await Promise.all((insertedShots || []).map((shot: any, index: number) => {
+      const result = shotResolutionResults[index];
+      if (!result) return Promise.resolve();
+      return locationResolverService.recordMatchEvent({
+        projectId,
+        branchId: project.active_branch_id,
+        sceneId,
+        shotId: shot.id,
+        rawSetting: shot.setting,
+        sceneExpectedLocation: scene.expected_location,
+        cameraDirectionId: shot.camera_direction_id,
+        result,
+        wasApplied: shotResolutionApplied[index] || false,
+      });
+    }));
 
     // §6: Clone saved assignments to all new sub-shots
     if (existingAssignments && existingAssignments.length > 0 && insertedShots) {
@@ -1604,6 +1790,14 @@ router.post('/:id/scenes/:sceneId/shots/:shotId/merge', async (req, res) => {
       .single();
     if (!project) return res.status(404).json({ error: 'Project not found' });
 
+    const { data: scene } = await supabase
+      .from('scenes')
+      .select('id, expected_location')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+    if (!scene) return res.status(404).json({ error: 'Scene not found' });
+
     const { data: currentShot } = await supabase
       .from('shots')
       .select('*')
@@ -1627,6 +1821,7 @@ router.post('/:id/scenes/:sceneId/shots/:shotId/merge', async (req, res) => {
 
     const shotMergeService = new ShotMergeService();
     const mergedPayload = await shotMergeService.mergeShots(currentShot, neighbourShot, userGuidance);
+    const locationContext = await locationResolverService.loadProjectLocationContext(project.active_branch_id);
 
     const [lowerOrder, higherOrder] =
       currentShot.shot_order <= neighbourShot.shot_order
@@ -1638,25 +1833,46 @@ router.post('/:id/scenes/:sceneId/shots/:shotId/merge', async (req, res) => {
     const { error: deleteError2 } = await supabase.from('shots').delete().eq('id', neighbourShot.id);
     if (deleteError2) return res.status(500).json({ error: 'Failed to delete second shot' });
 
+    const mergedBaseRow = {
+      scene_id: sceneId,
+      shot_id: mergedPayload.shot_id,
+      shot_order: lowerOrder,
+      duration: mergedPayload.duration,
+      dialogue: mergedPayload.dialogue,
+      action: mergedPayload.action,
+      characters_foreground: mergedPayload.characters_foreground,
+      characters_background: mergedPayload.characters_background,
+      setting: mergedPayload.setting,
+      camera: mergedPayload.camera,
+      continuity_flags: mergedPayload.continuity_flags,
+      beat_reference: mergedPayload.beat_reference,
+    };
+    const mergedLocationResolution = applyShotLocationResolution(
+      mergedBaseRow,
+      locationContext,
+      scene.expected_location
+    );
+
     const { data: insertedShot, error: insertError } = await supabase
       .from('shots')
-      .insert({
-        scene_id: sceneId,
-        shot_id: mergedPayload.shot_id,
-        shot_order: lowerOrder,
-        duration: mergedPayload.duration,
-        dialogue: mergedPayload.dialogue,
-        action: mergedPayload.action,
-        characters_foreground: mergedPayload.characters_foreground,
-        characters_background: mergedPayload.characters_background,
-        setting: mergedPayload.setting,
-        camera: mergedPayload.camera,
-        continuity_flags: mergedPayload.continuity_flags,
-        beat_reference: mergedPayload.beat_reference
-      })
+      .insert(mergedLocationResolution.row)
       .select('*')
       .single();
     if (insertError) return res.status(500).json({ error: 'Failed to insert merged shot' });
+
+    if (mergedLocationResolution.result) {
+      await locationResolverService.recordMatchEvent({
+        projectId,
+        branchId: project.active_branch_id,
+        sceneId,
+        shotId: insertedShot.id,
+        rawSetting: insertedShot.setting,
+        sceneExpectedLocation: scene.expected_location,
+        cameraDirectionId: insertedShot.camera_direction_id,
+        result: mergedLocationResolution.result,
+        wasApplied: mergedLocationResolution.wasApplied,
+      });
+    }
 
     const { data: shotsAfter } = await supabase
       .from('shots')
