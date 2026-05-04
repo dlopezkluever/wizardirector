@@ -1,0 +1,105 @@
+import { describe, expect, it, beforeEach, jest } from '@jest/globals';
+
+const mockFrom = jest.fn<(...args: unknown[]) => unknown>();
+const mockGetUser = jest.fn<() => Promise<unknown>>();
+
+jest.mock('../config/supabase.js', () => ({
+  supabase: {
+    from: (...args: unknown[]) => mockFrom(...args),
+    auth: {
+      getUser: () => mockGetUser(),
+    },
+  },
+}));
+
+import request from 'supertest';
+import { app } from '../server.js';
+
+type MethodCall = { method: string; args: unknown[] };
+
+function mockChain(
+  finalResult: { data?: unknown; error?: { message: string } | null },
+  calls?: MethodCall[]
+) {
+  const proxy: any = new Proxy({}, {
+    get(_target, prop) {
+      if (prop === 'then') {
+        return (resolve: (value: unknown) => void) => resolve(finalResult);
+      }
+      return (...args: unknown[]) => {
+        calls?.push({ method: String(prop), args });
+        return proxy;
+      };
+    },
+  });
+  return proxy;
+}
+
+describe('shot location resolver route integration', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: 'user-1', email: 'test@example.com' } },
+      error: null,
+    });
+  });
+
+  it('resolves and persists location fields when shot setting changes', async () => {
+    const shotUpdateCalls: MethodCall[] = [];
+
+    mockFrom
+      .mockReturnValueOnce(mockChain({ data: { id: 'project-1', active_branch_id: 'branch-1' }, error: null }))
+      .mockReturnValueOnce(mockChain({ data: { id: 'scene-1', expected_location: 'Kitchen' }, error: null }))
+      .mockReturnValueOnce(mockChain({
+        data: {
+          id: 'shot-1',
+          setting: 'Old setting',
+          camera_direction_id: null,
+          location_match_source: null,
+        },
+        error: null,
+      }))
+      .mockReturnValueOnce(mockChain({
+        data: [
+          {
+            id: 'loc-kitchen',
+            name: 'Kitchen',
+            description: 'A warm kitchen',
+            location_aliases: [],
+          },
+        ],
+        error: null,
+      }))
+      .mockReturnValueOnce(mockChain({ data: [], error: null }))
+      .mockReturnValueOnce(mockChain({
+        data: {
+          id: 'shot-1',
+          scene_id: 'scene-1',
+          shot_id: '1A',
+          setting: 'Kitchen, warm practical light',
+          camera_direction_id: null,
+          location_asset_id: 'loc-kitchen',
+          location_match_confidence: 0.88,
+          location_match_source: 'resolver_exact',
+          location_match_notes: 'matched',
+        },
+        error: null,
+      }, shotUpdateCalls))
+      .mockReturnValueOnce(mockChain({ data: null, error: null }));
+
+    const response = await request(app)
+      .put('/api/projects/project-1/scenes/scene-1/shots/shot-1')
+      .set('Authorization', 'Bearer test-token')
+      .send({ setting: 'Kitchen, warm practical light' });
+
+    expect(response.status).toBe(200);
+
+    const updateCall = shotUpdateCalls.find(call => call.method === 'update');
+    expect(updateCall).toBeDefined();
+    expect(updateCall?.args[0]).toEqual(expect.objectContaining({
+      setting: 'Kitchen, warm practical light',
+      location_asset_id: 'loc-kitchen',
+      location_match_source: 'resolver_exact',
+    }));
+  });
+});
