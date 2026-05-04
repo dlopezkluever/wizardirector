@@ -554,7 +554,7 @@ router.put('/:projectId/assets/:assetId', async (req, res) => {
     try {
         const userId = req.user!.id;
         const { projectId, assetId } = req.params;
-        const { name, description, image_prompt, deferred, asset_type } = req.body;
+        const { name, description, image_prompt, deferred, asset_type, location_aliases } = req.body;
 
         // Verify project ownership
         const { data: project, error: projectError } = await supabase
@@ -571,7 +571,7 @@ router.put('/:projectId/assets/:assetId', async (req, res) => {
         // Verify asset exists
         const { data: existingAsset, error: fetchError } = await supabase
             .from('project_assets')
-            .select('id, locked, global_asset_id, overridden_fields')
+            .select('id, asset_type, locked, global_asset_id, overridden_fields')
             .eq('id', assetId)
             .eq('project_id', projectId)
             .single();
@@ -582,7 +582,7 @@ router.put('/:projectId/assets/:assetId', async (req, res) => {
 
         // Allow deferred toggling regardless of lock state
         // For other fields, check locked status
-        const isAllowedWhenLocked = (deferred !== undefined || asset_type !== undefined) && name === undefined && description === undefined && image_prompt === undefined;
+        const isAllowedWhenLocked = (deferred !== undefined || asset_type !== undefined) && name === undefined && description === undefined && image_prompt === undefined && location_aliases === undefined;
         if (existingAsset.locked && !isAllowedWhenLocked) {
             return res.status(400).json({
                 error: 'Cannot modify locked asset'
@@ -623,6 +623,19 @@ router.put('/:projectId/assets/:assetId', async (req, res) => {
             updates.asset_type = asset_type;
             if (existingAsset.global_asset_id) {
                 fieldsToTrack.push('asset_type');
+            }
+        }
+        if (location_aliases !== undefined) {
+            if (!Array.isArray(location_aliases) || location_aliases.some((alias: unknown) => typeof alias !== 'string')) {
+                return res.status(400).json({ error: 'location_aliases must be an array of strings' });
+            }
+            const targetAssetType = asset_type || existingAsset.asset_type;
+            if (targetAssetType !== 'location') {
+                return res.status(400).json({ error: 'location_aliases can only be set on location assets' });
+            }
+            updates.location_aliases = location_aliases.map((alias: string) => alias.trim()).filter(Boolean);
+            if (existingAsset.global_asset_id) {
+                fieldsToTrack.push('location_aliases');
             }
         }
 
