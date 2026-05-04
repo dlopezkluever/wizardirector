@@ -237,7 +237,7 @@ export function LocationCoveragePanel({
     async (shotId: string, directionId: string | null) => {
       try {
         await shotService.updateShot(projectId, sceneId, shotId, {
-          camera_direction_id: directionId ?? undefined,
+          camera_direction_id: directionId,
         } as Partial<Shot>);
         queryClient.invalidateQueries({ queryKey: ['shots', projectId, sceneId] });
         toast.success('Direction assignment updated');
