@@ -25,6 +25,7 @@ export interface UpdateProjectAssetRequest {
   name?: string;
   description?: string;
   image_prompt?: string;
+  location_aliases?: string[];
   deferred?: boolean;
   asset_type?: 'character' | 'prop' | 'location' | 'extra_archetype';
 }
