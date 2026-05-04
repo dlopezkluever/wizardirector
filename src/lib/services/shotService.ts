@@ -1,5 +1,21 @@
 import { supabase } from '@/lib/supabase';
 import type { Shot } from '@/types/scene';
+import type { ShotLocationState } from '@/types/locationContinuity';
+
+export interface ShotLocationValidationSummary {
+  unresolvedCount: number;
+  ambiguousCount: number;
+  mismatchCount: number;
+  totalIssueCount: number;
+}
+
+export interface ShotLocationResolveResponse {
+  success: boolean;
+  mode: 'dry_run' | 'apply';
+  appliedCount: number;
+  shots: Shot[];
+  locationValidation?: ShotLocationValidationSummary;
+}
 
 /** Normalize API shot (camelCase or snake_case) to Shot type */
 function normalizeShot(raw: Record<string, unknown>): Shot {
@@ -24,6 +40,7 @@ function normalizeShot(raw: Record<string, unknown>): Shot {
     location_match_confidence: raw.location_match_confidence != null ? Number(raw.location_match_confidence) : null,
     location_match_source: (raw.location_match_source as Shot['location_match_source']) || null,
     location_match_notes: (raw.location_match_notes as string) || null,
+    locationState: (raw.locationState ?? raw.location_state) as ShotLocationState | undefined,
   };
 }
 
@@ -151,6 +168,86 @@ export class ShotService {
 
     const result = await response.json();
     return result.shot ? normalizeShot(result.shot as Record<string, unknown>) : null;
+  }
+
+  async assignShotLocation(
+    projectId: string,
+    sceneId: string,
+    shotId: string,
+    locationAssetId: string | null
+  ): Promise<Shot> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/shots/${shotId}/location`,
+      {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(
+          locationAssetId
+            ? { locationAssetId }
+            : { clear: true }
+        ),
+      }
+    );
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `Failed to update shot location: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    if (!result.shot) throw new Error('Location update response missing shot');
+    return normalizeShot(result.shot as Record<string, unknown>);
+  }
+
+  async resolveShotLocations(
+    projectId: string,
+    sceneId: string,
+    options?: { apply?: boolean; threshold?: number; preserveManual?: boolean }
+  ): Promise<ShotLocationResolveResponse> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/shots/resolve-locations`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          apply: options?.apply ?? false,
+          threshold: options?.threshold,
+          preserveManual: options?.preserveManual ?? true,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `Failed to resolve shot locations: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    return {
+      success: !!result.success,
+      mode: result.mode === 'apply' ? 'apply' : 'dry_run',
+      appliedCount: Number(result.appliedCount ?? 0),
+      shots: (result.shots || []).map((s: Record<string, unknown>) => normalizeShot(s)),
+      locationValidation: result.locationValidation,
+    };
   }
 
   /**

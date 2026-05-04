@@ -65,6 +65,7 @@ export interface ShotLocationState {
   shotLabel: string;
   rawSetting: string;
   sceneExpectedLocation?: string | null;
+  expectedLocationAssetId?: string | null;
   locationAssetId?: string | null;
   locationName?: string | null;
   confidence?: number | null;
