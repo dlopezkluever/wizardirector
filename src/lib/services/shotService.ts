@@ -19,7 +19,11 @@ function normalizeShot(raw: Record<string, unknown>): Shot {
     camera_distance: (raw.camera_distance as string) || undefined,
     camera_height: (raw.camera_height as string) || undefined,
     camera_movement: (raw.camera_movement as string) || undefined,
-    camera_direction_id: (raw.camera_direction_id as string) || undefined,
+    camera_direction_id: (raw.camera_direction_id as string) || null,
+    location_asset_id: (raw.location_asset_id as string) || null,
+    location_match_confidence: raw.location_match_confidence != null ? Number(raw.location_match_confidence) : null,
+    location_match_source: (raw.location_match_source as Shot['location_match_source']) || null,
+    location_match_notes: (raw.location_match_notes as string) || null,
   };
 }
 
@@ -118,7 +122,7 @@ export class ShotService {
     sceneId: string,
     shotId: string,
     updates: Partial<Shot>
-  ): Promise<void> {
+  ): Promise<Shot | null> {
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session?.access_token) {
@@ -126,7 +130,7 @@ export class ShotService {
     }
 
     const body = toBackendShotUpdate(updates);
-    if (Object.keys(body).length === 0) return;
+    if (Object.keys(body).length === 0) return null;
 
     const response = await fetch(
       `/api/projects/${projectId}/scenes/${sceneId}/shots/${shotId}`,
@@ -144,6 +148,9 @@ export class ShotService {
       const err = await response.json().catch(() => ({}));
       throw new Error(err.error || `Failed to update shot: ${response.statusText}`);
     }
+
+    const result = await response.json();
+    return result.shot ? normalizeShot(result.shot as Record<string, unknown>) : null;
   }
 
   /**
