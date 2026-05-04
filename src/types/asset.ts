@@ -27,6 +27,7 @@ export interface ProjectAsset {
   description: string;
   image_prompt?: string;
   image_key_url?: string;
+  location_aliases?: string[];
   visual_style_capsule_id?: string;
   locked: boolean;
   deferred?: boolean;
@@ -78,6 +79,7 @@ export interface UpdateAssetRequest {
   assetType?: AssetType;
   description?: string;
   imagePrompt?: string;
+  locationAliases?: string[];
   visualStyleCapsuleId?: string;
   voiceProfileId?: string;
   removeImage?: boolean;
