@@ -40,6 +40,7 @@ This plan does not assume we should:
 - make `camera_direction_id` mandatory for all shots
 - hard-block default-mode users early in the rollout
 - implement scene-specific overrides before the core continuity flow is coherent
+- implement a specific previs, blocking, or 3D composition tool as part of the core location-continuity rollout
 
 ## System Model
 
@@ -51,7 +52,10 @@ The implementation should consistently preserve this model:
 - advanced continuity layer:
   `camera_direction_id`, `location_views`, coverage advisory, view assignment, established-view feedback loop
 
-This distinction should be visible in both code and UX. Baseline continuity is always relevant. Advanced continuity is progressive and optional.
+- optional blocking/composition layer:
+  rough framing references, start/end blocking frames, camera/framing metadata, and subject-placement metadata from a future previs, storyboard, sketch, or layout tool
+
+This distinction should be visible in both code and UX. Baseline continuity is always relevant. Advanced continuity is progressive and optional. Blocking/composition references are also optional and should guide framing, subject placement, and screen relationships without becoming location, character, or prop identity references.
 
 ## Cross-Cutting Technical Principles
 
@@ -75,6 +79,7 @@ We should end up with these backend responsibilities:
 - continuity composition service that assembles:
   - baseline location context
   - advanced direction/view context
+  - optional blocking/composition references when present
   - fallback/delta adaptation metadata
   - reusable continuity-base candidates for Stage 10
 - server endpoints for:
@@ -146,10 +151,13 @@ The continuity composition service must produce one generation package per shot/
 - start-frame reference image manifest
 - end-frame reference image manifest
 - continuity-base image, when reusing or editing from an approved frame
+- optional blocking/composition reference, when a shot has a rough framing sketch or previs frame
 - fallback chain and risk notices
 - attachment reasons and usage roles
 
 Stage 9 should preview this package. Stage 10 should consume this package or the persisted manifest generated from it. The preview and the actual image generation call must not be separate approximations.
+
+The package should support optional blocking/composition references without requiring any specific tool. A blocking reference may come from a future CineBlock-style previs flow, a storyboard frame, a sketch, a rough layout, or another uploaded composition guide. It should control camera framing, subject placement, rough pose/blocking, screen direction, and visible/occluded relationships. It should not be treated as final character identity, prop identity, location appearance, texture, lighting, or art direction unless explicitly marked that way.
 
 The package should cover these scenarios explicitly:
 
@@ -188,12 +196,23 @@ The package should cover these scenarios explicitly:
    - Preserve the same location/background continuity unless the shot action explicitly changes it.
    - For within-shot transformations, swap transformed asset refs without dropping the correct location/background refs.
 
+8. Shot has an optional blocking/composition reference.
+   - Attach the blocking reference with an explicit composition role when the user has enabled it for the shot or scene.
+   - Prompt must state that rough mannequins, primitives, sketch marks, or placeholder backgrounds are layout guides only.
+   - Prompt must instruct generation to replace placeholders with canonical character, prop, and location assets.
+   - Location references should provide environment identity and material detail, not override the camera angle, crop, or staging from the blocking frame.
+   - Character and prop references should provide final appearance, not override screen placement from the blocking frame.
+   - If blocking metadata conflicts with the shot text, assigned assets, or location state, Stage 9 should surface the conflict before Stage 10 generation.
+
 The DTO should make attachment roles explicit. Example roles:
 
 - `location_direction_main`
 - `location_establishing_context`
 - `location_asset_fallback`
 - `continuity_base_frame`
+- `blocking_composition_reference`
+- `blocking_start_frame`
+- `blocking_end_frame`
 - `character_identity`
 - `prop_identity`
 - `style_reference`
@@ -654,6 +673,7 @@ Show exactly what continuity references and fallback logic generation will use.
    - direction summary
    - reference list in usage order
    - attachment roles and reasons
+   - optional blocking/composition reference summary when present
    - adaptation notes
    - risk notices
    - generation-strength indicator
@@ -665,6 +685,7 @@ Show exactly what continuity references and fallback logic generation will use.
    - continuity prompt instructions if applicable
    - start-frame reference manifest
    - end-frame reference manifest
+   - optional blocking/composition manifest entries
    - continuity-base candidate or selected base
    - provider-ready reference image list
    - persisted manifest entries for shot columns
@@ -684,6 +705,7 @@ Show exactly what continuity references and fallback logic generation will use.
    - structured camera metadata
    - `camera_direction_id`
    - selected location views
+   - selected blocking/composition reference when one is active
    - current continuity reference frame
    - same fallback/delta language used by the standard package
 
@@ -702,6 +724,7 @@ Show exactly what continuity references and fallback logic generation will use.
    - matched direction image
    - establishing image
    - base location reference
+   - optional blocking/composition reference when present
    - continuity base frame when applicable
    - fallback image when no exact direction is available
 
@@ -842,6 +865,7 @@ Make Stage 10 reuse/edit-from-existing the default continuity mechanism for ordi
 5. Add reference-package visibility in Stage 10.
    Show, for the selected shot:
    - primary generation base, if any
+   - blocking/composition reference, if active
    - location direction reference
    - establishing/spatial reference
    - fallback reference
@@ -1012,6 +1036,7 @@ Within engineering execution, the safest order is:
 4. shot write-path integration
 5. shot read-path hydration
 6. continuity composition service and generation package contract
+   Include reserved attachment roles for optional blocking/composition references, but do not implement a specific blocking tool in this plan.
 7. Stage 7 lightweight UI
 8. Stage 8 server-owned coverage model replacing frontend/string grouping
 9. Stage 9 preview service using the same generation package
@@ -1034,6 +1059,7 @@ This order minimizes thrash because later UI layers depend on stable continuity 
 - generation package assembly
 - prompt/reference manifest assembly
 - continuity base ranking
+- blocking/composition reference role handling, once that optional input exists
 
 ## Integration
 
@@ -1042,6 +1068,7 @@ This order minimizes thrash because later UI layers depend on stable continuity 
 - Stage 9 preview matches prompt-generation inputs
 - Stage 10 reuse/edit flow persists lineage correctly
 - Stage 10 sends the same direction/background attachment that Stage 9 preview showed
+- optional blocking/composition references are labeled as composition guidance and do not displace location, character, or prop identity references
 - camera-change continuity prompt includes structured camera and selected location-view context
 - end-frame generation preserves correct location/background refs while applying transformation refs
 
@@ -1066,6 +1093,7 @@ This order minimizes thrash because later UI layers depend on stable continuity 
 - usable `location_views` model
 - prompt-generation pipeline that can share continuity preview logic
 - approved-frame persistence suitable for Stage 10 reuse
+- extensible reference-role metadata so future composition/sketch/previs inputs can be added without another prompt/attachment path
 
 ## Main Risks
 
