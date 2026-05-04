@@ -11,7 +11,12 @@ import { shotAssetAssignmentService } from '../services/shotAssetAssignmentServi
 import { StyleCapsuleService } from '../services/styleCapsuleService.js';
 import { ContextManager } from '../services/contextManager.js';
 import { textFieldVersionService } from '../services/textFieldVersionService.js';
-import { locationResolverService, type LocationResolveResult, type LocationResolverContext } from '../services/locationResolverService.js';
+import {
+  DEFAULT_LOCATION_AUTO_APPLY_CONFIDENCE,
+  locationResolverService,
+  type LocationResolveResult,
+  type LocationResolverContext,
+} from '../services/locationResolverService.js';
 
 const router = Router();
 
@@ -20,6 +25,15 @@ type LocationResolvableShotRow = Record<string, unknown> & {
   camera_direction_id?: string | null;
   location_match_source?: string | null;
 };
+
+type LocationContinuityState = 'resolved' | 'suggested' | 'ambiguous' | 'unresolved';
+
+interface ShotLocationValidationSummary {
+  unresolvedCount: number;
+  ambiguousCount: number;
+  mismatchCount: number;
+  totalIssueCount: number;
+}
 
 function asString(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
@@ -33,7 +47,139 @@ function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
-function transformShotForClient(shot: Record<string, unknown>) {
+function resolveExpectedLocationAssetId(
+  context: LocationResolverContext,
+  sceneExpectedLocation?: string | null
+): string | null {
+  if (!sceneExpectedLocation?.trim()) return null;
+
+  const result = locationResolverService.resolveShotLocation(
+    { sceneExpectedLocation },
+    context
+  );
+
+  return locationResolverService.shouldApplyResolution(result)
+    ? result.locationAssetId
+    : null;
+}
+
+function buildShotLocationState(
+  shot: Record<string, unknown>,
+  context: LocationResolverContext,
+  sceneExpectedLocation?: string | null,
+  expectedLocationAssetId?: string | null
+) {
+  const locationAssetId = asNullableString(shot.location_asset_id);
+  const assignedLocation = locationAssetId
+    ? context.locationAssets.find(asset => asset.id === locationAssetId)
+    : null;
+  const confidence = shot.location_match_confidence != null
+    ? Number(shot.location_match_confidence)
+    : null;
+  const source = asNullableString(shot.location_match_source);
+  const resolverResult = locationResolverService.resolveShotLocation(
+    {
+      setting: asNullableString(shot.setting),
+      sceneExpectedLocation,
+      cameraDirectionId: asNullableString(shot.camera_direction_id),
+    },
+    context
+  );
+
+  let state: LocationContinuityState;
+  if (locationAssetId) {
+    state = source === 'manual' || (confidence ?? 0) >= DEFAULT_LOCATION_AUTO_APPLY_CONFIDENCE
+      ? 'resolved'
+      : 'suggested';
+  } else if (source === 'manual') {
+    state = 'unresolved';
+  } else if (resolverResult.isAmbiguous) {
+    state = 'ambiguous';
+  } else if (resolverResult.locationAssetId) {
+    state = 'suggested';
+  } else {
+    state = 'unresolved';
+  }
+
+  return {
+    shotId: asString(shot.id),
+    shotLabel: asString(shot.shot_id),
+    rawSetting: asString(shot.setting),
+    sceneExpectedLocation: sceneExpectedLocation || null,
+    expectedLocationAssetId: expectedLocationAssetId || null,
+    locationAssetId,
+    locationName: assignedLocation?.name || null,
+    confidence: confidence ?? resolverResult.confidence,
+    source: source || resolverResult.source,
+    notes: asNullableString(shot.location_match_notes),
+    state,
+    candidates: resolverResult.candidates.map(candidate => ({
+      locationAssetId: candidate.locationAssetId,
+      name: candidate.name,
+      confidence: candidate.confidence,
+      source: candidate.source,
+      reason: candidate.reason,
+    })),
+    cameraDirectionId: asNullableString(shot.camera_direction_id),
+    cameraDirection: null,
+  };
+}
+
+function summarizeShotLocationStates(
+  states: Array<ReturnType<typeof buildShotLocationState>>
+): ShotLocationValidationSummary {
+  const unresolvedCount = states.filter(state => state.state === 'unresolved').length;
+  const ambiguousCount = states.filter(state => state.state === 'ambiguous').length;
+  const mismatchCount = states.filter(state =>
+    !!state.expectedLocationAssetId &&
+    !!state.locationAssetId &&
+    state.locationAssetId !== state.expectedLocationAssetId
+  ).length;
+
+  return {
+    unresolvedCount,
+    ambiguousCount,
+    mismatchCount,
+    totalIssueCount: unresolvedCount + ambiguousCount + mismatchCount,
+  };
+}
+
+function buildShotLocationValidationSummary(
+  shots: Record<string, unknown>[],
+  context: LocationResolverContext,
+  sceneExpectedLocation?: string | null
+): ShotLocationValidationSummary {
+  const expectedLocationAssetId = resolveExpectedLocationAssetId(context, sceneExpectedLocation);
+  const states = shots.map(shot =>
+    buildShotLocationState(shot, context, sceneExpectedLocation, expectedLocationAssetId)
+  );
+
+  return summarizeShotLocationStates(states);
+}
+
+function buildLocationValidationWarning(summary: ShotLocationValidationSummary) {
+  if (summary.totalIssueCount === 0) return null;
+
+  const parts: string[] = [];
+  if (summary.unresolvedCount > 0) parts.push(`${summary.unresolvedCount} unresolved`);
+  if (summary.ambiguousCount > 0) parts.push(`${summary.ambiguousCount} ambiguous`);
+  if (summary.mismatchCount > 0) parts.push(`${summary.mismatchCount} scene-location mismatch`);
+
+  return {
+    shotId: 'scene',
+    shotOrder: -1,
+    field: 'location',
+    message: `Location continuity needs review: ${parts.join(', ')}.`,
+    severity: 'warning' as const,
+  };
+}
+
+function transformShotForClient(
+  shot: Record<string, unknown>,
+  context?: LocationResolverContext,
+  sceneExpectedLocation?: string | null,
+  expectedLocationAssetId?: string | null
+) {
   return {
     id: asString(shot.id),
     sceneId: asString(shot.scene_id),
@@ -55,6 +201,9 @@ function transformShotForClient(shot: Record<string, unknown>) {
       : null,
     location_match_source: asNullableString(shot.location_match_source),
     location_match_notes: asNullableString(shot.location_match_notes),
+    locationState: context
+      ? buildShotLocationState(shot, context, sceneExpectedLocation, expectedLocationAssetId)
+      : undefined,
     continuityFlags: asStringArray(shot.continuity_flags),
     beatReference: asNullableString(shot.beat_reference) || undefined,
   };
@@ -64,7 +213,7 @@ function applyShotLocationResolution(
   row: LocationResolvableShotRow,
   context: LocationResolverContext,
   sceneExpectedLocation?: string | null,
-  options?: { preserveManual?: boolean }
+  options?: { preserveManual?: boolean; threshold?: number }
 ): { row: LocationResolvableShotRow; result: LocationResolveResult | null; wasApplied: boolean } {
   if (options?.preserveManual && row.location_match_source === 'manual') {
     return { row, result: null, wasApplied: false };
@@ -78,8 +227,10 @@ function applyShotLocationResolution(
     },
     context
   );
-  const patch = locationResolverService.toShotLocationPatch(result);
-  const wasApplied = locationResolverService.shouldApplyResolution(result);
+  const patch = locationResolverService.toShotLocationPatch(result, {
+    threshold: options?.threshold,
+  });
+  const wasApplied = locationResolverService.shouldApplyResolution(result, options?.threshold);
 
   return {
     row: {
@@ -1180,7 +1331,7 @@ router.get('/:id/scenes/:sceneId/shots', async (req, res) => {
 
     const { data: scene } = await supabase
       .from('scenes')
-      .select('id, scene_number')
+      .select('id, scene_number, expected_location')
       .eq('id', sceneId)
       .eq('branch_id', project.active_branch_id)
       .single();
@@ -1195,9 +1346,19 @@ router.get('/:id/scenes/:sceneId/shots', async (req, res) => {
 
     if (error) return res.status(500).json({ error: 'Failed to fetch shots' });
 
-    const transformedShots = (shots || []).map((shot: any) => transformShotForClient(shot));
+    const locationContext = await locationResolverService.loadProjectLocationContext(project.active_branch_id);
+    const expectedLocationAssetId = resolveExpectedLocationAssetId(locationContext, scene.expected_location);
+    const shotRows = (shots || []) as Record<string, unknown>[];
+    const transformedShots = shotRows.map(shot =>
+      transformShotForClient(shot, locationContext, scene.expected_location, expectedLocationAssetId)
+    );
+    const locationValidation = summarizeShotLocationStates(
+      transformedShots
+        .map(shot => shot.locationState)
+        .filter((state): state is ReturnType<typeof buildShotLocationState> => Boolean(state))
+    );
 
-    res.json({ shots: transformedShots });
+    res.json({ shots: transformedShots, locationValidation });
   } catch (error) {
     console.error('Error in GET /api/projects/:id/scenes/:sceneId/shots:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1458,7 +1619,12 @@ router.post('/:id/scenes/:sceneId/shots/extract', async (req, res) => {
       });
     }));
 
-    res.json({ success: true, shotCount: insertedShots!.length, shots: insertedShots });
+    const expectedLocationAssetId = resolveExpectedLocationAssetId(locationContext, scene.expected_location);
+    const transformedShots = ((insertedShots || []) as Record<string, unknown>[]).map(shot =>
+      transformShotForClient(shot, locationContext, scene.expected_location, expectedLocationAssetId)
+    );
+
+    res.json({ success: true, shotCount: insertedShots!.length, shots: transformedShots });
   } catch (error: any) {
     if (error?.code === 'RATE_LIMIT') {
       return res.status(429).json({ error: 'Rate limit exceeded. Please try again shortly.' });
@@ -1489,7 +1655,7 @@ router.put('/:id/scenes/:sceneId/shots/reorder', async (req, res) => {
 
     const { data: scene } = await supabase
       .from('scenes')
-      .select('id')
+      .select('id, expected_location')
       .eq('id', sceneId)
       .eq('branch_id', project.active_branch_id)
       .single();
@@ -1517,9 +1683,236 @@ router.put('/:id/scenes/:sceneId/shots/reorder', async (req, res) => {
       .order('shot_order', { ascending: true });
     if (error) return res.status(500).json({ error: 'Failed to fetch shots after reorder' });
 
-    res.json({ success: true, shots: shots || [] });
+    const locationContext = await locationResolverService.loadProjectLocationContext(project.active_branch_id);
+    const expectedLocationAssetId = resolveExpectedLocationAssetId(locationContext, scene.expected_location);
+    const shotRows = (shots || []) as Record<string, unknown>[];
+    const transformedShots = shotRows.map(shot =>
+      transformShotForClient(shot, locationContext, scene.expected_location, expectedLocationAssetId)
+    );
+
+    res.json({ success: true, shots: transformedShots });
   } catch (error) {
     console.error('Error in PUT /api/projects/:id/scenes/:sceneId/shots/reorder:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/projects/:id/scenes/:sceneId/shots/resolve-locations
+router.post('/:id/scenes/:sceneId/shots/resolve-locations', async (req, res) => {
+  try {
+    const { id: projectId, sceneId } = req.params;
+    const { apply = false, threshold, preserveManual = true } = req.body || {};
+    const userId = req.user!.id;
+
+    if (threshold != null && (typeof threshold !== 'number' || threshold < 0 || threshold > 1)) {
+      return res.status(400).json({ error: 'threshold must be a number between 0 and 1' });
+    }
+
+    const { data: project } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const { data: scene } = await supabase
+      .from('scenes')
+      .select('id, expected_location')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+    if (!scene) return res.status(404).json({ error: 'Scene not found' });
+
+    const { data: shots, error: shotsError } = await supabase
+      .from('shots')
+      .select('*')
+      .eq('scene_id', sceneId)
+      .order('shot_order', { ascending: true });
+
+    if (shotsError) return res.status(500).json({ error: 'Failed to fetch shots' });
+
+    const locationContext = await locationResolverService.loadProjectLocationContext(project.active_branch_id);
+    const resolvedRows: Record<string, unknown>[] = [];
+    const resolveEvents: Array<{
+      shot: Record<string, unknown>;
+      result: LocationResolveResult;
+      wasApplied: boolean;
+    }> = [];
+
+    for (const shot of shots || []) {
+      const resolved = applyShotLocationResolution(
+        shot,
+        locationContext,
+        scene.expected_location,
+        { preserveManual: !!preserveManual, threshold }
+      );
+      resolvedRows.push(resolved.row);
+      if (resolved.result) {
+        resolveEvents.push({
+          shot,
+          result: resolved.result,
+          wasApplied: resolved.wasApplied,
+        });
+      }
+    }
+
+    let outputRows = resolvedRows;
+    let appliedCount = 0;
+
+    if (apply) {
+      const updatedRows: Record<string, unknown>[] = [];
+
+      for (const row of resolvedRows) {
+        const sourceShot = ((shots || []) as Record<string, unknown>[]).find(shot => shot.id === row.id);
+        const shouldUpdate =
+          !!sourceShot &&
+          row.location_asset_id !== sourceShot.location_asset_id;
+
+        if (shouldUpdate) {
+          appliedCount += 1;
+          const { data: updatedShot, error: updateError } = await supabase
+            .from('shots')
+            .update({
+              location_asset_id: row.location_asset_id,
+              location_match_confidence: row.location_match_confidence,
+              location_match_source: row.location_match_source,
+              location_match_notes: row.location_match_notes,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', row.id)
+            .eq('scene_id', sceneId)
+            .select('*')
+            .single();
+
+          if (updateError || !updatedShot) {
+            return res.status(500).json({ error: 'Failed to apply location suggestions' });
+          }
+          updatedRows.push(updatedShot);
+        } else {
+          updatedRows.push(row);
+        }
+      }
+
+      outputRows = updatedRows;
+
+      await Promise.all(resolveEvents.map(event =>
+        locationResolverService.recordMatchEvent({
+          projectId,
+          branchId: project.active_branch_id,
+          sceneId,
+          shotId: asString(event.shot.id),
+          rawSetting: asNullableString(event.shot.setting),
+          sceneExpectedLocation: scene.expected_location,
+          cameraDirectionId: asNullableString(event.shot.camera_direction_id),
+          result: event.result,
+          wasApplied: event.wasApplied,
+        })
+      ));
+    }
+
+    const expectedLocationAssetId = resolveExpectedLocationAssetId(locationContext, scene.expected_location);
+    const transformedShots = outputRows.map(shot =>
+      transformShotForClient(shot, locationContext, scene.expected_location, expectedLocationAssetId)
+    );
+    const locationValidation = summarizeShotLocationStates(
+      transformedShots
+        .map(shot => shot.locationState)
+        .filter((state): state is ReturnType<typeof buildShotLocationState> => Boolean(state))
+    );
+
+    res.json({
+      success: true,
+      mode: apply ? 'apply' : 'dry_run',
+      appliedCount,
+      shots: transformedShots,
+      locationValidation,
+    });
+  } catch (error) {
+    console.error('Error in POST /api/projects/:id/scenes/:sceneId/shots/resolve-locations:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/projects/:id/scenes/:sceneId/shots/:shotId/location
+router.put('/:id/scenes/:sceneId/shots/:shotId/location', async (req, res) => {
+  try {
+    const { id: projectId, sceneId, shotId } = req.params;
+    const { locationAssetId, clear = false } = req.body || {};
+    const userId = req.user!.id;
+
+    if (!clear && (typeof locationAssetId !== 'string' || locationAssetId.length === 0)) {
+      return res.status(400).json({ error: 'locationAssetId is required unless clear is true' });
+    }
+
+    const { data: project } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const { data: scene } = await supabase
+      .from('scenes')
+      .select('id, expected_location')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+    if (!scene) return res.status(404).json({ error: 'Scene not found' });
+
+    let assignedLocationName: string | null = null;
+    if (!clear) {
+      const { data: locationAsset } = await supabase
+        .from('project_assets')
+        .select('id, name')
+        .eq('id', locationAssetId)
+        .eq('branch_id', project.active_branch_id)
+        .eq('asset_type', 'location')
+        .single();
+
+      if (!locationAsset) return res.status(404).json({ error: 'Location asset not found' });
+      assignedLocationName = locationAsset.name;
+    }
+
+    const locationPatch = clear
+      ? {
+          location_asset_id: null,
+          location_match_confidence: null,
+          location_match_source: 'manual',
+          location_match_notes: 'Manual location assignment cleared.',
+        }
+      : {
+          location_asset_id: locationAssetId,
+          location_match_confidence: 1,
+          location_match_source: 'manual',
+          location_match_notes: `Manual assignment to "${assignedLocationName}".`,
+        };
+
+    const { data: updatedShot, error: updateError } = await supabase
+      .from('shots')
+      .update({
+        ...locationPatch,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', shotId)
+      .eq('scene_id', sceneId)
+      .select('*')
+      .single();
+
+    if (updateError || !updatedShot) {
+      return res.status(500).json({ error: 'Failed to update shot location' });
+    }
+
+    const locationContext = await locationResolverService.loadProjectLocationContext(project.active_branch_id);
+    const expectedLocationAssetId = resolveExpectedLocationAssetId(locationContext, scene.expected_location);
+
+    res.json({
+      success: true,
+      shot: transformShotForClient(updatedShot, locationContext, scene.expected_location, expectedLocationAssetId),
+    });
+  } catch (error) {
+    console.error('Error in PUT /api/projects/:id/scenes/:sceneId/shots/:shotId/location:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1627,7 +2020,13 @@ router.put('/:id/scenes/:sceneId/shots/:shotId', async (req, res) => {
       });
     }
 
-    res.json({ success: true, shot: updatedShot });
+    const locationContext = await locationResolverService.loadProjectLocationContext(project.active_branch_id);
+    const expectedLocationAssetId = resolveExpectedLocationAssetId(locationContext, scene.expected_location);
+
+    res.json({
+      success: true,
+      shot: transformShotForClient(updatedShot, locationContext, scene.expected_location, expectedLocationAssetId),
+    });
   } catch (error) {
     console.error('Error in PUT /api/projects/:id/scenes/:sceneId/shots/:shotId:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1761,7 +2160,12 @@ router.post('/:id/scenes/:sceneId/shots/:shotId/split', async (req, res) => {
       console.warn('Failed to invalidate stages after shot split:', err);
     });
 
-    res.json({ success: true, newShots: insertedShots });
+    const expectedLocationAssetId = resolveExpectedLocationAssetId(locationContext, scene.expected_location);
+    const transformedShots = ((insertedShots || []) as Record<string, unknown>[]).map(shot =>
+      transformShotForClient(shot, locationContext, scene.expected_location, expectedLocationAssetId)
+    );
+
+    res.json({ success: true, newShots: transformedShots });
   } catch (error: any) {
     if (error?.message?.includes('parse') || error?.message?.includes('split')) {
       return res.status(422).json({ error: error.message || 'Shot split failed' });
@@ -1885,7 +2289,17 @@ router.post('/:id/scenes/:sceneId/shots/:shotId/merge', async (req, res) => {
       }
     }
 
-    res.json({ success: true, mergedShot: insertedShot });
+    const expectedLocationAssetId = resolveExpectedLocationAssetId(locationContext, scene.expected_location);
+
+    res.json({
+      success: true,
+      mergedShot: transformShotForClient(
+        insertedShot,
+        locationContext,
+        scene.expected_location,
+        expectedLocationAssetId
+      ),
+    });
   } catch (error: any) {
     if (error?.message?.includes('parse') || error?.message?.includes('merge')) {
       return res.status(422).json({ error: error.message || 'Shot merge failed' });
@@ -1978,7 +2392,7 @@ router.post('/:id/scenes/:sceneId/shots/lock', async (req, res) => {
 
     const { data: scene, error: sceneError } = await supabase
       .from('scenes')
-      .select('id, scene_number, status, shot_list_locked_at, expected_characters, stage_locks')
+      .select('id, scene_number, status, shot_list_locked_at, expected_characters, expected_location, stage_locks')
       .eq('id', sceneId)
       .eq('branch_id', project.active_branch_id)
       .single();
@@ -2035,6 +2449,16 @@ router.post('/:id/scenes/:sceneId/shots/lock', async (req, res) => {
       shotsForValidation, 
       { expected_characters: scene.expected_characters }
     );
+    const locationContext = await locationResolverService.loadProjectLocationContext(project.active_branch_id);
+    const locationValidation = buildShotLocationValidationSummary(
+      (shots || []) as Record<string, unknown>[],
+      locationContext,
+      scene.expected_location
+    );
+    const locationWarning = buildLocationValidationWarning(locationValidation);
+    if (locationWarning) {
+      validationResult.warnings.push(locationWarning);
+    }
 
     // 6. Handle validation results
     if (validationResult.errors.length > 0) {
@@ -2042,6 +2466,7 @@ router.post('/:id/scenes/:sceneId/shots/lock', async (req, res) => {
       return res.status(400).json({
         error: 'Shot list validation failed',
         errors: validationResult.errors,
+        locationValidation,
         canForce: false
       });
     }
@@ -2051,6 +2476,7 @@ router.post('/:id/scenes/:sceneId/shots/lock', async (req, res) => {
       return res.status(409).json({
         error: 'Shot list has warnings',
         warnings: validationResult.warnings,
+        locationValidation,
         canForce: true
       });
     }
@@ -2103,7 +2529,8 @@ router.post('/:id/scenes/:sceneId/shots/lock', async (req, res) => {
         sceneNumber: updatedScene.scene_number,
         shotCount: shots?.length || 0,
         forcedLock: force && validationResult.warnings.length > 0
-      }
+      },
+      locationValidation
     });
   } catch (error) {
     console.error('Error in POST /api/projects/:id/scenes/:sceneId/shots/lock:', error);
