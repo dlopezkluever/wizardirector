@@ -1,5 +1,6 @@
 // Aligned with database schema (migration 003)
 import type { ProjectAsset, CameraDistance, CameraHeight } from './asset';
+import type { LocationMatchSource } from './locationContinuity';
 
 export type SceneStatus = 
   | 'draft'
@@ -61,7 +62,11 @@ export interface Shot {
   camera_distance?: CameraDistance;
   camera_height?: CameraHeight;
   camera_movement?: string;
-  camera_direction_id?: string;           // FK to location_views.id — assigned camera direction
+  camera_direction_id?: string | null;    // FK to location_views.id for assigned camera direction
+  location_asset_id?: string | null;
+  location_match_confidence?: number | null;
+  location_match_source?: LocationMatchSource | null;
+  location_match_notes?: string | null;
   continuityFlags?: string[];
   beatReference?: string;
   transformationFlags?: TransformationFlag[];
@@ -346,6 +351,10 @@ export interface ShotWithFrames {
   continuityFramePrompt?: string | null;
   // Camera direction (Phase G — established views)
   cameraDirectionId?: string | null;
+  locationAssetId?: string | null;
+  locationMatchConfidence?: number | null;
+  locationMatchSource?: LocationMatchSource | null;
+  locationMatchNotes?: string | null;
   startFrame: Frame | null;
   endFrame: Frame | null;
 }
