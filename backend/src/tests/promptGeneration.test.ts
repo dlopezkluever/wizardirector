@@ -142,17 +142,19 @@ describe('buildFrameReferenceManifests', () => {
     const result = buildFrameReferenceManifests(assets, assignments);
 
     // Start frame: Alice + Café (throughout + exits)
+    // Locations are now always present in both start and end frames so the
+    // canonical location/background reference is preserved across frames.
     const startNames = result.startFrameImageOrder.map(e => e.assetName);
     expect(startNames).toContain('Alice');
     expect(startNames).toContain('Café');
     expect(startNames).not.toContain('Bob');
     expect(startNames).not.toContain('Coffee Cup');
 
-    // End frame: Alice + Bob (throughout + enters)
+    // End frame: Alice + Bob + Café (throughout + enters + location always carried)
     const endNames = result.endFrameImageOrder.map(e => e.assetName);
     expect(endNames).toContain('Alice');
     expect(endNames).toContain('Bob');
-    expect(endNames).not.toContain('Café');
+    expect(endNames).toContain('Café');
     expect(endNames).not.toContain('Coffee Cup');
 
     // Video only: Coffee Cup
@@ -201,12 +203,14 @@ describe('buildFrameReferenceManifests', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildNumberedImageManifest', () => {
-  it('should sort assets as characters → locations → props', () => {
+  it('should sort assets as locations → characters → props', () => {
+    // Phase 4 generation contract: locations come first because they are the
+    // primary background/identity reference for image generation.
     const assets = [propCoffeeCup, locationCafe, characterAlice];
     const { imageOrder } = buildNumberedImageManifest(assets);
 
-    expect(imageOrder[0].type).toBe('character');
-    expect(imageOrder[1].type).toBe('location');
+    expect(imageOrder[0].type).toBe('location');
+    expect(imageOrder[1].type).toBe('character');
     expect(imageOrder[2].type).toBe('prop');
   });
 
