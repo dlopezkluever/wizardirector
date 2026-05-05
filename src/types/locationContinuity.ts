@@ -50,6 +50,7 @@ export interface LocationViewSummary {
   imageUrl?: string | null;
   isPrimary: boolean;
   source: LocationViewSource;
+  shotCount?: number;
 }
 
 export interface LocationCandidate {
@@ -80,14 +81,30 @@ export interface ShotLocationState {
 export interface LocationCoverageShot {
   shotId: string;
   shotLabel: string;
+  setting: string;
+  camera: string;
+  locationAssetId?: string | null;
+  locationName?: string | null;
   cameraDirectionId?: string | null;
+  cameraDirectionName?: string | null;
   cameraDistance?: CameraDistance | null;
   cameraHeight?: CameraHeight | null;
-  coverageState: 'matched_view' | 'fallback_view' | 'missing_view_image' | 'unassigned_direction';
+  coverageState:
+    | 'matched_view'
+    | 'fallback_view'
+    | 'missing_view_image'
+    | 'unassigned_direction'
+    | 'direction_location_mismatch';
+  severity?: 'good' | 'advisory' | 'warning';
+  fallbackViewId?: string | null;
+  fallbackLabel?: string | null;
+  notices?: string[];
+  recommendedAction?: string | null;
 }
 
 export interface LocationCoverageSummary {
   location: LocationReferenceSummary;
+  continuityMode?: 'basic' | 'advanced';
   shots: LocationCoverageShot[];
   views: LocationViewSummary[];
   establishingView?: LocationViewSummary | null;
@@ -97,8 +114,33 @@ export interface LocationCoverageSummary {
   fallbackShots: number;
   missingImageShots: number;
   unassignedDirectionShots: number;
+  directionMismatchShots?: number;
   strength: ContinuityStrength;
   notices: string[];
+  availableRepairActions?: Array<
+    | 'create_view'
+    | 'assign_direction'
+    | 'generate_missing_view'
+    | 'use_approved_frame'
+  >;
+}
+
+export interface LocationCoverageResponse {
+  continuityMode: 'basic' | 'advanced';
+  locations: LocationCoverageSummary[];
+  unresolvedShots: LocationCoverageShot[];
+  totals: {
+    totalLocations: number;
+    totalShots: number;
+    unresolvedLocationShots: number;
+    matchedDirectionShots: number;
+    fallbackShots: number;
+    missingImageShots: number;
+    unassignedDirectionShots: number;
+    directionMismatchShots: number;
+    weakShotCount: number;
+    strength: ContinuityStrength;
+  };
 }
 
 export interface GenerationReferenceManifestEntry {
