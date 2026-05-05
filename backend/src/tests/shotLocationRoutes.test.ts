@@ -229,4 +229,151 @@ describe('shot location resolver route integration', () => {
       location_match_source: 'resolver_exact',
     }));
   });
+
+  it('returns canonical Stage 8 location coverage from the server', async () => {
+    mockFrom
+      .mockReturnValueOnce(mockChain({ data: { id: 'project-1', active_branch_id: 'branch-1' }, error: null }))
+      .mockReturnValueOnce(mockChain({ data: { id: 'scene-1' }, error: null }))
+      .mockReturnValueOnce(mockChain({
+        data: [
+          {
+            id: 'shot-1',
+            shot_id: '1A',
+            setting: 'Kitchen table',
+            camera: 'Wide',
+            camera_direction_id: 'view-kitchen-primary',
+            location_asset_id: 'loc-kitchen',
+          },
+          {
+            id: 'shot-2',
+            shot_id: '1B',
+            setting: 'Kitchen counter',
+            camera: 'Close',
+            camera_direction_id: null,
+            location_asset_id: 'loc-kitchen',
+          },
+        ],
+        error: null,
+      }))
+      .mockReturnValueOnce(mockChain({
+        data: [
+          { project_asset_id: 'loc-kitchen', image_key_url: null },
+        ],
+        error: null,
+      }))
+      .mockReturnValueOnce(mockChain({
+        data: [
+          { id: 'loc-kitchen', name: 'Kitchen', image_key_url: 'https://example.com/kitchen.png' },
+          { id: 'loc-office', name: 'Office', image_key_url: 'https://example.com/office.png' },
+        ],
+        error: null,
+      }))
+      .mockReturnValueOnce(mockChain({
+        data: [
+          {
+            id: 'view-kitchen-primary',
+            project_asset_id: 'loc-kitchen',
+            name: 'direction_1',
+            alias: 'sink wall',
+            view_type: 'direction',
+            camera_distance: 'wide',
+            camera_height: 'eye_level',
+            image_key_url: 'https://example.com/sink.png',
+            is_primary: true,
+            source: 'user',
+            sort_order: 0,
+            created_at: '2026-05-04T00:00:00Z',
+          },
+        ],
+        error: null,
+      }));
+
+    const response = await request(app)
+      .get('/api/projects/project-1/scenes/scene-1/location-coverage?mode=advanced')
+      .set('Authorization', 'Bearer test-token');
+
+    expect(response.status).toBe(200);
+    expect(response.body.continuityMode).toBe('advanced');
+    expect(response.body.locations).toHaveLength(1);
+    expect(response.body.locations[0].location.id).toBe('loc-kitchen');
+    expect(response.body.locations[0].matchedDirectionShots).toBe(1);
+    expect(response.body.locations[0].fallbackShots).toBe(1);
+    expect(response.body.locations[0].shots[1].severity).toBe('warning');
+  });
+
+  it('assigns camera direction through the Stage 8 repair endpoint', async () => {
+    const shotUpdateCalls: MethodCall[] = [];
+
+    mockFrom
+      .mockReturnValueOnce(mockChain({ data: { id: 'project-1', active_branch_id: 'branch-1' }, error: null }))
+      .mockReturnValueOnce(mockChain({ data: { id: 'scene-1', expected_location: 'Kitchen' }, error: null }))
+      .mockReturnValueOnce(mockChain({
+        data: {
+          id: 'shot-1',
+          setting: 'Kitchen table',
+          camera_direction_id: null,
+          location_asset_id: null,
+          location_match_source: null,
+        },
+        error: null,
+      }))
+      .mockReturnValueOnce(mockChain({
+        data: {
+          id: 'view-kitchen-primary',
+          project_asset_id: 'loc-kitchen',
+          name: 'direction_1',
+          view_type: 'direction',
+        },
+        error: null,
+      }))
+      .mockReturnValueOnce(mockChain({
+        data: {
+          id: 'loc-kitchen',
+          name: 'Kitchen',
+        },
+        error: null,
+      }))
+      .mockReturnValueOnce(mockChain({
+        data: {
+          id: 'shot-1',
+          scene_id: 'scene-1',
+          shot_id: '1A',
+          setting: 'Kitchen table',
+          camera_direction_id: 'view-kitchen-primary',
+          location_asset_id: 'loc-kitchen',
+          location_match_confidence: 1,
+          location_match_source: 'camera_direction_parent',
+          location_match_notes: 'Camera direction "direction_1" belongs to "Kitchen".',
+        },
+        error: null,
+      }, shotUpdateCalls))
+      .mockReturnValueOnce(mockChain({
+        data: [
+          { id: 'loc-kitchen', name: 'Kitchen', description: 'A warm kitchen', location_aliases: [] },
+        ],
+        error: null,
+      }))
+      .mockReturnValueOnce(mockChain({
+        data: [
+          { id: 'view-kitchen-primary', project_asset_id: 'loc-kitchen' },
+        ],
+        error: null,
+      }));
+
+    const response = await request(app)
+      .put('/api/projects/project-1/scenes/scene-1/shots/shot-1/camera-direction')
+      .set('Authorization', 'Bearer test-token')
+      .send({ cameraDirectionId: 'view-kitchen-primary' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.shot.camera_direction_id).toBe('view-kitchen-primary');
+    expect(response.body.shot.location_asset_id).toBe('loc-kitchen');
+
+    const updateCall = shotUpdateCalls.find(call => call.method === 'update');
+    expect(updateCall?.args[0]).toEqual(expect.objectContaining({
+      camera_direction_id: 'view-kitchen-primary',
+      location_asset_id: 'loc-kitchen',
+      location_match_source: 'camera_direction_parent',
+    }));
+  });
 });
