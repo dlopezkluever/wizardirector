@@ -1,6 +1,16 @@
 import { supabase } from '@/lib/supabase';
 import type { Shot } from '@/types/scene';
-import type { LocationCoverageResponse } from '@/types/locationContinuity';
+import type {
+  LocationCoverageResponse,
+  GenerationContinuityPackage,
+  ShotContinuityPreview,
+} from '@/types/locationContinuity';
+
+export interface ContinuityPreviewResponse {
+  packages: GenerationContinuityPackage[];
+  previews: ShotContinuityPreview[];
+  sceneNumber: number;
+}
 
 async function getAccessToken(): Promise<string> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -73,6 +83,29 @@ class LocationContinuityService {
     const result = await response.json();
     if (!result.shot) throw new Error('Camera direction response missing shot');
     return result.shot as Shot;
+  }
+
+  async fetchContinuityPreview(
+    projectId: string,
+    sceneId: string
+  ): Promise<ContinuityPreviewResponse> {
+    const token = await getAccessToken();
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/continuity-preview`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw await parseError(response, 'Failed to fetch continuity preview');
+    }
+
+    return response.json();
   }
 }
 
