@@ -13,6 +13,7 @@ import { transformationEventService, type TransformationEvent, type ShotAssetOve
 export interface ShotData {
   id: string;
   shot_id: string;
+  shot_order?: number;
   duration: number;
   dialogue: string;
   action: string;
@@ -27,6 +28,11 @@ export interface ShotData {
   camera_height?: 'eye_level' | 'high_angle' | 'low_angle' | 'overhead' | 'ground_level';
   camera_movement?: string;
   camera_direction_id?: string;
+  location_asset_id?: string | null;
+  location_match_confidence?: number | string | null;
+  location_match_source?: string | null;
+  location_match_notes?: string | null;
+  start_continuity?: 'none' | 'match' | 'camera_change';
 }
 
 export interface AngleVariantData {
@@ -71,14 +77,36 @@ export interface SceneAssetInstanceData {
   matched_direction_view?: LocationViewData;
   establishing_view?: LocationViewData;
   location_delta_description?: string;
+  location_reference_strategy?:
+    | 'matched_direction'
+    | 'fallback_primary_direction'
+    | 'fallback_establishing'
+    | 'fallback_asset'
+    | 'direction_missing_image'
+    | 'text_only';
 }
 
 export interface ReferenceImageOrderEntry {
+  id?: string;
   label: string;
   assetName: string;
   url: string;
   type: string;
   role?: 'identity' | 'style';
+  referenceRole?:
+    | 'location_direction_main'
+    | 'location_establishing_context'
+    | 'location_asset_fallback'
+    | 'continuity_base_frame'
+    | 'blocking_composition_reference'
+    | 'blocking_start_frame'
+    | 'blocking_end_frame'
+    | 'character_identity'
+    | 'prop_identity'
+    | 'style_reference'
+    | 'manual_reference';
+  reason?: string;
+  source?: 'scene_asset' | 'project_asset' | 'location_view' | 'approved_frame' | 'blocking_reference' | 'manual_upload' | 'transformation';
 }
 
 export type PresenceType = 'throughout' | 'enters' | 'exits' | 'passes_through';
@@ -303,6 +331,37 @@ export function buildLocationDeltaDescription(
   return parts.join('. ') + '.';
 }
 
+function isLocationAsset(asset: SceneAssetInstanceData): boolean {
+  return asset.project_asset?.asset_type === 'location';
+}
+
+/**
+ * Scope prompt assets to the shot's canonical location before reference assembly.
+ * Non-location assets still follow shot assignments; location continuity always
+ * comes from shot.location_asset_id when available, and unrelated scene locations
+ * are not attached as fallback references.
+ */
+export function scopeAssetsForShotContinuity(
+  assets: SceneAssetInstanceData[],
+  shot: ShotData,
+  assignments?: ShotAssetAssignmentForPrompt[]
+): SceneAssetInstanceData[] {
+  const assignedIds = assignments?.length
+    ? new Set(assignments.map(a => a.scene_asset_instance_id))
+    : null;
+  const canonicalLocationId = shot.location_asset_id || null;
+
+  return assets.filter(asset => {
+    if (isLocationAsset(asset)) {
+      return canonicalLocationId
+        ? asset.project_asset?.id === canonicalLocationId
+        : false;
+    }
+
+    return assignedIds ? assignedIds.has(asset.id) : true;
+  });
+}
+
 /**
  * 3C.2 + 3.7 Phase F: Enrich scene assets with angle-matched reference URLs.
  * - Characters: selects best angle variant based on camera angle
@@ -340,6 +399,7 @@ export function enrichAssetsWithAngleMatch(
         setting: '', camera: shotCamera,
       };
 
+      const hasAssignedDirection = !!shotData.camera_direction_id;
       const matchedDirection = matchShotToLocationView(shotData, directions);
 
       // Build delta description if match is imperfect
@@ -352,11 +412,25 @@ export function enrichAssetsWithAngleMatch(
         );
       }
 
+      let locationReferenceStrategy: SceneAssetInstanceData['location_reference_strategy'] = 'text_only';
+      if (hasAssignedDirection && matchedDirection?.image_key_url) {
+        locationReferenceStrategy = 'matched_direction';
+      } else if (hasAssignedDirection && matchedDirection) {
+        locationReferenceStrategy = 'direction_missing_image';
+      } else if (!hasAssignedDirection && matchedDirection?.image_key_url) {
+        locationReferenceStrategy = 'fallback_primary_direction';
+      } else if (establishing?.image_key_url) {
+        locationReferenceStrategy = 'fallback_establishing';
+      } else if (asset.image_key_url || asset.master_image_url) {
+        locationReferenceStrategy = 'fallback_asset';
+      }
+
       return {
         ...asset,
         matched_direction_view: matchedDirection,
         establishing_view: establishing,
         location_delta_description: deltaDesc,
+        location_reference_strategy: locationReferenceStrategy,
       };
     }
 
@@ -395,7 +469,7 @@ export function extractTraitSummary(description: string | undefined, maxLen = 80
 export function buildNumberedImageManifest(
   assets: SceneAssetInstanceData[]
 ): { manifest: string; imageOrder: ReferenceImageOrderEntry[] } {
-  const sortOrder: Record<string, number> = { character: 0, location: 1, prop: 2 };
+  const sortOrder: Record<string, number> = { location: 0, character: 1, prop: 2 };
   const sorted = [...assets].sort((a, b) => {
     const aOrder = sortOrder[a.project_asset?.asset_type ?? 'prop'] ?? 2;
     const bOrder = sortOrder[b.project_asset?.asset_type ?? 'prop'] ?? 2;
@@ -412,19 +486,29 @@ export function buildNumberedImageManifest(
 
     // 3.7 Phase F: Location assets get 2 refs (direction + establishing) with role: 'style'
     if (type === 'location' && (asset.matched_direction_view || asset.establishing_view)) {
-      // 1. Best-matching direction view (MAIN REFERENCE)
+      const strategy = asset.location_reference_strategy || 'matched_direction';
+
+      // 1. Best-matching or fallback direction view.
       if (asset.matched_direction_view?.image_key_url) {
         const dirLabel = asset.matched_direction_view.alias
           ? `${asset.matched_direction_view.name.replace('_', ' ')} "${asset.matched_direction_view.alias}"`
           : asset.matched_direction_view.name.replace('_', ' ');
+        const isAssignedDirection = strategy === 'matched_direction';
         imageOrder.push({
+          id: asset.matched_direction_view.id,
           label: `Image #${index}`,
           assetName: name,
           url: asset.matched_direction_view.image_key_url,
           type: 'location',
           role: 'style',
+          referenceRole: isAssignedDirection ? 'location_direction_main' : 'location_asset_fallback',
+          reason: isAssignedDirection
+            ? `Using assigned direction view ${dirLabel} as the main location reference.`
+            : `Using ${dirLabel} as a fallback because this shot has no assigned camera direction.`,
+          source: 'location_view',
         });
-        let line = `Image #${index}: ${name} - ${dirLabel} (location, MAIN REFERENCE)`;
+        const directionTag = isAssignedDirection ? 'MAIN REFERENCE' : 'FALLBACK DIRECTION';
+        let line = `Image #${index}: ${name} - ${dirLabel} (location, ${directionTag})`;
         if (asset.matched_direction_view.description) {
           line += ` — ${extractTraitSummary(asset.matched_direction_view.description)}`;
         }
@@ -438,11 +522,17 @@ export function buildNumberedImageManifest(
       // 2. Establishing view (SPATIAL CONTEXT) — always included alongside
       if (asset.establishing_view?.image_key_url) {
         imageOrder.push({
+          id: asset.establishing_view.id,
           label: `Image #${index}`,
           assetName: name,
           url: asset.establishing_view.image_key_url,
           type: 'location',
           role: 'style',
+          referenceRole: 'location_establishing_context',
+          reason: strategy === 'direction_missing_image'
+            ? 'Using establishing view because the assigned direction has no image yet.'
+            : 'Using establishing view as spatial support for the location reference stack.',
+          source: 'location_view',
         });
         lines.push(`Image #${index}: ${name} - establishing (location, SPATIAL CONTEXT)`);
         index++;
@@ -453,11 +543,15 @@ export function buildNumberedImageManifest(
         const fallbackUrl = asset.image_key_url || asset.master_image_url;
         if (fallbackUrl) {
           imageOrder.push({
+            id: asset.id,
             label: `Image #${index}`,
             assetName: name,
             url: fallbackUrl,
             type: 'location',
             role: 'style',
+            referenceRole: 'location_asset_fallback',
+            reason: 'Using baseline location asset image because no usable direction or establishing view image is available.',
+            source: asset.image_key_url ? 'scene_asset' : 'project_asset',
           });
           let line = `Image #${index}: ${name} (location)`;
           const traitSummary = extractTraitSummary(asset.effective_description);
@@ -474,11 +568,19 @@ export function buildNumberedImageManifest(
     if (!url) continue;
 
     imageOrder.push({
+      id: asset.id,
       label: `Image #${index}`,
       assetName: name,
       url,
       type,
       role: 'identity',
+      referenceRole: type === 'character'
+        ? 'character_identity'
+        : type === 'prop'
+          ? 'prop_identity'
+          : 'style_reference',
+      reason: `Using ${name} as a ${type} identity reference.`,
+      source: asset.image_key_url ? 'scene_asset' : 'project_asset',
     });
 
     // Build manifest line with trait summary for better LLM anchoring
@@ -524,6 +626,12 @@ export function buildFrameReferenceManifests(
   const videoOnlyAssets: SceneAssetInstanceData[] = [];
 
   for (const asset of assets) {
+    if (asset.project_asset?.asset_type === 'location') {
+      startAssets.push(asset);
+      endAssets.push(asset);
+      continue;
+    }
+
     const presence = assignmentMap.get(asset.id) || 'throughout';
     switch (presence) {
       case 'throughout':
@@ -782,8 +890,9 @@ export class PromptGenerationService {
   ): Promise<GeneratedPromptSet> {
     console.log(`[PromptGeneration] Generating prompts for shot ${shot.shot_id}`);
 
-    // 3C.2 + 3.7 Phase F: Enrich assets with angle-matched reference URLs based on shot camera
-    let enrichedAssets = enrichAssetsWithAngleMatch(sceneAssets, shot.camera, shot);
+    // 3C.2 + 3.7 Phase F: Scope to canonical shot location, then enrich angle-matched references.
+    const continuityScopedAssets = scopeAssetsForShotContinuity(sceneAssets, shot, shotAssignments);
+    let enrichedAssets = enrichAssetsWithAngleMatch(continuityScopedAssets, shot.camera, shot);
 
     // Apply transformation image overrides to the enriched assets
     if (shotOverrides?.length) {
@@ -982,13 +1091,7 @@ export class PromptGenerationService {
           : undefined;
         // Per-shot assignments (§4): filter scene assets to only those assigned to this shot
         const shotAssignments = shotAssignmentMap?.get(shot.id);
-        let shotScopeAssets = sceneAssets;
-        if (shotAssignments && shotAssignments.length > 0) {
-          const assignedIds = new Set(shotAssignments.map(a => a.scene_asset_instance_id));
-          shotScopeAssets = sceneAssets.filter(a => assignedIds.has(a.id));
-        }
-
-        const promptSet = await this.generatePromptSet(shot, shotScopeAssets, styleCapsule, shotOverrides, contCtx, shotAssignments);
+        const promptSet = await this.generatePromptSet(shot, sceneAssets, styleCapsule, shotOverrides, contCtx, shotAssignments);
         results.push({
           shotId: shot.id,
           success: true,
