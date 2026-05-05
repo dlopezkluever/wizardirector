@@ -24,6 +24,7 @@ import {
   type LocationCoverageShotInput,
   type LocationCoverageViewInput,
 } from '../services/locationCoverageService.js';
+import { continuityCompositionService } from '../services/continuityCompositionService.js';
 
 const router = Router();
 
@@ -3074,6 +3075,156 @@ router.get('/:id/scenes/:sceneId/prompts', async (req, res) => {
   }
 });
 
+// GET /api/projects/:id/scenes/:sceneId/continuity-preview - Preview generation-time continuity packages
+router.get('/:id/scenes/:sceneId/continuity-preview', async (req, res) => {
+  try {
+    const { id: projectId, sceneId } = req.params;
+    const userId = req.user!.id;
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const { data: scene, error: sceneError } = await supabase
+      .from('scenes')
+      .select('id, scene_number, expected_location')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+
+    if (sceneError || !scene) {
+      return res.status(404).json({ error: 'Scene not found' });
+    }
+
+    const { data: shots, error: shotsError } = await supabase
+      .from('shots')
+      .select(`
+        id,
+        shot_id,
+        shot_order,
+        duration,
+        dialogue,
+        action,
+        characters_foreground,
+        characters_background,
+        setting,
+        camera,
+        continuity_flags,
+        beat_reference,
+        camera_distance,
+        camera_height,
+        camera_movement,
+        camera_direction_id,
+        location_asset_id,
+        location_match_confidence,
+        location_match_source,
+        location_match_notes,
+        start_continuity
+      `)
+      .eq('scene_id', sceneId)
+      .order('shot_order', { ascending: true });
+
+    if (shotsError) {
+      return res.status(500).json({ error: 'Failed to fetch shots' });
+    }
+
+    const sceneAssets = await continuityCompositionService.loadSceneAssetsForContinuity(sceneId);
+
+    const linkedLocationIds = Array.from(new Set(
+      ((shots || []) as Record<string, unknown>[])
+        .map(shot => asNullableString(shot.location_asset_id))
+        .filter((locationId): locationId is string => Boolean(locationId))
+    ));
+    const locationNameById = new Map<string, string>();
+    const locationImageById = new Map<string, string | null>();
+
+    if (linkedLocationIds.length > 0) {
+      const { data: locationRows } = await supabase
+        .from('project_assets')
+        .select('id, name, image_key_url')
+        .eq('branch_id', project.active_branch_id)
+        .eq('asset_type', 'location')
+        .in('id', linkedLocationIds);
+
+      for (const row of locationRows || []) {
+        const locationId = asString(row.id);
+        locationNameById.set(locationId, asString(row.name, 'Unknown location'));
+        locationImageById.set(locationId, asNullableString(row.image_key_url));
+      }
+    }
+
+    let shotAssignmentMap: Map<string, ShotAssetAssignmentForPrompt[]> | undefined;
+    try {
+      const hasAssignments = await shotAssetAssignmentService.hasAssignments(sceneId);
+      if (hasAssignments) {
+        const allAssignments = await shotAssetAssignmentService.getAssignmentsForScene(sceneId);
+        shotAssignmentMap = new Map<string, ShotAssetAssignmentForPrompt[]>();
+        for (const assignment of allAssignments) {
+          const list = shotAssignmentMap.get(assignment.shot_id) || [];
+          list.push({
+            scene_asset_instance_id: assignment.scene_asset_instance_id,
+            presence_type: assignment.presence_type as ShotAssetAssignmentForPrompt['presence_type'],
+          });
+          shotAssignmentMap.set(assignment.shot_id, list);
+        }
+      }
+    } catch (assignErr) {
+      console.warn('[Stage9] Failed to fetch shot assignments for continuity preview:', assignErr);
+    }
+
+    const packages = continuityCompositionService.buildGenerationPackages(
+      ((shots || []) as Record<string, unknown>[]).map(shot => ({
+        shot: {
+          id: asString(shot.id),
+          shot_id: asString(shot.shot_id, 'Shot'),
+          shot_order: typeof shot.shot_order === 'number' ? shot.shot_order : 0,
+          duration: typeof shot.duration === 'number' ? shot.duration : 0,
+          dialogue: asString(shot.dialogue),
+          action: asString(shot.action),
+          characters_foreground: asStringArray(shot.characters_foreground),
+          characters_background: asStringArray(shot.characters_background),
+          setting: asString(shot.setting),
+          camera: asString(shot.camera),
+          continuity_flags: asStringArray(shot.continuity_flags),
+          beat_reference: asNullableString(shot.beat_reference) || undefined,
+          camera_distance: asNullableString(shot.camera_distance) as ShotData['camera_distance'],
+          camera_height: asNullableString(shot.camera_height) as ShotData['camera_height'],
+          camera_movement: asNullableString(shot.camera_movement) || undefined,
+          camera_direction_id: asNullableString(shot.camera_direction_id) || undefined,
+          location_asset_id: asNullableString(shot.location_asset_id),
+          location_match_confidence: shot.location_match_confidence as number | string | null,
+          location_match_source: asNullableString(shot.location_match_source),
+          location_match_notes: asNullableString(shot.location_match_notes),
+          start_continuity: ['match', 'camera_change'].includes(asString(shot.start_continuity))
+            ? asString(shot.start_continuity) as ShotData['start_continuity']
+            : 'none',
+        },
+        sceneAssets,
+        shotAssignments: shotAssignmentMap?.get(asString(shot.id)),
+        sceneExpectedLocation: asNullableString(scene.expected_location),
+        locationNameById,
+        locationImageById,
+      }))
+    );
+
+    res.json({
+      packages,
+      previews: packages.map(pkg => pkg.preview),
+      sceneNumber: scene.scene_number,
+    });
+  } catch (error) {
+    console.error('Error in GET /api/projects/:id/scenes/:sceneId/continuity-preview:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // PUT /api/projects/:id/scenes/:sceneId/shots/:shotId/prompts - Update prompts for a single shot
 router.put('/:id/scenes/:sceneId/shots/:shotId/prompts', async (req, res) => {
   try {
@@ -3396,6 +3547,11 @@ router.post('/:id/scenes/:sceneId/generate-prompts', async (req, res) => {
       camera_height: shot.camera_height || undefined,
       camera_movement: shot.camera_movement || undefined,
       camera_direction_id: shot.camera_direction_id || undefined,
+      location_asset_id: shot.location_asset_id || null,
+      location_match_confidence: shot.location_match_confidence ?? null,
+      location_match_source: shot.location_match_source || null,
+      location_match_notes: shot.location_match_notes || null,
+      start_continuity: shot.start_continuity || 'none',
     })) as (ShotData & { shot_order: number })[];
 
     // Fetch confirmed transformation events for this scene
