@@ -450,6 +450,16 @@ export class FrameGenerationService {
     }
 
     /**
+     * Convert persisted reference manifest entries into provider reference roles.
+     */
+    private manifestEntryToReferenceImage(entry: { url: string; role?: string; providerRole?: string }): ReferenceImage {
+        return {
+            url: entry.url,
+            role: (entry.providerRole === 'style' || entry.role === 'style' ? 'style' : 'identity') as 'identity' | 'style',
+        };
+    }
+
+    /**
      * For within_shot transformation trigger shots, swap pre-state reference images
      * with post-transformation images in the end frame reference list.
      * Uses asset name matching (case-insensitive) instead of URL matching to avoid
@@ -471,7 +481,7 @@ export class FrameGenerationService {
         // If user has manually set end frame refs, use those
         const endRefOverride = shot.end_frame_reference_image_order as any[] | null;
         if (endRefOverride?.length) {
-            return endRefOverride.map((e: any) => ({ url: e.url, role: 'identity' as const }));
+            return endRefOverride.map((entry: any) => this.manifestEntryToReferenceImage(entry));
         }
 
         const refOrder = shot.reference_image_order as Array<{ url: string; assetName?: string }> | null;
@@ -493,7 +503,7 @@ export class FrameGenerationService {
 
         if (!events?.length) return [...baseRefImages];
 
-        const result = refOrder.map(entry => ({ url: entry.url, role: 'identity' as const }));
+        const result = refOrder.map(entry => this.manifestEntryToReferenceImage(entry));
 
         for (const event of events) {
             if (!event.post_image_key_url) {
@@ -506,7 +516,10 @@ export class FrameGenerationService {
             const idx = refOrder.findIndex(r => r.assetName?.toUpperCase() === name.toUpperCase());
             if (idx !== -1) {
                 console.log(`[FrameService] Swapping end frame ref for ${name}`);
-                result[idx] = { url: event.post_image_key_url, role: 'identity' as const };
+                result[idx] = {
+                    url: event.post_image_key_url,
+                    role: result[idx].role,
+                };
             }
         }
 
@@ -527,11 +540,10 @@ export class FrameGenerationService {
             return [];
         }
 
-        // 3.7 Phase F: Respect role from reference_image_order (style for locations, identity for others)
-        return shot.reference_image_order.map((entry: { url: string; role?: string; type?: string }) => ({
-            url: entry.url,
-            role: (entry.role === 'style' ? 'style' : 'identity') as 'identity' | 'style',
-        }));
+        // Respect persisted provider role (style for locations, identity for characters/props).
+        return shot.reference_image_order.map((entry: { url: string; role?: string; providerRole?: string }) =>
+            this.manifestEntryToReferenceImage(entry)
+        );
     }
 
     /**
@@ -555,35 +567,10 @@ export class FrameGenerationService {
         const imageAnalysisService = new ImageAnalysisService();
         const analysis = await imageAnalysisService.analyzeReferenceFrame(referenceImageUrl);
 
-        // 2. Fetch scene assets
-        const { data: sceneAssets } = await supabase
-            .from('scene_asset_instances')
-            .select(`
-                id,
-                description_override,
-                effective_description,
-                status_tags,
-                image_key_url,
-                carry_forward,
-                inherited_from_instance_id,
-                project_asset:project_assets(id, name, asset_type, description, image_key_url)
-            `)
-            .eq('scene_id', sceneId);
-
-        const assets = (sceneAssets || []).map((instance: any) => ({
-            id: instance.id,
-            project_asset: instance.project_asset ? {
-                id: instance.project_asset.id,
-                name: instance.project_asset.name,
-                asset_type: instance.project_asset.asset_type,
-                description: instance.project_asset.description,
-                image_key_url: instance.project_asset.image_key_url || undefined,
-            } : undefined,
-            description_override: instance.description_override,
-            effective_description: instance.effective_description || '',
-            status_tags: instance.status_tags || [],
-            image_key_url: instance.image_key_url || undefined,
-        }));
+        // 2. Fetch scene assets through the continuity composition path so
+        // camera-change prompts carry canonical location views and angle refs.
+        const { continuityCompositionService } = await import('./continuityCompositionService.js');
+        const assets = await continuityCompositionService.loadSceneAssetsForContinuity(sceneId);
 
         // 3. Fetch previous shot data
         const { data: allShots } = await supabase
@@ -607,6 +594,14 @@ export class FrameGenerationService {
             camera: s.camera,
             continuity_flags: s.continuity_flags,
             beat_reference: s.beat_reference,
+            camera_distance: s.camera_distance || undefined,
+            camera_height: s.camera_height || undefined,
+            camera_movement: s.camera_movement || undefined,
+            camera_direction_id: s.camera_direction_id || undefined,
+            location_asset_id: s.location_asset_id || null,
+            location_match_confidence: s.location_match_confidence ?? null,
+            location_match_source: s.location_match_source || null,
+            location_match_notes: s.location_match_notes || null,
         });
 
         // 4. Fetch style capsule if needed
