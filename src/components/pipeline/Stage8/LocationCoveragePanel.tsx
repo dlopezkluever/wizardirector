@@ -1,28 +1,33 @@
 /**
- * Stage 8 Location Coverage Panel — Phases E + H
+ * Stage 8 Location Coverage Panel
  *
- * Shows per-location coverage status: which camera directions have reference
- * images, which shots are assigned to each direction, and highlights gaps.
- * Also provides an editable direction assignment table for shots.
- * Phase H: "Generate Missing Views" batch generation from coverage gaps.
+ * Renders server-derived canonical location coverage. Stage 8 owns advanced
+ * direction/view repair, while baseline location identity stays linked to
+ * shot.location_asset_id from Stage 7.
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  CheckCircle2,
   AlertTriangle,
   Camera,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Image as ImageIcon,
-  MapPin,
   Eye,
-  Sparkles,
+  Image as ImageIcon,
   Loader2,
+  MapPin,
+  Plus,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import {
   Select,
   SelectContent,
@@ -31,82 +36,66 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
-import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { frameService } from '@/lib/services/frameService';
+import { locationContinuityService } from '@/lib/services/locationContinuityService';
 import { projectAssetService } from '@/lib/services/projectAssetService';
-import { shotService } from '@/lib/services/shotService';
-import type { Shot, SceneAssetInstance } from '@/types/scene';
-import type { LocationView } from '@/types/asset';
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-interface DirectionGroup {
-  direction: LocationView;
-  shots: Shot[];
-  hasImage: boolean;
-}
-
-interface UnmatchedGroup {
-  shots: Shot[];
-  fallbackDirection?: LocationView;
-}
-
-interface LocationCoverage {
-  locationAsset: SceneAssetInstance;
-  locationViews: LocationView[];
-  directionGroups: DirectionGroup[];
-  establishingView?: LocationView;
-  unmatchedGroup: UnmatchedGroup;
-  totalShots: number;
-  coveredShots: number;
-}
-
-type CoverageStatus = 'fully_covered' | 'partial' | 'no_coverage';
-
-// ─── Props ───────────────────────────────────────────────────────────────────
+import type {
+  ContinuityStrength,
+  LocationCoverageResponse,
+  LocationCoverageShot,
+  LocationCoverageSummary,
+  LocationViewSummary,
+} from '@/types/locationContinuity';
 
 interface LocationCoveragePanelProps {
   projectId: string;
   sceneId: string;
-  shots: Shot[];
-  sceneAssets: SceneAssetInstance[];
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+type CoverageStatus = 'good' | 'partial' | 'weak';
 
-function getCoverageStatus(coverage: LocationCoverage): CoverageStatus {
-  if (coverage.totalShots === 0) return 'fully_covered';
-  if (coverage.coveredShots === coverage.totalShots && coverage.unmatchedGroup.shots.length === 0) {
-    return 'fully_covered';
-  }
-  if (coverage.coveredShots > 0) return 'partial';
-  return 'no_coverage';
+const CLEAR_DIRECTION_VALUE = 'unassigned';
+
+function getCoverageStatus(strength: ContinuityStrength): CoverageStatus {
+  if (strength === 'strong') return 'good';
+  if (strength === 'usable') return 'partial';
+  return 'weak';
 }
 
 function getStatusIcon(status: CoverageStatus) {
   switch (status) {
-    case 'fully_covered':
+    case 'good':
       return <CheckCircle2 className="w-4 h-4 text-emerald-400" />;
     case 'partial':
       return <AlertTriangle className="w-4 h-4 text-amber-400" />;
-    case 'no_coverage':
+    case 'weak':
       return <AlertTriangle className="w-4 h-4 text-red-400" />;
   }
 }
 
-function getDirectionLabel(view: LocationView): string {
-  if (view.alias) return `${view.name.replace('_', ' ')} "${view.alias}"`;
-  return view.name.replace('_', ' ');
+function getStrengthLabel(strength: ContinuityStrength): string {
+  switch (strength) {
+    case 'strong':
+      return 'Strong';
+    case 'usable':
+      return 'Fallback';
+    case 'weak':
+      return 'Needs repair';
+    case 'missing':
+      return 'Missing';
+  }
 }
 
-function getSourceBadge(source: LocationView['source']) {
+function getDirectionLabel(view: LocationViewSummary): string {
+  const base = view.name.replace(/_/g, ' ');
+  return view.alias ? `${base} "${view.alias}"` : base;
+}
+
+function getSourceBadge(source: LocationViewSummary['source']) {
   switch (source) {
     case 'user':
       return <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">User</span>;
@@ -114,114 +103,65 @@ function getSourceBadge(source: LocationView['source']) {
       return <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">Established</span>;
     case 'stage7_inferred':
       return <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">Inferred</span>;
+    default:
+      return <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">View</span>;
   }
 }
 
-// ─── Main Component ──────────────────────────────────────────────────────────
+function nextDirectionName(views: LocationViewSummary[]): string {
+  const directionNumbers = views
+    .filter(view => view.viewType === 'direction')
+    .map(view => {
+      const match = view.name.match(/^direction_(\d+)$/);
+      return match ? Number(match[1]) : 0;
+    });
+  const next = Math.max(0, ...directionNumbers) + 1;
+  return `direction_${next}`;
+}
 
-export function LocationCoveragePanel({
-  projectId,
-  sceneId,
-  shots,
-  sceneAssets,
-}: LocationCoveragePanelProps) {
+export function LocationCoveragePanel({ projectId, sceneId }: LocationCoveragePanelProps) {
   const queryClient = useQueryClient();
+  const [continuityMode, setContinuityMode] = useState<'basic' | 'advanced'>('basic');
   const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
-  // Phase H: track generating state per view ID
   const [generatingViewIds, setGeneratingViewIds] = useState<Set<string>>(new Set());
+  const [creatingLocationIds, setCreatingLocationIds] = useState<Set<string>>(new Set());
+  const [establishingShotIds, setEstablishingShotIds] = useState<Set<string>>(new Set());
 
-  // Find all location assets in the scene
-  const locationAssets = useMemo(
-    () => sceneAssets.filter(a => a.project_asset?.asset_type === 'location'),
-    [sceneAssets]
-  );
-
-  // Fetch location views for all location assets
-  const locationViewsQueries = useQuery({
-    queryKey: ['location-coverage-views', projectId, locationAssets.map(a => a.project_asset_id)],
-    queryFn: async () => {
-      const results = new Map<string, LocationView[]>();
-      for (const asset of locationAssets) {
-        try {
-          const views = await projectAssetService.listLocationViews(projectId, asset.project_asset_id);
-          results.set(asset.project_asset_id, views);
-        } catch {
-          results.set(asset.project_asset_id, []);
-        }
-      }
-      return results;
-    },
-    enabled: locationAssets.length > 0,
+  const coverageQuery = useQuery({
+    queryKey: ['location-coverage', projectId, sceneId, continuityMode],
+    queryFn: () => locationContinuityService.fetchCoverage(projectId, sceneId, continuityMode),
+    enabled: Boolean(projectId && sceneId),
   });
 
-  const allLocationViews = useMemo(
-    () => locationViewsQueries.data ?? new Map<string, LocationView[]>(),
-    [locationViewsQueries.data]
-  );
+  const coverage = coverageQuery.data;
+  const locations = useMemo(() => coverage?.locations ?? [], [coverage]);
 
-  // Build coverage analysis for each location
-  const coverageData: LocationCoverage[] = useMemo(() => {
-    if (locationAssets.length === 0) return [];
+  const approvedFramesQuery = useQuery({
+    queryKey: ['stage8-approved-frames', projectId, sceneId],
+    queryFn: () => frameService.fetchFrames(projectId, sceneId),
+    enabled: Boolean(projectId && sceneId && (coverage?.totals.missingImageShots || 0) > 0),
+    retry: false,
+  });
 
-    return locationAssets.map(locationAsset => {
-      const views = allLocationViews.get(locationAsset.project_asset_id) ?? [];
-      const locationName = locationAsset.project_asset?.name?.toLowerCase() ?? '';
-
-      // Find shots that reference this location (by setting match or camera_direction_id)
-      const locationShots = shots.filter(shot => {
-        // Direct direction assignment
-        if (shot.camera_direction_id) {
-          const matchedView = views.find(v => v.id === shot.camera_direction_id);
-          if (matchedView) return true;
-        }
-        // Setting-based match
-        if (shot.setting && locationName && shot.setting.toLowerCase().includes(locationName)) {
-          return true;
-        }
-        return false;
-      });
-
-      // Separate establishing from directions
-      const establishingView = views.find(v => v.view_type === 'establishing');
-      const directionViews = views.filter(v => v.view_type === 'direction');
-      const primaryDirection = directionViews.find(v => v.is_primary) ?? directionViews[0];
-
-      // Group shots by assigned direction
-      const directionGroups: DirectionGroup[] = directionViews.map(direction => ({
-        direction,
-        shots: locationShots.filter(s => s.camera_direction_id === direction.id),
-        hasImage: !!direction.image_key_url,
-      }));
-
-      // Unmatched shots (have no direction assignment or direction is not in our views)
-      const assignedShotIds = new Set(
-        directionGroups.flatMap(g => g.shots.map(s => s.id))
-      );
-      const unmatchedShots = locationShots.filter(s => !assignedShotIds.has(s.id));
-
-      // Count covered shots (assigned to a direction WITH an image)
-      const coveredShots = directionGroups
-        .filter(g => g.hasImage)
-        .reduce((sum, g) => sum + g.shots.length, 0);
-
-      return {
-        locationAsset,
-        locationViews: views,
-        directionGroups,
-        establishingView,
-        unmatchedGroup: { shots: unmatchedShots, fallbackDirection: primaryDirection },
-        totalShots: locationShots.length,
-        coveredShots,
-      };
-    });
-  }, [locationAssets, allLocationViews, shots]);
-
-  // Auto-expand first location
-  useEffect(() => {
-    if (coverageData.length > 0 && expandedLocations.size === 0) {
-      setExpandedLocations(new Set([coverageData[0].locationAsset.project_asset_id]));
+  const approvedFrameUrlByShotId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const shot of approvedFramesQuery.data?.shots ?? []) {
+      if (shot.startFrame?.status === 'approved' && shot.startFrame.imageUrl) {
+        map.set(shot.id, shot.startFrame.imageUrl);
+      }
     }
-  }, [coverageData, expandedLocations.size]);
+    return map;
+  }, [approvedFramesQuery.data]);
+
+  useEffect(() => {
+    if (locations.length > 0 && expandedLocations.size === 0) {
+      setExpandedLocations(new Set([locations[0].location.id]));
+    }
+  }, [expandedLocations.size, locations]);
+
+  const refreshCoverage = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['location-coverage', projectId, sceneId] });
+  }, [projectId, sceneId, queryClient]);
 
   const toggleLocation = useCallback((assetId: string) => {
     setExpandedLocations(prev => {
@@ -232,23 +172,20 @@ export function LocationCoveragePanel({
     });
   }, []);
 
-  // Handle direction assignment change for a shot
   const handleDirectionChange = useCallback(
     async (shotId: string, directionId: string | null) => {
       try {
-        await shotService.updateShot(projectId, sceneId, shotId, {
-          camera_direction_id: directionId,
-        } as Partial<Shot>);
+        await locationContinuityService.assignCameraDirection(projectId, sceneId, shotId, directionId);
         queryClient.invalidateQueries({ queryKey: ['shots', projectId, sceneId] });
+        refreshCoverage();
         toast.success('Direction assignment updated');
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : 'Failed to update direction');
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to update direction');
       }
     },
-    [projectId, sceneId, queryClient]
+    [projectId, sceneId, queryClient, refreshCoverage]
   );
 
-  // Phase H: Generate a single location view image
   const handleGenerateViewImage = useCallback(
     async (assetId: string, viewId: string) => {
       setGeneratingViewIds(prev => new Set(prev).add(viewId));
@@ -256,13 +193,13 @@ export function LocationCoveragePanel({
         const result = await projectAssetService.generateLocationViewImage(projectId, assetId, viewId);
         if (result.status === 'completed') {
           toast.success('View image generated');
-          queryClient.invalidateQueries({ queryKey: ['location-coverage-views'] });
-          queryClient.invalidateQueries({ queryKey: ['location-views'] });
+          refreshCoverage();
+          queryClient.invalidateQueries({ queryKey: ['location-views', projectId, assetId] });
         } else {
           toast.error('Generation failed: ' + (result.error?.message || 'Unknown error'));
         }
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : 'Failed to generate view image');
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to generate view image');
       } finally {
         setGeneratingViewIds(prev => {
           const next = new Set(prev);
@@ -271,57 +208,185 @@ export function LocationCoveragePanel({
         });
       }
     },
-    [projectId, queryClient]
+    [projectId, queryClient, refreshCoverage]
   );
 
-  // Phase H: Batch generate all missing view images for a location
   const handleGenerateMissing = useCallback(
-    async (coverage: LocationCoverage) => {
-      const assetId = coverage.locationAsset.project_asset_id;
-      // Find directions without images (excluding establishing)
-      const missingDirections = coverage.directionGroups
-        .filter(g => !g.hasImage && g.direction.view_type === 'direction')
-        .map(g => g.direction);
-
-      // Also check establishing
-      if (coverage.establishingView && !coverage.establishingView.image_key_url) {
-        missingDirections.unshift(coverage.establishingView);
-      }
-
-      if (missingDirections.length === 0) {
-        toast.info('All directions already have images');
+    async (summary: LocationCoverageSummary) => {
+      const missingViews = summary.views.filter(view => !view.imageUrl);
+      if (missingViews.length === 0) {
+        toast.info('All views already have images');
         return;
       }
 
-      // Generate sequentially to avoid overwhelming the API
-      for (const dir of missingDirections) {
-        await handleGenerateViewImage(assetId, dir.id);
+      for (const view of missingViews) {
+        await handleGenerateViewImage(summary.location.id, view.id);
       }
     },
     [handleGenerateViewImage]
   );
 
-  if (locationAssets.length === 0) return null;
-  if (coverageData.every(c => c.totalShots === 0)) return null;
+  const handleCreateDefaultViews = useCallback(
+    async (summary: LocationCoverageSummary) => {
+      setCreatingLocationIds(prev => new Set(prev).add(summary.location.id));
+      try {
+        await projectAssetService.suggestDefaultViews(projectId, summary.location.id);
+        toast.success('Default views created');
+        refreshCoverage();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to create default views');
+      } finally {
+        setCreatingLocationIds(prev => {
+          const next = new Set(prev);
+          next.delete(summary.location.id);
+          return next;
+        });
+      }
+    },
+    [projectId, refreshCoverage]
+  );
+
+  const handleCreateDirection = useCallback(
+    async (summary: LocationCoverageSummary) => {
+      setCreatingLocationIds(prev => new Set(prev).add(summary.location.id));
+      try {
+        const name = nextDirectionName(summary.views);
+        const directionCount = summary.views.filter(view => view.viewType === 'direction').length;
+        await projectAssetService.createLocationView(projectId, summary.location.id, {
+          name,
+          view_type: 'direction',
+          alias: `Direction ${directionCount + 1}`,
+          description: '',
+          camera_distance: 'wide',
+          camera_height: 'eye_level',
+          is_primary: directionCount === 0,
+          source: 'stage7_inferred',
+        });
+        toast.success('Direction view created');
+        refreshCoverage();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to create direction');
+      } finally {
+        setCreatingLocationIds(prev => {
+          const next = new Set(prev);
+          next.delete(summary.location.id);
+          return next;
+        });
+      }
+    },
+    [projectId, refreshCoverage]
+  );
+
+  const handleUseApprovedFrameAsView = useCallback(
+    async (summary: LocationCoverageSummary, shot: LocationCoverageShot) => {
+      const frameImageUrl = approvedFrameUrlByShotId.get(shot.shotId);
+      if (!shot.cameraDirectionId || !frameImageUrl) {
+        toast.error('This shot needs an approved frame and assigned direction first');
+        return;
+      }
+
+      setEstablishingShotIds(prev => new Set(prev).add(shot.shotId));
+      try {
+        await projectAssetService.establishViewFromFrame(
+          projectId,
+          summary.location.id,
+          shot.cameraDirectionId,
+          {
+            frameImageUrl,
+            shotId: shot.shotId,
+            sceneId,
+          }
+        );
+        toast.success('Approved frame established as view');
+        refreshCoverage();
+        queryClient.invalidateQueries({ queryKey: ['location-views', projectId, summary.location.id] });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to establish view');
+      } finally {
+        setEstablishingShotIds(prev => {
+          const next = new Set(prev);
+          next.delete(shot.shotId);
+          return next;
+        });
+      }
+    },
+    [approvedFrameUrlByShotId, projectId, sceneId, queryClient, refreshCoverage]
+  );
+
+  if (coverageQuery.isLoading) {
+    return (
+      <div className="border-t border-border/50 bg-card/30 px-4 py-3 flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="w-4 h-4 animate-spin text-primary" />
+        Loading location coverage...
+      </div>
+    );
+  }
+
+  if (coverageQuery.isError) {
+    return (
+      <div className="border-t border-border/50 bg-card/30 px-4 py-3 flex items-center gap-2 text-sm text-amber-300">
+        <AlertTriangle className="w-4 h-4" />
+        Location coverage could not be loaded.
+      </div>
+    );
+  }
+
+  if (!coverage || (locations.length === 0 && coverage.unresolvedShots.length === 0)) {
+    return null;
+  }
 
   return (
     <div className="border-t border-border/50 bg-card/30">
-      <div className="px-4 py-3 flex items-center gap-2">
-        <Camera className="w-4 h-4 text-primary" />
-        <h3 className="text-sm font-medium text-foreground">Location Coverage</h3>
+      <div className="px-4 py-3 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <Camera className="w-4 h-4 text-primary shrink-0" />
+          <h3 className="text-sm font-medium text-foreground">Location Coverage</h3>
+        </div>
+
+        <div className="ml-auto flex items-center gap-2">
+          <div className="inline-flex h-7 overflow-hidden rounded-md border border-border/60 bg-muted/20">
+            <button
+              type="button"
+              className={`px-2.5 text-xs transition-colors ${
+                continuityMode === 'basic'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => setContinuityMode('basic')}
+            >
+              Basic
+            </button>
+            <button
+              type="button"
+              className={`px-2.5 text-xs transition-colors ${
+                continuityMode === 'advanced'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => setContinuityMode('advanced')}
+            >
+              Advanced
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div className="px-4 pb-4 space-y-2">
-        {coverageData.map(coverage => {
-          const status = getCoverageStatus(coverage);
-          const isExpanded = expandedLocations.has(coverage.locationAsset.project_asset_id);
-          const name = coverage.locationAsset.project_asset?.name ?? 'Unknown Location';
+      <div className="px-4 pb-4 space-y-3">
+        <CoverageSummaryStrip coverage={coverage} />
+
+        {coverage.unresolvedShots.length > 0 && (
+          <UnresolvedShots shots={coverage.unresolvedShots} />
+        )}
+
+        {locations.map(summary => {
+          const isExpanded = expandedLocations.has(summary.location.id);
+          const status = getCoverageStatus(summary.strength);
 
           return (
             <Collapsible
-              key={coverage.locationAsset.project_asset_id}
+              key={summary.location.id}
               open={isExpanded}
-              onOpenChange={() => toggleLocation(coverage.locationAsset.project_asset_id)}
+              onOpenChange={() => toggleLocation(summary.location.id)}
             >
               <CollapsibleTrigger className="w-full flex items-center gap-2 px-3 py-2 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors text-left">
                 {isExpanded ? (
@@ -330,110 +395,39 @@ export function LocationCoveragePanel({
                   <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                 )}
                 <MapPin className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                <span className="text-sm font-medium flex-1 truncate">{name}</span>
+                <span className="text-sm font-medium flex-1 truncate">{summary.location.name}</span>
                 {getStatusIcon(status)}
-                <span className="text-xs text-muted-foreground">
-                  {coverage.coveredShots}/{coverage.totalShots} shots covered
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  {summary.matchedDirectionShots}/{summary.totalShots} matched
                 </span>
               </CollapsibleTrigger>
 
               <CollapsibleContent className="mt-1">
-                <div className="ml-5 space-y-1.5 py-1">
-                  {/* Establishing view */}
-                  {coverage.establishingView && (
-                    <div className="flex items-center gap-2 px-3 py-1.5 text-xs rounded bg-muted/20">
-                      <Eye className="w-3 h-3 text-muted-foreground shrink-0" />
-                      <span className="text-muted-foreground">Establishing</span>
-                      {coverage.establishingView.alias && (
-                        <span className="text-muted-foreground/70">"{coverage.establishingView.alias}"</span>
-                      )}
-                      {coverage.establishingView.image_key_url ? (
-                        <CheckCircle2 className="w-3 h-3 text-emerald-400 ml-auto shrink-0" />
-                      ) : (
-                        <AlertTriangle className="w-3 h-3 text-amber-400 ml-auto shrink-0" />
-                      )}
-                      {getSourceBadge(coverage.establishingView.source)}
-                    </div>
-                  )}
+                <div className="ml-5 space-y-2 py-1">
+                  <LocationRiskList summary={summary} />
 
-                  {/* Direction groups */}
-                  {coverage.directionGroups.map(group => (
-                    <DirectionRow
-                      key={group.direction.id}
-                      group={group}
-                      allDirections={coverage.locationViews.filter(v => v.view_type === 'direction')}
-                      isGenerating={generatingViewIds.has(group.direction.id)}
-                      onGenerate={() => handleGenerateViewImage(
-                        coverage.locationAsset.project_asset_id,
-                        group.direction.id
-                      )}
-                      hasStyleReference={
-                        !!(coverage.establishingView?.image_key_url) ||
-                        !!coverage.directionGroups.some(g => g.hasImage) ||
-                        !!(coverage.locationAsset.project_asset?.image_key_url)
-                      }
-                    />
-                  ))}
+                  <ViewInventory
+                    summary={summary}
+                    generatingViewIds={generatingViewIds}
+                    onGenerateView={handleGenerateViewImage}
+                  />
 
-                  {/* Unmatched shots */}
-                  {coverage.unmatchedGroup.shots.length > 0 && (
-                    <div className="space-y-1 mt-2">
-                      <div className="flex items-center gap-2 px-3 py-1.5 text-xs rounded bg-amber-500/10 border border-amber-500/20">
-                        <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
-                        <span className="text-amber-300 font-medium">
-                          {coverage.unmatchedGroup.shots.length} unassigned shot(s)
-                        </span>
-                        {coverage.unmatchedGroup.fallbackDirection && (
-                          <span className="text-muted-foreground ml-auto">
-                            fallback: {getDirectionLabel(coverage.unmatchedGroup.fallbackDirection)}
-                          </span>
-                        )}
-                      </div>
-                      {/* Shot assignment table for unmatched */}
-                      <div className="ml-4 space-y-0.5">
-                        {coverage.unmatchedGroup.shots.map(shot => (
-                          <ShotDirectionAssignment
-                            key={shot.id}
-                            shot={shot}
-                            directions={coverage.locationViews.filter(v => v.view_type === 'direction')}
-                            onDirectionChange={handleDirectionChange}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  <ShotAssignmentTable
+                    summary={summary}
+                    onDirectionChange={handleDirectionChange}
+                    approvedFrameUrlByShotId={approvedFrameUrlByShotId}
+                    establishingShotIds={establishingShotIds}
+                    onUseApprovedFrameAsView={handleUseApprovedFrameAsView}
+                  />
 
-                  {/* Phase H: Generate Missing Views button */}
-                  {(() => {
-                    const missingCount = coverage.directionGroups.filter(g => !g.hasImage).length +
-                      (coverage.establishingView && !coverage.establishingView.image_key_url ? 1 : 0);
-                    const hasAnyRef = !!(coverage.establishingView?.image_key_url) ||
-                      coverage.directionGroups.some(g => g.hasImage) ||
-                      !!(coverage.locationAsset.project_asset?.image_key_url);
-                    const isAnyGenerating = coverage.directionGroups.some(g => generatingViewIds.has(g.direction.id)) ||
-                      (coverage.establishingView && generatingViewIds.has(coverage.establishingView.id));
-
-                    if (missingCount === 0 || !hasAnyRef) return null;
-
-                    return (
-                      <div className="mt-2 pt-2 border-t border-border/20">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full h-7 text-xs"
-                          onClick={() => handleGenerateMissing(coverage)}
-                          disabled={!!isAnyGenerating}
-                        >
-                          {isAnyGenerating ? (
-                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                          ) : (
-                            <Sparkles className="w-3 h-3 mr-1" />
-                          )}
-                          Generate {missingCount} Missing View{missingCount !== 1 ? 's' : ''}
-                        </Button>
-                      </div>
-                    );
-                  })()}
+                  <LocationActions
+                    summary={summary}
+                    isCreating={creatingLocationIds.has(summary.location.id)}
+                    isGenerating={summary.views.some(view => generatingViewIds.has(view.id))}
+                    onCreateDefaults={handleCreateDefaultViews}
+                    onCreateDirection={handleCreateDirection}
+                    onGenerateMissing={handleGenerateMissing}
+                  />
                 </div>
               </CollapsibleContent>
             </Collapsible>
@@ -444,94 +438,197 @@ export function LocationCoveragePanel({
   );
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
-
-function DirectionRow({
-  group,
-  allDirections,
-  isGenerating,
-  onGenerate,
-  hasStyleReference,
-}: {
-  group: DirectionGroup;
-  allDirections: LocationView[];
-  isGenerating?: boolean;
-  onGenerate?: () => void;
-  hasStyleReference?: boolean;
-}) {
-  const [showShots, setShowShots] = useState(false);
-  const label = getDirectionLabel(group.direction);
+function CoverageSummaryStrip({ coverage }: { coverage: LocationCoverageResponse }) {
+  const strength = getStrengthLabel(coverage.totals.strength);
 
   return (
-    <div>
-      <div
-        className="flex items-center gap-2 px-3 py-1.5 text-xs rounded bg-muted/20 cursor-pointer hover:bg-muted/30 transition-colors"
-        onClick={() => group.shots.length > 0 && setShowShots(!showShots)}
-      >
-        {group.direction.image_key_url ? (
-          <div className="w-6 h-6 rounded overflow-hidden shrink-0 border border-border/50">
-            <img
-              src={group.direction.image_key_url}
-              alt={label}
-              className="w-full h-full object-cover"
-            />
-          </div>
-        ) : isGenerating ? (
-          <div className="w-6 h-6 rounded shrink-0 border border-blue-500/30 flex items-center justify-center">
-            <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />
-          </div>
-        ) : (
-          <div className="w-6 h-6 rounded shrink-0 border border-dashed border-border/50 flex items-center justify-center">
-            <ImageIcon className="w-3 h-3 text-muted-foreground/50" />
-          </div>
-        )}
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+      <SummaryMetric label="Mode" value={coverage.continuityMode === 'advanced' ? 'Advanced' : 'Basic'} />
+      <SummaryMetric label="Strength" value={strength} />
+      <SummaryMetric label="Matched" value={String(coverage.totals.matchedDirectionShots)} />
+      <SummaryMetric label="Fallback" value={String(coverage.totals.fallbackShots)} />
+      <SummaryMetric label="Issues" value={String(coverage.totals.weakShotCount)} tone={coverage.totals.weakShotCount > 0 ? 'warning' : 'normal'} />
+    </div>
+  );
+}
 
-        <span className="capitalize font-medium">{label}</span>
-
-        <span className="text-muted-foreground">
-          ({group.shots.length} shot{group.shots.length !== 1 ? 's' : ''})
-        </span>
-
-        <div className="ml-auto flex items-center gap-1.5">
-          {/* Phase H: per-direction generate button */}
-          {!group.hasImage && !isGenerating && onGenerate && hasStyleReference && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={(e) => { e.stopPropagation(); onGenerate(); }}
-                  className="inline-flex items-center justify-center w-5 h-5 rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <Sparkles className="w-3 h-3" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="left" className="text-xs">Generate view image</TooltipContent>
-            </Tooltip>
-          )}
-          {getSourceBadge(group.direction.source)}
-          {group.hasImage ? (
-            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-          ) : isGenerating ? (
-            <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />
-          ) : (
-            <AlertTriangle className="w-3 h-3 text-amber-400" />
-          )}
-        </div>
+function SummaryMetric({
+  label,
+  value,
+  tone = 'normal',
+}: {
+  label: string;
+  value: string;
+  tone?: 'normal' | 'warning';
+}) {
+  return (
+    <div className="rounded-md border border-border/40 bg-muted/15 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className={`text-sm font-medium ${tone === 'warning' ? 'text-amber-300' : 'text-foreground'}`}>
+        {value}
       </div>
+    </div>
+  );
+}
 
-      {/* Expandable shot list — currently hidden for brevity unless user clicks */}
-      {showShots && group.shots.length > 0 && (
-        <div className="ml-10 mt-0.5 space-y-0.5">
-          {group.shots.map(shot => (
-            <div
-              key={shot.id}
-              className="flex items-center gap-2 px-2 py-1 text-[11px] text-muted-foreground rounded bg-muted/10"
-            >
-              <span className="font-mono">{shot.shotId}</span>
-              <span className="truncate flex-1">{shot.camera}</span>
-            </div>
-          ))}
+function UnresolvedShots({ shots }: { shots: LocationCoverageShot[] }) {
+  return (
+    <div className="rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2">
+      <div className="flex items-center gap-2 text-xs font-medium text-red-300">
+        <AlertTriangle className="w-3.5 h-3.5" />
+        {shots.length} shot{shots.length !== 1 ? 's' : ''} need linked locations
+      </div>
+      <div className="mt-1 space-y-0.5">
+        {shots.slice(0, 3).map(shot => (
+          <div key={shot.shotId} className="text-[11px] text-muted-foreground">
+            <span className="font-mono">{shot.shotLabel}</span>
+            <span className="mx-1">-</span>
+            <span>{shot.setting || shot.camera || 'No setting text'}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LocationRiskList({ summary }: { summary: LocationCoverageSummary }) {
+  if (summary.notices.length === 0) return null;
+
+  return (
+    <div className="space-y-1">
+      {summary.notices.map(notice => (
+        <div
+          key={notice}
+          className="flex items-start gap-2 rounded bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 text-xs text-amber-200"
+        >
+          <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+          <span>{notice}</span>
         </div>
-      )}
+      ))}
+    </div>
+  );
+}
+
+function ViewInventory({
+  summary,
+  generatingViewIds,
+  onGenerateView,
+}: {
+  summary: LocationCoverageSummary;
+  generatingViewIds: Set<string>;
+  onGenerateView: (assetId: string, viewId: string) => void;
+}) {
+  if (summary.views.length === 0) {
+    return (
+      <div className="rounded-md border border-dashed border-border/50 bg-muted/10 px-3 py-3 text-xs text-muted-foreground">
+        No direction inventory yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
+      {summary.views.map(view => {
+        const isGenerating = generatingViewIds.has(view.id);
+        const label = getDirectionLabel(view);
+
+        return (
+          <div
+            key={view.id}
+            className="flex items-center gap-2 px-3 py-1.5 text-xs rounded bg-muted/20"
+          >
+            {view.imageUrl ? (
+              <div className="w-7 h-7 rounded overflow-hidden shrink-0 border border-border/50">
+                <img src={view.imageUrl} alt={label} className="w-full h-full object-cover" />
+              </div>
+            ) : isGenerating ? (
+              <div className="w-7 h-7 rounded shrink-0 border border-blue-500/30 flex items-center justify-center">
+                <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />
+              </div>
+            ) : (
+              <div className="w-7 h-7 rounded shrink-0 border border-dashed border-border/50 flex items-center justify-center">
+                {view.viewType === 'establishing' ? (
+                  <Eye className="w-3 h-3 text-muted-foreground/60" />
+                ) : (
+                  <ImageIcon className="w-3 h-3 text-muted-foreground/60" />
+                )}
+              </div>
+            )}
+
+            <div className="min-w-0 flex-1">
+              <div className="capitalize font-medium truncate">{label}</div>
+              <div className="text-[10px] text-muted-foreground">
+                {view.viewType === 'establishing' ? 'Establishing' : `${view.shotCount ?? 0} shot${(view.shotCount ?? 0) === 1 ? '' : 's'}`}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {!view.imageUrl && !isGenerating && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => onGenerateView(summary.location.id, view.id)}
+                      className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="text-xs">Generate view image</TooltipContent>
+                </Tooltip>
+              )}
+              {getSourceBadge(view.source)}
+              {view.imageUrl ? (
+                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+              ) : isGenerating ? (
+                <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />
+              ) : (
+                <AlertTriangle className="w-3 h-3 text-amber-400" />
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ShotAssignmentTable({
+  summary,
+  onDirectionChange,
+  approvedFrameUrlByShotId,
+  establishingShotIds,
+  onUseApprovedFrameAsView,
+}: {
+  summary: LocationCoverageSummary;
+  onDirectionChange: (shotId: string, directionId: string | null) => void;
+  approvedFrameUrlByShotId: Map<string, string>;
+  establishingShotIds: Set<string>;
+  onUseApprovedFrameAsView: (summary: LocationCoverageSummary, shot: LocationCoverageShot) => void;
+}) {
+  if (summary.shots.length === 0) {
+    return (
+      <div className="rounded-md border border-dashed border-border/50 bg-muted/10 px-3 py-3 text-xs text-muted-foreground">
+        No shots are canonically linked to this location yet.
+      </div>
+    );
+  }
+
+  const directions = summary.views.filter(view => view.viewType === 'direction');
+
+  return (
+    <div className="space-y-1">
+      {summary.shots.map(shot => (
+        <ShotDirectionAssignment
+          key={shot.shotId}
+          shot={shot}
+          directions={directions}
+          onDirectionChange={onDirectionChange}
+          approvedFrameUrl={approvedFrameUrlByShotId.get(shot.shotId)}
+          isEstablishingView={establishingShotIds.has(shot.shotId)}
+          onUseApprovedFrameAsView={() => onUseApprovedFrameAsView(summary, shot)}
+        />
+      ))}
     </div>
   );
 }
@@ -540,31 +637,130 @@ function ShotDirectionAssignment({
   shot,
   directions,
   onDirectionChange,
+  approvedFrameUrl,
+  isEstablishingView,
+  onUseApprovedFrameAsView,
 }: {
-  shot: Shot;
-  directions: LocationView[];
+  shot: LocationCoverageShot;
+  directions: LocationViewSummary[];
   onDirectionChange: (shotId: string, directionId: string | null) => void;
+  approvedFrameUrl?: string;
+  isEstablishingView: boolean;
+  onUseApprovedFrameAsView: () => void;
 }) {
+  const isWeak = shot.coverageState !== 'matched_view';
+  const canUseApprovedFrame =
+    !!approvedFrameUrl &&
+    !!shot.cameraDirectionId &&
+    shot.coverageState === 'missing_view_image';
+
   return (
-    <div className="flex items-center gap-2 px-2 py-1 text-[11px] rounded bg-muted/10">
-      <span className="font-mono text-muted-foreground w-16 shrink-0">{shot.shotId}</span>
-      <span className="text-muted-foreground truncate flex-1">{shot.camera}</span>
-      <Select
-        value={shot.camera_direction_id ?? 'unassigned'}
-        onValueChange={(val) => onDirectionChange(shot.id, val === 'unassigned' ? null : val)}
-      >
-        <SelectTrigger className="h-6 w-36 text-[11px] border-border/30">
-          <SelectValue placeholder="Assign..." />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="unassigned">Unassigned</SelectItem>
-          {directions.map(d => (
-            <SelectItem key={d.id} value={d.id}>
-              {d.alias ? `${d.name.replace('_', ' ')} "${d.alias}"` : d.name.replace('_', ' ')}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+    <div className={`grid grid-cols-[4.5rem_minmax(0,1fr)_10rem] gap-2 items-center px-2 py-1.5 text-[11px] rounded ${
+      isWeak ? 'bg-amber-500/10 border border-amber-500/15' : 'bg-muted/10'
+    }`}>
+      <span className="font-mono text-muted-foreground truncate">{shot.shotLabel}</span>
+      <div className="min-w-0">
+        <div className="truncate text-muted-foreground">{shot.camera || shot.setting || 'No camera text'}</div>
+        {shot.fallbackLabel && (
+          <div className="truncate text-[10px] text-amber-300">fallback: {shot.fallbackLabel}</div>
+        )}
+      </div>
+      <div className="flex items-center gap-1">
+        {canUseApprovedFrame && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onUseApprovedFrameAsView}
+                disabled={isEstablishingView}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-border/40 bg-muted/20 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+              >
+                {isEstablishingView ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <ImageIcon className="w-3 h-3" />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="left" className="text-xs">Use approved frame as view</TooltipContent>
+          </Tooltip>
+        )}
+        <Select
+          value={shot.cameraDirectionId ?? CLEAR_DIRECTION_VALUE}
+          onValueChange={value => onDirectionChange(shot.shotId, value === CLEAR_DIRECTION_VALUE ? null : value)}
+        >
+          <SelectTrigger className="h-7 min-w-0 flex-1 text-[11px] border-border/30">
+            <SelectValue placeholder="Assign..." />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={CLEAR_DIRECTION_VALUE}>Unassigned</SelectItem>
+            {directions.map(direction => (
+              <SelectItem key={direction.id} value={direction.id}>
+                {getDirectionLabel(direction)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
+function LocationActions({
+  summary,
+  isCreating,
+  isGenerating,
+  onCreateDefaults,
+  onCreateDirection,
+  onGenerateMissing,
+}: {
+  summary: LocationCoverageSummary;
+  isCreating: boolean;
+  isGenerating: boolean;
+  onCreateDefaults: (summary: LocationCoverageSummary) => void;
+  onCreateDirection: (summary: LocationCoverageSummary) => void;
+  onGenerateMissing: (summary: LocationCoverageSummary) => void;
+}) {
+  const missingCount = summary.views.filter(view => !view.imageUrl).length;
+
+  return (
+    <div className="pt-2 border-t border-border/20 flex flex-wrap gap-2">
+      {summary.views.length === 0 ? (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => onCreateDefaults(summary)}
+          disabled={isCreating}
+        >
+          {isCreating ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Plus className="w-3 h-3 mr-1" />}
+          Create Default Views
+        </Button>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => onCreateDirection(summary)}
+          disabled={isCreating}
+        >
+          {isCreating ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Plus className="w-3 h-3 mr-1" />}
+          Add Direction
+        </Button>
+      )}
+
+      {missingCount > 0 && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => onGenerateMissing(summary)}
+          disabled={isGenerating}
+        >
+          {isGenerating ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Sparkles className="w-3 h-3 mr-1" />}
+          Generate Missing ({missingCount})
+        </Button>
+      )}
     </div>
   );
 }

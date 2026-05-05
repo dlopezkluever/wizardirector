@@ -841,8 +841,6 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
       <LocationCoveragePanel
         projectId={projectId}
         sceneId={sceneId}
-        shots={shots}
-        sceneAssets={sceneAssets}
       />
 
       <AssetDrawer
