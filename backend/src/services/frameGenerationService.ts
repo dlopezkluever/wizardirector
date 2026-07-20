@@ -26,6 +26,9 @@ export interface Frame {
     updatedAt: string;
     generatedAt: string | null;
     approvedAt: string | null;
+    generatedFromFrameId: string | null;
+    continuityBaseRole: 'reuse_match' | 'reuse_edit' | 'camera_change_ref' | 'match_copy' | 'manual' | null;
+    promotedToViewId: string | null;
 }
 
 export interface ShotWithFrames {
@@ -41,14 +44,55 @@ export interface ShotWithFrames {
     aiRecommendsEndFrame: boolean | null;
     framePrompt: string | null;
     videoPrompt: string | null;
-    referenceImageOrder: { label: string; assetName: string; url: string; type: string }[] | null;
-    endFrameReferenceImageOrder: { label: string; assetName: string; url: string; type: string }[] | null;
+    referenceImageOrder: ReferenceImageOrderForFrame[] | null;
+    endFrameReferenceImageOrder: ReferenceImageOrderForFrame[] | null;
     endFramePrompt: string | null;
     startContinuity: 'none' | 'match' | 'camera_change';
     aiStartContinuity: 'none' | 'match' | 'camera_change' | null;
     continuityFramePrompt: string | null;
+    cameraDirectionId: string | null;
+    locationAssetId: string | null;
+    locationMatchConfidence: number | null;
+    locationMatchSource: string | null;
+    locationMatchNotes: string | null;
+    selectedContinuityBaseFrameId: string | null;
     startFrame: Frame | null;
     endFrame: Frame | null;
+}
+
+type ContinuityBaseRole = NonNullable<Frame['continuityBaseRole']>;
+
+interface ReferenceImageOrderForFrame {
+    id?: string;
+    label: string;
+    assetName: string;
+    url: string;
+    type: string;
+    role?: 'identity' | 'style';
+    providerRole?: 'identity' | 'style';
+    referenceRole?: string;
+    reason?: string;
+    source?: string;
+}
+
+interface ShotReferenceImageContext {
+    references: ReferenceImage[];
+    continuityBaseFrameId: string | null;
+    continuityBaseShotLabel: string | null;
+    continuityBaseReason: string | null;
+    continuityBaseRole: ContinuityBaseRole | null;
+}
+
+interface SelectedContinuityBaseFrameRow {
+    id: string;
+    image_url: string | null;
+    status: string | null;
+    shots?: {
+        id: string;
+        shot_id: string | null;
+        location_asset_id: string | null;
+        camera_direction_id: string | null;
+    } | null;
 }
 
 export interface GenerateFramesRequest {
@@ -113,7 +157,12 @@ export class FrameGenerationService {
                 start_continuity,
                 ai_start_continuity,
                 continuity_frame_prompt,
-                camera_direction_id
+                camera_direction_id,
+                location_asset_id,
+                location_match_confidence,
+                location_match_source,
+                location_match_notes,
+                selected_continuity_base_frame_id
             `)
             .eq('scene_id', sceneId)
             .order('shot_order', { ascending: true });
@@ -166,6 +215,9 @@ export class FrameGenerationService {
                         updatedAt: frame.updated_at,
                         generatedAt: frame.generated_at,
                         approvedAt: frame.approved_at,
+                        generatedFromFrameId: frame.generated_from_frame_id || null,
+                        continuityBaseRole: frame.continuity_base_role || null,
+                        promotedToViewId: frame.promoted_to_view_id || null,
                     };
                     if (frame.frame_type === 'start') {
                         entry.start = mappedFrame;
@@ -205,7 +257,7 @@ export class FrameGenerationService {
             else if (transformEvents?.length && shot.reference_image_order?.length) {
                 const shotEvents = transformEvents.filter((e: any) => e.trigger_shot_id === shot.id);
                 if (shotEvents.length > 0) {
-                    const refOrder = shot.reference_image_order as Array<{ label: string; assetName: string; url: string; type: string }>;
+                    const refOrder = shot.reference_image_order as ReferenceImageOrderForFrame[];
                     const computed = refOrder.map((entry: any) => ({ ...entry }));
                     for (const event of shotEvents) {
                         if (!event.post_image_key_url) continue;
@@ -240,6 +292,11 @@ export class FrameGenerationService {
                 aiStartContinuity: shot.ai_start_continuity || null,
                 continuityFramePrompt: shot.continuity_frame_prompt || null,
                 cameraDirectionId: shot.camera_direction_id || null,
+                locationAssetId: shot.location_asset_id || null,
+                locationMatchConfidence: shot.location_match_confidence != null ? Number(shot.location_match_confidence) : null,
+                locationMatchSource: shot.location_match_source || null,
+                locationMatchNotes: shot.location_match_notes || null,
+                selectedContinuityBaseFrameId: shot.selected_continuity_base_frame_id || null,
                 startFrame: frameEntry.start,
                 endFrame: frameEntry.end,
             };
@@ -289,13 +346,31 @@ export class FrameGenerationService {
                 continue;
             }
 
-            // Fetch asset reference images for this shot
-            const shotRefImages = await this.fetchShotReferenceImages(shot.id);
+            // Fetch asset reference images for this shot, including selected reuse/edit base.
+            const shotRefContext = await this.fetchShotReferenceImageContext(shot.id);
+            const shotRefImages = shotRefContext.references;
 
             // Generate start frame (with continuity handling)
             const startFrame = await this.ensureFrame(shot.id, 'start', previousEndFrameId);
             if (startFrame.status === 'pending' || startFrame.status === 'rejected') {
-                if (shot.start_continuity === 'match' && previousEndFrameId) {
+                if (shotRefContext.continuityBaseFrameId) {
+                    await this.startFrameGeneration(
+                        startFrame.id,
+                        projectId,
+                        branchId,
+                        sceneId,
+                        shot.id,
+                        this.buildReuseEditPrompt(shot.frame_prompt, shotRefContext),
+                        visualStyleCapsuleId,
+                        aspectRatio,
+                        shotRefImages,
+                        {
+                            generatedFromFrameId: shotRefContext.continuityBaseFrameId,
+                            continuityBaseRole: shotRefContext.continuityBaseRole,
+                        }
+                    );
+                    jobsCreated++;
+                } else if (shot.start_continuity === 'match' && previousEndFrameId) {
                     // Match mode: copy from previous shot's end frame
                     const { data: prevEndFrame } = await supabase
                         .from('frames')
@@ -313,6 +388,8 @@ export class FrameGenerationService {
                                 prompt_snapshot: '[Copied from previous shot end frame — match continuity]',
                                 generated_at: new Date().toISOString(),
                                 previous_frame_id: previousEndFrameId,
+                                generated_from_frame_id: previousEndFrameId,
+                                continuity_base_role: 'match_copy',
                             })
                             .eq('id', startFrame.id);
                         // No jobsCreated++ — zero cost
@@ -328,6 +405,7 @@ export class FrameGenerationService {
                     // Camera change mode: analyze reference image then generate with enhanced prompt
                     // Check frame_links for a reference link first, fall back to previous end frame
                     let refImageUrl: string | null = null;
+                    let refFrameId: string | null = null;
                     const { data: refLink } = await supabase
                         .from('frame_links')
                         .select('source_frame_id')
@@ -339,18 +417,20 @@ export class FrameGenerationService {
                         const { data: srcFrame } = await supabase
                             .from('frames').select('image_url').eq('id', refLink.source_frame_id).single();
                         refImageUrl = srcFrame?.image_url || null;
+                        refFrameId = refImageUrl ? refLink.source_frame_id : null;
                     }
 
                     if (!refImageUrl) {
                         const { data: prevEndFrame } = await supabase
-                            .from('frames').select('image_url').eq('id', previousEndFrameId).single();
+                            .from('frames').select('id, image_url').eq('id', previousEndFrameId).single();
                         refImageUrl = prevEndFrame?.image_url || null;
+                        refFrameId = prevEndFrame?.id || null;
                     }
 
                     if (refImageUrl) {
                         await this.generateWithCameraChangeAnalysis(
                             startFrame.id, projectId, branchId, sceneId, shot.id, shot,
-                            refImageUrl, visualStyleCapsuleId, aspectRatio, shotRefImages
+                            refImageUrl, visualStyleCapsuleId, aspectRatio, shotRefImages, refFrameId
                         );
                     } else {
                         // No reference image available — fall back to normal generation
@@ -459,6 +539,20 @@ export class FrameGenerationService {
         };
     }
 
+    private buildReuseEditPrompt(
+        basePrompt: string,
+        context: ShotReferenceImageContext
+    ): string {
+        const sourceLabel = context.continuityBaseShotLabel
+            ? `Shot ${context.continuityBaseShotLabel}`
+            : 'the selected continuity base';
+        const directionRule = context.continuityBaseRole === 'reuse_match'
+            ? 'Preserve the base frame camera angle, framing, lighting, location appearance, subject identity, and unchanged props exactly.'
+            : 'Use the base frame as the primary identity and lighting anchor, then adapt only the camera/framing and visible action required by this shot.';
+
+        return `${basePrompt}\n\nREUSE/EDIT CONTINUITY BASE: The first attached reference image is the selected base from ${sourceLabel}. ${context.continuityBaseReason || ''} ${directionRule} Treat the shot prompt above as the delta: change only what the new shot explicitly requires and keep every unstated visual detail stable.`;
+    }
+
     /**
      * For within_shot transformation trigger shots, swap pre-state reference images
      * with post-transformation images in the end frame reference list.
@@ -529,21 +623,94 @@ export class FrameGenerationService {
     /**
      * Fetch asset reference images for a shot from reference_image_order column
      */
-    private async fetchShotReferenceImages(shotId: string): Promise<ReferenceImage[]> {
+    private async fetchShotReferenceImageContext(shotId: string): Promise<ShotReferenceImageContext> {
         const { data: shot } = await supabase
             .from('shots')
-            .select('reference_image_order')
+            .select('reference_image_order, selected_continuity_base_frame_id, location_asset_id, camera_direction_id')
             .eq('id', shotId)
             .single();
 
-        if (!shot?.reference_image_order || !Array.isArray(shot.reference_image_order)) {
-            return [];
+        const persistedRefs = Array.isArray(shot?.reference_image_order)
+            ? shot.reference_image_order.map((entry: { url: string; role?: string; providerRole?: string }) =>
+                this.manifestEntryToReferenceImage(entry)
+            )
+            : [];
+
+        const selectedBaseFrameId = typeof shot?.selected_continuity_base_frame_id === 'string'
+            ? shot.selected_continuity_base_frame_id
+            : null;
+
+        if (!selectedBaseFrameId) {
+            return {
+                references: persistedRefs,
+                continuityBaseFrameId: null,
+                continuityBaseShotLabel: null,
+                continuityBaseReason: null,
+                continuityBaseRole: null,
+            };
         }
 
-        // Respect persisted provider role (style for locations, identity for characters/props).
-        return shot.reference_image_order.map((entry: { url: string; role?: string; providerRole?: string }) =>
-            this.manifestEntryToReferenceImage(entry)
-        );
+        const { data: baseFrame } = await supabase
+            .from('frames')
+            .select(`
+                id,
+                image_url,
+                status,
+                shots (
+                    id,
+                    shot_id,
+                    location_asset_id,
+                    camera_direction_id
+                )
+            `)
+            .eq('id', selectedBaseFrameId)
+            .single();
+
+        const baseFrameRow = baseFrame as SelectedContinuityBaseFrameRow | null;
+        const baseShot = baseFrameRow?.shots || null;
+        const baseImageUrl = typeof baseFrameRow?.image_url === 'string' ? baseFrameRow.image_url : null;
+
+        if (!baseImageUrl || !['approved', 'generated'].includes(String(baseFrameRow?.status))) {
+            return {
+                references: persistedRefs,
+                continuityBaseFrameId: null,
+                continuityBaseShotLabel: null,
+                continuityBaseReason: null,
+                continuityBaseRole: null,
+            };
+        }
+
+        const sameLocation =
+            !!shot?.location_asset_id &&
+            !!baseShot?.location_asset_id &&
+            shot.location_asset_id === baseShot.location_asset_id;
+        const sameDirection =
+            !!shot?.camera_direction_id &&
+            !!baseShot?.camera_direction_id &&
+            shot.camera_direction_id === baseShot.camera_direction_id;
+        const role: ContinuityBaseRole = sameDirection ? 'reuse_match' : 'reuse_edit';
+        const reason = sameLocation
+            ? sameDirection
+                ? 'Same canonical location and same camera direction.'
+                : 'Same canonical location; adapt framing as needed.'
+            : 'User-selected continuity base; verify the location still matches the shot.';
+
+        const references = persistedRefs.some(ref => ref.url === baseImageUrl)
+            ? persistedRefs
+            : [{ url: baseImageUrl, role: 'identity' as const }, ...persistedRefs];
+
+        return {
+            references,
+            continuityBaseFrameId: selectedBaseFrameId,
+            continuityBaseShotLabel: typeof baseShot?.shot_id === 'string' ? baseShot.shot_id : null,
+            continuityBaseReason: reason,
+            continuityBaseRole: role,
+        };
+    }
+
+    private async fetchShotReferenceImages(shotId: string): Promise<ReferenceImage[]> {
+        const context = await this.fetchShotReferenceImageContext(shotId);
+        return context.references;
     }
 
     /**
@@ -560,7 +727,8 @@ export class FrameGenerationService {
         referenceImageUrl: string,
         visualStyleCapsuleId?: string,
         aspectRatio?: string,
-        existingRefImages?: ReferenceImage[]
+        existingRefImages?: ReferenceImage[],
+        referenceFrameId?: string | null
     ): Promise<void> {
         // 1. Analyze reference image via vision
         const { ImageAnalysisService } = await import('./imageAnalysisService.js');
@@ -642,7 +810,11 @@ export class FrameGenerationService {
         // 7. Start generation
         await this.startFrameGeneration(
             frameId, projectId, branchId, sceneId, shotId,
-            enhancedPrompt, visualStyleCapsuleId, aspectRatio, refs
+            enhancedPrompt, visualStyleCapsuleId, aspectRatio, refs,
+            {
+                generatedFromFrameId: referenceFrameId || null,
+                continuityBaseRole: referenceFrameId ? 'camera_change_ref' : null,
+            }
         );
 
         // 8. Save enhanced prompt for UI visibility
@@ -679,7 +851,11 @@ export class FrameGenerationService {
         prompt: string,
         visualStyleCapsuleId?: string,
         aspectRatio: string = '16:9',
-        referenceImageUrls?: ReferenceImage[]
+        referenceImageUrls?: ReferenceImage[],
+        lineage?: {
+            generatedFromFrameId?: string | null;
+            continuityBaseRole?: ContinuityBaseRole | null;
+        }
     ): Promise<void> {
         // Get current frame data
         const { data: frame, error: fetchError } = await supabase
@@ -693,12 +869,20 @@ export class FrameGenerationService {
         }
 
         // Update frame status to generating
+        const frameUpdates: Record<string, unknown> = {
+            status: 'generating',
+            prompt_snapshot: prompt,
+        };
+        if (lineage?.generatedFromFrameId) {
+            frameUpdates.generated_from_frame_id = lineage.generatedFromFrameId;
+            frameUpdates.continuity_base_role = lineage.continuityBaseRole || 'manual';
+        } else if (lineage?.continuityBaseRole) {
+            frameUpdates.continuity_base_role = lineage.continuityBaseRole;
+        }
+
         const { error: updateError } = await supabase
             .from('frames')
-            .update({
-                status: 'generating',
-                prompt_snapshot: prompt,
-            })
+            .update(frameUpdates)
             .eq('id', frameId);
 
         if (updateError) {
@@ -816,7 +1000,10 @@ export class FrameGenerationService {
                     frame_prompt,
                     end_frame_prompt,
                     start_continuity,
-                    scene_id
+                    scene_id,
+                    location_asset_id,
+                    camera_direction_id,
+                    selected_continuity_base_frame_id
                 )
             `)
             .eq('id', frameId)
@@ -827,6 +1014,35 @@ export class FrameGenerationService {
         }
 
         const shot = (frame as any).shots;
+
+        if (frame.frame_type === 'start' && shot?.selected_continuity_base_frame_id && shot.frame_prompt) {
+            const shotRefContext = await this.fetchShotReferenceImageContext(shot.id);
+            if (shotRefContext.continuityBaseFrameId) {
+                await this.startFrameGeneration(
+                    frameId,
+                    projectId,
+                    branchId,
+                    sceneId,
+                    shot.id,
+                    this.buildReuseEditPrompt(shot.frame_prompt, shotRefContext),
+                    visualStyleCapsuleId,
+                    aspectRatio,
+                    shotRefContext.references,
+                    {
+                        generatedFromFrameId: shotRefContext.continuityBaseFrameId,
+                        continuityBaseRole: shotRefContext.continuityBaseRole,
+                    }
+                );
+
+                const { data: updatedFrame } = await supabase
+                    .from('frames')
+                    .select('*')
+                    .eq('id', frameId)
+                    .single();
+
+                return this.mapFrameFromDb(updatedFrame);
+            }
+        }
 
         // If start frame with match mode → copy from previous shot's end instead of AI generation
         if (frame.frame_type === 'start' && shot.start_continuity === 'match') {
@@ -861,6 +1077,8 @@ export class FrameGenerationService {
                                 prompt_snapshot: `[Match copy from Shot ${prevShot.shot_id} end frame]`,
                                 generated_at: now,
                                 previous_frame_id: prevEndFrame.id,
+                                generated_from_frame_id: prevEndFrame.id,
+                                continuity_base_role: 'match_copy',
                                 generation_count: (frame.generation_count || 0) + 1,
                                 updated_at: now,
                             })
@@ -911,6 +1129,7 @@ export class FrameGenerationService {
         // If start frame with camera_change mode → use analyze-then-generate path
         if (frame.frame_type === 'start' && shot.start_continuity === 'camera_change') {
             let refImageUrl: string | null = null;
+            let refFrameId: string | null = null;
 
             // Check frame_links for a reference link on this frame
             const { data: refLink } = await supabase
@@ -924,6 +1143,7 @@ export class FrameGenerationService {
                 const { data: srcFrame } = await supabase
                     .from('frames').select('image_url').eq('id', refLink.source_frame_id).single();
                 refImageUrl = srcFrame?.image_url || null;
+                refFrameId = refImageUrl ? refLink.source_frame_id : null;
             }
 
             // Fall back to previous shot's end frame
@@ -940,12 +1160,13 @@ export class FrameGenerationService {
                         const prevShot = allShots[shotIdx - 1];
                         const { data: prevEndFrame } = await supabase
                             .from('frames')
-                            .select('image_url')
+                            .select('id, image_url')
                             .eq('shot_id', prevShot.id)
                             .eq('frame_type', 'end')
                             .in('status', ['generated', 'approved'])
                             .single();
                         refImageUrl = prevEndFrame?.image_url || null;
+                        refFrameId = prevEndFrame?.id || null;
                     }
                 }
             }
@@ -954,7 +1175,7 @@ export class FrameGenerationService {
                 const shotRefImages = await this.fetchShotReferenceImages(shot.id);
                 await this.generateWithCameraChangeAnalysis(
                     frameId, projectId, branchId, sceneId, shot.id, shot,
-                    refImageUrl, visualStyleCapsuleId, aspectRatio, shotRefImages
+                    refImageUrl, visualStyleCapsuleId, aspectRatio, shotRefImages, refFrameId
                 );
 
                 const { data: updatedFrame } = await supabase
@@ -1237,6 +1458,9 @@ export class FrameGenerationService {
             updatedAt: row.updated_at,
             generatedAt: row.generated_at,
             approvedAt: row.approved_at,
+            generatedFromFrameId: row.generated_from_frame_id || null,
+            continuityBaseRole: row.continuity_base_role || null,
+            promotedToViewId: row.promoted_to_view_id || null,
         };
     }
 
