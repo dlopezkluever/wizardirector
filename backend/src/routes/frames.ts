@@ -3,6 +3,8 @@ import multer from 'multer';
 import path from 'path';
 import { supabase } from '../config/supabase.js';
 import { frameGenerationService } from '../services/frameGenerationService.js';
+import { continuityBaseService, type ContinuityBaseCandidate } from '../services/continuityBaseService.js';
+import { continuityCompositionService } from '../services/continuityCompositionService.js';
 import { promptGenerationService, enrichAssetsWithAngleMatch } from '../services/promptGenerationService.js';
 import type { ShotData, SceneAssetInstanceData } from '../services/promptGenerationService.js';
 import { StyleCapsuleService } from '../services/styleCapsuleService.js';
@@ -27,6 +29,40 @@ const frameUpload = multer({
 });
 
 const router = Router();
+
+interface Stage10ReferenceOrderEntry {
+    id?: string;
+    label: string;
+    assetName: string;
+    url: string;
+    type: string;
+    role?: 'identity' | 'style';
+    referenceRole?: string;
+    reason?: string;
+    source?: string;
+}
+
+function renumberReferenceOrder(entries: Stage10ReferenceOrderEntry[]): Stage10ReferenceOrderEntry[] {
+    return entries.map((entry, index) => ({
+        ...entry,
+        label: `Image #${index + 1}`,
+    }));
+}
+
+function continuityBaseReferenceEntry(candidate: ContinuityBaseCandidate): Stage10ReferenceOrderEntry {
+    const baseLabel = candidate.status === 'generated' ? 'generated frame' : 'approved frame';
+    return {
+        id: `continuity-base-${candidate.frameId}`,
+        label: 'Image #1',
+        assetName: `Shot ${candidate.sourceShotLabel}`,
+        url: candidate.imageUrl,
+        type: 'continuity',
+        role: 'identity',
+        referenceRole: 'continuity_base_frame',
+        reason: `${candidate.reason} Use this ${baseLabel} as the primary edit/reuse base.`,
+        source: candidate.status === 'generated' ? 'generated_frame' : 'approved_frame',
+    };
+}
 
 /**
  * GET /api/projects/:projectId/scenes/:sceneId/frames
@@ -1504,6 +1540,120 @@ router.put('/:projectId/scenes/:sceneId/shots/:shotId/reference-images', async (
 });
 
 /**
+ * PUT /api/projects/:projectId/scenes/:sceneId/shots/:shotId/continuity-base
+ * Select or clear the Stage 10 reuse/edit base frame for a shot.
+ */
+router.put('/:projectId/scenes/:sceneId/shots/:shotId/continuity-base', async (req, res) => {
+    try {
+        const { projectId, sceneId, shotId } = req.params;
+        const { frameId, clear } = req.body || {};
+        const userId = req.user!.id;
+
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id, active_branch_id')
+            .eq('id', projectId)
+            .eq('user_id', userId)
+            .single();
+
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const { data: scene, error: sceneError } = await supabase
+            .from('scenes')
+            .select('id')
+            .eq('id', sceneId)
+            .eq('branch_id', project.active_branch_id)
+            .single();
+
+        if (sceneError || !scene) {
+            return res.status(404).json({ error: 'Scene not found' });
+        }
+
+        const { data: shot, error: shotError } = await supabase
+            .from('shots')
+            .select('id, location_asset_id, camera_direction_id, reference_image_order')
+            .eq('id', shotId)
+            .eq('scene_id', sceneId)
+            .single();
+
+        if (shotError || !shot) {
+            return res.status(404).json({ error: 'Shot not found' });
+        }
+
+        const existingOrder = Array.isArray(shot.reference_image_order)
+            ? shot.reference_image_order as Stage10ReferenceOrderEntry[]
+            : [];
+        const withoutBase = existingOrder.filter(entry => entry.referenceRole !== 'continuity_base_frame');
+
+        if (clear || frameId === null) {
+            const referenceImageOrder = renumberReferenceOrder(withoutBase);
+            const { error: updateError } = await supabase
+                .from('shots')
+                .update({
+                    selected_continuity_base_frame_id: null,
+                    reference_image_order: referenceImageOrder,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq('id', shotId);
+
+            if (updateError) throw new Error(`Failed to clear continuity base: ${updateError.message}`);
+
+            return res.json({
+                success: true,
+                selectedContinuityBase: null,
+                referenceImageOrder,
+            });
+        }
+
+        if (typeof frameId !== 'string' || frameId.length === 0) {
+            return res.status(400).json({ error: 'frameId is required unless clear is true' });
+        }
+
+        const candidates = await continuityBaseService.listCandidates({
+            projectId,
+            branchId: project.active_branch_id,
+            sceneId,
+            shotId,
+            locationAssetId: shot.location_asset_id || null,
+            cameraDirectionId: shot.camera_direction_id || null,
+        });
+        const selected = await continuityBaseService.pickCandidateById(candidates, frameId);
+
+        if (!selected) {
+            return res.status(400).json({ error: 'Selected frame is not a valid continuity base for this shot' });
+        }
+
+        const referenceImageOrder = renumberReferenceOrder([
+            continuityBaseReferenceEntry(selected),
+            ...withoutBase,
+        ]);
+
+        const { error: updateError } = await supabase
+            .from('shots')
+            .update({
+                selected_continuity_base_frame_id: selected.frameId,
+                reference_image_order: referenceImageOrder,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', shotId);
+
+        if (updateError) throw new Error(`Failed to update continuity base: ${updateError.message}`);
+
+        res.json({
+            success: true,
+            selectedContinuityBase: selected,
+            candidates,
+            referenceImageOrder,
+        });
+    } catch (error) {
+        console.error('Error in PUT continuity-base:', error);
+        res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
+    }
+});
+
+/**
  * GET /api/projects/:projectId/scenes/:sceneId/shots/:shotId/available-references
  * Fetch all available reference images for a shot, grouped by asset
  */
@@ -1712,6 +1862,8 @@ router.post('/:projectId/scenes/:sceneId/batch-link-copy', async (req, res) => {
                         prompt_snapshot: `[Batch copy from Shot ${prevShot.shot_id} end frame]`,
                         generated_at: now,
                         previous_frame_id: prevEndFrame.id,
+                        generated_from_frame_id: prevEndFrame.id,
+                        continuity_base_role: 'match_copy',
                         generation_count: genCount + 1,
                         updated_at: now,
                     })
@@ -1729,6 +1881,8 @@ router.post('/:projectId/scenes/:sceneId/batch-link-copy', async (req, res) => {
                         prompt_snapshot: `[Batch copy from Shot ${prevShot.shot_id} end frame]`,
                         generated_at: now,
                         previous_frame_id: prevEndFrame.id,
+                        generated_from_frame_id: prevEndFrame.id,
+                        continuity_base_role: 'match_copy',
                         generation_count: 1,
                     })
                     .select('id')
@@ -1851,6 +2005,8 @@ router.post('/:projectId/scenes/:sceneId/shots/:shotId/copy-frame', async (req, 
             prompt_snapshot: `[Copied from Shot ${sourceShot?.shot_id || 'unknown'} ${sourceFrame.frame_type} frame]`,
             generated_at: now,
             previous_frame_id: sourceFrameId,
+            generated_from_frame_id: sourceFrameId,
+            continuity_base_role: targetFrameType === 'start' ? 'match_copy' : 'manual',
             updated_at: now,
         };
 
@@ -2004,6 +2160,7 @@ router.post('/:projectId/scenes/:sceneId/shots/:shotId/generate-continuity-promp
         const buildShotData = (shot: any) => ({
             id: shot.id,
             shot_id: shot.shot_id,
+            shot_order: shot.shot_order ?? 0,
             duration: shot.duration,
             dialogue: shot.dialogue || '',
             action: shot.action,
@@ -2013,22 +2170,18 @@ router.post('/:projectId/scenes/:sceneId/shots/:shotId/generate-continuity-promp
             camera: shot.camera,
             continuity_flags: shot.continuity_flags,
             beat_reference: shot.beat_reference,
+            camera_distance: shot.camera_distance || undefined,
+            camera_height: shot.camera_height || undefined,
+            camera_movement: shot.camera_movement || undefined,
+            camera_direction_id: shot.camera_direction_id || undefined,
+            location_asset_id: shot.location_asset_id || null,
+            location_match_confidence: shot.location_match_confidence ?? null,
+            location_match_source: shot.location_match_source || null,
+            location_match_notes: shot.location_match_notes || null,
         });
 
-        // Fetch scene assets
-        const { data: sceneAssets } = await supabase
-            .from('scene_asset_instances')
-            .select(`
-                id,
-                description_override,
-                effective_description,
-                status_tags,
-                image_key_url,
-                carry_forward,
-                inherited_from_instance_id,
-                project_asset:project_assets(id, name, asset_type, description, image_key_url)
-            `)
-            .eq('scene_id', sceneId);
+        // Fetch scene assets through the canonical continuity composition path.
+        const assets = await continuityCompositionService.loadSceneAssetsForContinuity(sceneId);
 
         // Fetch style capsule
         let styleCapsule = null;
@@ -2040,22 +2193,6 @@ router.post('/:projectId/scenes/:sceneId/shots/:shotId/generate-continuity-promp
                 // Continue without
             }
         }
-
-        // Transform assets
-        const assets = (sceneAssets || []).map((instance: any) => ({
-            id: instance.id,
-            project_asset: instance.project_asset ? {
-                id: instance.project_asset.id,
-                name: instance.project_asset.name,
-                asset_type: instance.project_asset.asset_type,
-                description: instance.project_asset.description,
-                image_key_url: instance.project_asset.image_key_url || undefined,
-            } : undefined,
-            description_override: instance.description_override,
-            effective_description: instance.effective_description || '',
-            status_tags: instance.status_tags || [],
-            image_key_url: instance.image_key_url || undefined,
-        }));
 
         // Generate continuity prompt
         const continuityPrompt = await promptGenerationService.generateContinuityFramePrompt(

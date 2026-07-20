@@ -3194,7 +3194,7 @@ router.post('/:projectId/assets/:assetId/location-views/:viewId/establish-from-f
     try {
         const userId = req.user!.id;
         const { projectId, assetId, viewId } = req.params;
-        const { frameImageUrl, shotId, sceneId } = req.body;
+        const { frameImageUrl, shotId, sceneId, frameId } = req.body;
 
         if (!frameImageUrl || !shotId || !sceneId) {
             return res.status(400).json({ error: 'frameImageUrl, shotId, and sceneId are required' });
@@ -3249,6 +3249,9 @@ router.post('/:projectId/assets/:assetId/location-views/:viewId/establish-from-f
             established_from_shot_id: shotId,
             updated_at: new Date().toISOString(),
         };
+        if (typeof frameId === 'string' && frameId.length > 0) {
+            updates.promoted_from_frame_id = frameId;
+        }
 
         // Inherit camera metadata from the shot if available
         if (shot?.camera_distance) updates.camera_distance = shot.camera_distance;
@@ -3264,6 +3267,16 @@ router.post('/:projectId/assets/:assetId/location-views/:viewId/establish-from-f
         if (updateError) {
             console.error('[ProjectAssets] Establish view from frame error:', updateError);
             return res.status(500).json({ error: 'Failed to establish view from frame' });
+        }
+
+        if (typeof frameId === 'string' && frameId.length > 0) {
+            await supabase
+                .from('frames')
+                .update({
+                    promoted_to_view_id: view.id,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq('id', frameId);
         }
 
         res.json(view);
