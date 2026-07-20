@@ -12,7 +12,9 @@ import type {
   FrameJobStatus,
   FrameLink,
   GenerationMode,
+  ReferenceImageOrderEntry,
 } from '@/types/scene';
+import type { ContinuityBaseCandidate } from '@/types/locationContinuity';
 
 export interface AdjacentSceneFrame {
   frameId: string;
@@ -48,6 +50,13 @@ export interface GenerateFramesResponse {
 export interface FrameActionResponse {
   success: boolean;
   frame: Frame;
+}
+
+export interface ContinuityBaseSelectionResponse {
+  success: boolean;
+  selectedContinuityBase: ContinuityBaseCandidate | null;
+  candidates?: ContinuityBaseCandidate[];
+  referenceImageOrder?: ReferenceImageOrderEntry[];
 }
 
 export interface InpaintRequest {
@@ -481,7 +490,7 @@ class FrameService {
     sceneId: string,
     shotId: string,
     frameType: 'start' | 'end',
-    referenceImages: { label: string; assetName: string; url: string; type: string }[]
+    referenceImages: ReferenceImageOrderEntry[]
   ): Promise<{ success: boolean }> {
     const headers = await this.getAuthHeaders();
 
@@ -497,6 +506,34 @@ class FrameService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to update reference images');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Select or clear the reuse/edit continuity base for a shot.
+   */
+  async updateContinuityBase(
+    projectId: string,
+    sceneId: string,
+    shotId: string,
+    frameId: string | null
+  ): Promise<ContinuityBaseSelectionResponse> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/shots/${shotId}/continuity-base`,
+      {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(frameId ? { frameId } : { clear: true }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to update continuity base');
     }
 
     return response.json();

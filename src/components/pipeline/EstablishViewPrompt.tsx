@@ -39,6 +39,7 @@ interface EstablishViewPromptProps {
   sceneId: string;
   shotId: string;
   frameImageUrl: string | null;
+  frameId?: string | null;
   frameStatus: string;
   /** The location view for the shot's assigned camera direction */
   directionView: LocationView | null;
@@ -54,6 +55,7 @@ export function EstablishViewPrompt({
   sceneId,
   shotId,
   frameImageUrl,
+  frameId,
   frameStatus,
   directionView,
   locationAssetId,
@@ -82,6 +84,7 @@ export function EstablishViewPrompt({
           frameImageUrl: frameImageUrl!,
           shotId,
           sceneId,
+          ...(frameId ? { frameId } : {}),
         }
       ),
     onSuccess: () => {

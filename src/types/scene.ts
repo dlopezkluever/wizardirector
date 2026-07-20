@@ -1,6 +1,6 @@
 // Aligned with database schema (migration 003)
 import type { ProjectAsset, CameraDistance, CameraHeight } from './asset';
-import type { LocationMatchSource, ShotLocationState } from './locationContinuity';
+import type { GenerationReferenceRole, LocationMatchSource, ShotLocationState } from './locationContinuity';
 
 export type SceneStatus = 
   | 'draft'
@@ -255,10 +255,24 @@ export interface ShotAssetAssignment {
 }
 
 export interface ReferenceImageOrderEntry {
+  id?: string;
   label: string;
   assetName: string;
   url: string;
   type: string;
+  role?: 'identity' | 'style';
+  providerRole?: 'identity' | 'style';
+  referenceRole?: GenerationReferenceRole;
+  reason?: string;
+  source?:
+    | 'scene_asset'
+    | 'project_asset'
+    | 'location_view'
+    | 'approved_frame'
+    | 'generated_frame'
+    | 'blocking_reference'
+    | 'manual_upload'
+    | 'transformation';
 }
 
 export interface PromptSetTransformationContext {
@@ -328,6 +342,9 @@ export interface Frame {
   updatedAt: string;
   generatedAt: string | null;
   approvedAt: string | null;
+  generatedFromFrameId?: string | null;
+  continuityBaseRole?: 'reuse_match' | 'reuse_edit' | 'camera_change_ref' | 'match_copy' | 'manual' | null;
+  promotedToViewId?: string | null;
 }
 
 export interface ShotWithFrames {
@@ -356,6 +373,7 @@ export interface ShotWithFrames {
   locationMatchConfidence?: number | null;
   locationMatchSource?: LocationMatchSource | null;
   locationMatchNotes?: string | null;
+  selectedContinuityBaseFrameId?: string | null;
   startFrame: Frame | null;
   endFrame: Frame | null;
 }

@@ -177,6 +177,7 @@ export interface LocationView {
   source: LocationViewSource;
   established_from_scene?: string;
   established_from_shot_id?: string;
+  promoted_from_frame_id?: string;
   sort_order: number;
   created_at: string;
   updated_at: string;

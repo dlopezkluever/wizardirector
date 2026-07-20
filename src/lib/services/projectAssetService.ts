@@ -482,7 +482,7 @@ class ProjectAssetService {
   /**
    * Promote asset to global library
    */
-  async promoteToGlobal(projectId: string, assetId: string): Promise<any> {
+  async promoteToGlobal(projectId: string, assetId: string): Promise<ProjectAsset> {
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session?.access_token) {
@@ -1176,6 +1176,7 @@ class ProjectAssetService {
       frameImageUrl: string;
       shotId: string;
       sceneId: string;
+      frameId?: string;
     }
   ): Promise<LocationView> {
     const { data: { session } } = await supabase.auth.getSession();
