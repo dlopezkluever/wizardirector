@@ -106,7 +106,7 @@ export interface ReferenceImageOrderEntry {
     | 'style_reference'
     | 'manual_reference';
   reason?: string;
-  source?: 'scene_asset' | 'project_asset' | 'location_view' | 'approved_frame' | 'blocking_reference' | 'manual_upload' | 'transformation';
+  source?: 'scene_asset' | 'project_asset' | 'location_view' | 'approved_frame' | 'generated_frame' | 'blocking_reference' | 'manual_upload' | 'transformation';
 }
 
 export type PresenceType = 'throughout' | 'enters' | 'exits' | 'passes_through';

@@ -11,6 +11,7 @@ import {
   type ShotAssetAssignmentForPrompt,
   type ShotData,
 } from './promptGenerationService.js';
+import type { ContinuityBaseCandidate as RankedContinuityBaseCandidate } from './continuityBaseService.js';
 
 export type ContinuityStrength = 'strong' | 'usable' | 'weak' | 'missing';
 
@@ -80,6 +81,7 @@ export interface GenerationReferenceManifestEntry {
     | 'project_asset'
     | 'location_view'
     | 'approved_frame'
+    | 'generated_frame'
     | 'blocking_reference'
     | 'manual_upload'
     | 'transformation';
@@ -95,6 +97,11 @@ export interface ContinuityBaseCandidate {
   suitability: ContinuityStrength;
   confidence: number;
   reason: string;
+  sourceSceneId?: string | null;
+  sourceSceneNumber?: number | null;
+  status?: 'approved' | 'generated';
+  approvedAt?: string | null;
+  generatedAt?: string | null;
 }
 
 export interface ShotContinuityPreview {
@@ -109,6 +116,7 @@ export interface ShotContinuityPreview {
   adaptationNotes: string[];
   riskNotices: string[];
   continuityBase?: ContinuityBaseCandidate | null;
+  continuityBaseCandidates?: ContinuityBaseCandidate[];
 }
 
 export interface GenerationContinuityPackage {
@@ -125,6 +133,7 @@ export interface GenerationContinuityPackage {
   persistedStartFrameManifest: ReferenceImageOrderEntry[];
   persistedEndFrameManifest: ReferenceImageOrderEntry[];
   selectedContinuityBase?: ContinuityBaseCandidate | null;
+  continuityBaseCandidates?: ContinuityBaseCandidate[];
   preview: ShotContinuityPreview;
   debugMetadata?: Record<string, unknown>;
 }
@@ -137,6 +146,10 @@ export interface ContinuityCompositionInput {
   locationNameById?: Map<string, string>;
   locationImageById?: Map<string, string | null>;
   generationMode?: ShotContinuityPreview['generationMode'];
+  /** Phase 5: optional reuse/edit base frame for Stage 10 continuity workspace */
+  continuityBase?: ContinuityBaseCandidate | RankedContinuityBaseCandidate | null;
+  /** Phase 5: ranked candidates to surface in Stage 9/10 even when none is selected */
+  continuityBaseCandidates?: Array<ContinuityBaseCandidate | RankedContinuityBaseCandidate>;
 }
 
 function numeric(value: unknown): number | null {
@@ -240,22 +253,90 @@ function locationStateFromShot(
   };
 }
 
-function generationModeForShot(shot: ShotData): ShotContinuityPreview['generationMode'] {
+function generationModeForShot(
+  shot: ShotData,
+  hasContinuityBase: boolean
+): ShotContinuityPreview['generationMode'] {
+  if (hasContinuityBase) return 'reuse_edit';
   if (shot.start_continuity === 'match') return 'match_copy';
   if (shot.start_continuity === 'camera_change') return 'camera_change';
   return 'fresh';
 }
 
+function normalizeContinuityBase(
+  base: ContinuityCompositionInput['continuityBase']
+): ContinuityBaseCandidate | null {
+  if (!base) return null;
+  return {
+    frameId: base.frameId,
+    sourceShotId: base.sourceShotId,
+    sourceShotLabel: base.sourceShotLabel,
+    imageUrl: base.imageUrl,
+    sameLocation: base.sameLocation,
+    sameDirection: base.sameDirection,
+    suitability: base.suitability,
+    confidence: base.confidence,
+    reason: base.reason,
+    sourceSceneId: 'sourceSceneId' in base ? (base.sourceSceneId ?? null) : null,
+    sourceSceneNumber: 'sourceSceneNumber' in base ? (base.sourceSceneNumber ?? null) : null,
+    status: 'status' in base ? base.status : undefined,
+    approvedAt: 'approvedAt' in base ? base.approvedAt ?? null : null,
+    generatedAt: 'generatedAt' in base ? base.generatedAt ?? null : null,
+  };
+}
+
+function buildContinuityBaseManifestEntries(
+  base: ContinuityBaseCandidate
+): { manifest: GenerationReferenceManifestEntry; persisted: ReferenceImageOrderEntry } {
+  const label = `Continuity base — Shot ${base.sourceShotLabel}`;
+  const baseLabel = base.status === 'generated' ? 'generated frame' : 'approved frame';
+  const reason = `${base.reason} Use this ${baseLabel} as the visual base; preserve framing and content unless the delta prompt requests changes.`;
+
+  const manifest: GenerationReferenceManifestEntry = {
+    id: `continuity-base-${base.frameId}`,
+    label,
+    assetName: `Shot ${base.sourceShotLabel}`,
+    url: base.imageUrl,
+    assetType: 'continuity',
+    role: 'continuity_base_frame',
+    providerRole: 'identity',
+    reason,
+    source: base.status === 'generated' ? 'generated_frame' : 'approved_frame',
+  };
+
+  const persisted: ReferenceImageOrderEntry = {
+    id: manifest.id,
+    label: manifest.label,
+    assetName: manifest.assetName,
+    url: manifest.url,
+    type: 'continuity',
+    role: 'identity',
+    referenceRole: 'continuity_base_frame',
+    reason,
+    source: base.status === 'generated' ? 'generated_frame' : 'approved_frame',
+  };
+
+  return { manifest, persisted };
+}
+
 function buildFrameInstructions(
   shot: ShotData,
   locationAsset: SceneAssetInstanceData | undefined,
-  referenceManifest: GenerationReferenceManifestEntry[]
+  referenceManifest: GenerationReferenceManifestEntry[],
+  continuityBase: ContinuityBaseCandidate | null
 ): string {
   const locationName = locationAsset?.project_asset?.name || shot.setting || 'the linked location';
   const camera = parseCameraMetadata(shot.camera || '');
   const directionRef = referenceManifest.find(ref => ref.role === 'location_direction_main');
   const fallbackRef = referenceManifest.find(ref => ref.role === 'location_asset_fallback');
   const establishingRef = referenceManifest.find(ref => ref.role === 'location_establishing_context');
+
+  if (continuityBase) {
+    const angleNote = continuityBase.sameDirection
+      ? 'Preserve the same camera angle and framing as the base.'
+      : `Adapt the base toward ${camera.distance} distance and ${camera.height.replace(/_/g, ' ')} height while keeping ${locationName}'s identity stable.`;
+    return `Reuse the approved frame from Shot ${continuityBase.sourceShotLabel} as the primary visual base for ${locationName}. ${angleNote} Apply the delta prompt to change only what the new shot requires; everything not described as changing should match the base exactly.`;
+  }
 
   if (directionRef) {
     return `Use ${locationName} from the assigned direction reference as the background identity. Frame the shot as ${camera.distance} distance, ${camera.height.replace(/_/g, ' ')} height, with ${camera.movement.replace(/_/g, ' ')} movement reserved for video.`;
@@ -275,8 +356,20 @@ function buildFrameInstructions(
 function buildContinuityInstructions(
   shot: ShotData,
   generationMode: ShotContinuityPreview['generationMode'],
-  referenceManifest: GenerationReferenceManifestEntry[]
+  referenceManifest: GenerationReferenceManifestEntry[],
+  continuityBase: ContinuityBaseCandidate | null
 ): string | null {
+  if (generationMode === 'reuse_edit' && continuityBase) {
+    const locationRefs = referenceManifest
+      .filter(ref => ref.assetType === 'location')
+      .map(ref => `${ref.label}: ${ref.reason}`)
+      .join(' ');
+    const directionNote = continuityBase.sameDirection
+      ? 'Same camera direction as the base; preserve framing exactly.'
+      : 'Adapt camera framing per the shot prompt while keeping subject identity, lighting, and location appearance from the base.';
+    return `Edit-from-existing for Shot ${shot.shot_id}. Base: approved frame from Shot ${continuityBase.sourceShotLabel}. ${directionNote} Carry these canonical location references for environment fidelity: ${locationRefs || 'no location reference images available'}.`;
+  }
+
   if (generationMode !== 'camera_change') return null;
   const locationRefs = referenceManifest
     .filter(ref => ref.assetType === 'location')
@@ -317,11 +410,20 @@ function buildFallbackChain(
 function buildAdaptationNotes(
   shot: ShotData,
   locationAsset: SceneAssetInstanceData | undefined,
-  manifest: GenerationReferenceManifestEntry[]
+  manifest: GenerationReferenceManifestEntry[],
+  continuityBase: ContinuityBaseCandidate | null
 ): string[] {
   const notes: string[] = [];
   const delta = locationAsset?.location_delta_description;
   if (delta) notes.push(delta);
+
+  if (continuityBase) {
+    notes.push(
+      continuityBase.sameDirection
+        ? `Reusing approved frame from Shot ${continuityBase.sourceShotLabel}; carry framing forward and apply only the changes named in the delta prompt.`
+        : `Reusing approved frame from Shot ${continuityBase.sourceShotLabel}; let the base anchor identity and lighting while the delta prompt drives framing changes.`
+    );
+  }
 
   if (!shot.camera_direction_id && manifest.some(ref => ref.role === 'location_asset_fallback')) {
     notes.push('No camera direction is assigned, so the generator will adapt from the best available location fallback.');
@@ -367,8 +469,15 @@ function strengthFromPackage(
   shot: ShotData,
   locationAsset: SceneAssetInstanceData | undefined,
   manifest: GenerationReferenceManifestEntry[],
-  risks: string[]
+  risks: string[],
+  continuityBase: ContinuityBaseCandidate | null
 ): ContinuityStrength {
+  if (continuityBase) {
+    // A reuse base materially strengthens continuity even when location refs are weak.
+    if (continuityBase.suitability === 'strong') return risks.length ? 'usable' : 'strong';
+    if (continuityBase.suitability === 'usable') return 'usable';
+    if (continuityBase.suitability === 'weak') return 'weak';
+  }
   if (!shot.location_asset_id) return 'missing';
   if (!locationAsset) return 'missing';
   if (!manifest.some(ref => ref.assetType === 'location')) return 'weak';
@@ -504,6 +613,7 @@ export class ContinuityCompositionService {
     const enrichedAssets = enrichAssetsWithAngleMatch(scopedAssets, input.shot.camera, input.shot);
     const locationAsset = enrichedAssets.find(asset => asset.project_asset?.asset_type === 'location');
     const direction = locationAsset?.matched_direction_view;
+    const continuityBase = normalizeContinuityBase(input.continuityBase);
 
     let startFrameManifest = '';
     let endFrameManifest = '';
@@ -522,14 +632,26 @@ export class ContinuityCompositionService {
       startFrameImageOrder = manifest.imageOrder;
     }
 
-    const startEntries = startFrameImageOrder.map(toManifestEntry);
+    let startEntries = startFrameImageOrder.map(toManifestEntry);
     const endEntries = endFrameImageOrder.map(toManifestEntry);
+
+    // Phase 5: continuity base goes first as the primary identity reference.
+    if (continuityBase) {
+      const baseEntries = buildContinuityBaseManifestEntries(continuityBase);
+      startEntries = [baseEntries.manifest, ...startEntries];
+      startFrameImageOrder = [baseEntries.persisted, ...startFrameImageOrder];
+    }
+
     const locationState = locationStateFromShot(input.shot, locationAsset, direction, input);
-    const generationMode = input.generationMode || generationModeForShot(input.shot);
+    const generationMode = input.generationMode || generationModeForShot(input.shot, !!continuityBase);
     const riskNotices = buildRiskNotices(input.shot, locationAsset, startEntries);
-    const strength = strengthFromPackage(input.shot, locationAsset, startEntries, riskNotices);
-    const framePromptInstructions = buildFrameInstructions(input.shot, locationAsset, startEntries);
-    const continuityPromptInstructions = buildContinuityInstructions(input.shot, generationMode, startEntries);
+    const strength = strengthFromPackage(input.shot, locationAsset, startEntries, riskNotices, continuityBase);
+    const framePromptInstructions = buildFrameInstructions(input.shot, locationAsset, startEntries, continuityBase);
+    const continuityPromptInstructions = buildContinuityInstructions(input.shot, generationMode, startEntries, continuityBase);
+
+    const candidates = (input.continuityBaseCandidates || [])
+      .map(normalizeContinuityBase)
+      .filter((c): c is ContinuityBaseCandidate => c !== null);
 
     const preview: ShotContinuityPreview = {
       shotId: input.shot.id,
@@ -540,9 +662,10 @@ export class ContinuityCompositionService {
       generationMode,
       referenceManifest: startEntries,
       fallbackChain: buildFallbackChain(input.shot, locationAsset, startEntries),
-      adaptationNotes: buildAdaptationNotes(input.shot, locationAsset, startEntries),
+      adaptationNotes: buildAdaptationNotes(input.shot, locationAsset, startEntries, continuityBase),
       riskNotices,
-      continuityBase: null,
+      continuityBase,
+      continuityBaseCandidates: candidates,
     };
 
     return {
@@ -558,7 +681,8 @@ export class ContinuityCompositionService {
       })),
       persistedStartFrameManifest: startFrameImageOrder,
       persistedEndFrameManifest: endFrameImageOrder,
-      selectedContinuityBase: null,
+      selectedContinuityBase: continuityBase,
+      continuityBaseCandidates: candidates,
       preview,
       debugMetadata: {
         startFrameManifest,
@@ -566,6 +690,7 @@ export class ContinuityCompositionService {
         scopedAssetCount: scopedAssets.length,
         enrichedAssetCount: enrichedAssets.length,
         locationReferenceStrategy: locationAsset?.location_reference_strategy || 'none',
+        continuityBaseFrameId: continuityBase?.frameId || null,
       },
     };
   }
