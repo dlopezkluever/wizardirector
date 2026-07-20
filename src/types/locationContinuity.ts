@@ -157,6 +157,7 @@ export interface GenerationReferenceManifestEntry {
     | 'project_asset'
     | 'location_view'
     | 'approved_frame'
+    | 'generated_frame'
     | 'blocking_reference'
     | 'manual_upload'
     | 'transformation';
@@ -172,6 +173,11 @@ export interface ContinuityBaseCandidate {
   suitability: ContinuityStrength;
   confidence: number;
   reason: string;
+  sourceSceneId?: string | null;
+  sourceSceneNumber?: number | null;
+  status?: 'approved' | 'generated';
+  approvedAt?: string | null;
+  generatedAt?: string | null;
 }
 
 export interface ShotContinuityPreview {
@@ -186,6 +192,7 @@ export interface ShotContinuityPreview {
   adaptationNotes: string[];
   riskNotices: string[];
   continuityBase?: ContinuityBaseCandidate | null;
+  continuityBaseCandidates?: ContinuityBaseCandidate[];
 }
 
 export interface GenerationContinuityPackage {
@@ -202,6 +209,30 @@ export interface GenerationContinuityPackage {
   persistedStartFrameManifest: GenerationReferenceManifestEntry[];
   persistedEndFrameManifest: GenerationReferenceManifestEntry[];
   selectedContinuityBase?: ContinuityBaseCandidate | null;
+  continuityBaseCandidates?: ContinuityBaseCandidate[];
   preview: ShotContinuityPreview;
   debugMetadata?: Record<string, unknown>;
+}
+
+export interface ContinuityMetricsResponse {
+  continuityMode: 'basic' | 'advanced';
+  scope: 'project' | 'scene';
+  totals: {
+    totalScenes: number;
+    totalShots: number;
+    unresolvedBaselineLocations: number;
+    ambiguousBaselineLocations: number;
+    directionCoverageGaps: number;
+    fallbackReferenceShots: number;
+    weakReferenceShots: number;
+    selectedContinuityBaseShots: number;
+    generatedFromBaseFrames: number;
+    stage10ReuseRate: number;
+  };
+  suggestions: string[];
+  strictValidation: {
+    enabled: boolean;
+    canProceed: boolean;
+    issues: string[];
+  };
 }

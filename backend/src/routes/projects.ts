@@ -25,6 +25,7 @@ import {
   type LocationCoverageViewInput,
 } from '../services/locationCoverageService.js';
 import { continuityCompositionService } from '../services/continuityCompositionService.js';
+import { continuityBaseService } from '../services/continuityBaseService.js';
 
 const router = Router();
 
@@ -3126,6 +3127,7 @@ router.get('/:id/scenes/:sceneId/continuity-preview', async (req, res) => {
         location_match_confidence,
         location_match_source,
         location_match_notes,
+        selected_continuity_base_frame_id,
         start_continuity
       `)
       .eq('scene_id', sceneId)
@@ -3179,6 +3181,28 @@ router.get('/:id/scenes/:sceneId/continuity-preview', async (req, res) => {
       console.warn('[Stage9] Failed to fetch shot assignments for continuity preview:', assignErr);
     }
 
+    const continuityBaseCandidatesByShotId = new Map<string, Awaited<ReturnType<typeof continuityBaseService.listCandidates>>>();
+    const selectedContinuityBaseByShotId = new Map<string, Awaited<ReturnType<typeof continuityBaseService.pickCandidateById>>>();
+    for (const shot of (shots || []) as Record<string, unknown>[]) {
+      const shotId = asString(shot.id);
+      const candidates = await continuityBaseService.listCandidates({
+        projectId,
+        branchId: project.active_branch_id,
+        sceneId,
+        shotId,
+        locationAssetId: asNullableString(shot.location_asset_id),
+        cameraDirectionId: asNullableString(shot.camera_direction_id),
+      });
+      continuityBaseCandidatesByShotId.set(shotId, candidates);
+      selectedContinuityBaseByShotId.set(
+        shotId,
+        await continuityBaseService.pickCandidateById(
+          candidates,
+          asNullableString(shot.selected_continuity_base_frame_id)
+        )
+      );
+    }
+
     const packages = continuityCompositionService.buildGenerationPackages(
       ((shots || []) as Record<string, unknown>[]).map(shot => ({
         shot: {
@@ -3211,6 +3235,8 @@ router.get('/:id/scenes/:sceneId/continuity-preview', async (req, res) => {
         sceneExpectedLocation: asNullableString(scene.expected_location),
         locationNameById,
         locationImageById,
+        continuityBaseCandidates: continuityBaseCandidatesByShotId.get(asString(shot.id)) || [],
+        continuityBase: selectedContinuityBaseByShotId.get(asString(shot.id)) || null,
       }))
     );
 

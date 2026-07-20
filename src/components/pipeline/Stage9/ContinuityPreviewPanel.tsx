@@ -85,9 +85,21 @@ export function ContinuityPreviewPanel({ preview, isLoading, onRepairInStage8 }:
     );
   }
 
-  const { locationState, direction, strength, referenceManifest, fallbackChain, adaptationNotes, riskNotices, generationMode } = preview;
+  const {
+    locationState,
+    direction,
+    strength,
+    referenceManifest,
+    fallbackChain,
+    adaptationNotes,
+    riskNotices,
+    generationMode,
+    continuityBase,
+    continuityBaseCandidates = [],
+  } = preview;
   const hasReferences = referenceManifest.length > 0;
   const showRepair = (strength === 'weak' || strength === 'missing' || riskNotices.length > 0) && !!onRepairInStage8;
+  const topBaseCandidate = continuityBaseCandidates[0];
 
   return (
     <div className="rounded-lg border border-border/40 bg-card/30 p-3 space-y-3">
@@ -126,6 +138,31 @@ export function ContinuityPreviewPanel({ preview, isLoading, onRepairInStage8 }:
           </Button>
         )}
       </div>
+
+      {(continuityBase || topBaseCandidate) && (
+        <div className="rounded-md border border-border/30 bg-background/25 p-2 flex items-center gap-2">
+          <div className="w-12 h-9 rounded overflow-hidden bg-muted/50 shrink-0">
+            <img
+              src={(continuityBase || topBaseCandidate)!.imageUrl}
+              alt=""
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
+                {continuityBase ? 'Selected base' : 'Suggested base'}
+              </Badge>
+              <span className="text-xs text-foreground truncate">
+                Shot {(continuityBase || topBaseCandidate)!.sourceShotLabel}
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-foreground truncate">
+              {(continuityBase || topBaseCandidate)!.reason}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Reference manifest */}
       <div>
