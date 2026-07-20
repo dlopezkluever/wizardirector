@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase';
 import type { Shot } from '@/types/scene';
 import type {
   LocationCoverageResponse,
+  ContinuityMetricsResponse,
   GenerationContinuityPackage,
   ShotContinuityPreview,
 } from '@/types/locationContinuity';
@@ -103,6 +104,76 @@ class LocationContinuityService {
 
     if (!response.ok) {
       throw await parseError(response, 'Failed to fetch continuity preview');
+    }
+
+    return response.json();
+  }
+
+  async fetchContinuityMode(projectId: string): Promise<'basic' | 'advanced'> {
+    const token = await getAccessToken();
+    const response = await fetch(
+      `/api/projects/${projectId}/continuity-mode`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw await parseError(response, 'Failed to fetch continuity mode');
+    }
+
+    const result = await response.json();
+    return result.continuityMode === 'advanced' ? 'advanced' : 'basic';
+  }
+
+  async updateContinuityMode(
+    projectId: string,
+    continuityMode: 'basic' | 'advanced'
+  ): Promise<'basic' | 'advanced'> {
+    const token = await getAccessToken();
+    const response = await fetch(
+      `/api/projects/${projectId}/continuity-mode`,
+      {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ continuityMode }),
+      }
+    );
+
+    if (!response.ok) {
+      throw await parseError(response, 'Failed to update continuity mode');
+    }
+
+    const result = await response.json();
+    return result.continuityMode === 'advanced' ? 'advanced' : 'basic';
+  }
+
+  async fetchContinuityMetrics(
+    projectId: string,
+    sceneId?: string
+  ): Promise<ContinuityMetricsResponse> {
+    const token = await getAccessToken();
+    const params = sceneId ? `?${new URLSearchParams({ sceneId }).toString()}` : '';
+    const response = await fetch(
+      `/api/projects/${projectId}/continuity-metrics${params}`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw await parseError(response, 'Failed to fetch continuity metrics');
     }
 
     return response.json();

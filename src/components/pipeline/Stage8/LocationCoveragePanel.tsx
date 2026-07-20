@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   AlertTriangle,
@@ -126,6 +126,28 @@ export function LocationCoveragePanel({ projectId, sceneId }: LocationCoveragePa
   const [generatingViewIds, setGeneratingViewIds] = useState<Set<string>>(new Set());
   const [creatingLocationIds, setCreatingLocationIds] = useState<Set<string>>(new Set());
   const [establishingShotIds, setEstablishingShotIds] = useState<Set<string>>(new Set());
+
+  const continuityModeQuery = useQuery({
+    queryKey: ['continuity-mode', projectId],
+    queryFn: () => locationContinuityService.fetchContinuityMode(projectId),
+    enabled: Boolean(projectId),
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if (continuityModeQuery.data) {
+      setContinuityMode(continuityModeQuery.data);
+    }
+  }, [continuityModeQuery.data]);
+
+  const updateContinuityModeMutation = useMutation({
+    mutationFn: (mode: 'basic' | 'advanced') => locationContinuityService.updateContinuityMode(projectId, mode),
+    onSuccess: (mode) => {
+      setContinuityMode(mode);
+      queryClient.invalidateQueries({ queryKey: ['continuity-mode', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['continuity-metrics', projectId, sceneId] });
+    },
+  });
 
   const coverageQuery = useQuery({
     queryKey: ['location-coverage', projectId, sceneId, continuityMode],
@@ -352,7 +374,8 @@ export function LocationCoveragePanel({ projectId, sceneId }: LocationCoveragePa
                   ? 'bg-primary text-primary-foreground'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
-              onClick={() => setContinuityMode('basic')}
+              onClick={() => updateContinuityModeMutation.mutate('basic')}
+              disabled={updateContinuityModeMutation.isPending}
             >
               Basic
             </button>
@@ -363,7 +386,8 @@ export function LocationCoveragePanel({ projectId, sceneId }: LocationCoveragePa
                   ? 'bg-primary text-primary-foreground'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
-              onClick={() => setContinuityMode('advanced')}
+              onClick={() => updateContinuityModeMutation.mutate('advanced')}
+              disabled={updateContinuityModeMutation.isPending}
             >
               Advanced
             </button>

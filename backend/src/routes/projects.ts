@@ -806,6 +806,209 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// GET /api/projects/:id/continuity-mode - Read project continuity disclosure mode
+router.get('/:id/continuity-mode', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    const { data: project, error } = await supabase
+      .from('projects')
+      .select('id, continuity_mode')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !project) return res.status(404).json({ error: 'Project not found' });
+
+    res.json({ continuityMode: project.continuity_mode || 'basic' });
+  } catch (error) {
+    console.error('Error in GET /api/projects/:id/continuity-mode:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/projects/:id/continuity-mode - Set basic/advanced continuity mode
+router.put('/:id/continuity-mode', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { continuityMode } = req.body || {};
+    const userId = req.user!.id;
+
+    if (!['basic', 'advanced'].includes(continuityMode)) {
+      return res.status(400).json({ error: 'continuityMode must be basic or advanced' });
+    }
+
+    const { data: project, error } = await supabase
+      .from('projects')
+      .update({
+        continuity_mode: continuityMode,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('id, continuity_mode')
+      .single();
+
+    if (error || !project) return res.status(404).json({ error: 'Project not found' });
+
+    res.json({ continuityMode: project.continuity_mode || 'basic' });
+  } catch (error) {
+    console.error('Error in PUT /api/projects/:id/continuity-mode:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/projects/:id/continuity-metrics - Phase 6/7 continuity health summary
+router.get('/:id/continuity-metrics', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+    const sceneFilter = asNullableString(req.query.sceneId);
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id, continuity_mode')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) return res.status(404).json({ error: 'Project not found' });
+
+    let scenesQuery = supabase
+      .from('scenes')
+      .select('id, scene_number')
+      .eq('branch_id', project.active_branch_id);
+    if (sceneFilter) scenesQuery = scenesQuery.eq('id', sceneFilter);
+
+    const { data: scenes, error: scenesError } = await scenesQuery;
+    if (scenesError) return res.status(500).json({ error: 'Failed to fetch scenes' });
+
+    const sceneIds = (scenes || []).map(scene => asString(scene.id)).filter(Boolean);
+    if (sceneIds.length === 0) {
+      return res.json({
+        continuityMode: project.continuity_mode || 'basic',
+        scope: sceneFilter ? 'scene' : 'project',
+        totals: {
+          totalScenes: 0,
+          totalShots: 0,
+          unresolvedBaselineLocations: 0,
+          ambiguousBaselineLocations: 0,
+          directionCoverageGaps: 0,
+          fallbackReferenceShots: 0,
+          weakReferenceShots: 0,
+          selectedContinuityBaseShots: 0,
+          generatedFromBaseFrames: 0,
+          stage10ReuseRate: 0,
+        },
+        suggestions: [],
+        strictValidation: { enabled: project.continuity_mode === 'advanced', canProceed: true, issues: [] },
+      });
+    }
+
+    const { data: shots, error: shotsError } = await supabase
+      .from('shots')
+      .select('id, scene_id, location_asset_id, location_match_source, location_match_confidence, camera_direction_id, reference_image_order, selected_continuity_base_frame_id')
+      .in('scene_id', sceneIds);
+
+    if (shotsError) return res.status(500).json({ error: 'Failed to fetch shots' });
+
+    const shotRows = (shots || []) as Record<string, unknown>[];
+    const shotIds = shotRows.map(shot => asString(shot.id)).filter(Boolean);
+    let generatedFromBaseFrames = 0;
+    if (shotIds.length > 0) {
+      const { data: lineageFrames } = await supabase
+        .from('frames')
+        .select('id')
+        .in('shot_id', shotIds)
+        .not('generated_from_frame_id', 'is', null);
+      generatedFromBaseFrames = lineageFrames?.length || 0;
+    }
+
+    const locationCounts = new Map<string, number>();
+    let unresolvedBaselineLocations = 0;
+    let ambiguousBaselineLocations = 0;
+    let directionCoverageGaps = 0;
+    let fallbackReferenceShots = 0;
+    let weakReferenceShots = 0;
+    let selectedContinuityBaseShots = 0;
+
+    for (const shot of shotRows) {
+      const locationAssetId = asNullableString(shot.location_asset_id);
+      if (!locationAssetId) {
+        unresolvedBaselineLocations += 1;
+        weakReferenceShots += 1;
+      } else {
+        locationCounts.set(locationAssetId, (locationCounts.get(locationAssetId) || 0) + 1);
+      }
+
+      if (asNullableString(shot.location_match_source) === 'ambiguous') {
+        ambiguousBaselineLocations += 1;
+      }
+      if (locationAssetId && !asNullableString(shot.camera_direction_id)) {
+        directionCoverageGaps += 1;
+      }
+      if (asNullableString(shot.selected_continuity_base_frame_id)) {
+        selectedContinuityBaseShots += 1;
+      }
+
+      const refs = Array.isArray(shot.reference_image_order) ? shot.reference_image_order as Array<Record<string, unknown>> : [];
+      if (refs.some(ref => ref.referenceRole === 'location_asset_fallback')) {
+        fallbackReferenceShots += 1;
+      }
+      if (locationAssetId && !refs.some(ref => String(ref.type) === 'location' || String(ref.referenceRole || '').startsWith('location_'))) {
+        weakReferenceShots += 1;
+      }
+    }
+
+    const suggestions: string[] = [];
+    const repeatedLocationCount = Math.max(0, ...Array.from(locationCounts.values()));
+    if (repeatedLocationCount >= 4 && project.continuity_mode !== 'advanced') {
+      suggestions.push('Several shots share one location; Advanced Continuity can reduce background drift.');
+    }
+    if (fallbackReferenceShots > 0) {
+      suggestions.push('Some shots are using fallback location references; Stage 8 direction coverage would strengthen them.');
+    }
+    if (selectedContinuityBaseShots === 0 && generatedFromBaseFrames === 0 && shotRows.length >= 3) {
+      suggestions.push('Approved frames can be reused as Stage 10 continuity bases once the first strong frame is available.');
+    }
+
+    const strictIssues: string[] = [];
+    if (project.continuity_mode === 'advanced') {
+      if (unresolvedBaselineLocations > 0) strictIssues.push(`${unresolvedBaselineLocations} shot(s) need canonical locations.`);
+      if (directionCoverageGaps > 0) strictIssues.push(`${directionCoverageGaps} shot(s) need camera direction assignments.`);
+      if (weakReferenceShots > 0) strictIssues.push(`${weakReferenceShots} shot(s) have weak or missing generation references.`);
+    }
+
+    const totalShots = shotRows.length;
+    res.json({
+      continuityMode: project.continuity_mode || 'basic',
+      scope: sceneFilter ? 'scene' : 'project',
+      totals: {
+        totalScenes: sceneIds.length,
+        totalShots,
+        unresolvedBaselineLocations,
+        ambiguousBaselineLocations,
+        directionCoverageGaps,
+        fallbackReferenceShots,
+        weakReferenceShots,
+        selectedContinuityBaseShots,
+        generatedFromBaseFrames,
+        stage10ReuseRate: totalShots > 0 ? selectedContinuityBaseShots / totalShots : 0,
+      },
+      suggestions,
+      strictValidation: {
+        enabled: project.continuity_mode === 'advanced',
+        canProceed: strictIssues.length === 0,
+        issues: strictIssues,
+      },
+    });
+  } catch (error) {
+    console.error('Error in GET /api/projects/:id/continuity-metrics:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/projects/:id/scenes - Fetch all scenes for a project's active branch
 router.get('/:id/scenes', async (req, res) => {
   try {
