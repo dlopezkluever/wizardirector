@@ -29,6 +29,20 @@ export interface ContinuityBaseQuery {
   limit?: number;
 }
 
+export interface ContinuityBaseShotQuery {
+  shotId: string;
+  locationAssetId: string | null;
+  cameraDirectionId: string | null;
+}
+
+export interface ContinuityBaseBatchQuery {
+  projectId: string;
+  branchId: string;
+  sceneId: string;
+  shots: ContinuityBaseShotQuery[];
+  limitPerShot?: number;
+}
+
 interface ApprovedFrameRow {
   id: string;
   image_url: string | null;
@@ -70,7 +84,58 @@ export class ContinuityBaseService {
     if (!query.locationAssetId) return [];
 
     const limit = query.limit ?? DEFAULT_CANDIDATE_LIMIT;
+    const rows = await this.fetchCandidateRows(query.branchId);
+    const candidates = this.rankRows(rows, {
+      shotId: query.shotId,
+      locationAssetId: query.locationAssetId,
+      cameraDirectionId: query.cameraDirectionId,
+      sceneId: query.sceneId,
+      branchId: query.branchId,
+    });
 
+    return candidates.slice(0, limit);
+  }
+
+  /**
+   * Batched form of listCandidates: fetches the branch's candidate frames exactly
+   * once, then ranks per shot in memory. Use this for any route that needs
+   * candidates for more than one shot (e.g. a scene's continuity preview) —
+   * calling listCandidates() in a per-shot loop re-fetches every start frame in
+   * the branch on every iteration.
+   */
+  async listCandidatesForShots(
+    query: ContinuityBaseBatchQuery
+  ): Promise<Map<string, ContinuityBaseCandidate[]>> {
+    const limit = query.limitPerShot ?? DEFAULT_CANDIDATE_LIMIT;
+    const results = new Map<string, ContinuityBaseCandidate[]>();
+
+    const shotsNeedingCandidates = query.shots.filter(shot => !!shot.locationAssetId);
+    if (shotsNeedingCandidates.length === 0) {
+      for (const shot of query.shots) results.set(shot.shotId, []);
+      return results;
+    }
+
+    const rows = await this.fetchCandidateRows(query.branchId);
+
+    for (const shot of query.shots) {
+      if (!shot.locationAssetId) {
+        results.set(shot.shotId, []);
+        continue;
+      }
+      const candidates = this.rankRows(rows, {
+        shotId: shot.shotId,
+        locationAssetId: shot.locationAssetId,
+        cameraDirectionId: shot.cameraDirectionId,
+        sceneId: query.sceneId,
+        branchId: query.branchId,
+      });
+      results.set(shot.shotId, candidates.slice(0, limit));
+    }
+
+    return results;
+  }
+
+  private async fetchCandidateRows(branchId: string): Promise<ApprovedFrameRow[]> {
     const { data, error } = await supabase
       .from('frames')
       .select(`
@@ -96,7 +161,7 @@ export class ContinuityBaseService {
       `)
       .eq('frame_type', 'start')
       .in('status', ['approved', 'generated'])
-      .eq('shots.scenes.branch_id', query.branchId)
+      .eq('shots.scenes.branch_id', branchId)
       .not('image_url', 'is', null);
 
     if (error) {
@@ -104,8 +169,13 @@ export class ContinuityBaseService {
       return [];
     }
 
-    const rows = (data || []) as unknown as ApprovedFrameRow[];
+    return (data || []) as unknown as ApprovedFrameRow[];
+  }
 
+  private rankRows(
+    rows: ApprovedFrameRow[],
+    query: { shotId: string; locationAssetId: string | null; cameraDirectionId: string | null; sceneId: string; branchId: string }
+  ): ContinuityBaseCandidate[] {
     const candidates: ContinuityBaseCandidate[] = [];
     for (const row of rows) {
       const shot = row.shots;
@@ -192,7 +262,7 @@ export class ContinuityBaseService {
       return bTs.localeCompare(aTs);
     });
 
-    return candidates.slice(0, limit);
+    return candidates;
   }
 
   async pickCandidateById(

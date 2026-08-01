@@ -3384,19 +3384,20 @@ router.get('/:id/scenes/:sceneId/continuity-preview', async (req, res) => {
       console.warn('[Stage9] Failed to fetch shot assignments for continuity preview:', assignErr);
     }
 
-    const continuityBaseCandidatesByShotId = new Map<string, Awaited<ReturnType<typeof continuityBaseService.listCandidates>>>();
+    const continuityBaseCandidatesByShotId = await continuityBaseService.listCandidatesForShots({
+      projectId,
+      branchId: project.active_branch_id,
+      sceneId,
+      shots: ((shots || []) as Record<string, unknown>[]).map(shot => ({
+        shotId: asString(shot.id),
+        locationAssetId: asNullableString(shot.location_asset_id),
+        cameraDirectionId: asNullableString(shot.camera_direction_id),
+      })),
+    });
     const selectedContinuityBaseByShotId = new Map<string, Awaited<ReturnType<typeof continuityBaseService.pickCandidateById>>>();
     for (const shot of (shots || []) as Record<string, unknown>[]) {
       const shotId = asString(shot.id);
-      const candidates = await continuityBaseService.listCandidates({
-        projectId,
-        branchId: project.active_branch_id,
-        sceneId,
-        shotId,
-        locationAssetId: asNullableString(shot.location_asset_id),
-        cameraDirectionId: asNullableString(shot.camera_direction_id),
-      });
-      continuityBaseCandidatesByShotId.set(shotId, candidates);
+      const candidates = continuityBaseCandidatesByShotId.get(shotId) || [];
       selectedContinuityBaseByShotId.set(
         shotId,
         await continuityBaseService.pickCandidateById(
