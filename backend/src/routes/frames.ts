@@ -1522,9 +1522,37 @@ router.put('/:projectId/scenes/:sceneId/shots/:shotId/reference-images', async (
 
         // Update the appropriate column
         const column = frameType === 'start' ? 'reference_image_order' : 'end_frame_reference_image_order';
+        const updates: Record<string, unknown> = { [column]: referenceImages, updated_at: new Date().toISOString() };
+
+        if (frameType === 'start') {
+            const { data: shotRow } = await supabase
+                .from('shots')
+                .select('selected_continuity_base_frame_id')
+                .eq('id', shotId)
+                .eq('scene_id', sceneId)
+                .single();
+
+            const selectedBaseFrameId = shotRow?.selected_continuity_base_frame_id || null;
+            const baseEntry = (referenceImages as Stage10ReferenceOrderEntry[]).find(
+                entry => entry.referenceRole === 'continuity_base_frame'
+            );
+
+            if (selectedBaseFrameId && baseEntry && baseEntry.id !== `continuity-base-${selectedBaseFrameId}`) {
+                return res.status(400).json({
+                    error: 'continuity_base_frame entry does not match the shot\'s selected continuity base',
+                });
+            }
+
+            if (selectedBaseFrameId && !baseEntry) {
+                // User removed the base entry via the reference editor — clear the selection so
+                // fetchShotReferenceImageContext doesn't silently re-prepend a base the user unpicked.
+                updates.selected_continuity_base_frame_id = null;
+            }
+        }
+
         const { error: updateError } = await supabase
             .from('shots')
-            .update({ [column]: referenceImages, updated_at: new Date().toISOString() })
+            .update(updates)
             .eq('id', shotId)
             .eq('scene_id', sceneId);
 
