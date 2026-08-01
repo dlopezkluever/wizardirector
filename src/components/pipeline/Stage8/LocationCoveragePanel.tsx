@@ -17,10 +17,12 @@ import {
   ChevronRight,
   Eye,
   Image as ImageIcon,
+  Lightbulb,
   Loader2,
   MapPin,
   Plus,
   Sparkles,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -126,6 +128,7 @@ export function LocationCoveragePanel({ projectId, sceneId }: LocationCoveragePa
   const [generatingViewIds, setGeneratingViewIds] = useState<Set<string>>(new Set());
   const [creatingLocationIds, setCreatingLocationIds] = useState<Set<string>>(new Set());
   const [establishingShotIds, setEstablishingShotIds] = useState<Set<string>>(new Set());
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
 
   const continuityModeQuery = useQuery({
     queryKey: ['continuity-mode', projectId],
@@ -157,6 +160,22 @@ export function LocationCoveragePanel({ projectId, sceneId }: LocationCoveragePa
 
   const coverage = coverageQuery.data;
   const locations = useMemo(() => coverage?.locations ?? [], [coverage]);
+
+  const continuityMetricsQuery = useQuery({
+    queryKey: ['continuity-metrics', projectId, sceneId],
+    queryFn: () => locationContinuityService.fetchContinuityMetrics(projectId, sceneId),
+    enabled: Boolean(projectId && sceneId) && continuityMode === 'basic',
+    staleTime: 30_000,
+  });
+
+  const visibleSuggestions = useMemo(
+    () => (continuityMetricsQuery.data?.suggestions ?? []).filter(s => !dismissedSuggestions.has(s)),
+    [continuityMetricsQuery.data, dismissedSuggestions]
+  );
+
+  const dismissSuggestion = useCallback((suggestion: string) => {
+    setDismissedSuggestions(prev => new Set(prev).add(suggestion));
+  }, []);
 
   const approvedFramesQuery = useQuery({
     queryKey: ['stage8-approved-frames', projectId, sceneId],
@@ -396,6 +415,10 @@ export function LocationCoveragePanel({ projectId, sceneId }: LocationCoveragePa
       </div>
 
       <div className="px-4 pb-4 space-y-3">
+        {continuityMode === 'basic' && visibleSuggestions.length > 0 && (
+          <SuggestionsStrip suggestions={visibleSuggestions} onDismiss={dismissSuggestion} />
+        )}
+
         <CoverageSummaryStrip coverage={coverage} />
 
         {coverage.unresolvedShots.length > 0 && (
@@ -491,6 +514,36 @@ function SummaryMetric({
       <div className={`text-sm font-medium ${tone === 'warning' ? 'text-amber-300' : 'text-foreground'}`}>
         {value}
       </div>
+    </div>
+  );
+}
+
+function SuggestionsStrip({
+  suggestions,
+  onDismiss,
+}: {
+  suggestions: string[];
+  onDismiss: (suggestion: string) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      {suggestions.map(suggestion => (
+        <div
+          key={suggestion}
+          className="flex items-start gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2"
+        >
+          <Lightbulb className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+          <span className="text-xs text-foreground flex-1">{suggestion}</span>
+          <button
+            type="button"
+            onClick={() => onDismiss(suggestion)}
+            className="text-muted-foreground hover:text-foreground shrink-0"
+            aria-label="Dismiss suggestion"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

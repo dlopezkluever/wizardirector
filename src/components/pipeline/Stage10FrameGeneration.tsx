@@ -958,10 +958,25 @@ export function Stage10FrameGeneration({
             ))}
           </div>
           {continuityMetrics?.strictValidation.enabled && continuityMetrics.strictValidation.issues.length > 0 && (
-            <Badge variant="outline" className="text-[10px] text-amber-300 border-amber-500/30">
-              <AlertCircle className="w-3 h-3 mr-1" />
-              {continuityMetrics.strictValidation.issues.length} strict issue{continuityMetrics.strictValidation.issues.length === 1 ? '' : 's'}
-            </Badge>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Badge
+                  variant="outline"
+                  className="text-[10px] text-amber-300 border-amber-500/30 cursor-pointer"
+                >
+                  <AlertCircle className="w-3 h-3 mr-1" />
+                  {continuityMetrics.strictValidation.issues.length} strict issue{continuityMetrics.strictValidation.issues.length === 1 ? '' : 's'}
+                </Badge>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 text-xs space-y-1.5" align="start">
+                <p className="font-medium text-foreground">Blocking Lock & Proceed:</p>
+                <ul className="space-y-1 list-disc pl-4 text-muted-foreground">
+                  {continuityMetrics.strictValidation.issues.map((issue, index) => (
+                    <li key={index}>{issue}</li>
+                  ))}
+                </ul>
+              </PopoverContent>
+            </Popover>
           )}
           <p className="text-xs text-muted-foreground">
             {mode === 'quick'
