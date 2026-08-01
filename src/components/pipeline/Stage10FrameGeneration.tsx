@@ -66,7 +66,7 @@ interface Stage10FrameGenerationProps {
   onNext?: () => void;
 }
 
-interface ContinuityBaseChooserProps {
+export interface ContinuityBaseChooserProps {
   packageData?: GenerationContinuityPackage;
   isLoading: boolean;
   isUpdating: boolean;
@@ -74,7 +74,7 @@ interface ContinuityBaseChooserProps {
   onClear: () => void;
 }
 
-function ContinuityBaseChooser({
+export function ContinuityBaseChooser({
   packageData,
   isLoading,
   isUpdating,
