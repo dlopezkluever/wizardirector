@@ -80,7 +80,7 @@ export class ContinuityBaseService {
         approved_at,
         generated_at,
         shot_id,
-        shots!inner (
+        shots!frames_shot_id_fkey!inner (
           id,
           shot_id,
           shot_order,

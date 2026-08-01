@@ -656,7 +656,7 @@ export class FrameGenerationService {
                 id,
                 image_url,
                 status,
-                shots (
+                shots!frames_shot_id_fkey (
                     id,
                     shot_id,
                     location_asset_id,
@@ -993,7 +993,7 @@ export class FrameGenerationService {
             .from('frames')
             .select(`
                 *,
-                shots!inner (
+                shots!frames_shot_id_fkey!inner (
                     id,
                     shot_id,
                     shot_order,
@@ -1259,7 +1259,7 @@ export class FrameGenerationService {
         // Get frame info
         const { data: frame, error: frameError } = await supabase
             .from('frames')
-            .select('*, shots!inner(id)')
+            .select('*, shots!frames_shot_id_fkey!inner(id)')
             .eq('id', frameId)
             .single();
 

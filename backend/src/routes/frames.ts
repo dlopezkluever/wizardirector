@@ -730,7 +730,7 @@ router.post('/:projectId/scenes/:sceneId/frames/:frameId/regenerate-with-correct
         // Get frame and its shot
         const { data: frame, error: frameError } = await supabase
             .from('frames')
-            .select('*, shots!inner(id, frame_prompt, end_frame_prompt)')
+            .select('*, shots!frames_shot_id_fkey!inner(id, frame_prompt, end_frame_prompt)')
             .eq('id', frameId)
             .single();
 
@@ -822,7 +822,7 @@ router.post('/:projectId/scenes/:sceneId/frames/:frameId/regenerate-with-prompt'
         // Get frame and its shot
         const { data: frame, error: frameError } = await supabase
             .from('frames')
-            .select('*, shots!inner(id)')
+            .select('*, shots!frames_shot_id_fkey!inner(id)')
             .eq('id', frameId)
             .single();
 
