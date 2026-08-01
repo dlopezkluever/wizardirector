@@ -77,3 +77,5 @@ ui-images/
 
 .agents/
 .codex/
+
+.playwright-mcp
