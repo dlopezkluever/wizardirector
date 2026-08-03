@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion';
-import { Check, Circle, AlertTriangle, ArrowRight } from 'lucide-react';
+import { Check, Circle, AlertTriangle, ArrowRight, SkipForward } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { StageProgress, StageStatus } from '@/types/project';
+import { getStageBadge } from '@/lib/utils/stageBadge';
 
 interface PhaseTimelineProps {
   stages: StageProgress[];
@@ -16,6 +17,7 @@ const stageIcons: Record<StageStatus, React.ElementType> = {
   active: Circle,
   pending: Circle,
   outdated: AlertTriangle,
+  skipped: SkipForward,
 };
 
 export function PhaseTimeline({ stages, currentStage, onStageClick, showReturnToPhaseB, onReturnToPhaseB }: PhaseTimelineProps) {
@@ -24,6 +26,7 @@ export function PhaseTimeline({ stages, currentStage, onStageClick, showReturnTo
       {stages.map((stage, index) => {
         const Icon = stageIcons[stage.status];
         const isLast = index === stages.length - 1;
+        const badge = getStageBadge(stage.status, stage.origin);
 
         return (
           <div key={stage.stage} className="flex items-center">
@@ -41,6 +44,7 @@ export function PhaseTimeline({ stages, currentStage, onStageClick, showReturnTo
                   stage.status === 'active' && 'stage-node-active',
                   stage.status === 'pending' && 'stage-node-pending',
                   stage.status === 'outdated' && 'stage-node-outdated',
+                  stage.status === 'skipped' && 'stage-node-skipped',
                   onStageClick && stage.status !== 'pending' && 'cursor-pointer hover:scale-110 transition-transform'
                 )}
                 onClick={() => {
@@ -63,11 +67,23 @@ export function PhaseTimeline({ stages, currentStage, onStageClick, showReturnTo
                     stage.status === 'active' && 'text-primary',
                     stage.status === 'locked' && 'text-success',
                     stage.status === 'pending' && 'text-muted-foreground',
-                    stage.status === 'outdated' && 'text-warning'
+                    stage.status === 'outdated' && 'text-warning',
+                    stage.status === 'skipped' && 'text-info'
                   )}
                 >
                   {stage.label}
                 </span>
+                {badge && (
+                  <span
+                    title={badge.tooltip}
+                    className={cn(
+                      'mt-0.5 inline-flex w-fit items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-wide',
+                      badge.colorClass
+                    )}
+                  >
+                    {badge.label}
+                  </span>
+                )}
               </div>
             </motion.div>
 

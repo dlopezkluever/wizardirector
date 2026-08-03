@@ -258,6 +258,10 @@
     @apply border-warning bg-warning/20 text-warning;
   }
 
+  .stage-node-skipped {
+    @apply border-info bg-info/20 text-info border-dashed;
+  }
+
   /* Card hover effect */
   .card-hover {
     @apply transition-all duration-300;

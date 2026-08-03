@@ -19,7 +19,9 @@ import { SceneWorkflowSidebar } from '@/components/pipeline/SceneWorkflowSidebar
 import type { StageProgress, StageStatus } from '@/types/project';
 import { useProjectStageStates } from '@/lib/hooks/useStageState';
 import { projectService } from '@/lib/services/projectService';
-import { stageStateService } from '@/lib/services/stageStateService';
+import { stageStateService, type StageState } from '@/lib/services/stageStateService';
+import { streamlineService } from '@/lib/services/streamlineService';
+import { SkippedStagePlaceholder } from '@/components/pipeline/SkippedStagePlaceholder';
 import { sceneStageLockService, type StageLocks, type StageLockStatus } from '@/lib/services/sceneStageLockService';
 import { UnlockWarningDialog } from '@/components/pipeline/UnlockWarningDialog';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
@@ -31,6 +33,47 @@ const initialPhaseAStages: StageProgress[] = [
   { stage: 4, status: 'pending' as StageStatus, label: 'Script' },
   { stage: 5, status: 'pending' as StageStatus, label: 'Assets' },
 ];
+
+/**
+ * A stage is "passed" — counts toward advancing past it — if it's locked
+ * (real content) or skipped (intentionally passed over). Both behave
+ * identically for derivation purposes; only their badge/render differs.
+ * Shared by the hydration effect and Streamline's commit-completion handler
+ * so the two never compute stage progression differently.
+ */
+export function derivePhaseAStages(stageStates: StageState[]): {
+  updatedStages: StageProgress[];
+  highestPassedStage: number;
+  highestDraftStage: number;
+} {
+  const isPassed = (status?: string) => status === 'locked' || status === 'skipped';
+  let highestPassedStage = 0;
+  let highestDraftStage = 0;
+
+  const updatedStages = initialPhaseAStages.map(stageProgress => {
+    const stageState = stageStates.find(s => s.stage_number === stageProgress.stage);
+
+    if (stageState) {
+      if (isPassed(stageState.status)) {
+        highestPassedStage = Math.max(highestPassedStage, stageProgress.stage);
+        return {
+          ...stageProgress,
+          status: stageState.status as StageStatus,
+          origin: stageState.origin ?? undefined,
+        };
+      } else if (stageState.status === 'draft') {
+        highestDraftStage = Math.max(highestDraftStage, stageProgress.stage);
+        return { ...stageProgress, status: 'active' as StageStatus };
+      } else if (stageState.status === 'outdated') {
+        return { ...stageProgress, status: 'outdated' as StageStatus, origin: stageState.origin ?? undefined };
+      }
+    }
+
+    return stageProgress;
+  });
+
+  return { updatedStages, highestPassedStage, highestDraftStage };
+}
 
 interface ProjectViewProps {
   projectId?: string;
@@ -278,32 +321,13 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
     // Only hydrate once per project load to prevent re-hydration loops
     if (isHydrated.current) return;
 
-    // Track locked and draft stages separately for correct derivation
-    let highestLockedStage = 0;
-    let highestDraftStage = 0;
+    const { updatedStages, highestPassedStage, highestDraftStage } = derivePhaseAStages(stageStates);
 
-    const updatedStages = initialPhaseAStages.map(stageProgress => {
-      const stageState = stageStates.find(s => s.stage_number === stageProgress.stage);
-
-      if (stageState) {
-        if (stageState.status === 'locked') {
-          highestLockedStage = Math.max(highestLockedStage, stageProgress.stage);
-          return { ...stageProgress, status: 'locked' as StageStatus };
-        } else if (stageState.status === 'draft') {
-          highestDraftStage = Math.max(highestDraftStage, stageProgress.stage);
-          return { ...stageProgress, status: 'active' as StageStatus };
-        } else if (stageState.status === 'outdated') {
-          return { ...stageProgress, status: 'outdated' as StageStatus };
-        }
-      }
-
-      return stageProgress;
-    });
-
-    // Derive the correct stage: stay on draft, or advance past locked
+    // Derive the correct stage: stay on draft, or advance past every passed
+    // (locked/skipped) stage — once all five are passed, land on Stage 6.
     const derivedStage = highestDraftStage > 0
       ? highestDraftStage
-      : Math.min(highestLockedStage + 1, 5);
+      : highestPassedStage >= 5 ? 6 : highestPassedStage + 1;
 
     // Phase B: keep current stage, just update the stages array
     if (currentStage > 5) {
@@ -314,7 +338,7 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
 
     // If stage was restored from URL/localStorage, validate and keep it
     const maxAllowedStage = Math.min(
-      Math.max(highestLockedStage, highestDraftStage) + 1, 5
+      Math.max(highestPassedStage, highestDraftStage) + 1, 5
     );
 
     if (hasRestoredStage.current && currentStage >= 1 && currentStage <= maxAllowedStage) {
@@ -330,7 +354,7 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
 
     // No valid restored stage — use derived stage
     const finalStages = updatedStages.map(s =>
-      s.stage === derivedStage && s.status !== 'locked' && s.status !== 'outdated'
+      s.stage === derivedStage && s.status !== 'locked' && s.status !== 'outdated' && s.status !== 'skipped'
         ? { ...s, status: 'active' as StageStatus } : s
     );
     setStages(finalStages);
@@ -453,6 +477,29 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
 
   const handleGoBack = (toStage: number) => {
     setCurrentStageWithPersistence(toStage);
+  };
+
+  // Streamline's atomic commit can lock/skip several Phase A stages at once,
+  // landing on a stage other than "currentStage + 1" — this bypasses
+  // handleStageComplete's single-stage-advance logic entirely. Fetches fresh
+  // stage_states directly (not via the hook's async state) so it can't race
+  // against a stale closure, then re-derives with the same logic hydration uses.
+  const handleStreamlineComplete = async (targetStage: number) => {
+    if (!projectId) return;
+    try {
+      const freshStates = await stageStateService.getStageStates(projectId);
+      const { updatedStages } = derivePhaseAStages(freshStates);
+      setStages(updatedStages.map(s =>
+        s.stage === targetStage && s.status !== 'locked' && s.status !== 'outdated' && s.status !== 'skipped'
+          ? { ...s, status: 'active' as StageStatus }
+          : s
+      ));
+      setCurrentStageWithPersistence(targetStage);
+      toast.success('Streamline processed your material — picking up where it left off.');
+    } catch (error) {
+      console.error('Failed to refresh stages after Streamline commit:', error);
+      toast.error('Streamline committed, but the pipeline view failed to refresh — try reloading.');
+    }
   };
 
   const handleNavigate = (toStage: number) => {
@@ -597,6 +644,47 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
   const getPhaseAStageStatus = (stageNumber: number): StageStatus | undefined => {
     const stageData = stages.find(s => s.stage === stageNumber);
     return stageData?.status;
+  };
+
+  // "Write this myself" — un-skip a skipped stage into a normal empty draft.
+  // Content is already {} on a skipped row, so this is exactly the existing
+  // unlock transition (skipped -> draft), just without the impact-assessment
+  // dialog since a skipped stage has no real content to lose.
+  const [isUnskipping, setIsUnskipping] = useState(false);
+  const handleWriteMyself = async (stageNumber: number) => {
+    if (!projectId) return;
+    setIsUnskipping(true);
+    try {
+      await stageStateService.unlockStage(projectId, stageNumber, true);
+      setStages(prev => prev.map(s =>
+        s.stage === stageNumber ? { ...s, status: 'active' as StageStatus, origin: undefined } : s
+      ));
+      setCurrentStageWithPersistence(stageNumber);
+    } catch (error) {
+      console.error('Failed to un-skip stage:', error);
+      toast.error('Failed to switch to manual editing');
+    } finally {
+      setIsUnskipping(false);
+    }
+  };
+
+  // "Generate this now" — backfill a skipped stage from the locked script.
+  const [isBackfilling, setIsBackfilling] = useState(false);
+  const handleGenerateFromScript = async (stageNumber: number) => {
+    if (!projectId) return;
+    setIsBackfilling(true);
+    try {
+      await streamlineService.backfillStage(projectId, stageNumber);
+      setStages(prev => prev.map(s =>
+        s.stage === stageNumber ? { ...s, status: 'locked' as StageStatus, origin: 'ai-generated' } : s
+      ));
+      toast.success(`Stage ${stageNumber} generated from your script`);
+    } catch (error) {
+      console.error('Failed to backfill stage from script:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to generate content from script');
+    } finally {
+      setIsBackfilling(false);
+    }
   };
 
   // Phase A unlock flow
@@ -808,37 +896,72 @@ export function ProjectView({ projectId: propProjectId, onBack }: ProjectViewPro
           stageStatus={getPhaseAStageStatus(1)}
           onNext={() => handlePhaseANext(1)}
           onUnlock={() => handlePhaseAUnlock(1)}
+          onStreamlineComplete={handleStreamlineComplete}
         />
       )}
       {currentStage === 2 && (
-        <Stage2Treatment
-          projectId={projectId}
-          onComplete={() => handleStageComplete(2)}
-          onBack={() => handleGoBack(1)}
-          stageStatus={getPhaseAStageStatus(2)}
-          onNext={() => handlePhaseANext(2)}
-          onUnlock={() => handlePhaseAUnlock(2)}
-        />
+        getPhaseAStageStatus(2) === 'skipped' ? (
+          <SkippedStagePlaceholder
+            stageNumber={2}
+            stageLabel="Treatment"
+            onGenerateFromScript={() => handleGenerateFromScript(2)}
+            onWriteMyself={() => handleWriteMyself(2)}
+            isGenerating={isBackfilling}
+            isSwitchingToManual={isUnskipping}
+          />
+        ) : (
+          <Stage2Treatment
+            projectId={projectId}
+            onComplete={() => handleStageComplete(2)}
+            onBack={() => handleGoBack(1)}
+            stageStatus={getPhaseAStageStatus(2)}
+            onNext={() => handlePhaseANext(2)}
+            onUnlock={() => handlePhaseAUnlock(2)}
+          />
+        )
       )}
       {currentStage === 3 && (
-        <Stage3BeatSheet
-          projectId={projectId}
-          onComplete={() => handleStageComplete(3)}
-          onBack={() => handleGoBack(2)}
-          stageStatus={getPhaseAStageStatus(3)}
-          onNext={() => handlePhaseANext(3)}
-          onUnlock={() => handlePhaseAUnlock(3)}
-        />
+        getPhaseAStageStatus(3) === 'skipped' ? (
+          <SkippedStagePlaceholder
+            stageNumber={3}
+            stageLabel="Beat Sheet"
+            onGenerateFromScript={() => handleGenerateFromScript(3)}
+            onWriteMyself={() => handleWriteMyself(3)}
+            isGenerating={isBackfilling}
+            isSwitchingToManual={isUnskipping}
+          />
+        ) : (
+          <Stage3BeatSheet
+            projectId={projectId}
+            onComplete={() => handleStageComplete(3)}
+            onBack={() => handleGoBack(2)}
+            stageStatus={getPhaseAStageStatus(3)}
+            onNext={() => handlePhaseANext(3)}
+            onUnlock={() => handlePhaseAUnlock(3)}
+          />
+        )
       )}
       {currentStage === 4 && (
-        <Stage4MasterScript
-          projectId={projectId}
-          onComplete={() => handleStageComplete(4)}
-          onBack={() => handleGoBack(3)}
-          stageStatus={getPhaseAStageStatus(4)}
-          onNext={() => handlePhaseANext(4)}
-          onUnlock={() => handlePhaseAUnlock(4)}
-        />
+        getPhaseAStageStatus(4) === 'skipped' ? (
+          <SkippedStagePlaceholder
+            stageNumber={4}
+            stageLabel="Master Script"
+            onGenerateFromScript={() => handleGenerateFromScript(4)}
+            onWriteMyself={() => handleWriteMyself(4)}
+            isGenerating={isBackfilling}
+            isSwitchingToManual={isUnskipping}
+            allowGenerate={false}
+          />
+        ) : (
+          <Stage4MasterScript
+            projectId={projectId}
+            onComplete={() => handleStageComplete(4)}
+            onBack={() => handleGoBack(3)}
+            stageStatus={getPhaseAStageStatus(4)}
+            onNext={() => handlePhaseANext(4)}
+            onUnlock={() => handlePhaseAUnlock(4)}
+          />
+        )
       )}
       {currentStage === 5 && (
         <Stage5Assets

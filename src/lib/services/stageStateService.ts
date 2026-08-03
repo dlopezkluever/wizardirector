@@ -1,11 +1,15 @@
 import { supabase } from '../supabase';
 
+export type BackendStageStatus = 'draft' | 'locked' | 'invalidated' | 'outdated' | 'skipped';
+export type BackendStageOrigin = 'skipped' | 'imported' | 'ai-generated' | 'authored';
+
 export interface StageState {
   id: string;
   branch_id: string;
   stage_number: number;
   version: number;
-  status: 'draft' | 'locked' | 'invalidated' | 'outdated';
+  status: BackendStageStatus;
+  origin?: BackendStageOrigin | null;
   content: Record<string, any>;
   regeneration_guidance: string;
   created_at: string;
@@ -14,7 +18,8 @@ export interface StageState {
 
 export interface SaveStageStateOptions {
   content: Record<string, any>;
-  status?: 'draft' | 'locked' | 'invalidated' | 'outdated';
+  status?: BackendStageStatus;
+  origin?: BackendStageOrigin;
   regenerationGuidance?: string;
   styleCapsuleMetadata?: {
     styleCapsuleId: string;
@@ -106,6 +111,7 @@ class StageStateService {
     const requestBody = {
       content: contentToSave,
       status: options.status || 'draft',
+      origin: options.origin,
       regenerationGuidance: options.regenerationGuidance || '',
       styleCapsuleMetadata: styleCapsuleMetadata // Pass through if provided
     };
@@ -187,6 +193,32 @@ class StageStateService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to unlock stage');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Mark a Phase A stage (2, 3, or 4) as intentionally skipped.
+   */
+  async skipStage(projectId: string, stageNumber: number): Promise<StageState> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/stages/${stageNumber}/skip`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to skip stage');
     }
 
     return response.json();
