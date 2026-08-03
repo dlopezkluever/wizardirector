@@ -1,8 +1,17 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { supabase } from '../config/supabase.js';
 import { streamlineBackfillService, StreamlineBackfillError } from '../services/streamlineBackfillService.js';
+import { extractText, UnsupportedFileTypeError } from '../services/streamlineExtractionService.js';
 
 const router = Router();
+
+// Documents (not images) — screenplays and treatments can run long, so this
+// cap is higher than the 5-10MB used by this codebase's image upload routes.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
 
 /**
  * POST /api/projects/:projectId/streamline/commit
@@ -149,6 +158,51 @@ router.post('/:projectId/streamline/backfill/:stageNumber', async (req, res) => 
     }
     console.error('Error in POST /api/projects/:projectId/streamline/backfill/:stageNumber:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/streamline/extract-file
+ *
+ * Server-side text extraction, one file per call (spec §2.7) so partial-batch
+ * failures can be retried/dropped per-file without re-touching the rest.
+ * The response shape carries both extraction and classification from the
+ * start — Phase 2 ships a stubbed classification, Phase 3 fills it in on
+ * this same endpoint rather than adding a second one.
+ */
+router.post('/:projectId/streamline/extract-file', upload.single('file'), async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const userId = req.user!.id;
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded (expected multipart field "file")' });
+    }
+
+    const text = await extractText(req.file.buffer, req.file.mimetype, req.file.originalname);
+
+    res.json({
+      filename: req.file.originalname,
+      text,
+      classification: { type: 'unclassified', confidence: 0 },
+    });
+  } catch (error) {
+    if (error instanceof UnsupportedFileTypeError) {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error('Error in POST /api/projects/:projectId/streamline/extract-file:', error);
+    res.status(500).json({ error: 'Failed to extract text from file' });
   }
 });
 

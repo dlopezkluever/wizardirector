@@ -173,7 +173,10 @@ class InputProcessingService {
       
       case 'script-skip':
         return 'Upload a formatted screenplay. The system will parse it directly and skip to the Master Script stage, optionally using any character/setting definition files you provide.';
-      
+
+      case 'streamline':
+        return 'Drop in whatever you already have — a script, a treatment, notes, character sketches. Streamline classifies each file and lands you as far into the pipeline as your material earns.';
+
       default:
         return 'Select an input mode to see specific instructions.';
     }
@@ -195,7 +198,10 @@ class InputProcessingService {
       
       case 'script-skip':
         return ['Formatted screenplays', 'Character sheets (JSON/structured)', 'Setting descriptions'];
-      
+
+      case 'streamline':
+        return ['Screenplays', 'Treatments', 'Beat sheets', 'Character/location notes', 'Reference images'];
+
       default:
         return [];
     }

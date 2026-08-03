@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   FileText,
@@ -9,9 +9,7 @@ import {
   ChevronDown,
   ChevronUp,
   Save,
-  Sparkles,
-  Upload,
-  Loader2
+  Sparkles
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { InputMode, ProjectType, ContentRating, StageStatus, AspectRatio } from '@/types/project';
@@ -29,7 +27,9 @@ import { stageStateService } from '@/lib/services/stageStateService';
 import { streamlineService } from '@/lib/services/streamlineService';
 import { inputProcessingService, type ProcessedInput } from '@/lib/services/inputProcessingService';
 import type { Project } from '@/types/project';
-import { detectScriptConfidence, type ScriptConfidenceResult } from '@/lib/utils/scriptConfidence';
+import { detectScriptConfidence } from '@/lib/utils/scriptConfidence';
+import { StreamlineDropZone, type StreamlineFile } from './streamline/StreamlineDropZone';
+import { StreamlineReviewScreen, type StreamlineRoutingSummary } from './streamline/StreamlineReviewScreen';
 import { StyleCapsuleSelector } from '@/components/styleCapsules/StyleCapsuleSelector';
 import { LockedStageHeader } from './LockedStageHeader';
 import { StageInfoButton } from './StageInfoButton';
@@ -76,7 +76,7 @@ const inputModes: InputModeOption[] = [
     title: 'Streamline',
     description: 'Already have a script or material? Drop it in — we classify it and skip you ahead.',
     icon: Sparkles,
-    fileHint: 'Upload a finished screenplay (.txt/.md for now — more formats and smart intake land in later phases)',
+    fileHint: 'Drop a script, treatment, or notes — .txt, .md, .pdf, .docx, .rtf',
   },
 ];
 
@@ -291,29 +291,63 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
     }
   };
 
-  // ── Streamline minimal entry (Phase 1) ──────────────────────────────────
-  // Throwaway-adjacent: a single txt/md script upload with client-side
-  // confidence detection. Phase 2 replaces this with the full multi-file
-  // StreamlineDropZone; the commit RPC and detector it calls are permanent.
-  const [streamlineFile, setStreamlineFile] = useState<{ name: string; text: string } | null>(null);
-  const [streamlineConfidence, setStreamlineConfidence] = useState<ScriptConfidenceResult | null>(null);
+  // ── Streamline intake (Phase 2: multi-file drop zone + review) ─────────
+  // Full per-file classification-driven routing across Stages 2-5 lands in
+  // Phase 3; for now the review screen's routing preview is computed from
+  // the primary file's client-side script-confidence (deterministic, same
+  // detector Phase 1 used) since server-side classification is still a stub.
+  const [streamlineFiles, setStreamlineFiles] = useState<StreamlineFile[]>([]);
   const [isStreamlineCommitting, setIsStreamlineCommitting] = useState(false);
   const [streamlineError, setStreamlineError] = useState<string | null>(null);
+  // Phase 4 reads this to gate the Ask Auteur session behind full-batch
+  // completion (spec §2.9.6) — a ref for now since nothing re-renders off it yet.
+  const streamlineBatchSettledRef = useRef(false);
 
-  const handleStreamlineFileSelect = async (file: File) => {
-    setStreamlineError(null);
-    try {
-      const text = await file.text();
-      setStreamlineFile({ name: file.name, text });
-      setStreamlineConfidence(detectScriptConfidence(text));
-    } catch (error) {
-      console.error('Failed to read Streamline file:', error);
-      setStreamlineError('Could not read that file. Try a plain .txt or .md file.');
+  const streamlinePrimaryFile = streamlineFiles.find(f => f.isPrimary && f.status === 'success');
+  const streamlineConfidence = streamlinePrimaryFile?.text ? detectScriptConfidence(streamlinePrimaryFile.text) : null;
+
+  const streamlineRouting: StreamlineRoutingSummary = (() => {
+    const successCount = streamlineFiles.filter(f => f.status === 'success').length;
+    if (successCount === 0) {
+      return { lines: ['Add at least one file to see what Streamline will do with it.'], creditEstimate: 'Free — extraction and classification only', canConfirm: false };
     }
-  };
+    if (!content.selectedProjectType || content.tonalPrecision.length < 10) {
+      return { lines: ['Finish Project Type and Tonal Precision below before confirming.'], creditEstimate: 'Free — extraction and classification only', canConfirm: false };
+    }
+    if (!streamlineConfidence) {
+      return { lines: ['Set a primary file (the star icon) to see a routing preview.'], creditEstimate: 'Free — extraction and classification only', canConfirm: false };
+    }
+    if (streamlineConfidence.confidence === 'high') {
+      return {
+        lines: [
+          `"${streamlinePrimaryFile!.name}" looks like a complete screenplay (${streamlineConfidence.sceneHeadingCount} scene headings, ${streamlineConfidence.dialogueCount} dialogue lines).`,
+          'Stages 2 (Treatment) and 3 (Beat Sheet) will be marked SKIPPED.',
+          'Stage 4 (Master Script) will be filled in and locked from this file.',
+        ],
+        creditEstimate: 'Free — extraction and classification only',
+        canConfirm: true,
+      };
+    }
+    if (streamlineConfidence.confidence === 'ambiguous') {
+      return {
+        lines: [
+          `"${streamlinePrimaryFile!.name}" has ${streamlineConfidence.sceneHeadingCount} scene heading(s) — this might be a partial or informally formatted script.`,
+          'Stages 2 and 3 will still be skipped and Stage 4 filled from this file — review it carefully once you land there.',
+        ],
+        creditEstimate: 'Free — extraction and classification only',
+        canConfirm: true,
+      };
+    }
+    return {
+      lines: [`"${streamlinePrimaryFile!.name}" doesn't look like a formatted screenplay yet.`, 'Full routing for treatments, beat sheets, and notes lands in a later phase — for now Streamline can only fast-track a recognized script.'],
+      creditEstimate: 'Free — extraction and classification only',
+      canConfirm: false,
+      blockedReason: 'Pick a formatted screenplay as your primary file, or try Condensation/Transformation instead.',
+    };
+  })();
 
   const handleStreamlineCommit = async () => {
-    if (!streamlineFile || !streamlineConfidence || projectId === 'new') return;
+    if (!streamlinePrimaryFile?.text || !streamlineConfidence || projectId === 'new' || streamlineConfidence.confidence === 'low') return;
 
     setIsStreamlineCommitting(true);
     setStreamlineError(null);
@@ -339,7 +373,7 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
       });
 
       const stage4Content = {
-        formattedScript: streamlineFile.text,
+        formattedScript: streamlinePrimaryFile.text,
         tiptapDoc: streamlineConfidence.tiptapDoc,
         scenes: [],
         syncStatus: 'synced' as const,
@@ -357,14 +391,11 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
       onStreamlineComplete?.(4);
     } catch (error) {
       console.error('Streamline commit failed:', error);
-      setStreamlineError(error instanceof Error ? error.message : 'Failed to process your script. Please try again.');
+      setStreamlineError(error instanceof Error ? error.message : 'Failed to process your material. Please try again.');
     } finally {
       setIsStreamlineCommitting(false);
     }
   };
-
-  const streamlineCanConfirm =
-    !!streamlineFile && !!content.selectedProjectType && content.tonalPrecision.length >= 10;
 
   if (isLoading) {
     return (
@@ -512,50 +543,21 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
                 </Collapsible>
               </div>
             ) : content.selectedMode === 'streamline' ? (
-              <div className="space-y-4">
-                <label
-                  className={cn(
-                    'flex flex-col items-center justify-center gap-2 w-full h-32 rounded-xl border-2 border-dashed cursor-pointer transition-colors',
-                    streamlineFile ? 'border-primary bg-primary/5' : 'border-border bg-card hover:border-primary/40'
-                  )}
-                >
-                  <input
-                    type="file"
-                    accept=".txt,.md,text/plain,text/markdown"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleStreamlineFileSelect(file);
-                    }}
-                  />
-                  <Upload className="w-6 h-6 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">
-                    {streamlineFile ? streamlineFile.name : 'Click to upload your screenplay (.txt or .md)'}
-                  </span>
-                </label>
+              <div className="space-y-6">
+                <StreamlineDropZone
+                  projectId={projectId}
+                  files={streamlineFiles}
+                  onFilesChange={setStreamlineFiles}
+                  onBatchSettled={() => { streamlineBatchSettledRef.current = true; }}
+                />
 
-                {streamlineConfidence && (
-                  <div className={cn(
-                    'flex items-start gap-2 px-4 py-3 rounded-lg text-sm border',
-                    streamlineConfidence.confidence === 'high'
-                      ? 'bg-success/10 border-success/30 text-success'
-                      : streamlineConfidence.confidence === 'ambiguous'
-                        ? 'bg-warning/10 border-warning/30 text-warning'
-                        : 'bg-muted border-border text-muted-foreground'
-                  )}>
-                    <Sparkles className="w-4 h-4 mt-0.5 shrink-0" />
-                    <span>
-                      {streamlineConfidence.confidence === 'high' && (
-                        `This looks like a complete screenplay (${streamlineConfidence.sceneHeadingCount} scene headings, ${streamlineConfidence.dialogueCount} dialogue lines). We'll skip Treatment and Beat Sheet and take you straight to Stage 4 for review.`
-                      )}
-                      {streamlineConfidence.confidence === 'ambiguous' && (
-                        `We found ${streamlineConfidence.sceneHeadingCount} scene heading(s) — this might be a partial or informally formatted script. You can still continue, but review Stage 4 carefully once you land there.`
-                      )}
-                      {streamlineConfidence.confidence === 'low' && (
-                        `This doesn't look like a formatted screenplay (no scene headings found). Streamline's full document classifier for treatments and notes arrives in a later phase — for now, try Condensation or Transformation instead.`
-                      )}
-                    </span>
-                  </div>
+                {streamlineFiles.length > 0 && (
+                  <StreamlineReviewScreen
+                    files={streamlineFiles}
+                    routing={streamlineRouting}
+                    onConfirm={handleStreamlineCommit}
+                    isCommitting={isStreamlineCommitting}
+                  />
                 )}
 
                 {streamlineError && (
@@ -743,30 +745,8 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
           />
         </section>
 
-        {/* Proceed Button */}
-        {!isStageLockedOrOutdated && content.selectedMode === 'streamline' ? (
-          <div className="flex justify-between items-center pt-6 border-t border-border">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              {streamlineConfidence?.confidence === 'high' && <span>Three clicks, start to finish.</span>}
-            </div>
-            <Button
-              variant="gold"
-              size="lg"
-              disabled={!streamlineCanConfirm || isStreamlineCommitting}
-              onClick={handleStreamlineCommit}
-              className="min-w-[200px]"
-            >
-              {isStreamlineCommitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                'Confirm & Skip Ahead'
-              )}
-            </Button>
-          </div>
-        ) : !isStageLockedOrOutdated && (
+        {/* Proceed Button — Streamline's confirm action lives inside StreamlineReviewScreen instead */}
+        {!isStageLockedOrOutdated && content.selectedMode !== 'streamline' && (
           <div className="flex justify-between items-center pt-6 border-t border-border">
             {projectId === 'new' ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
