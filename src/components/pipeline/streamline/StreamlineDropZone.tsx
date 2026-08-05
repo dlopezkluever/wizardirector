@@ -14,7 +14,17 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { streamlineService, type StreamlineClassification } from '@/lib/services/streamlineService';
+import { streamlineService, type StreamlineClassification, type StreamlineFileType } from '@/lib/services/streamlineService';
+
+const TYPE_LABELS: Record<StreamlineFileType, string> = {
+  script: 'Screenplay',
+  treatment: 'Treatment',
+  beat_sheet: 'Beat Sheet',
+  character_notes: 'Character/Location Notes',
+  unclassified: 'Unclassified',
+};
+
+const FORMATTABLE_TYPES: StreamlineFileType[] = ['treatment', 'beat_sheet'];
 
 export interface StreamlineFile {
   id: string;
@@ -27,6 +37,17 @@ export interface StreamlineFile {
   classification?: StreamlineClassification;
   error?: string;
   source: 'upload' | 'paste';
+  /** User's manual type override (Task 3.1) — takes precedence over classification.type. */
+  typeOverride?: StreamlineFileType;
+  /** Per-file as-is vs AI-format choice (Task 3.1) — never a global toggle. Only meaningful for treatment/beat_sheet. */
+  formatChoice?: 'as-is' | 'ai-format';
+  /** Set once an AI-format pass (treatment target) has run. */
+  formattedText?: string;
+  /** Set once an AI-format pass (beat_sheet target) has run. */
+  formattedBeats?: { beats: Array<{ id: string; order: number; text: string; rationale?: string; estimatedScreenTimeSeconds: number }>; totalEstimatedRuntime: number };
+  isFormatting?: boolean;
+  /** Standalone Stage 5 asset draft (Task 3.5) — populated server-side when classification.type === 'character_notes'. */
+  assetDraft?: { name: string; type: 'character' | 'prop' | 'location'; description: string };
 }
 
 export type StreamlineFilesUpdater = StreamlineFile[] | ((prev: StreamlineFile[]) => StreamlineFile[]);
@@ -100,10 +121,22 @@ export function StreamlineDropZone({
   const extractOne = useCallback(async (streamlineFile: StreamlineFile, file: File) => {
     try {
       const result = await streamlineService.extractFile(projectId, file);
+      // Default as-is/AI-format driven by confidence (Task 3.1) — high
+      // confidence means the document already looks like what it claims to
+      // be, so as-is is the sane default; lower confidence suggests it may
+      // need restructuring. User can always override per-file.
+      const defaultFormatChoice: StreamlineFile['formatChoice'] = result.classification.confidence >= 0.75 ? 'as-is' : 'ai-format';
       onFilesChange(prev =>
         prev.map(f =>
           f.id === streamlineFile.id
-            ? { ...f, status: 'success' as const, text: result.text, classification: result.classification }
+            ? {
+                ...f,
+                status: 'success' as const,
+                text: result.text,
+                classification: result.classification,
+                assetDraft: result.assetDraft,
+                formatChoice: defaultFormatChoice,
+              }
             : f
         )
       );
@@ -185,6 +218,38 @@ export function StreamlineDropZone({
     onFilesChange(prev => prev.map(f => ({ ...f, isPrimary: f.id === id })));
   }, [onFilesChange]);
 
+  const setTypeOverride = useCallback((id: string, typeOverride: StreamlineFileType) => {
+    onFilesChange(prev => prev.map(f => (f.id === id ? { ...f, typeOverride } : f)));
+  }, [onFilesChange]);
+
+  const runAiFormat = useCallback(async (file: StreamlineFile) => {
+    const targetType = (file.typeOverride ?? file.classification?.type) as 'treatment' | 'beat_sheet';
+    if (!file.text || !FORMATTABLE_TYPES.includes(targetType)) return;
+
+    onFilesChange(prev => prev.map(f => (f.id === file.id ? { ...f, isFormatting: true } : f)));
+    try {
+      const result = await streamlineService.formatFile(projectId, file.text, targetType);
+      onFilesChange(prev => prev.map(f => (f.id === file.id
+        ? {
+            ...f,
+            isFormatting: false,
+            formattedText: result.treatment,
+            formattedBeats: result.beats ? { beats: result.beats, totalEstimatedRuntime: result.totalEstimatedRuntime ?? 0 } : undefined,
+          }
+        : f)));
+    } catch (error) {
+      onFilesChange(prev => prev.map(f => (f.id === file.id ? { ...f, isFormatting: false } : f)));
+      toast.error(error instanceof Error ? error.message : `Failed to AI-format ${file.name}`);
+    }
+  }, [projectId, onFilesChange]);
+
+  const setFormatChoice = useCallback((file: StreamlineFile, formatChoice: 'as-is' | 'ai-format') => {
+    onFilesChange(prev => prev.map(f => (f.id === file.id ? { ...f, formatChoice } : f)));
+    if (formatChoice === 'ai-format' && !file.formattedText && !file.formattedBeats) {
+      void runAiFormat(file);
+    }
+  }, [onFilesChange, runAiFormat]);
+
   const addPastedText = useCallback(() => {
     if (pasteText.trim().length === 0) return;
     const streamlineFile: StreamlineFile = {
@@ -262,53 +327,107 @@ export function StreamlineDropZone({
       <AnimatePresence>
         {files.length > 0 && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-2">
-            {files.map((f) => (
+            {files.map((f) => {
+              const currentType = f.typeOverride ?? f.classification?.type;
+              const isFormattable = currentType && FORMATTABLE_TYPES.includes(currentType);
+
+              return (
               <motion.div
                 key={f.id}
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 10 }}
-                className={cn('flex items-center gap-3 p-3 rounded-lg border', f.isPrimary ? 'bg-primary/10 border-primary/30' : 'bg-card border-border')}
+                className={cn('flex flex-col gap-2 p-3 rounded-lg border', f.isPrimary ? 'bg-primary/10 border-primary/30' : 'bg-card border-border')}
               >
-                <div className={cn('flex items-center justify-center w-9 h-9 rounded-lg shrink-0', f.isPrimary ? 'bg-primary/20' : 'bg-secondary')}>
-                  {f.status === 'extracting' || f.status === 'pending' ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : f.status === 'error' ? (
-                    <AlertCircle className="w-4 h-4 text-destructive" />
-                  ) : (
-                    <FileText className="w-4 h-4" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium text-foreground truncate text-sm">{f.name}</p>
-                    {f.isPrimary && <Star className="w-3.5 h-3.5 text-primary fill-current shrink-0" />}
+                <div className="flex items-center gap-3">
+                  <div className={cn('flex items-center justify-center w-9 h-9 rounded-lg shrink-0', f.isPrimary ? 'bg-primary/20' : 'bg-secondary')}>
+                    {f.status === 'extracting' || f.status === 'pending' ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : f.status === 'error' ? (
+                      <AlertCircle className="w-4 h-4 text-destructive" />
+                    ) : (
+                      <FileText className="w-4 h-4" />
+                    )}
                   </div>
-                  {f.status === 'error' ? (
-                    <p className="text-xs text-destructive">{f.error}</p>
-                  ) : f.status === 'extracting' || f.status === 'pending' ? (
-                    <p className="text-xs text-muted-foreground">Extracting…</p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">{f.classification?.type === 'unclassified' ? 'Uploaded — classification pending' : f.classification?.type}</p>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  {f.status === 'error' && (
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => retryFile(f)} title="Retry">
-                      <RefreshCw className="w-4 h-4" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-foreground truncate text-sm">{f.name}</p>
+                      {f.isPrimary && <Star className="w-3.5 h-3.5 text-primary fill-current shrink-0" />}
+                    </div>
+                    {f.status === 'error' ? (
+                      <p className="text-xs text-destructive">{f.error}</p>
+                    ) : f.status === 'extracting' || f.status === 'pending' ? (
+                      <p className="text-xs text-muted-foreground">Extracting…</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        {f.classification && f.classification.confidence > 0
+                          ? `${Math.round(f.classification.confidence * 100)}% confident: ${TYPE_LABELS[f.classification.type]}`
+                          : 'Unclassified — is this right?'}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {f.status === 'error' && (
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => retryFile(f)} title="Retry">
+                        <RefreshCw className="w-4 h-4" />
+                      </Button>
+                    )}
+                    {!f.isPrimary && f.status === 'success' && (
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setPrimary(f.id)} title="Set as primary">
+                        <StarOff className="w-4 h-4" />
+                      </Button>
+                    )}
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => removeFile(f.id)} title="Remove">
+                      <X className="w-4 h-4" />
                     </Button>
-                  )}
-                  {!f.isPrimary && f.status === 'success' && (
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setPrimary(f.id)} title="Set as primary">
-                      <StarOff className="w-4 h-4" />
-                    </Button>
-                  )}
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => removeFile(f.id)} title="Remove">
-                    <X className="w-4 h-4" />
-                  </Button>
+                  </div>
                 </div>
+
+                {f.status === 'success' && (
+                  <div className="flex flex-wrap items-center gap-2 pl-12 text-xs">
+                    <label className="text-muted-foreground">Type:</label>
+                    <select
+                      value={currentType ?? 'unclassified'}
+                      onChange={(e) => setTypeOverride(f.id, e.target.value as StreamlineFileType)}
+                      className="bg-transparent border border-border rounded px-2 py-1 text-foreground"
+                    >
+                      {(Object.keys(TYPE_LABELS) as StreamlineFileType[]).map(t => (
+                        <option key={t} value={t}>{TYPE_LABELS[t]}</option>
+                      ))}
+                    </select>
+
+                    {isFormattable && (
+                      <div className="flex items-center gap-1 ml-2">
+                        <Button
+                          size="sm"
+                          variant={f.formatChoice === 'as-is' ? 'stage-active' : 'stage'}
+                          className="h-6 px-2 text-xs"
+                          onClick={() => setFormatChoice(f, 'as-is')}
+                        >
+                          As-is
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={f.formatChoice === 'ai-format' ? 'stage-active' : 'stage'}
+                          className="h-6 px-2 text-xs"
+                          disabled={f.isFormatting}
+                          onClick={() => setFormatChoice(f, 'ai-format')}
+                        >
+                          {f.isFormatting ? <Loader2 className="w-3 h-3 animate-spin" /> : 'AI-format'}
+                        </Button>
+                      </div>
+                    )}
+
+                    {f.assetDraft && (
+                      <span className="ml-2 px-2 py-0.5 rounded bg-secondary text-secondary-foreground">
+                        Draft: {f.assetDraft.name} ({f.assetDraft.type})
+                      </span>
+                    )}
+                  </div>
+                )}
               </motion.div>
-            ))}
+              );
+            })}
           </motion.div>
         )}
       </AnimatePresence>

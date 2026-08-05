@@ -155,6 +155,51 @@ Be specific and concise. Use labeled sections. 300-500 characters total. Describ
         return analysis;
     }
 
+    /**
+     * Streamline Phase 3 (Task 3.6) — classifies a freshly-uploaded, not-yet-
+     * stored image (raw buffer, no URL yet) into a best-guess asset draft.
+     * Unlike analyzeAssetImage, nothing about the subject is known ahead of
+     * time; fuzzy-matching the guessed name against script-extracted entities
+     * happens on the frontend, not here.
+     */
+    async classifyUploadedImage(buffer: Buffer, mimeType: string): Promise<{
+        name: string;
+        type: 'character' | 'prop' | 'location';
+        description: string;
+        confidence: number;
+    }> {
+        const prompt = `You are cataloguing a reference image for film pre-production. Identify what this image depicts and return ONLY a JSON object, no prose, no markdown fences:
+{"name": "best-guess name for the subject", "type": "character"|"prop"|"location", "description": "2-4 sentence visual description", "confidence": 0.0-1.0}
+
+If the image shows a person, type is "character" and name should be a plausible character name or role (e.g. "Woman in red coat" if no name is inferable). If it shows a place, type is "location". If it shows an object, type is "prop".`;
+
+        const model = this.client.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+        const result = await model.generateContent({
+            contents: [{
+                role: 'user',
+                parts: [
+                    { inlineData: { mimeType, data: buffer.toString('base64') } },
+                    { text: prompt }
+                ]
+            }]
+        });
+
+        const raw = result.response.text().trim();
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
+
+        const type = ['character', 'prop', 'location'].includes(parsed.type) ? parsed.type : 'character';
+        const confidence = typeof parsed.confidence === 'number' ? Math.max(0, Math.min(1, parsed.confidence)) : 0.5;
+
+        return {
+            name: parsed.name || 'Unnamed subject',
+            type,
+            description: parsed.description || '',
+            confidence,
+        };
+    }
+
     private async downloadImage(imageUrl: string): Promise<{ base64: string; mimeType: string }> {
         const response = await fetch(imageUrl);
         if (!response.ok) {

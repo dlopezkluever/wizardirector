@@ -52,10 +52,12 @@ export const mockSupabaseTarget: {
   from: jest.Mock;
   auth: { getUser: jest.Mock };
   rpc: jest.Mock;
+  storage: { from: jest.Mock };
 } = {
   from: jest.fn(),
   auth: { getUser: jest.fn() },
   rpc: jest.fn(),
+  storage: { from: jest.fn() },
 };
 
 export function configureSupabaseMock(
@@ -74,4 +76,15 @@ export function configureSupabaseMock(
 
   mockSupabaseTarget.auth.getUser.mockImplementation(async () => ({ data: { user: authUser }, error: null }));
   mockSupabaseTarget.rpc.mockImplementation(async () => ({ data: { success: true }, error: null }));
+}
+
+/** Configures supabase.storage.from(bucket).upload()/.getPublicUrl() for one test. */
+export function configureSupabaseStorageMock(options: { uploadError?: unknown; publicUrl?: string } = {}) {
+  const bucket = {
+    upload: jest.fn(async () => ({ data: options.uploadError ? null : { path: 'mock-path' }, error: options.uploadError ?? null })),
+    getPublicUrl: jest.fn(() => ({ data: { publicUrl: options.publicUrl ?? 'https://storage.example/mock-image.png' } })),
+    remove: jest.fn(async () => ({ data: null, error: null })),
+  };
+  mockSupabaseTarget.storage.from.mockImplementation(() => bucket);
+  return bucket;
 }

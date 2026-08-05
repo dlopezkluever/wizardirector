@@ -28,10 +28,31 @@ export interface StreamlineClassification {
   confidence: number;
 }
 
+export interface StreamlineAssetDraft {
+  name: string;
+  type: 'character' | 'prop' | 'location';
+  description: string;
+}
+
 export interface StreamlineExtractFileResult {
   filename: string;
   text: string;
   classification: StreamlineClassification;
+  /** Only present when classification.type === 'character_notes' (Task 3.5). */
+  assetDraft?: StreamlineAssetDraft;
+}
+
+export interface StreamlineFormatFileResult {
+  targetType: 'treatment' | 'beat_sheet';
+  treatment?: string;
+  beats?: Array<{ id: string; order: number; text: string; rationale?: string; estimatedScreenTimeSeconds: number }>;
+  totalEstimatedRuntime?: number;
+}
+
+export interface StreamlineClassifyImageResult {
+  imageUrl: string;
+  filename: string;
+  classification: StreamlineAssetDraft & { confidence: number };
 }
 
 async function authHeaders(): Promise<Record<string, string>> {
@@ -112,6 +133,55 @@ class StreamlineService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || `Failed to extract text from ${file.name}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * "AI-format" per-file choice (Task 3.1/3.3) — reformats a submitted
+   * file's text into the target stage's structure. Never called for scripts.
+   */
+  async formatFile(projectId: string, text: string, targetType: 'treatment' | 'beat_sheet'): Promise<StreamlineFormatFileResult> {
+    const headers = await authHeaders();
+
+    const response = await fetch(`/api/projects/${projectId}/streamline/format-file`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ text, targetType }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to reformat file');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Uploads + classifies one image for the batch image review grid (Task 3.6).
+   */
+  async classifyImage(projectId: string, file: File): Promise<StreamlineClassifyImageResult> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`/api/projects/${projectId}/streamline/classify-image`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `Failed to classify image ${file.name}`);
     }
 
     return response.json();

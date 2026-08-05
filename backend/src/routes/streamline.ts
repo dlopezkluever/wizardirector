@@ -3,6 +3,10 @@ import multer from 'multer';
 import { supabase } from '../config/supabase.js';
 import { streamlineBackfillService, StreamlineBackfillError } from '../services/streamlineBackfillService.js';
 import { extractText, UnsupportedFileTypeError } from '../services/streamlineExtractionService.js';
+import { classifyFile } from '../services/streamlineClassificationService.js';
+import { extractStandaloneAssetDraft } from '../services/streamlineStandaloneAssetService.js';
+import { formatAsTreatment, formatAsBeatSheet } from '../services/streamlineFormattingService.js';
+import { ImageAnalysisService } from '../services/imageAnalysisService.js';
 
 const router = Router();
 
@@ -11,6 +15,20 @@ const router = Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
+});
+
+// Images (Task 3.6 review grid) — same 10MB cap and PNG/JPEG/WebP filter as
+// this codebase's other image upload routes (e.g. projectAssets.ts).
+const uploadImage = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
+    if (!allowedTypes.includes(file.mimetype)) {
+      return cb(new Error('Invalid file type. Only PNG, JPEG, and WebP are allowed.'));
+    }
+    cb(null, true);
+  },
 });
 
 /**
@@ -167,8 +185,9 @@ router.post('/:projectId/streamline/backfill/:stageNumber', async (req, res) => 
  * Server-side text extraction, one file per call (spec §2.7) so partial-batch
  * failures can be retried/dropped per-file without re-touching the rest.
  * The response shape carries both extraction and classification from the
- * start — Phase 2 ships a stubbed classification, Phase 3 fills it in on
- * this same endpoint rather than adding a second one.
+ * start — Phase 2 shipped a stubbed classification; Phase 3 fills it in on
+ * this same endpoint rather than adding a second one (script detection is
+ * free/deterministic, everything else runs one LLM call).
  */
 router.post('/:projectId/streamline/extract-file', upload.single('file'), async (req, res) => {
   try {
@@ -191,11 +210,26 @@ router.post('/:projectId/streamline/extract-file', upload.single('file'), async 
     }
 
     const text = await extractText(req.file.buffer, req.file.mimetype, req.file.originalname);
+    const classification = await classifyFile(text, req.file.originalname);
+
+    // Standalone note files (Task 3.5) have no scene to attach dependencies
+    // to, so they get a lighter, separate mechanism: one extra LLM call here
+    // pre-fills a Stage 5 asset draft for the review screen to show alongside
+    // the classification, rather than a second round-trip endpoint.
+    let assetDraft;
+    if (classification.type === 'character_notes') {
+      try {
+        assetDraft = await extractStandaloneAssetDraft(text, req.file.originalname);
+      } catch (error) {
+        console.error('[Streamline] Standalone asset draft extraction failed (non-fatal):', error);
+      }
+    }
 
     res.json({
       filename: req.file.originalname,
       text,
-      classification: { type: 'unclassified', confidence: 0 },
+      classification,
+      ...(assetDraft && { assetDraft }),
     });
   } catch (error) {
     if (error instanceof UnsupportedFileTypeError) {
@@ -203,6 +237,114 @@ router.post('/:projectId/streamline/extract-file', upload.single('file'), async 
     }
     console.error('Error in POST /api/projects/:projectId/streamline/extract-file:', error);
     res.status(500).json({ error: 'Failed to extract text from file' });
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/streamline/classify-image
+ *
+ * Task 3.6 — one round trip per image: stores it (so StreamlineImageReviewGrid
+ * has a URL to display and, if accepted, hand to the commit RPC) and returns
+ * a best-guess {name, type, description} classification. Fuzzy-matching the
+ * guessed name against script-extracted entities (aggregatePreview) happens
+ * on the frontend, which already has that entity list from Stage 5's flow.
+ */
+router.post('/:projectId/streamline/classify-image', uploadImage.single('file'), async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const userId = req.user!.id;
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    const fileExt = req.file.originalname.includes('.') ? req.file.originalname.slice(req.file.originalname.lastIndexOf('.')) : '';
+    const fileName = `project/${projectId}/streamline-staging/${Date.now()}-${Math.random().toString(36).slice(2)}${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('asset-images')
+      .upload(fileName, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
+
+    if (uploadError) {
+      console.error('[Streamline] Error uploading image:', uploadError);
+      return res.status(500).json({ error: 'Failed to upload image' });
+    }
+
+    const { data: urlData } = supabase.storage.from('asset-images').getPublicUrl(fileName);
+
+    let classification;
+    try {
+      const imageAnalysisService = new ImageAnalysisService();
+      classification = await imageAnalysisService.classifyUploadedImage(req.file.buffer, req.file.mimetype);
+    } catch (error) {
+      console.error('[Streamline] Image classification failed, returning unclassified guess:', error);
+      classification = { name: 'Unnamed subject', type: 'character' as const, description: '', confidence: 0 };
+    }
+
+    res.json({
+      imageUrl: urlData.publicUrl,
+      filename: req.file.originalname,
+      classification,
+    });
+  } catch (error) {
+    console.error('Error in POST /api/projects/:projectId/streamline/classify-image:', error);
+    res.status(500).json({ error: 'Failed to classify image' });
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/streamline/format-file
+ *
+ * The "AI-format" per-file choice (Task 3.1/3.3) — reformats a submitted
+ * file's text into the target stage's expected structure. Called only when
+ * the user picks AI-format over as-is for a given file; script files never
+ * hit this (they're always parsed deterministically on the frontend).
+ */
+router.post('/:projectId/streamline/format-file', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const userId = req.user!.id;
+    const { text, targetType } = req.body;
+
+    if (!text || typeof text !== 'string') {
+      return res.status(400).json({ error: 'text is required and must be a string' });
+    }
+    if (targetType !== 'treatment' && targetType !== 'beat_sheet') {
+      return res.status(400).json({ error: 'targetType must be "treatment" or "beat_sheet"' });
+    }
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    if (targetType === 'treatment') {
+      const formatted = await formatAsTreatment(text);
+      return res.json({ targetType, treatment: formatted });
+    }
+
+    const formatted = await formatAsBeatSheet(text);
+    res.json({ targetType, ...formatted });
+  } catch (error) {
+    console.error('Error in POST /api/projects/:projectId/streamline/format-file:', error);
+    res.status(500).json({ error: 'Failed to reformat file' });
   }
 });
 

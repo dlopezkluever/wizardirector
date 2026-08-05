@@ -56,7 +56,7 @@ describe('StreamlineDropZone', () => {
     await user.upload(input, makeFile('script.txt', 'INT. HOUSE - DAY'));
 
     await waitFor(() => expect(screen.getByText('script.txt')).toBeInTheDocument());
-    await waitFor(() => expect(screen.getByText(/uploaded — classification pending/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/unclassified — is this right\?/i)).toBeInTheDocument());
     expect(extractFileMock).toHaveBeenCalledTimes(1);
   });
 

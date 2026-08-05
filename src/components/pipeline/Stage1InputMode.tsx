@@ -25,11 +25,14 @@ import { useStageState } from '@/lib/hooks/useStageState';
 import { projectService } from '@/lib/services/projectService';
 import { stageStateService } from '@/lib/services/stageStateService';
 import { streamlineService } from '@/lib/services/streamlineService';
+import { scriptService } from '@/lib/services/scriptService';
 import { inputProcessingService, type ProcessedInput } from '@/lib/services/inputProcessingService';
 import type { Project } from '@/types/project';
 import { detectScriptConfidence } from '@/lib/utils/scriptConfidence';
+import { computeStreamlineRouting, effectiveType, type StreamlineImageCard } from '@/lib/utils/streamlineRouting';
 import { StreamlineDropZone, type StreamlineFile } from './streamline/StreamlineDropZone';
-import { StreamlineReviewScreen, type StreamlineRoutingSummary } from './streamline/StreamlineReviewScreen';
+import { StreamlineReviewScreen } from './streamline/StreamlineReviewScreen';
+import { StreamlineImageReviewGrid } from './streamline/StreamlineImageReviewGrid';
 import { StyleCapsuleSelector } from '@/components/styleCapsules/StyleCapsuleSelector';
 import { LockedStageHeader } from './LockedStageHeader';
 import { StageInfoButton } from './StageInfoButton';
@@ -291,63 +294,23 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
     }
   };
 
-  // ── Streamline intake (Phase 2: multi-file drop zone + review) ─────────
-  // Full per-file classification-driven routing across Stages 2-5 lands in
-  // Phase 3; for now the review screen's routing preview is computed from
-  // the primary file's client-side script-confidence (deterministic, same
-  // detector Phase 1 used) since server-side classification is still a stub.
+  // ── Streamline intake (Phase 3: classification-driven routing) ─────────
   const [streamlineFiles, setStreamlineFiles] = useState<StreamlineFile[]>([]);
+  const [streamlineImages, setStreamlineImages] = useState<StreamlineImageCard[]>([]);
   const [isStreamlineCommitting, setIsStreamlineCommitting] = useState(false);
   const [streamlineError, setStreamlineError] = useState<string | null>(null);
   // Phase 4 reads this to gate the Ask Auteur session behind full-batch
   // completion (spec §2.9.6) — a ref for now since nothing re-renders off it yet.
   const streamlineBatchSettledRef = useRef(false);
 
-  const streamlinePrimaryFile = streamlineFiles.find(f => f.isPrimary && f.status === 'success');
-  const streamlineConfidence = streamlinePrimaryFile?.text ? detectScriptConfidence(streamlinePrimaryFile.text) : null;
-
-  const streamlineRouting: StreamlineRoutingSummary = (() => {
-    const successCount = streamlineFiles.filter(f => f.status === 'success').length;
-    if (successCount === 0) {
-      return { lines: ['Add at least one file to see what Streamline will do with it.'], creditEstimate: 'Free — extraction and classification only', canConfirm: false };
-    }
-    if (!content.selectedProjectType || content.tonalPrecision.length < 10) {
-      return { lines: ['Finish Project Type and Tonal Precision below before confirming.'], creditEstimate: 'Free — extraction and classification only', canConfirm: false };
-    }
-    if (!streamlineConfidence) {
-      return { lines: ['Set a primary file (the star icon) to see a routing preview.'], creditEstimate: 'Free — extraction and classification only', canConfirm: false };
-    }
-    if (streamlineConfidence.confidence === 'high') {
-      return {
-        lines: [
-          `"${streamlinePrimaryFile!.name}" looks like a complete screenplay (${streamlineConfidence.sceneHeadingCount} scene headings, ${streamlineConfidence.dialogueCount} dialogue lines).`,
-          'Stages 2 (Treatment) and 3 (Beat Sheet) will be marked SKIPPED.',
-          'Stage 4 (Master Script) will be filled in and locked from this file.',
-        ],
-        creditEstimate: 'Free — extraction and classification only',
-        canConfirm: true,
-      };
-    }
-    if (streamlineConfidence.confidence === 'ambiguous') {
-      return {
-        lines: [
-          `"${streamlinePrimaryFile!.name}" has ${streamlineConfidence.sceneHeadingCount} scene heading(s) — this might be a partial or informally formatted script.`,
-          'Stages 2 and 3 will still be skipped and Stage 4 filled from this file — review it carefully once you land there.',
-        ],
-        creditEstimate: 'Free — extraction and classification only',
-        canConfirm: true,
-      };
-    }
-    return {
-      lines: [`"${streamlinePrimaryFile!.name}" doesn't look like a formatted screenplay yet.`, 'Full routing for treatments, beat sheets, and notes lands in a later phase — for now Streamline can only fast-track a recognized script.'],
-      creditEstimate: 'Free — extraction and classification only',
-      canConfirm: false,
-      blockedReason: 'Pick a formatted screenplay as your primary file, or try Condensation/Transformation instead.',
-    };
-  })();
+  const streamlineProjectConfigReady = !!content.selectedProjectType && content.tonalPrecision.length >= 10;
+  const streamlineRouting = computeStreamlineRouting(streamlineFiles, streamlineImages, streamlineProjectConfigReady);
+  const streamlineKnownEntityNames = streamlineFiles
+    .filter(f => effectiveType(f) === 'character_notes' && f.assetDraft)
+    .map(f => f.assetDraft!.name);
 
   const handleStreamlineCommit = async () => {
-    if (!streamlinePrimaryFile?.text || !streamlineConfidence || projectId === 'new' || streamlineConfidence.confidence === 'low') return;
+    if (!streamlineRouting.canConfirm || projectId === 'new') return;
 
     setIsStreamlineCommitting(true);
     setStreamlineError(null);
@@ -372,23 +335,42 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
         status: 'draft',
       });
 
-      const stage4Content = {
-        formattedScript: streamlinePrimaryFile.text,
-        tiptapDoc: streamlineConfidence.tiptapDoc,
-        scenes: [],
-        syncStatus: 'synced' as const,
-      };
+      const assets = streamlineRouting.assetDrafts.map(draft => ({
+        name: draft.name,
+        asset_type: draft.type,
+        description: draft.description,
+        source: streamlineImages.some(img => img.id === draft.sourceFileId) ? 'streamline_import' : 'extracted',
+        image_key_url: streamlineImages.find(img => img.id === draft.sourceFileId)?.imageUrl,
+      }));
 
       await streamlineService.commit(projectId, {
-        stageTransitions: {
-          '1': 'locked',
-          '2': 'skip',
-          '3': 'skip',
-          '4': { status: 'locked', content: stage4Content, origin: 'imported' },
-        },
+        stageTransitions: streamlineRouting.stageTransitions,
+        ...(assets.length > 0 && { assets }),
       });
 
-      onStreamlineComplete?.(4);
+      // Streamline's commit bypasses the normal Stage 4 lock flow, which is
+      // what usually splits the script into scenes + persists scene
+      // dependencies (extractManifest, zero LLM cost). Without this, Stage 5's
+      // asset extraction would find no scenes to work from — replicate it here.
+      const scriptFile = streamlineFiles.find(f => effectiveType(f) === 'script' && f.status === 'success' && f.text
+        && detectScriptConfidence(f.text).confidence !== 'low');
+      if (scriptFile?.text) {
+        try {
+          const scenes = scriptService.extractScenes(scriptFile.text);
+          if (scenes.length > 0) {
+            await scriptService.persistScenes(projectId, scenes, detectScriptConfidence(scriptFile.text).tiptapDoc);
+          }
+        } catch (sceneError) {
+          console.error('Streamline: scene extraction/persistence failed (non-fatal, Stage 5 can still extract manually):', sceneError);
+        }
+      }
+
+      // Land on whichever stage the routing actually filled — the first
+      // stage without a transition is where the user picks up normally.
+      const targetStage = ['1', '2', '3', '4'].every(k => streamlineRouting.stageTransitions[k])
+        ? 5
+        : [2, 3, 4].find(n => !streamlineRouting.stageTransitions[String(n)]) ?? 2;
+      onStreamlineComplete?.(targetStage);
     } catch (error) {
       console.error('Streamline commit failed:', error);
       setStreamlineError(error instanceof Error ? error.message : 'Failed to process your material. Please try again.');
@@ -551,7 +533,17 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
                   onBatchSettled={() => { streamlineBatchSettledRef.current = true; }}
                 />
 
-                {streamlineFiles.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-foreground">Reference images (optional)</h4>
+                  <StreamlineImageReviewGrid
+                    projectId={projectId}
+                    images={streamlineImages}
+                    onImagesChange={setStreamlineImages}
+                    knownEntityNames={streamlineKnownEntityNames}
+                  />
+                </div>
+
+                {(streamlineFiles.length > 0 || streamlineImages.length > 0) && (
                   <StreamlineReviewScreen
                     files={streamlineFiles}
                     routing={streamlineRouting}
