@@ -55,6 +55,41 @@ export interface StreamlineClassifyImageResult {
   classification: StreamlineAssetDraft & { confidence: number };
 }
 
+export type StreamlineQuestionCategory = 'contradiction' | 'vague_trait' | 'ambiguous_structure' | 'missing_info';
+
+export interface StreamlineQuestion {
+  id: string;
+  category: StreamlineQuestionCategory;
+  questionText: string;
+  options: Array<{ id: string; label: string }>;
+  subjectEntityType?: string;
+  subjectEntityName?: string;
+  conflictingSources?: string[];
+}
+
+export interface StreamlineAnalyzeRequestFile {
+  id: string;
+  name: string;
+  text: string;
+  isPrimary: boolean;
+}
+
+export type StreamlineEditScope = 'word_patch' | 'paragraph_rewrite' | 'structural_cascade';
+
+export interface StreamlineReconciledDocument {
+  fileId: string;
+  fileName: string;
+  editScope: StreamlineEditScope;
+  reconciledText: string;
+  diffSummary: string;
+}
+
+export interface StreamlineQAPair {
+  questionText: string;
+  selectedAnswer: string;
+  subjectEntityName?: string;
+}
+
 async function authHeaders(): Promise<Record<string, string>> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) {
@@ -182,6 +217,52 @@ class StreamlineService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || `Failed to classify image ${file.name}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Ask Auteur question generation (Task 4.2) — call only once full-batch
+   * classification has settled (StreamlineDropZone's onBatchSettled signal).
+   */
+  async analyze(projectId: string, files: StreamlineAnalyzeRequestFile[]): Promise<{ questions: StreamlineQuestion[] }> {
+    const headers = await authHeaders();
+
+    const response = await fetch(`/api/projects/${projectId}/streamline/analyze`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ files }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to analyze submitted material');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Reconciliation pass (Task 4.4) — takes the accumulated Q&A transcript,
+   * returns reconciled document text + diff summaries + edit_scope.
+   */
+  async reconcile(
+    projectId: string,
+    files: StreamlineAnalyzeRequestFile[],
+    qaPairs: StreamlineQAPair[]
+  ): Promise<{ reconciledDocuments: StreamlineReconciledDocument[] }> {
+    const headers = await authHeaders();
+
+    const response = await fetch(`/api/projects/${projectId}/streamline/reconcile`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ files, qaPairs }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to reconcile documents');
     }
 
     return response.json();

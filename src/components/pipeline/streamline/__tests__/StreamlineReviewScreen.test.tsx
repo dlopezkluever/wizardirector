@@ -65,4 +65,30 @@ describe('StreamlineReviewScreen', () => {
     expect(screen.getByText(/1 file\(s\) failed to extract/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /confirm & skip ahead/i })).not.toBeDisabled();
   });
+
+  it('shows the "N edits applied from your answers" section, distinct from file badges, when editSummaries are present', () => {
+    render(
+      <StreamlineReviewScreen
+        files={[makeFile({ id: '1', name: 'notes.txt', isPrimary: true })]}
+        routing={{ lines: ['Stage 2 will be filled from notes.txt.'], creditEstimate: 'Free', canConfirm: true }}
+        onConfirm={vi.fn()}
+        editSummaries={[{ fileName: 'notes.txt', diffSummary: 'Corrected "Marc" to "Marcus".' }]}
+      />
+    );
+
+    expect(screen.getByText(/1 edit applied from your answers/i)).toBeInTheDocument();
+    expect(screen.getByText(/corrected "marc" to "marcus"/i)).toBeInTheDocument();
+  });
+
+  it('omits the edit-summaries section entirely when there are none', () => {
+    render(
+      <StreamlineReviewScreen
+        files={[makeFile({ id: '1', name: 'notes.txt', isPrimary: true })]}
+        routing={{ lines: ['Stage 2 will be filled from notes.txt.'], creditEstimate: 'Free', canConfirm: true }}
+        onConfirm={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText(/edits applied from your answers/i)).not.toBeInTheDocument();
+  });
 });

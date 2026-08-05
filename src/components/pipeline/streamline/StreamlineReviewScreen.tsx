@@ -1,4 +1,4 @@
-import { Loader2, Sparkles, FileText, AlertTriangle } from 'lucide-react';
+import { Loader2, Sparkles, FileText, AlertTriangle, PenLine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { StreamlineFile } from './StreamlineDropZone';
@@ -12,12 +12,19 @@ export interface StreamlineRoutingSummary {
   blockedReason?: string;
 }
 
+export interface StreamlineEditSummary {
+  fileName: string;
+  diffSummary: string;
+}
+
 interface StreamlineReviewScreenProps {
   files: StreamlineFile[];
   routing: StreamlineRoutingSummary;
   onConfirm: () => void;
   isCommitting?: boolean;
-  /** Extension point for later phases — Ask Auteur's "N edits applied" section (Phase 4) renders here. */
+  /** Ask Auteur's edit summaries (Task 4.5) — "as-is" and "touched by Ask Auteur" are independent axes, so this is its own section, distinct from the SKIPPED/IMPORTED/AUTO-FILLED badge row above. */
+  editSummaries?: StreamlineEditSummary[];
+  /** Extension point for later phases. */
   children?: React.ReactNode;
 }
 
@@ -27,7 +34,7 @@ interface StreamlineReviewScreenProps {
  * routing preview computed from what's classified so far; Phase 3 makes that
  * preview span every stage 2-5, Phase 4 appends the Ask Auteur edit summary.
  */
-export function StreamlineReviewScreen({ files, routing, onConfirm, isCommitting, children }: StreamlineReviewScreenProps) {
+export function StreamlineReviewScreen({ files, routing, onConfirm, isCommitting, editSummaries, children }: StreamlineReviewScreenProps) {
   const successFiles = files.filter(f => f.status === 'success');
   const errorFiles = files.filter(f => f.status === 'error');
 
@@ -71,6 +78,20 @@ export function StreamlineReviewScreen({ files, routing, onConfirm, isCommitting
         </ul>
         <p className="text-xs text-muted-foreground pt-1 border-t border-border/50">{routing.creditEstimate}</p>
       </div>
+
+      {editSummaries && editSummaries.length > 0 && (
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-2">
+          <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
+            <PenLine className="w-4 h-4 text-primary" />
+            {editSummaries.length} edit{editSummaries.length === 1 ? '' : 's'} applied from your answers
+          </h4>
+          <ul className="text-sm text-muted-foreground space-y-1">
+            {editSummaries.map((edit, i) => (
+              <li key={i}>• <span className="text-foreground">{edit.fileName}</span> — {edit.diffSummary}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {children}
 

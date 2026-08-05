@@ -7,6 +7,8 @@ import { classifyFile } from '../services/streamlineClassificationService.js';
 import { extractStandaloneAssetDraft } from '../services/streamlineStandaloneAssetService.js';
 import { formatAsTreatment, formatAsBeatSheet } from '../services/streamlineFormattingService.js';
 import { ImageAnalysisService } from '../services/imageAnalysisService.js';
+import { analyzeBatch, type StreamlineBatchFile } from '../services/streamlineQuestionService.js';
+import { reconcileDocuments, type StreamlineQAPair } from '../services/streamlineReconciliationService.js';
 
 const router = Router();
 
@@ -345,6 +347,83 @@ router.post('/:projectId/streamline/format-file', async (req, res) => {
   } catch (error) {
     console.error('Error in POST /api/projects/:projectId/streamline/format-file:', error);
     res.status(500).json({ error: 'Failed to reformat file' });
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/streamline/analyze
+ *
+ * Ask Auteur question generation (Task 4.2) — runs once full-batch
+ * classification completes (the frontend's StreamlineDropZone batch-settled
+ * signal from Phase 3). Zero triggers means no session is offered — this
+ * always returns 200 with an empty array in that case, never an error.
+ */
+router.post('/:projectId/streamline/analyze', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const userId = req.user!.id;
+    const { files } = req.body as { files?: StreamlineBatchFile[] };
+
+    if (!Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ error: 'files is required and must be a non-empty array' });
+    }
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const questions = await analyzeBatch(files);
+    res.json({ questions });
+  } catch (error) {
+    console.error('Error in POST /api/projects/:projectId/streamline/analyze:', error);
+    res.status(500).json({ error: 'Failed to analyze submitted material' });
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/streamline/reconcile
+ *
+ * Reconciliation pass (Task 4.4) — takes the accumulated Q&A transcript and
+ * returns reconciled document text + diff summaries + edit_scope per
+ * affected document. Declining the session (empty qaPairs) short-circuits
+ * to an empty result without an LLM call.
+ */
+router.post('/:projectId/streamline/reconcile', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const userId = req.user!.id;
+    const { files, qaPairs } = req.body as { files?: StreamlineBatchFile[]; qaPairs?: StreamlineQAPair[] };
+
+    if (!Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ error: 'files is required and must be a non-empty array' });
+    }
+    if (!Array.isArray(qaPairs)) {
+      return res.status(400).json({ error: 'qaPairs is required and must be an array' });
+    }
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const reconciledDocuments = await reconcileDocuments(files, qaPairs);
+    res.json({ reconciledDocuments });
+  } catch (error) {
+    console.error('Error in POST /api/projects/:projectId/streamline/reconcile:', error);
+    res.status(500).json({ error: 'Failed to reconcile documents' });
   }
 });
 
