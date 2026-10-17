@@ -177,4 +177,19 @@ describe('computeStreamlineRouting', () => {
     expect(result.stageTransitions['4']).toBeUndefined();
     expect(result.canConfirm).toBe(false);
   });
+
+  it('honors an explicit screenplay override even when automatic detection is conservative', () => {
+    const files = [makeFile({
+      id: '1',
+      name: 'mixed-script-and-notes.txt',
+      text: 'A screenplay draft with character and setting descriptors.',
+      classification: { type: 'unclassified', confidence: 0 },
+      typeOverride: 'script',
+      isPrimary: true,
+    })];
+    const result = computeStreamlineRouting(files, [], true);
+
+    expect(result.canConfirm).toBe(true);
+    expect(result.stageTransitions['4']).toMatchObject({ status: 'locked', origin: 'imported' });
+  });
 });

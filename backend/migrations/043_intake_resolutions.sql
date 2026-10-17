@@ -175,6 +175,7 @@ DECLARE
 
     v_edit JSONB;
     v_edit_resolution_id UUID;
+    v_stage1_current_version INTEGER;
 BEGIN
     IF v_project_id IS NULL THEN
         RAISE EXCEPTION 'streamline_commit: project_id is required';
@@ -189,6 +190,44 @@ BEGIN
     PERFORM 1 FROM stage_states
         WHERE branch_id = v_branch_id AND stage_number BETWEEN 1 AND 5
         FOR UPDATE;
+
+    -- Keep the project configuration and the initial Stage 1 draft inside the
+    -- same transaction as the rest of the Streamline commit. The API supplies
+    -- these only for the intake flow; omitted fields preserve existing values.
+    IF jsonb_typeof(payload->'project_config') = 'object' THEN
+        UPDATE projects
+        SET project_type = COALESCE(payload->'project_config'->>'project_type', project_type),
+            content_rating = COALESCE(payload->'project_config'->>'content_rating', content_rating),
+            genre = CASE
+                WHEN jsonb_typeof(payload->'project_config'->'genre') = 'array'
+                    THEN ARRAY(SELECT jsonb_array_elements_text(payload->'project_config'->'genre'))
+                ELSE genre
+            END,
+            tonal_precision = COALESCE(payload->'project_config'->>'tonal_precision', tonal_precision),
+            target_length_min = COALESCE((payload->'project_config'->>'target_length_min')::INTEGER, target_length_min),
+            target_length_max = COALESCE((payload->'project_config'->>'target_length_max')::INTEGER, target_length_max),
+            aspect_ratio = COALESCE(payload->'project_config'->>'aspect_ratio', aspect_ratio),
+            updated_at = NOW()
+        WHERE id = v_project_id;
+    END IF;
+
+    IF jsonb_typeof(payload->'stage_1_draft') = 'object' THEN
+        SELECT COALESCE(MAX(version), 0)
+            INTO v_stage1_current_version
+            FROM stage_states
+            WHERE branch_id = v_branch_id AND stage_number = 1;
+
+        INSERT INTO stage_states (
+            branch_id, stage_number, version, status, origin, content,
+            regeneration_guidance, created_by, inherited_from_stage_id
+        ) VALUES (
+            v_branch_id, 1, v_stage1_current_version + 1, 'draft',
+            COALESCE(payload->'stage_1_draft'->>'origin', 'authored'),
+            COALESCE(payload->'stage_1_draft'->'content', '{}'::JSONB),
+            COALESCE(payload->'stage_1_draft'->>'regenerationGuidance', ''),
+            v_user_id, NULL
+        );
+    END IF;
 
     IF payload->'stage_transitions' IS NOT NULL THEN
         FOR v_stage_key, v_transition IN
@@ -247,6 +286,20 @@ BEGIN
                     RAISE EXCEPTION 'streamline_commit: stage % has no existing content to lock', v_stage_num;
                 END IF;
 
+                IF v_stage_num > 1 THEN
+                    v_prev_status := NULL;
+                    SELECT status INTO v_prev_status
+                        FROM stage_states
+                        WHERE branch_id = v_branch_id AND stage_number = v_stage_num - 1
+                        ORDER BY version DESC
+                        LIMIT 1;
+
+                    IF v_prev_status IS DISTINCT FROM 'locked' AND v_prev_status IS DISTINCT FROM 'skipped' THEN
+                        RAISE EXCEPTION 'streamline_commit: cannot lock stage % — stage % must be locked or skipped first (currently %)',
+                            v_stage_num, v_stage_num - 1, COALESCE(v_prev_status, 'not started');
+                    END IF;
+                END IF;
+
                 v_new_status := 'locked';
                 v_new_origin := COALESCE(v_current_origin, 'authored');
                 v_new_content := v_current_content;
@@ -260,6 +313,20 @@ BEGIN
 
                 IF v_new_status IS NULL OR v_new_status NOT IN ('draft', 'locked', 'invalidated', 'outdated', 'skipped') THEN
                     RAISE EXCEPTION 'streamline_commit: invalid status "%" for stage %', v_new_status, v_stage_num;
+                END IF;
+
+                IF v_stage_num > 1 AND v_new_status = 'locked' THEN
+                    v_prev_status := NULL;
+                    SELECT status INTO v_prev_status
+                        FROM stage_states
+                        WHERE branch_id = v_branch_id AND stage_number = v_stage_num - 1
+                        ORDER BY version DESC
+                        LIMIT 1;
+
+                    IF v_prev_status IS DISTINCT FROM 'locked' AND v_prev_status IS DISTINCT FROM 'skipped' THEN
+                        RAISE EXCEPTION 'streamline_commit: cannot lock stage % — stage % must be locked or skipped first (currently %)',
+                            v_stage_num, v_stage_num - 1, COALESCE(v_prev_status, 'not started');
+                    END IF;
                 END IF;
 
                 IF v_new_origin IS NOT NULL AND v_new_origin NOT IN ('skipped', 'imported', 'ai-generated', 'authored') THEN

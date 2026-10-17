@@ -63,10 +63,42 @@ describe('POST /api/projects/:projectId/streamline/commit', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(mockSupabaseTarget.rpc).toHaveBeenCalledWith('streamline_commit', {
+    expect(mockSupabaseTarget.rpc).toHaveBeenCalledWith('streamline_commit_atomic', {
       payload: expect.objectContaining({
         project_id: PROJECT_ID,
         stage_transitions: { '1': 'locked', '2': 'skip', '3': 'skip' },
+      }),
+    });
+  });
+
+  it('forwards project configuration and the Stage 1 draft in the atomic payload', async () => {
+    setQueue([ok({ id: PROJECT_ID })]);
+    mockSupabaseTarget.rpc.mockImplementationOnce(async () => ({
+      data: { success: true, project_id: PROJECT_ID, branch_id: 'branch-1', stages: [] },
+      error: null,
+    }));
+
+    const projectConfig = {
+      project_type: 'narrative',
+      content_rating: 'PG-13',
+      genre: ['drama'],
+      tonal_precision: 'quiet and tense',
+      target_length_min: 180,
+      target_length_max: 300,
+      aspect_ratio: '16:9',
+    };
+    const stage1Draft = { content: { selectedProjectType: 'narrative' } };
+
+    const res = await request(app)
+      .post(`/api/projects/${PROJECT_ID}/streamline/commit`)
+      .set('Authorization', 'Bearer test-token')
+      .send({ stageTransitions: { '1': 'locked' }, projectConfig, stage1Draft });
+
+    expect(res.status).toBe(200);
+    expect(mockSupabaseTarget.rpc).toHaveBeenCalledWith('streamline_commit_atomic', {
+      payload: expect.objectContaining({
+        project_config: projectConfig,
+        stage_1_draft: stage1Draft,
       }),
     });
   });

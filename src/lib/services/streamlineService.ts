@@ -8,6 +8,8 @@ export type StageTransition =
 
 export interface StreamlineCommitRequest {
   stageTransitions: Record<string, StageTransition>;
+  projectConfig?: Record<string, unknown>;
+  stage1Draft?: { content: Record<string, unknown>; origin?: BackendStageOrigin; regenerationGuidance?: string };
   assets?: Array<Record<string, unknown>>;
   resolutions?: Array<Record<string, unknown>>;
   resolutionEdits?: Array<Record<string, unknown>>;

@@ -384,6 +384,7 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
       // at once) — every edit is attributed to the session's first
       // resolution as a representative link rather than a precise one.
       const edits = reconciledDocuments.map(d => ({
+        fileId: d.fileId,
         resolution_client_id: resolutions.length > 0 ? resolutions[0].client_id : null,
         target_type: 'stage' as const,
         target_asset_name: null,
@@ -434,7 +435,7 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
     if (pendingCascade) {
       const cancelledFileIds = new Set(pendingCascade.map(d => d.fileId));
       setResolutionEditsForCommit(prev => prev.filter(edit =>
-        !pendingCascade.some(d => (edit.diff_summary as string)?.startsWith(`${d.fileName}:`) && cancelledFileIds.has(d.fileId))
+        !cancelledFileIds.has(edit.fileId as string)
       ));
     }
     setPendingCascade(null);
@@ -452,10 +453,7 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
     setIsStreamlineCommitting(true);
     setStreamlineError(null);
     try {
-      // Persist project-level configuration (type, rating, genres, etc.) —
-      // identical to the normal handleComplete path, just without creating
-      // a new project (Streamline always runs against an existing project).
-      await projectService.updateProject(projectId, {
+      const projectConfig = {
         project_type: content.selectedProjectType!,
         content_rating: content.selectedRating,
         genre: content.selectedGenres,
@@ -463,14 +461,7 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
         target_length_min: content.targetLength[0] * 60,
         target_length_max: content.targetLength[1] * 60,
         aspect_ratio: content.selectedAspectRatio,
-      });
-
-      // The commit RPC's bare "locked" transition locks *existing* content —
-      // save Stage 1 as a draft first so there's something for it to lock.
-      await stageStateService.saveStageState(projectId, 1, {
-        content,
-        status: 'draft',
-      });
+      };
 
       const assets = streamlineRouting.assetDrafts.map(draft => ({
         name: draft.name,
@@ -482,6 +473,8 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
 
       await streamlineService.commit(projectId, {
         stageTransitions: streamlineRouting.stageTransitions,
+        projectConfig,
+        stage1Draft: { content },
         ...(assets.length > 0 && { assets }),
         ...(resolutionsForCommit.length > 0 && { resolutions: resolutionsForCommit }),
         ...(resolutionEditsForCommit.length > 0 && { resolutionEdits: resolutionEditsForCommit }),
@@ -494,14 +487,14 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
       const scriptFile = streamlineFiles.find(f => effectiveType(f) === 'script' && f.status === 'success' && f.text
         && detectScriptConfidence(f.text).confidence !== 'low');
       if (scriptFile?.text) {
-        try {
-          const scenes = scriptService.extractScenes(scriptFile.text);
-          if (scenes.length > 0) {
-            await scriptService.persistScenes(projectId, scenes, detectScriptConfidence(scriptFile.text).tiptapDoc);
-          }
-        } catch (sceneError) {
-          console.error('Streamline: scene extraction/persistence failed (non-fatal, Stage 5 can still extract manually):', sceneError);
+        const scenes = scriptService.extractScenes(scriptFile.text);
+        if (scenes.length === 0) {
+          throw new Error(
+            `The import succeeded, but no scenes could be extracted from "${scriptFile.name}". ` +
+            'Stage 4 is locked; please review the screenplay format and retry scene persistence before continuing.'
+          );
         }
+        await scriptService.persistScenes(projectId, scenes, detectScriptConfidence(scriptFile.text).tiptapDoc);
       }
 
       // Land on whichever stage the routing actually filled — the first

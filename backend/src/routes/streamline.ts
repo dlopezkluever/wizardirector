@@ -46,7 +46,7 @@ router.post('/:projectId/streamline/commit', async (req, res) => {
   try {
     const { projectId } = req.params;
     const userId = req.user!.id;
-    const { stageTransitions, assets, resolutions, resolutionEdits } = req.body;
+    const { stageTransitions, projectConfig, stage1Draft, assets, resolutions, resolutionEdits } = req.body;
 
     if (!stageTransitions || typeof stageTransitions !== 'object') {
       return res.status(400).json({ error: 'stageTransitions is required and must be an object' });
@@ -68,11 +68,13 @@ router.post('/:projectId/streamline/commit', async (req, res) => {
       user_id: userId,
       stage_transitions: stageTransitions,
     };
+    if (projectConfig) payload.project_config = projectConfig;
+    if (stage1Draft) payload.stage_1_draft = stage1Draft;
     if (assets) payload.assets = assets;
     if (resolutions) payload.resolutions = resolutions;
     if (resolutionEdits) payload.resolution_edits = resolutionEdits;
 
-    const { data: result, error: rpcError } = await supabase.rpc('streamline_commit', { payload });
+    const { data: result, error: rpcError } = await supabase.rpc('streamline_commit_atomic', { payload });
 
     if (rpcError) {
       console.error('❌ streamline_commit RPC failed:', rpcError);

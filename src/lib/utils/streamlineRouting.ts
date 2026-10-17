@@ -34,6 +34,10 @@ export function effectiveType(file: StreamlineFile): StreamlineFileType {
 
 function isUsableScript(file: StreamlineFile): boolean {
   if (!file.text) return false;
+  // A manual type selection is an explicit user decision. The confidence
+  // detector is intentionally conservative for automatic classification, but
+  // it must not silently override the user's choice in the review screen.
+  if (file.typeOverride === 'script') return true;
   return detectScriptConfidence(file.text).confidence !== 'low';
 }
 
@@ -71,6 +75,7 @@ export function computeStreamlineRouting(
       lines: ['Finish Project Type and Tonal Precision below before confirming.'],
       creditEstimate: 'Free — nothing to process yet',
       canConfirm: false,
+      blockedReason: 'Select a project type and provide at least 10 characters of tonal precision.',
     };
   }
 
@@ -131,6 +136,7 @@ export function computeStreamlineRouting(
       lines: ["We couldn't identify anything usable in these files yet — override a file's type below, or try Condensation/Transformation instead."],
       creditEstimate: 'Free — nothing to process yet',
       canConfirm: false,
+      blockedReason: 'Choose the correct type for the uploaded file, or add a screenplay, treatment, beat sheet, notes file, or reference image.',
     };
   }
 
