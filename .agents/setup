@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+run_step() {
+  local name="$1"
+  shift
+
+  local started_at
+  started_at="$(date +%s)"
+  printf '==> %s\n' "$name"
+  "$@"
+  printf '<== %s completed in %ss\n' "$name" "$(( $(date +%s) - started_at ))"
+}
+
+node_major="$(node --version | sed -E 's/^v([0-9]+).*/\1/')"
+if (( node_major < 18 )); then
+  printf 'Node.js 18 or newer is required; found %s.\n' "$(node --version)" >&2
+  exit 1
+fi
+
+run_step "Installing frontend dependencies" npm ci --no-audit --no-fund
+run_step "Installing backend dependencies" npm ci --no-audit --no-fund --prefix backend
+
+if [[ ! -f .env.local ]]; then
+  cp -- .env.example .env.local
+fi
+
+if [[ ! -f backend/.env ]]; then
+  cp -- backend/env.example backend/.env
+fi
