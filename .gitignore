@@ -54,8 +54,6 @@ Zhe_Trash
 ._docs/ignore
 backend/Zhe_Trash
 
-._Post-MVP-Enhancements/
-
 Letter_to_Mark.md
 
 ._docs/prompts-to-reuse.md
@@ -75,3 +73,7 @@ tmp-screenshots
 ._docs/prompting-guides
 
 ui-images/
+
+.codex/
+
+.playwright-mcp

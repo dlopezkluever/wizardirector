@@ -123,7 +123,27 @@ FORMAT REQUIREMENTS:
 - ALL CAPS for Scene Headings (INT./EXT.), Character Names, and SFX
 - Detailed action lines with rich visual descriptions
 - Natural dialogue that serves the story
-- Each scene must start with a proper scene heading: INT. or EXT. [LOCATION] - [TIME]
+- Each scene must start with a proper scene heading: INT. or EXT. [LOCATION] - [SUB-LOCATION] - [TIME]
+
+SUB-LOCATION PRECISION (CRITICAL):
+Scene headings MUST specify the exact room or area within a location, not just the building:
+  ✅ INT. GINGERBREAD HOUSE - KITCHEN - DAY
+  ✅ INT. GINGERBREAD HOUSE - HALLWAY - CONTINUOUS
+  ✅ EXT. GINGERBREAD HOUSE - FRONT YARD - CONTINUOUS
+  ❌ INT. GINGERBREAD HOUSE - DAY  (too vague — which room?)
+
+When characters move between distinct sub-locations within the same master location, use separate scene headings with the CONTINUOUS slug to maintain narrative flow:
+  INT. APARTMENT - LIVING ROOM - NIGHT
+  Alice storms across the room, knocking a vase off the shelf.
+
+  INT. APARTMENT - KITCHEN - CONTINUOUS
+  She crashes through the kitchen doorway, gripping the counter.
+
+SPATIALLY EXPLICIT ACTION LINES:
+All action/paragraph text must anchor characters to specific positions in the space.
+  ❌ "They argue."
+  ✅ "They argue across the kitchen counter. He storms toward the hallway door."
+Every action beat should describe WHERE characters are and WHERE they move within the space.
 
 PROJECT CONSTRAINTS:
 - Target length: {target_length_min} to {target_length_max} seconds
@@ -155,12 +175,13 @@ PROJECT PARAMETERS:
 
 Convert this beat sheet into a complete, industry-standard screenplay with rich visual descriptions. Each scene should be detailed enough for a director to visualize exactly what happens. Remember:
 
-1. Start each scene with INT. or EXT. scene heading
+1. Start each scene with INT. or EXT. scene heading — ALWAYS include the specific room/area (sub-location): INT. HOUSE - KITCHEN - DAY, not just INT. HOUSE - DAY
 2. Describe every visual element in detail
 3. Use character names in ALL CAPS when they first appear
-4. Write vivid action lines that paint a clear picture
+4. Write vivid, spatially explicit action lines that describe WHERE characters are and WHERE they move
 5. Keep dialogue natural but purposeful
-6. Include camera-ready descriptions of movements, expressions, and atmosphere`,
+6. Include camera-ready descriptions of movements, expressions, and atmosphere
+7. When characters move between rooms/areas, use separate scene headings with CONTINUOUS`,
         description: 'Template for converting beat sheets into visually detailed master scripts',
         is_active: true
       }

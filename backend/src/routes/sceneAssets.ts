@@ -8,7 +8,9 @@ import { z } from 'zod';
 import { supabase } from '../config/supabase.js';
 import { AssetInheritanceService } from '../services/assetInheritanceService.js';
 import { ImageGenerationService } from '../services/image-generation/ImageGenerationService.js';
+import { ImageAnalysisService } from '../services/imageAnalysisService.js';
 import { SceneAssetRelevanceService } from '../services/sceneAssetRelevanceService.js';
+import { StoryContextService } from '../services/storyContextService.js';
 import { SceneAssetAttemptsService } from '../services/sceneAssetAttemptsService.js';
 import { transformationEventService } from '../services/transformationEventService.js';
 import type { TransformationType, DetectedBy } from '../services/transformationEventService.js';
@@ -378,13 +380,15 @@ router.post('/:projectId/scenes/:sceneId/assets/:instanceId/generate-image', asy
       });
     }
 
+    const { referenceImageUrl: userReferenceImageUrl } = req.body || {};
     const imageService = new ImageGenerationService();
     const result = await imageService.createSceneAssetImageJob(
       instanceId,
       projectId,
       project.active_branch_id,
       visualStyleId,
-      manualVisualTone
+      manualVisualTone,
+      userReferenceImageUrl
     );
 
     res.json(result);
@@ -392,6 +396,179 @@ router.post('/:projectId/scenes/:sceneId/assets/:instanceId/generate-image', asy
     console.error('[SceneAssets] Image generation error:', error);
     res.status(500).json({
       error: 'Image generation failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/assets/:instanceId/edit-image
+ * Edit/transform a scene asset image using reference image + instructions.
+ */
+router.post('/:projectId/scenes/:sceneId/assets/:instanceId/edit-image', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId, instanceId } = req.params;
+    const { referenceImageUrl, editInstructions, description, removeBackground } = req.body;
+
+    if (!description) {
+      return res.status(400).json({ error: 'Description is required' });
+    }
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Get instance + parent asset type
+    const { data: instance, error: instanceError } = await supabase
+      .from('scene_asset_instances')
+      .select(`
+        id, project_asset_id, scene_id,
+        project_asset:project_assets(asset_type, visual_style_capsule_id)
+      `)
+      .eq('id', instanceId)
+      .eq('scene_id', sceneId)
+      .single();
+
+    if (instanceError || !instance) {
+      return res.status(404).json({ error: 'Scene asset instance not found' });
+    }
+
+    const projectAsset = (instance as any).project_asset as { asset_type: string; visual_style_capsule_id?: string } | null;
+    if (!projectAsset) {
+      return res.status(400).json({ error: 'Scene asset has no parent project asset' });
+    }
+
+    // Get visual style from Stage 5
+    const { data: stage5States } = await supabase
+      .from('stage_states')
+      .select('content')
+      .eq('branch_id', project.active_branch_id)
+      .eq('stage_number', 5)
+      .order('version', { ascending: false })
+      .limit(1);
+
+    const stage5Content = stage5States?.[0]?.content;
+    const visualStyleId = stage5Content?.locked_visual_style_capsule_id;
+    const manualVisualTone = stage5Content?.manual_visual_tone;
+
+    if (!visualStyleId && !manualVisualTone) {
+      return res.status(400).json({
+        error: 'Visual style not found. Complete Stage 5 first.',
+      });
+    }
+
+    // Construct prompt
+    let prompt = description;
+    if (editInstructions) {
+      prompt = `${editInstructions}. Context: ${description}`;
+    }
+    if (removeBackground) {
+      prompt += '. Isolated on a plain white background, no environment, no other characters or objects.';
+    }
+
+    // Auto-inject background for non-location asset types (matches injectBackgroundContext behavior)
+    const ISOLATABLE_TYPES = ['character', 'prop', 'extra_archetype'];
+    if (ISOLATABLE_TYPES.includes(projectAsset.asset_type) && !removeBackground) {
+      prompt += '. Isolated on a plain white background, no environment, no other characters or objects.';
+    }
+
+    // Determine dimensions based on asset type
+    const ASPECT_RATIOS: Record<string, { width: number; height: number }> = {
+      character: { width: 512, height: 768 },
+      prop: { width: 512, height: 512 },
+      location: { width: 1024, height: 576 },
+      extra_archetype: { width: 512, height: 768 },
+    };
+    const dimensions = ASPECT_RATIOS[projectAsset.asset_type] || { width: 512, height: 512 };
+
+    console.log(`[SceneAssets] Edit image for instance ${instanceId}, hasRef=${!!referenceImageUrl}, hasEdit=${!!editInstructions}, removeBg=${!!removeBackground}`);
+
+    const imageService = new ImageGenerationService();
+    const result = await imageService.createImageJob({
+      projectId,
+      branchId: project.active_branch_id,
+      jobType: 'scene_asset',
+      prompt,
+      visualStyleCapsuleId: visualStyleId,
+      manualVisualTone,
+      assetId: instance.project_asset_id,
+      sceneId: instance.scene_id,
+      width: dimensions.width,
+      height: dimensions.height,
+      idempotencyKey: `edit-scene-asset-${instanceId}-${Date.now()}`,
+      referenceImageUrl: referenceImageUrl || undefined,
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('[SceneAssets] Edit image error:', error);
+    res.status(500).json({
+      error: 'Image editing failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/assets/:instanceId/analyze-image
+ * Analyze uploaded scene asset image via Gemini Vision
+ */
+router.post('/:projectId/scenes/:sceneId/assets/:instanceId/analyze-image', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId, instanceId } = req.params;
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const { data: instance, error: instanceError } = await supabase
+      .from('scene_asset_instances')
+      .select(`
+        id, effective_description, image_key_url,
+        project_asset:project_assets(name, asset_type, description)
+      `)
+      .eq('id', instanceId)
+      .eq('scene_id', sceneId)
+      .single();
+
+    if (instanceError || !instance) {
+      return res.status(404).json({ error: 'Scene asset instance not found' });
+    }
+
+    if (!instance.image_key_url) {
+      return res.status(400).json({ error: 'Scene asset has no image to analyze' });
+    }
+
+    const projectAsset = (instance as any).project_asset as { name: string; asset_type: string; description?: string } | null;
+    const analysisService = new ImageAnalysisService();
+    const result = await analysisService.analyzeAssetImage(
+      instance.image_key_url,
+      instance.effective_description || projectAsset?.description || '',
+      projectAsset?.asset_type || 'character',
+      projectAsset?.name || 'Unknown'
+    );
+
+    res.json(result);
+  } catch (error) {
+    console.error('[SceneAssets] Analyze image error:', error);
+    res.status(500).json({
+      error: 'Image analysis failed',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
@@ -1828,8 +2005,9 @@ router.post('/:projectId/scenes/:sceneId/transformation-events/:eventId/generate
     // Generate image using ImageGenerationService
     const imageService = new ImageGenerationService();
 
-    // Use the asset's current image as reference for identity
-    const referenceImageUrl = assetInstance?.image_key_url || projectAsset?.image_key_url;
+    // Use user-provided reference, or fall back to asset's current image for identity
+    const { referenceImageUrl: userReferenceImageUrl } = req.body || {};
+    const referenceImageUrl = userReferenceImageUrl || assetInstance?.image_key_url || projectAsset?.image_key_url;
 
     // Include post_status_tags in the prompt (e.g., "scarred", "aged", "in new outfit")
     const postStatusTags: string[] = event.post_status_tags ?? [];
@@ -2034,6 +2212,120 @@ router.post('/:projectId/scenes/:sceneId/assets/:instanceId/field-versions/descr
   } catch (error: any) {
     console.error('Error selecting asset field version:', error);
     res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+// ============================================================================
+// STORY CONTEXT INFERENCE (Phase 2, Task 2)
+// ============================================================================
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/assets/:instanceId/infer-context
+ * Infer description and tag updates for a single asset based on story context.
+ */
+router.post('/:projectId/scenes/:sceneId/assets/:instanceId/infer-context', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId, instanceId } = req.params;
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const { data: scene, error: sceneError } = await supabase
+      .from('scenes')
+      .select('id, branch_id')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+
+    if (sceneError || !scene) {
+      return res.status(404).json({ error: 'Scene not found' });
+    }
+
+    const storyContextService = new StoryContextService();
+    const result = await storyContextService.inferAssetContext(
+      sceneId,
+      project.active_branch_id,
+      instanceId
+    );
+
+    res.json(result);
+  } catch (error) {
+    console.error('[SceneAssets] Story context inference error:', error);
+    res.status(500).json({
+      error: 'Story context inference failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/scenes/:sceneId/bulk-infer-context
+ * Bulk infer description and tag updates for multiple assets based on story context.
+ */
+router.post('/:projectId/scenes/:sceneId/bulk-infer-context', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId, sceneId } = req.params;
+
+    const bodySchema = z.object({
+      instanceIds: z.array(z.string().uuid()).min(1).max(50),
+    });
+
+    const validation = bodySchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        details: validation.error.errors,
+      });
+    }
+
+    const { instanceIds } = validation.data;
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const { data: scene, error: sceneError } = await supabase
+      .from('scenes')
+      .select('id, branch_id')
+      .eq('id', sceneId)
+      .eq('branch_id', project.active_branch_id)
+      .single();
+
+    if (sceneError || !scene) {
+      return res.status(404).json({ error: 'Scene not found' });
+    }
+
+    const storyContextService = new StoryContextService();
+    const results = await storyContextService.bulkInferAssetContext(
+      sceneId,
+      project.active_branch_id,
+      instanceIds
+    );
+
+    res.json({ results });
+  } catch (error) {
+    console.error('[SceneAssets] Bulk story context inference error:', error);
+    res.status(500).json({
+      error: 'Bulk story context inference failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
 });
 

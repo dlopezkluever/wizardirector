@@ -15,6 +15,7 @@ interface SceneAssetImageUploadProps {
   sceneId: string;
   instanceId: string;
   disabled?: boolean;
+  onUploadComplete?: (imageUrl: string) => void;
 }
 
 const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
@@ -25,6 +26,7 @@ export function SceneAssetImageUpload({
   sceneId,
   instanceId,
   disabled,
+  onUploadComplete,
 }: SceneAssetImageUploadProps) {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -33,10 +35,13 @@ export function SceneAssetImageUpload({
   const uploadMutation = useMutation({
     mutationFn: (file: File) =>
       sceneAssetService.uploadSceneAssetImage(projectId, sceneId, instanceId, file),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['scene-asset-attempts', projectId, sceneId, instanceId] });
       queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
       toast.success('Image uploaded');
+      if (onUploadComplete && data?.image_key_url) {
+        onUploadComplete(data.image_key_url);
+      }
     },
     onError: (err: Error) => {
       toast.error(err.message);

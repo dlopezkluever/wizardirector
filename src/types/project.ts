@@ -4,17 +4,26 @@ export type ProjectStatus =
   | 'complete' 
   | 'archived';
 
-export type StageStatus = 
-  | 'locked' 
-  | 'active' 
-  | 'pending' 
-  | 'outdated';
+export type StageStatus =
+  | 'locked'
+  | 'active'
+  | 'pending'
+  | 'outdated'
+  | 'skipped';
 
-export type InputMode = 
-  | 'expansion' 
-  | 'condensation' 
-  | 'transformation' 
-  | 'script-skip';
+/** Provenance tag for a stage's content, mirrors backend stage_states.origin. */
+export type StageOrigin =
+  | 'skipped'
+  | 'imported'
+  | 'ai-generated'
+  | 'authored';
+
+export type InputMode =
+  | 'expansion'
+  | 'condensation'
+  | 'transformation'
+  | 'script-skip'
+  | 'streamline';
 
 export type ProjectType = 
   | 'narrative' 
@@ -33,6 +42,7 @@ export interface StageProgress {
   stage: number;
   status: StageStatus;
   label: string;
+  origin?: StageOrigin;
 }
 
 export interface SceneProgress {

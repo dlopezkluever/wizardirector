@@ -7,10 +7,12 @@
  */
 
 import { useState } from 'react';
-import { Check, X, Sparkles, Loader2, Trash2, ArrowRight, Image as ImageIcon, AlertTriangle } from 'lucide-react';
+import { Check, X, Sparkles, Loader2, Trash2, ArrowRight, Image as ImageIcon, AlertTriangle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import type { TransformationEvent } from '@/types/scene';
 
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
@@ -25,7 +27,7 @@ export interface TransformationEventCardProps {
   onDismiss: (eventId: string) => void;
   onUpdate: (eventId: string, updates: { post_description?: string; transformation_narrative?: string }) => void;
   onGeneratePostDescription: (eventId: string) => void;
-  onGeneratePostImage?: (eventId: string) => void;
+  onGeneratePostImage?: (eventId: string, referenceImageUrl?: string) => void;
   onOpenImagePicker?: (eventId: string) => void;
   isUpdating?: boolean;
   isGenerating?: boolean;
@@ -47,6 +49,7 @@ export function TransformationEventCard({
   const [postDesc, setPostDesc] = useState(event.post_description);
   const [narrative, setNarrative] = useState(event.transformation_narrative ?? '');
   const [showFullImage, setShowFullImage] = useState(false);
+  const [usePostImageAsRef, setUsePostImageAsRef] = useState(false);
 
   const typeInfo = TYPE_LABELS[event.transformation_type] ?? TYPE_LABELS.instant;
   const isConfirmed = event.confirmed;
@@ -202,7 +205,7 @@ export function TransformationEventCard({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => onGeneratePostImage(event.id)}
+                onClick={() => onGeneratePostImage(event.id, usePostImageAsRef ? event.post_image_key_url : undefined)}
                 disabled={isGeneratingImage || !postDesc.trim()}
                 className="text-xs h-7"
               >
@@ -213,6 +216,25 @@ export function TransformationEventCard({
                 )}
                 Generate Image
               </Button>
+            )}
+            {event.post_image_key_url && onGeneratePostImage && (
+              <div className="flex items-center gap-1.5">
+                <Switch id={`use-ref-transform-${event.id}`} checked={usePostImageAsRef}
+                  onCheckedChange={(checked) => setUsePostImageAsRef(checked)}
+                  className="scale-75 origin-left" />
+                <label htmlFor={`use-ref-transform-${event.id}`}
+                  className="text-xs text-muted-foreground cursor-pointer select-none">
+                  Use as ref
+                </label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="w-3 h-3 opacity-50 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-[220px] text-xs">
+                    When enabled, the current image is sent as a style reference to guide generation, helping maintain visual consistency.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
             )}
             {onOpenImagePicker && (
               <Button

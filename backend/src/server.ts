@@ -6,6 +6,7 @@ import * as dotenv from 'dotenv';
 import { healthRouter } from './routes/health.js';
 import { projectsRouter } from './routes/projects.js';
 import { stageStatesRouter } from './routes/stageStates.js';
+import { streamlineRouter } from './routes/streamline.js';
 import { llmRouter } from './routes/llm.js';
 import { seedRouter } from './routes/seed.js';
 import styleCapsulesRouter from './routes/styleCapsules.js';
@@ -63,6 +64,9 @@ app.use('/api/projects', authenticateUser, checkoutRouter);
 
 // Stage states routes (protected, nested under projects)
 app.use('/api/projects', authenticateUser, stageStatesRouter);
+
+// Streamline intake routes (protected, nested under projects)
+app.use('/api/projects', authenticateUser, streamlineRouter);
 
 // Scene stage locks routes (protected, nested under projects)
 app.use('/api/projects', authenticateUser, sceneStageLockRouter);

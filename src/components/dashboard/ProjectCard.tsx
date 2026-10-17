@@ -21,6 +21,7 @@ function StageIndicator({ status }: { status: StageStatus }) {
     active: 'bg-primary animate-pulse-glow',
     pending: 'bg-muted-foreground/40',
     outdated: 'bg-warning',
+    skipped: 'bg-info',
   };
 
   return (

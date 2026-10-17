@@ -1,5 +1,6 @@
 // Aligned with database schema (migration 003)
-import type { ProjectAsset } from './asset';
+import type { ProjectAsset, CameraDistance, CameraHeight } from './asset';
+import type { GenerationReferenceRole, LocationMatchSource, ShotLocationState } from './locationContinuity';
 
 export type SceneStatus = 
   | 'draft'
@@ -57,6 +58,16 @@ export interface Shot {
   charactersBackground: string[];
   setting: string;
   camera: string;
+  // 3.7: Structured camera metadata (generated at Stage 7, parsed as fallback)
+  camera_distance?: CameraDistance;
+  camera_height?: CameraHeight;
+  camera_movement?: string;
+  camera_direction_id?: string | null;    // FK to location_views.id for assigned camera direction
+  location_asset_id?: string | null;
+  location_match_confidence?: number | null;
+  location_match_source?: LocationMatchSource | null;
+  location_match_notes?: string | null;
+  locationState?: ShotLocationState;
   continuityFlags?: string[];
   beatReference?: string;
   transformationFlags?: TransformationFlag[];
@@ -172,6 +183,25 @@ export interface SceneAssetSuggestion {
   created_at: string;
 }
 
+/** Phase 2: Story context suggestion for a single asset. */
+export interface StoryContextSuggestion {
+  suggested_description: string;
+  suggested_tags: string[];
+  reasoning: string;
+}
+
+/** Phase 2: Bulk story context suggestion result per asset. */
+export interface BulkStoryContextResult {
+  instanceId: string;
+  assetName: string;
+  assetType: string;
+  current_description: string;
+  suggested_description: string;
+  current_tags: string[];
+  suggested_tags: string[];
+  reasoning: string;
+}
+
 export interface CreateSceneAssetInstanceRequest {
   sceneId: string;
   projectAssetId: string;
@@ -225,10 +255,24 @@ export interface ShotAssetAssignment {
 }
 
 export interface ReferenceImageOrderEntry {
+  id?: string;
   label: string;
   assetName: string;
   url: string;
   type: string;
+  role?: 'identity' | 'style';
+  providerRole?: 'identity' | 'style';
+  referenceRole?: GenerationReferenceRole;
+  reason?: string;
+  source?:
+    | 'scene_asset'
+    | 'project_asset'
+    | 'location_view'
+    | 'approved_frame'
+    | 'generated_frame'
+    | 'blocking_reference'
+    | 'manual_upload'
+    | 'transformation';
 }
 
 export interface PromptSetTransformationContext {
@@ -298,6 +342,9 @@ export interface Frame {
   updatedAt: string;
   generatedAt: string | null;
   approvedAt: string | null;
+  generatedFromFrameId?: string | null;
+  continuityBaseRole?: 'reuse_match' | 'reuse_edit' | 'camera_change_ref' | 'match_copy' | 'manual' | null;
+  promotedToViewId?: string | null;
 }
 
 export interface ShotWithFrames {
@@ -320,6 +367,13 @@ export interface ShotWithFrames {
   startContinuity?: ContinuityMode;
   aiStartContinuity?: ContinuityMode | null;
   continuityFramePrompt?: string | null;
+  // Camera direction (Phase G — established views)
+  cameraDirectionId?: string | null;
+  locationAssetId?: string | null;
+  locationMatchConfidence?: number | null;
+  locationMatchSource?: LocationMatchSource | null;
+  locationMatchNotes?: string | null;
+  selectedContinuityBaseFrameId?: string | null;
   startFrame: Frame | null;
   endFrame: Frame | null;
 }

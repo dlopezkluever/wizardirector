@@ -90,20 +90,20 @@ describe('ShotExtractionService', () => {
     );
 
     expect(mockGenerate).toHaveBeenCalled();
-    expect(result).toHaveLength(2);
-    expect(result[0].shotId).toBe('2A');
-    expect(result[0].shotOrder).toBe(0);
-    expect(result[0].duration).toBe(8);
-    expect(result[0].action).toBe('John enters the room.');
-    expect(result[0].charactersForeground).toEqual(['John']);
-    expect(result[0].charactersBackground).toEqual(['Mary']);
-    expect(result[0].setting).toBe('Kitchen');
-    expect(result[0].camera).toBe('Wide shot');
-    expect(result[0].beatReference).toBe('b1');
+    expect(result.shots).toHaveLength(2);
+    expect(result.shots[0].shotId).toBe('2A');
+    expect(result.shots[0].shotOrder).toBe(0);
+    expect(result.shots[0].duration).toBe(8);
+    expect(result.shots[0].action).toBe('John enters the room.');
+    expect(result.shots[0].charactersForeground).toEqual(['John']);
+    expect(result.shots[0].charactersBackground).toEqual(['Mary']);
+    expect(result.shots[0].setting).toBe('Kitchen');
+    expect(result.shots[0].camera).toBe('Wide shot');
+    expect(result.shots[0].beatReference).toBe('b1');
 
-    expect(result[1].shotId).toBe('2B');
-    expect(result[1].action).toBe('Mary turns around.');
-    expect(result[1].charactersForeground).toEqual(['Mary']);
+    expect(result.shots[1].shotId).toBe('2B');
+    expect(result.shots[1].action).toBe('Mary turns around.');
+    expect(result.shots[1].charactersForeground).toEqual(['Mary']);
   });
 
   it('should discard invalid shots (missing required fields)', async () => {
@@ -120,9 +120,59 @@ describe('ShotExtractionService', () => {
 
     const result = await service.extractShots('scene-uuid', 'Some script.', 1, undefined);
 
-    expect(result).toHaveLength(2);
-    expect(result[0].shotId).toBe('1A');
-    expect(result[1].shotId).toBe('1B');
+    expect(result.shots).toHaveLength(2);
+    expect(result.shots[0].shotId).toBe('1A');
+    expect(result.shots[1].shotId).toBe('1B');
+  });
+
+  it('should extract structured camera metadata from LLM output and fallback to parsing', async () => {
+    const fakeResponse = {
+      content: JSON.stringify({
+        new_directions: [{ name: 'direction_1', alias: 'stove wall', description: 'Facing the stove' }],
+        shots: [
+          {
+            shot_order: 0,
+            duration: 8,
+            action: 'Hansel backs away.',
+            characters: [{ name: 'Hansel', prominence: 'foreground' }],
+            setting: 'Kitchen',
+            camera: 'WS - High Angle - Slow Pan Right',
+            camera_distance: 'wide',
+            camera_height: 'high_angle',
+            camera_movement: 'slow_pan_right',
+            camera_direction: 'direction_1',
+          },
+          {
+            shot_order: 1,
+            duration: 8,
+            action: 'Gretel watches.',
+            characters: [{ name: 'Gretel', prominence: 'foreground' }],
+            setting: 'Kitchen',
+            camera: 'CU - Eye Level - Static',
+            // No structured fields — should fallback to parseCameraMetadata
+          },
+        ],
+      }),
+    };
+    mockGenerate.mockResolvedValue(fakeResponse);
+
+    const result = await service.extractShots('scene-uuid', 'Scene text', 1, undefined);
+
+    // First shot: LLM-provided metadata
+    expect(result.shots[0].camera_distance).toBe('wide');
+    expect(result.shots[0].camera_height).toBe('high_angle');
+    expect(result.shots[0].camera_movement).toBe('slow_pan_right');
+    expect(result.shots[0].camera_direction_name).toBe('direction_1');
+
+    // Second shot: fallback parsed metadata
+    expect(result.shots[1].camera_distance).toBe('close');
+    expect(result.shots[1].camera_height).toBe('eye_level');
+    expect(result.shots[1].camera_movement).toBe('static');
+
+    // New directions
+    expect(result.newDirections).toHaveLength(1);
+    expect(result.newDirections[0].name).toBe('direction_1');
+    expect(result.newDirections[0].alias).toBe('stove wall');
   });
 
   it('should return empty array on timeout', async () => {
@@ -132,7 +182,7 @@ describe('ShotExtractionService', () => {
 
     const result = await service.extractShots('scene-uuid', 'Script', 1, undefined);
 
-    expect(result).toEqual([]);
+    expect(result).toEqual({ shots: [], newDirections: [] });
   });
 });
 

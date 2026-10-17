@@ -48,6 +48,9 @@ import { useSceneInfo } from '@/hooks/useSceneInfo';
 import { ShotAssetPanel } from './Stage9/ShotAssetPanel';
 import { BulkPresenceTemplates } from './Stage9/BulkPresenceTemplates';
 import { ShotAssetTimeline } from './Stage9/ShotAssetTimeline';
+import { ContinuityPreviewPanel } from './Stage9/ContinuityPreviewPanel';
+import { locationContinuityService } from '@/lib/services/locationContinuityService';
+import type { ShotContinuityPreview } from '@/types/locationContinuity';
 import { VersionedTextarea } from './VersionedTextarea';
 import { textFieldVersionService } from '@/lib/services/textFieldVersionService';
 import { shotService } from '@/lib/services/shotService';
@@ -115,6 +118,10 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
   // Shots data for bulk templates
   const [sceneShotsData, setSceneShotsData] = useState<Shot[]>([]);
 
+  // Stage 9 continuity preview data (per-shot continuity transparency)
+  const [continuityPreviewsByShot, setContinuityPreviewsByShot] = useState<Map<string, ShotContinuityPreview>>(new Map());
+  const [isLoadingContinuityPreview, setIsLoadingContinuityPreview] = useState(false);
+
   // View mode: card (default) or timeline matrix
   const [viewMode, setViewMode] = useState<'cards' | 'timeline'>('cards');
 
@@ -163,6 +170,28 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
   useEffect(() => {
     loadPrompts();
   }, [projectId, sceneId]);
+
+  const loadContinuityPreview = useCallback(async () => {
+    if (!projectId || !sceneId) return;
+    setIsLoadingContinuityPreview(true);
+    try {
+      const result = await locationContinuityService.fetchContinuityPreview(projectId, sceneId);
+      const map = new Map<string, ShotContinuityPreview>();
+      for (const preview of result.previews) {
+        map.set(preview.shotId, preview);
+      }
+      setContinuityPreviewsByShot(map);
+    } catch (err) {
+      console.error('Failed to load Stage 9 continuity preview:', err);
+    } finally {
+      setIsLoadingContinuityPreview(false);
+    }
+  }, [projectId, sceneId]);
+
+  // Load continuity preview alongside prompts and after assignment changes
+  useEffect(() => {
+    loadContinuityPreview();
+  }, [loadContinuityPreview, assignmentsVersion]);
 
   // Auto-save debounced updates
   useEffect(() => {
@@ -232,6 +261,7 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
     try {
       const response = await promptService.generatePrompts(projectId, sceneId);
       setPromptSets(response.prompts);
+      loadContinuityPreview();
 
       if (response.failed > 0) {
         toast({
@@ -268,6 +298,7 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
       setPromptSets(prev => prev.map(ps =>
         ps.shotUuid === shotUuid ? { ...ps, ...updatedPrompt } : ps
       ));
+      loadContinuityPreview();
 
       toast({
         title: 'Regenerated',
@@ -680,6 +711,15 @@ export function Stage9PromptSegmentation({ projectId, sceneId, onComplete, onBac
                               <p><span className="text-muted-foreground">Camera:</span> {promptSet.camera}</p>
                             )}
                           </div>
+                        )}
+
+                        {/* Continuity transparency panel (Phase 4) */}
+                        {promptSet.shotUuid && (
+                          <ContinuityPreviewPanel
+                            preview={continuityPreviewsByShot.get(promptSet.shotUuid) || null}
+                            isLoading={isLoadingContinuityPreview && !continuityPreviewsByShot.has(promptSet.shotUuid)}
+                            onRepairInStage8={onBack}
+                          />
                         )}
 
                         {/* Per-Shot Asset Panel (§9A) */}

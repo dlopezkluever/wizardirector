@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { User, MapPin, Package, Lock, RefreshCw, Sparkles, Plus, X, Link2, Search, Filter, Copy, MoreVertical, Brain, Loader2, ArrowLeft, Check } from 'lucide-react';
+import { User, MapPin, Package, Lock, RefreshCw, Sparkles, Plus, X, Link2, Search, Filter, Copy, MoreVertical, Brain, Loader2, ArrowLeft, Check, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -117,6 +117,9 @@ export interface SceneAssetListPanelProps {
   /** AI detect assets */
   onDetectAssets?: () => void;
   isDetecting?: boolean;
+  /** Bulk story context update */
+  onBulkInferContext?: () => void;
+  isInferringContext?: boolean;
   /** Navigation */
   onBack?: () => void;
   onComplete?: () => void;
@@ -323,6 +326,8 @@ export function SceneAssetListPanel({
   createMode,
   onDetectAssets,
   isDetecting,
+  onBulkInferContext,
+  isInferringContext,
   onBack,
   onComplete,
 }: SceneAssetListPanelProps) {
@@ -487,6 +492,27 @@ export function SceneAssetListPanel({
                 </Button>
               )}
             </div>
+          )}
+          {onBulkInferContext && selectedForGeneration.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={onBulkInferContext}
+              disabled={isInferringContext}
+            >
+              {isInferringContext ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  Inferring…
+                </>
+              ) : (
+                <>
+                  <BookOpen className="w-4 h-4 mr-1" />
+                  Update from Context ({selectedForGeneration.length})
+                </>
+              )}
+            </Button>
           )}
           {onOpenAssetDrawer && (
             <Button variant="outline" size="sm" className="w-full" onClick={onOpenAssetDrawer}>

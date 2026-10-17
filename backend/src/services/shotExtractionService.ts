@@ -7,6 +7,7 @@
  */
 
 import { llmClient, type LLMRequest, LLMClientError } from './llm-client.js';
+import { parseCameraMetadata } from './promptGenerationService.js';
 
 export interface TransformationFlag {
   characterName: string;
@@ -26,6 +27,11 @@ export interface ExtractedShot {
   charactersBackground: string[];
   setting: string;
   camera: string;
+  // 3.7 Phase D: Structured camera metadata
+  camera_distance?: 'wide' | 'medium' | 'close';
+  camera_height?: 'eye_level' | 'high_angle' | 'low_angle' | 'overhead' | 'ground_level';
+  camera_movement?: string;
+  camera_direction_name?: string; // direction name assigned by LLM (e.g., "direction_1")
   continuityFlags: string[];
   beatReference?: string;
   transformationFlags?: TransformationFlag[];
@@ -52,15 +58,40 @@ interface LLMShotRaw {
   characters?: LLMShotCharacter[];
   setting: string;
   camera: string;
+  // 3.7 Phase D: Structured camera metadata from LLM
+  camera_distance?: 'wide' | 'medium' | 'close';
+  camera_height?: 'eye_level' | 'high_angle' | 'low_angle' | 'overhead' | 'ground_level';
+  camera_movement?: string;
+  camera_direction?: string; // direction name: "direction_1", "direction_2", etc.
   continuity_flags?: string[];
   beat_reference?: string;
   transformation_flags?: LLMTransformationFlag[];
+}
+
+export interface LocationDirectionContext {
+  name: string;
+  alias?: string;
+  description?: string;
+}
+
+export interface NewDirectionRaw {
+  name: string;
+  alias?: string;
+  description?: string;
+}
+
+export interface ShotExtractionResult {
+  shots: ExtractedShot[];
+  newDirections: NewDirectionRaw[];
 }
 
 interface ExtractionContext {
   priorSceneEndState?: string | null;
   beatSheetSummary?: string;
   masterScriptSummary?: string;
+  // 3.7 Phase D: Available location directions for this scene's location
+  locationDirections?: LocationDirectionContext[];
+  locationName?: string;
 }
 
 const SHOT_EXTRACTION_TIMEOUT_MS = 20000;
@@ -93,6 +124,31 @@ function buildGlobalContextSection(ctx: ExtractionContext | undefined): string {
   }
   if (parts.length === 0) return 'No global context available.';
   return parts.join('\n\n');
+}
+
+function buildCameraDirectionsSection(ctx: ExtractionContext | undefined): string {
+  if (!ctx?.locationDirections || ctx.locationDirections.length === 0) {
+    return '';
+  }
+  const lines = ctx.locationDirections.map(d => {
+    let line = `  - ${d.name}`;
+    if (d.alias) line += ` (alias: '${d.alias}')`;
+    if (d.description) line += `: ${d.description}`;
+    return line;
+  });
+  return `\nCAMERA DIRECTION CONTEXT:
+Location: ${ctx.locationName || 'Unknown'}
+Available camera directions:
+${lines.join('\n')}
+
+For each shot, assign "camera_direction" to the most appropriate direction name above based on where the camera would be facing given the action. If none of the above directions fit a shot, you may propose a NEW direction by setting camera_direction to a new name like "direction_3", "direction_4", etc. and provide camera_direction_alias and camera_direction_description for any new direction you propose.`;
+}
+
+function buildNoDirectionsSection(ctx: ExtractionContext | undefined): string {
+  if (!ctx?.locationName) return '';
+  if (ctx.locationDirections && ctx.locationDirections.length > 0) return '';
+  return `\nCAMERA DIRECTION CREATION:
+No camera directions exist for location "${ctx.locationName}". Analyze the scene narrative and CREATE directions by assigning a camera_direction name (e.g., "direction_1", "direction_2") to each shot. For each new direction you create, provide camera_direction_alias (short label like "stove wall", "window side") and camera_direction_description (what this view shows). Group shots that face the same direction under the same direction name.`;
 }
 
 function buildPreviousSceneSection(ctx: ExtractionContext | undefined): string {
@@ -141,11 +197,13 @@ export class ShotExtractionService {
     scriptExcerpt: string,
     sceneNumber: number,
     context?: ExtractionContext
-  ): Promise<ExtractedShot[]> {
+  ): Promise<ShotExtractionResult> {
     console.log(`[ShotExtraction] Extracting shots for scene ${sceneId} (scene #${sceneNumber})`);
 
     const globalContextPackage = buildGlobalContextSection(context);
     const previousSceneEndState = buildPreviousSceneSection(context);
+    const cameraDirectionsSection = buildCameraDirectionsSection(context);
+    const noDirectionsSection = buildNoDirectionsSection(context);
 
     const systemPrompt = `You are a technical shot breakdown specialist for an AI video generation pipeline. Your role is to translate narrative scenes into precise, time-bounded shots that feed directly into image and video generation models. Precision in your descriptions directly determines output quality.
 
@@ -159,6 +217,7 @@ Scene Content will be provided in the user message.
 
 PREVIOUS SCENE END-STATE (LOCAL CONTEXT):
 ${previousSceneEndState}
+${cameraDirectionsSection}${noDirectionsSection}
 
 SHOT BREAKDOWN RULES:
 1. Each shot must be EXACTLY 8 seconds (or explicitly justified if different — use 4-6s for complex action).
@@ -181,6 +240,13 @@ The "camera" field must specify all three components:
 - Movement: Static, Slow Dolly In, Slow Pan Left, Truck Right, Crane Up, Handheld, Steadicam, etc.
 - Include framing notes when relevant (e.g., "subject frame-left, looking frame-right")
 
+STRUCTURED CAMERA METADATA:
+In addition to the free-text "camera" field, you MUST output these structured fields for each shot:
+- "camera_distance": "wide" | "medium" | "close" (derived from shot type: EWS/WS/FS→wide, MS→medium, MCU/CU/ECU→close)
+- "camera_height": "eye_level" | "high_angle" | "low_angle" | "overhead" | "ground_level" (derived from angle)
+- "camera_movement": free-text movement descriptor (e.g., "static", "slow_dolly_in", "pan_right")
+- "camera_direction": the direction name this shot faces (e.g., "direction_1", "direction_2"). See CAMERA DIRECTION sections above.
+
 CONTINUITY REQUIREMENTS:
 - The first shot must visually connect to the previous scene's end state if there is one.
 - Character positions and states must be consistent with prior scene endings.
@@ -195,6 +261,7 @@ If a character/asset undergoes a VISUAL TRANSFORMATION in this scene (costume ch
 
 OUTPUT: Return ONLY a valid JSON object with this exact structure (no markdown, no extra text):
 {
+  "new_directions": [{"name": "direction_1", "alias": "stove wall", "description": "Kitchen seen from stove side"}],
   "shots": [
     {
       "shot_order": 0,
@@ -204,12 +271,19 @@ OUTPUT: Return ONLY a valid JSON object with this exact structure (no markdown, 
       "characters": [{"name": "CHARACTER_NAME", "prominence": "foreground"|"background"|"off-screen"}],
       "setting": "specific location with atmosphere and spatial details",
       "camera": "SHOT_TYPE - ANGLE - MOVEMENT (e.g., MS - Eye Level - Static)",
+      "camera_distance": "wide"|"medium"|"close",
+      "camera_height": "eye_level"|"high_angle"|"low_angle"|"overhead"|"ground_level",
+      "camera_movement": "static",
+      "camera_direction": "direction_1",
+      "camera_direction_alias": "optional: alias for NEW directions only",
+      "camera_direction_description": "optional: description for NEW directions only",
       "continuity_flags": ["optional strings"],
       "beat_reference": "optional beat id",
       "transformation_flags": [{"character_name": "NAME", "type": "instant|within_shot|gradual", "description": "what changes visually", "is_trigger": true, "is_completion": false}]
     }
   ]
-}`;
+}
+IMPORTANT: The "new_directions" array should contain ONLY directions you are creating that don't already exist. If directions already exist (listed above), do NOT include them in new_directions — just reference them by name in camera_direction. If no new directions are needed, set new_directions to an empty array.`;
 
     const userPrompt = `Extract the shot list for this scene. Scene number: ${sceneNumber}.
 
@@ -227,7 +301,7 @@ Return ONLY the JSON object with a "shots" array. Each shot must have action, se
     } catch (error) {
       if (error instanceof Error && error.message === 'Extraction timeout') {
         console.warn(`[ShotExtraction] Timeout after ${SHOT_EXTRACTION_TIMEOUT_MS / 1000}s for scene ${sceneId}`);
-        return [];
+        return { shots: [], newDirections: [] };
       }
       if (error instanceof LLMClientError && error.code === 'RATE_LIMIT') {
         console.warn(`[ShotExtraction] Rate limit exceeded for scene ${sceneId}`);
@@ -236,25 +310,56 @@ Return ONLY the JSON object with a "shots" array. Each shot must have action, se
       throw error;
     }
 
-    let parsed: { shots: LLMShotRaw[] };
+    let parsed: { shots: LLMShotRaw[]; new_directions?: NewDirectionRaw[] };
     try {
       parsed = this.parseResponse(responseContent);
     } catch {
       console.warn(`[ShotExtraction] Malformed JSON for scene ${sceneId}, retrying with simpler prompt`);
       try {
         const retryContent = await this.extractWithLLM(
-          'You extract a shot list from screenplay text. Return ONLY valid JSON: {"shots":[{"shot_order":0,"duration":8,"dialogue":"","action":"","characters":[],"setting":"","camera":"","continuity_flags":[]}]}. Each shot needs non-empty action, setting, camera.',
+          'You extract a shot list from screenplay text. Return ONLY valid JSON: {"new_directions":[],"shots":[{"shot_order":0,"duration":8,"dialogue":"","action":"","characters":[],"setting":"","camera":"","camera_distance":"medium","camera_height":"eye_level","camera_movement":"static","camera_direction":"direction_1","continuity_flags":[]}]}. Each shot needs non-empty action, setting, camera.',
           userPrompt
         );
         parsed = this.parseResponse(retryContent);
       } catch (retryErr) {
         console.error('[ShotExtraction] Retry failed:', retryErr);
-        return [];
+        return { shots: [], newDirections: [] };
       }
     }
     if (!parsed.shots || !Array.isArray(parsed.shots)) {
       console.warn('[ShotExtraction] No shots array in response');
-      return [];
+      return { shots: [], newDirections: [] };
+    }
+
+    // Collect new directions proposed by the LLM
+    const newDirections: NewDirectionRaw[] = [];
+    if (Array.isArray(parsed.new_directions)) {
+      for (const nd of parsed.new_directions) {
+        if (nd.name && typeof nd.name === 'string') {
+          newDirections.push({
+            name: nd.name.trim(),
+            alias: typeof nd.alias === 'string' ? nd.alias.trim() : undefined,
+            description: typeof nd.description === 'string' ? nd.description.trim() : undefined,
+          });
+        }
+      }
+    }
+
+    // Also collect inline new directions from shots (camera_direction_alias/description)
+    const inlineDirectionNames = new Set(newDirections.map(d => d.name));
+    const existingDirNames = new Set((context?.locationDirections || []).map(d => d.name));
+    for (const raw of parsed.shots) {
+      const dirName = typeof raw.camera_direction === 'string' ? raw.camera_direction.trim() : '';
+      if (dirName && !existingDirNames.has(dirName) && !inlineDirectionNames.has(dirName)) {
+        const alias = (raw as any).camera_direction_alias;
+        const desc = (raw as any).camera_direction_description;
+        newDirections.push({
+          name: dirName,
+          alias: typeof alias === 'string' ? alias.trim() : undefined,
+          description: typeof desc === 'string' ? desc.trim() : undefined,
+        });
+        inlineDirectionNames.add(dirName);
+      }
     }
 
     const validated: ExtractedShot[] = [];
@@ -284,6 +389,30 @@ Return ONLY the JSON object with a "shots" array. Each shot must have action, se
         if (transformationFlags.length === 0) transformationFlags = undefined;
       }
 
+      // 3.7 Phase D: Extract structured camera metadata
+      // Use LLM output if available, otherwise parse from free-text camera field
+      const cameraText = (raw.camera || '').trim();
+      const fallback = parseCameraMetadata(cameraText);
+
+      const VALID_DISTANCES = ['wide', 'medium', 'close'];
+      const VALID_HEIGHTS = ['eye_level', 'high_angle', 'low_angle', 'overhead', 'ground_level'];
+
+      const camera_distance = (VALID_DISTANCES.includes(raw.camera_distance as string)
+        ? raw.camera_distance
+        : fallback.distance) as ExtractedShot['camera_distance'];
+
+      const camera_height = (VALID_HEIGHTS.includes(raw.camera_height as string)
+        ? raw.camera_height
+        : fallback.height) as ExtractedShot['camera_height'];
+
+      const camera_movement = typeof raw.camera_movement === 'string'
+        ? raw.camera_movement.trim()
+        : fallback.movement;
+
+      const camera_direction_name = typeof raw.camera_direction === 'string'
+        ? raw.camera_direction.trim()
+        : undefined;
+
       validated.push({
         shotId: generateShotId(sceneNumber, validated.length),
         shotOrder: validated.length,
@@ -293,7 +422,11 @@ Return ONLY the JSON object with a "shots" array. Each shot must have action, se
         charactersForeground: foreground,
         charactersBackground: background,
         setting: (raw.setting || '').trim(),
-        camera: (raw.camera || '').trim(),
+        camera: cameraText,
+        camera_distance,
+        camera_height,
+        camera_movement,
+        camera_direction_name,
         continuityFlags: Array.isArray(raw.continuity_flags) ? raw.continuity_flags : [],
         beatReference: typeof raw.beat_reference === 'string' ? raw.beat_reference : undefined,
         transformationFlags,
@@ -303,8 +436,8 @@ Return ONLY the JSON object with a "shots" array. Each shot must have action, se
     if (validated.length < parsed.shots.length) {
       console.warn(`[ShotExtraction] ${parsed.shots.length - validated.length} shot(s) discarded for scene ${sceneId}; consider user review.`);
     }
-    console.log(`[ShotExtraction] Extracted ${validated.length} shots for scene ${sceneId}`);
-    return validated;
+    console.log(`[ShotExtraction] Extracted ${validated.length} shots for scene ${sceneId}, ${newDirections.length} new direction(s) proposed`);
+    return { shots: validated, newDirections };
   }
 
   private timeout(ms: number): Promise<never> {
@@ -325,7 +458,7 @@ Return ONLY the JSON object with a "shots" array. Each shot must have action, se
     return response.content;
   }
 
-  private parseResponse(content: string): { shots: LLMShotRaw[] } {
+  private parseResponse(content: string): { shots: LLMShotRaw[]; new_directions?: NewDirectionRaw[] } {
     let text = content.trim();
     text = text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
     try {

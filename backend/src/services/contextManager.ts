@@ -28,6 +28,14 @@ export interface Beat {
   estimatedScreenTimeSeconds: number;
 }
 
+/** A row from intake_resolutions — Streamline Phase 4's Ask Auteur facts ledger. */
+export interface IntakeResolution {
+  questionText: string;
+  selectedAnswer: string | null;
+  subjectEntityType: string | null;
+  subjectEntityName: string | null;
+}
+
 export interface GlobalContext {
   projectId: string;
   branchId: string;
@@ -36,6 +44,7 @@ export interface GlobalContext {
   masterScriptSummary?: string;
   writingStyleCapsule?: StyleCapsule;
   visualStyleCapsule?: StyleCapsule;
+  auteurResolutions?: IntakeResolution[];
 }
 
 /** Scene asset entry for LLM context (formatted from scene_asset_instances + project_asset). */
@@ -167,6 +176,19 @@ export class ContextManager {
         }
       } catch (error) {
         console.log('[ContextManager] Master script not yet available (expected for early stages)');
+      }
+
+      // Fetch Ask Auteur's established facts (Streamline Phase 4) — re-read on
+      // every call so a from-scratch regeneration months later still can't
+      // drift from an intake-time answer; the ledger is the source of truth.
+      try {
+        const auteurResolutions = await this.fetchAuteurResolutions(actualBranchId);
+        if (auteurResolutions.length > 0) {
+          globalContext.auteurResolutions = auteurResolutions;
+          console.log(`[ContextManager] Loaded ${auteurResolutions.length} Ask Auteur resolution(s)`);
+        }
+      } catch (error) {
+        console.log('[ContextManager] No Ask Auteur resolutions available');
       }
 
       return globalContext;
@@ -377,7 +399,25 @@ export class ContextManager {
       parts.push(`\nMASTER SCRIPT SUMMARY:\n${globalContext.masterScriptSummary}`);
     }
 
+    // Add Ask Auteur's established facts if available (Streamline Phase 4)
+    if (globalContext.auteurResolutions && globalContext.auteurResolutions.length > 0) {
+      parts.push(`\n${this.formatAuteurResolutions(globalContext.auteurResolutions)}`);
+    }
+
     return parts.join('\n\n');
+  }
+
+  /**
+   * Formats Ask Auteur's established facts for prompt injection — every
+   * stage formatter that includes this block shares the exact same wording
+   * so the LLM sees a consistent instruction regardless of which stage is generating.
+   */
+  formatAuteurResolutions(resolutions: IntakeResolution[]): string {
+    const lines = resolutions.map(r => {
+      const subject = r.subjectEntityName ? `${r.subjectEntityName}: ` : '';
+      return `- ${subject}${r.selectedAnswer ?? r.questionText}`;
+    });
+    return `ESTABLISHED FACTS (do not contradict):\n${lines.join('\n')}`;
   }
 
   /**
@@ -466,6 +506,29 @@ Estimated screen time: ${beat.estimatedScreenTimeSeconds} seconds`;
   }
 
   /**
+   * Private helper: Fetch Ask Auteur's established facts for this branch
+   * (Streamline Phase 4). Same query shape as fetchBeatSheet/fetchMasterScriptSummary.
+   */
+  private async fetchAuteurResolutions(branchId: string): Promise<IntakeResolution[]> {
+    const { data, error } = await this.db.supabase
+      .from('intake_resolutions')
+      .select('question_text, selected_answer, subject_entity_type, subject_entity_name')
+      .eq('branch_id', branchId)
+      .order('created_at', { ascending: true });
+
+    if (error || !data) {
+      return [];
+    }
+
+    return data.map((row: { question_text: string; selected_answer: string | null; subject_entity_type: string | null; subject_entity_name: string | null }) => ({
+      questionText: row.question_text,
+      selectedAnswer: row.selected_answer,
+      subjectEntityType: row.subject_entity_type,
+      subjectEntityName: row.subject_entity_name,
+    }));
+  }
+
+  /**
    * Private helper: Fetch beat sheet from Stage 3
    */
   private async fetchBeatSheet(branchId: string): Promise<Beat[] | null> {
@@ -551,6 +614,10 @@ Estimated screen time: ${beat.estimatedScreenTimeSeconds} seconds`;
       ));
     }
 
+    if (globalContext.auteurResolutions && globalContext.auteurResolutions.length > 0) {
+      parts.push(this.formatAuteurResolutions(globalContext.auteurResolutions));
+    }
+
     return parts.join('\n\n');
   }
 
@@ -564,6 +631,10 @@ Estimated screen time: ${beat.estimatedScreenTimeSeconds} seconds`;
       parts.push(this.styleCapsuleService.formatWritingStyleInjection(
         globalContext.writingStyleCapsule
       ));
+    }
+
+    if (globalContext.auteurResolutions && globalContext.auteurResolutions.length > 0) {
+      parts.push(this.formatAuteurResolutions(globalContext.auteurResolutions));
     }
 
     return parts.join('\n\n');
@@ -583,6 +654,10 @@ Estimated screen time: ${beat.estimatedScreenTimeSeconds} seconds`;
 
     if (globalContext.beatSheet) {
       parts.push(`Beat Sheet Reference:\n${this.formatBeatSheet(globalContext.beatSheet)}`);
+    }
+
+    if (globalContext.auteurResolutions && globalContext.auteurResolutions.length > 0) {
+      parts.push(this.formatAuteurResolutions(globalContext.auteurResolutions));
     }
 
     return parts.join('\n\n');

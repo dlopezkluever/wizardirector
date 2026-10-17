@@ -11,7 +11,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { User, MapPin, Package, Edit3, Lock, Sparkles, Loader2, History, Trash2, ChevronDown } from 'lucide-react';
+import { User, MapPin, Package, Edit3, Lock, Sparkles, Loader2, History, Trash2, ChevronDown, BookOpen, Check, X, Info } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
@@ -25,10 +27,12 @@ import { AddTransformationDialog } from '@/components/pipeline/Stage8/AddTransfo
 import { TransformationImagePicker } from '@/components/pipeline/Stage8/TransformationImagePicker';
 import { transformationEventService } from '@/lib/services/transformationEventService';
 import { sceneAssetService } from '@/lib/services/sceneAssetService';
+import { EnhancedUploadModal } from '@/components/pipeline/shared/EnhancedUploadModal';
 import { VersionedTextarea } from '@/components/pipeline/VersionedTextarea';
 import { textFieldVersionService } from '@/lib/services/textFieldVersionService';
 import { cn } from '@/lib/utils';
-import type { SceneAssetInstance, TransformationEvent, Shot } from '@/types/scene';
+import { Badge } from '@/components/ui/badge';
+import type { SceneAssetInstance, TransformationEvent, Shot, StoryContextSuggestion } from '@/types/scene';
 
 type AssetTypeKey = 'character' | 'location' | 'prop';
 
@@ -49,7 +53,7 @@ export interface VisualStateEditorPanelProps {
       carryForward?: boolean;
     }
   ) => void;
-  onGenerateImage: (instanceId: string) => void;
+  onGenerateImage: (instanceId: string, referenceImageUrl?: string) => void;
   onRemoveFromScene?: (instanceId: string) => void;
   projectId: string;
   sceneId: string;
@@ -112,6 +116,19 @@ export function VisualStateEditorPanel({
   const [generatingEventId, setGeneratingEventId] = useState<string | null>(null);
   const [generatingImageEventId, setGeneratingImageEventId] = useState<string | null>(null);
   const [imagePickerEventId, setImagePickerEventId] = useState<string | null>(null);
+  const [uploadAnalysisModal, setUploadAnalysisModal] = useState<{
+    instanceId: string;
+    assetName: string;
+    assetType: string;
+    currentDescription: string;
+    extractedDescription: string;
+    suggestedMerge: string;
+    confidence: number;
+    imageUrl: string;
+  } | null>(null);
+  const [contextSuggestion, setContextSuggestion] = useState<StoryContextSuggestion | null>(null);
+  const [isInferringContext, setIsInferringContext] = useState(false);
+  const [useCurrentAsRef, setUseCurrentAsRef] = useState(false);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -119,6 +136,7 @@ export function VisualStateEditorPanel({
       setEditedDescription(selectedAsset.description_override ?? selectedAsset.effective_description ?? selectedAsset.project_asset?.description ?? '');
       setStatusTags(selectedAsset.status_tags ?? []);
       setCarryForward(selectedAsset.carry_forward ?? true);
+      setContextSuggestion(null);
     }
   }, [selectedAsset?.id, selectedAsset?.description_override, selectedAsset?.effective_description, selectedAsset?.status_tags, selectedAsset?.carry_forward]);
 
@@ -182,10 +200,10 @@ export function VisualStateEditorPanel({
     finally { setGeneratingEventId(null); }
   }, [projectId, sceneId]);
 
-  const handleGeneratePostImage = useCallback(async (eventId: string) => {
+  const handleGeneratePostImage = useCallback(async (eventId: string, referenceImageUrl?: string) => {
     try {
       setGeneratingImageEventId(eventId);
-      const { jobId } = await transformationEventService.generatePostImage(projectId, sceneId, eventId);
+      const { jobId } = await transformationEventService.generatePostImage(projectId, sceneId, eventId, referenceImageUrl);
       // Poll for completion
       const maxAttempts = 60;
       const pollIntervalMs = 2000;
@@ -305,6 +323,87 @@ export function VisualStateEditorPanel({
     toast.success('Asset locked');
   }, [selectedAsset, statusTags, onUpdateAsset]);
 
+  // Enhanced upload modal: triggered after SceneAssetImageUpload succeeds
+  const handleUploadComplete = useCallback(async (imageUrl: string) => {
+    if (!selectedAsset) return;
+    const assetName = selectedAsset.project_asset?.name || 'Unknown';
+    const assetTypeStr = selectedAsset.project_asset?.asset_type || 'character';
+    const currentDesc = selectedAsset.effective_description || selectedAsset.project_asset?.description || '';
+
+    try {
+      const analysis = await sceneAssetService.analyzeSceneAssetImage(projectId, sceneId, selectedAsset.id);
+      setUploadAnalysisModal({
+        instanceId: selectedAsset.id,
+        assetName: assetName,
+        assetType: assetTypeStr,
+        currentDescription: currentDesc,
+        extractedDescription: analysis.extractedDescription,
+        suggestedMerge: analysis.suggestedMerge,
+        confidence: analysis.confidence,
+        imageUrl,
+      });
+    } catch (err) {
+      console.error('Image analysis failed (non-blocking):', err);
+      // If analysis fails, don't block — the image is already uploaded
+    }
+  }, [selectedAsset, projectId, sceneId]);
+
+  const handleUploadAccept = useCallback(async (finalDescription: string, _finalImageUrl: string) => {
+    if (!selectedAsset || !uploadAnalysisModal) return;
+
+    // Save the description as an override
+    onUpdateAsset(selectedAsset.id, { descriptionOverride: finalDescription });
+
+    // Refresh queries
+    queryClient.invalidateQueries({ queryKey: ['scene-asset-attempts', projectId, sceneId, selectedAsset.id] });
+    queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
+
+    setUploadAnalysisModal(null);
+  }, [selectedAsset, uploadAnalysisModal, onUpdateAsset, queryClient, projectId, sceneId]);
+
+  // Story context inference handler
+  const handleInferFromStory = useCallback(async () => {
+    if (!selectedAsset) return;
+    setIsInferringContext(true);
+    setContextSuggestion(null);
+    try {
+      const result = await sceneAssetService.inferContext(projectId, sceneId, selectedAsset.id);
+      setContextSuggestion(result);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to infer from story context');
+    } finally {
+      setIsInferringContext(false);
+    }
+  }, [selectedAsset, projectId, sceneId]);
+
+  const handleAcceptDescription = useCallback(() => {
+    if (!selectedAsset || !contextSuggestion) return;
+    setEditedDescription(contextSuggestion.suggested_description);
+    onUpdateAsset(selectedAsset.id, {
+      descriptionOverride: contextSuggestion.suggested_description,
+      modificationReason: 'Accepted story context suggestion',
+    });
+    toast.success('Description updated from story context');
+  }, [selectedAsset, contextSuggestion, onUpdateAsset]);
+
+  const handleAcceptTags = useCallback(() => {
+    if (!selectedAsset || !contextSuggestion) return;
+    // Merge: add suggested tags to existing, deduplicate
+    const merged = Array.from(new Set([...statusTags, ...contextSuggestion.suggested_tags]));
+    setStatusTags(merged);
+    onUpdateAsset(selectedAsset.id, {
+      statusTags: merged,
+      modificationReason: 'Accepted story context tag suggestions',
+    });
+    toast.success('Tags updated from story context');
+  }, [selectedAsset, contextSuggestion, statusTags, onUpdateAsset]);
+
+  const handleAcceptBoth = useCallback(() => {
+    handleAcceptDescription();
+    handleAcceptTags();
+    setContextSuggestion(null);
+  }, [handleAcceptDescription, handleAcceptTags]);
+
   const useMasterAsIsMutation = useMutation({
     mutationFn: () => {
       if (!selectedAsset) throw new Error('No asset selected');
@@ -409,7 +508,10 @@ export function VisualStateEditorPanel({
             <Button
               variant="gold"
               size="sm"
-              onClick={() => onGenerateImage(selectedAsset.id)}
+              onClick={() => onGenerateImage(
+                selectedAsset.id,
+                useCurrentAsRef ? selectedAsset.image_key_url : undefined
+              )}
               disabled={isGeneratingImage || useMasterAsIs}
             >
               {isGeneratingImage ? (
@@ -421,11 +523,31 @@ export function VisualStateEditorPanel({
                 </>
               )}
             </Button>
+            {selectedAsset.image_key_url && (
+              <div className="flex items-center gap-1.5">
+                <Switch id="use-ref-scene-gen" checked={useCurrentAsRef}
+                  onCheckedChange={(checked) => setUseCurrentAsRef(checked)}
+                  className="scale-75 origin-left" />
+                <label htmlFor="use-ref-scene-gen"
+                  className="text-xs text-muted-foreground cursor-pointer select-none">
+                  Use as ref
+                </label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="w-3 h-3 opacity-50 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-[220px] text-xs">
+                    When enabled, the current image is sent as a style reference to guide generation, helping maintain visual consistency.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            )}
             <SceneAssetImageUpload
               projectId={projectId}
               sceneId={sceneId}
               instanceId={selectedAsset.id}
               disabled={useMasterAsIs}
+              onUploadComplete={handleUploadComplete}
             />
           </div>
 
@@ -458,6 +580,120 @@ export function VisualStateEditorPanel({
               placeholder="Starting look for this asset in this scene…"
               disabled={isLocked || useMasterAsIs}
             />
+
+            {/* Infer from Story Context button + suggestion preview */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleInferFromStory}
+                disabled={isLocked || useMasterAsIs || isInferringContext}
+              >
+                {isInferringContext ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                ) : (
+                  <BookOpen className="w-4 h-4 mr-1" />
+                )}
+                {isInferringContext ? 'Analyzing…' : 'Infer from Story'}
+              </Button>
+            </div>
+
+            {contextSuggestion && (
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-primary flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5" />
+                    Story Context Suggestion
+                  </span>
+                  <button
+                    type="button"
+                    className="p-0.5 rounded hover:bg-muted text-muted-foreground"
+                    onClick={() => setContextSuggestion(null)}
+                    aria-label="Dismiss suggestion"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Description suggestion */}
+                {contextSuggestion.suggested_description && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-muted-foreground">Suggested Description</span>
+                    <p className="text-xs text-foreground bg-card/80 rounded p-2 border border-border/30">
+                      {contextSuggestion.suggested_description}
+                    </p>
+                  </div>
+                )}
+
+                {/* Tags suggestion */}
+                {contextSuggestion.suggested_tags.length > 0 && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-muted-foreground">Suggested Tags</span>
+                    <div className="flex flex-wrap gap-1">
+                      {contextSuggestion.suggested_tags.map((tag) => (
+                        <Badge
+                          key={tag}
+                          variant="secondary"
+                          className="text-[10px] bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                        >
+                          +{tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Reasoning (collapsible) */}
+                {contextSuggestion.reasoning && (
+                  <Collapsible>
+                    <CollapsibleTrigger asChild>
+                      <button type="button" className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1">
+                        <ChevronDown className="w-3 h-3" />
+                        Reasoning
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <p className="text-[11px] text-muted-foreground/80 italic mt-1">
+                        {contextSuggestion.reasoning}
+                      </p>
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+
+                {/* Accept buttons */}
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => { handleAcceptDescription(); setContextSuggestion(null); }}
+                  >
+                    <Check className="w-3 h-3 mr-1" />
+                    Accept Description
+                  </Button>
+                  {contextSuggestion.suggested_tags.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => { handleAcceptTags(); setContextSuggestion(null); }}
+                    >
+                      <Check className="w-3 h-3 mr-1" />
+                      Accept Tags
+                    </Button>
+                  )}
+                  <Button
+                    variant="gold"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={handleAcceptBoth}
+                  >
+                    <Check className="w-3 h-3 mr-1" />
+                    Accept Both
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {/* Collapsible Transformations Section */}
             <Collapsible defaultOpen>
@@ -568,6 +804,49 @@ export function VisualStateEditorPanel({
           projectId={projectId}
           projectAssetId={selectedAsset.project_asset_id}
           onSelect={(imageUrl) => handlePickExistingImage(imagePickerEventId, imageUrl)}
+        />
+      )}
+
+      {/* Enhanced Upload Modal (3.7 Phase 1) */}
+      {uploadAnalysisModal && (
+        <EnhancedUploadModal
+          isOpen={!!uploadAnalysisModal}
+          onClose={() => setUploadAnalysisModal(null)}
+          assetName={uploadAnalysisModal.assetName}
+          assetType={uploadAnalysisModal.assetType}
+          currentDescription={uploadAnalysisModal.currentDescription}
+          extractedDescription={uploadAnalysisModal.extractedDescription}
+          suggestedMerge={uploadAnalysisModal.suggestedMerge}
+          confidence={uploadAnalysisModal.confidence}
+          initialImageUrl={uploadAnalysisModal.imageUrl}
+          onEditImage={(params) =>
+            sceneAssetService.startEditImageJob(projectId, sceneId, uploadAnalysisModal.instanceId, {
+              referenceImageUrl: params.referenceImageUrl,
+              editInstructions: params.editInstructions,
+              description: params.description,
+            })
+          }
+          onApplyStyle={(params) =>
+            sceneAssetService.startEditImageJob(projectId, sceneId, uploadAnalysisModal.instanceId, {
+              referenceImageUrl: params.referenceImageUrl,
+              description: params.description,
+            })
+          }
+          onRemoveBackground={(params) =>
+            sceneAssetService.startEditImageJob(projectId, sceneId, uploadAnalysisModal.instanceId, {
+              referenceImageUrl: params.referenceImageUrl,
+              description: params.description,
+              removeBackground: true,
+            })
+          }
+          onRegenerate={(params) =>
+            sceneAssetService.startEditImageJob(projectId, sceneId, uploadAnalysisModal.instanceId, {
+              description: params.description,
+              ...(params.referenceImageUrl ? { referenceImageUrl: params.referenceImageUrl } : {}),
+            })
+          }
+          onPollJob={(jobId) => sceneAssetService.getImageJobStatus(jobId)}
+          onAccept={handleUploadAccept}
         />
       )}
     </motion.div>

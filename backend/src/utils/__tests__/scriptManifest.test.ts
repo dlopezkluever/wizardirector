@@ -236,6 +236,82 @@ describe('extractManifest', () => {
     expect(manifest.globalProps.size).toBe(0);
   });
 
+  // 3.7: Sub-location precision tests
+  it('should extract compound location headings with sub-locations', () => {
+    const doc = makeDoc([
+      sceneHeading('INT. GINGERBREAD HOUSE - KITCHEN - DAY'),
+      action('Hansel backs away from the witch.'),
+      sceneHeading('INT. GINGERBREAD HOUSE - HALLWAY - CONTINUOUS'),
+      action('He crashes through the hallway.'),
+      sceneHeading('EXT. GINGERBREAD HOUSE - FRONT YARD - CONTINUOUS'),
+      action('He bursts through the gingerbread door.'),
+    ]);
+
+    const manifest = extractManifest(doc);
+    expect(manifest.scenes).toHaveLength(3);
+    expect(manifest.scenes[0].location).toBe('GINGERBREAD HOUSE - KITCHEN');
+    expect(manifest.scenes[0].timeOfDay).toBe('DAY');
+    expect(manifest.scenes[1].location).toBe('GINGERBREAD HOUSE - HALLWAY');
+    expect(manifest.scenes[1].timeOfDay).toBe('CONTINUOUS');
+    expect(manifest.scenes[2].location).toBe('GINGERBREAD HOUSE - FRONT YARD');
+    expect(manifest.scenes[2].timeOfDay).toBe('CONTINUOUS');
+    expect(manifest.scenes[2].intExt).toBe('EXT');
+  });
+
+  it('should deduplicate compound locations in globalLocations', () => {
+    const doc = makeDoc([
+      sceneHeading('INT. APARTMENT - LIVING ROOM - NIGHT'),
+      action('Action.'),
+      sceneHeading('INT. APARTMENT - KITCHEN - CONTINUOUS'),
+      action('Action.'),
+      sceneHeading('INT. APARTMENT - LIVING ROOM - LATER'),
+      action('Action.'),
+    ]);
+
+    const manifest = extractManifest(doc);
+    // "APARTMENT - LIVING ROOM" appears twice but should be deduplicated
+    expect(manifest.globalLocations).toContain('APARTMENT - LIVING ROOM');
+    expect(manifest.globalLocations).toContain('APARTMENT - KITCHEN');
+    expect(manifest.globalLocations.filter(l => l === 'APARTMENT - LIVING ROOM')).toHaveLength(1);
+  });
+
+  it('should handle simple headings without sub-locations (backward compat)', () => {
+    const doc = makeDoc([
+      sceneHeading('INT. KITCHEN - DAY'),
+      action('Action.'),
+      sceneHeading('EXT. GARDEN - NIGHT'),
+      action('Action.'),
+    ]);
+
+    const manifest = extractManifest(doc);
+    expect(manifest.scenes[0].location).toBe('KITCHEN');
+    expect(manifest.scenes[0].timeOfDay).toBe('DAY');
+    expect(manifest.scenes[1].location).toBe('GARDEN');
+    expect(manifest.scenes[1].timeOfDay).toBe('NIGHT');
+  });
+
+  it('should handle headings with MOMENTS LATER time-of-day', () => {
+    const doc = makeDoc([
+      sceneHeading('INT. CASTLE - THRONE ROOM - MOMENTS LATER'),
+      action('The king sits down.'),
+    ]);
+
+    const manifest = extractManifest(doc);
+    expect(manifest.scenes[0].location).toBe('CASTLE - THRONE ROOM');
+    expect(manifest.scenes[0].timeOfDay).toBe('MOMENTS LATER');
+  });
+
+  it('should handle headings with no time-of-day', () => {
+    const doc = makeDoc([
+      sceneHeading('INT. DARK CAVE'),
+      action('Dripping sounds.'),
+    ]);
+
+    const manifest = extractManifest(doc);
+    expect(manifest.scenes[0].location).toBe('DARK CAVE');
+    expect(manifest.scenes[0].timeOfDay).toBeNull();
+  });
+
   it('should track speaking characters per scene', () => {
     const doc = makeDoc([
       sceneHeading('INT. ROOM - DAY'),

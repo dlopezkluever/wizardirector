@@ -15,6 +15,7 @@ import {
   Upload,
   ArrowDownToLine,
   ArrowUpFromLine,
+  Info,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +35,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import {
   Popover,
   PopoverContent,
@@ -82,9 +84,9 @@ interface FramePanelProps {
   isGenerateDisabled?: boolean;
   disabledReason?: string;
   onGenerate: () => void;
-  onRegenerate: () => void;
-  onRegenerateWithCorrection?: (correction: string) => void;
-  onRegenerateWithEditedPrompt?: (prompt: string) => void;
+  onRegenerate: (options?: { referenceImageUrl?: string }) => void;
+  onRegenerateWithCorrection?: (correction: string, options?: { referenceImageUrl?: string }) => void;
+  onRegenerateWithEditedPrompt?: (prompt: string, options?: { referenceImageUrl?: string }) => void;
   currentPrompt?: string;
   onInpaint: () => void;
   onCompare?: () => void;
@@ -165,6 +167,7 @@ export function FramePanel({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [replacingRefIndex, setReplacingRefIndex] = useState<number | null>(null);
+  const [useCurrentAsRef, setUseCurrentAsRef] = useState(false);
 
   // Fetch available references when replacing
   const { data: availableRefs } = useQuery({
@@ -241,7 +244,8 @@ export function FramePanel({
 
   const handleCorrectionSubmit = () => {
     if (correctionText.trim() && onRegenerateWithCorrection) {
-      onRegenerateWithCorrection(correctionText.trim());
+      const opts = useCurrentAsRef && frame?.imageUrl ? { referenceImageUrl: frame.imageUrl } : undefined;
+      onRegenerateWithCorrection(correctionText.trim(), opts);
       setShowRegenOptions(false);
       setCorrectionText('');
     }
@@ -249,7 +253,8 @@ export function FramePanel({
 
   const handleManualPromptSubmit = () => {
     if (editedPrompt.trim() && onRegenerateWithEditedPrompt) {
-      onRegenerateWithEditedPrompt(editedPrompt.trim());
+      const opts = useCurrentAsRef && frame?.imageUrl ? { referenceImageUrl: frame.imageUrl } : undefined;
+      onRegenerateWithEditedPrompt(editedPrompt.trim(), opts);
       setShowRegenOptions(false);
       setEditedPrompt('');
       setShowManualEdit(false);
@@ -804,6 +809,25 @@ export function FramePanel({
       {/* Regeneration correction area */}
       {showRegenOptions && canRegenerate && (
         <div className="mt-3 p-3 rounded-lg border border-border/50 bg-card/50 space-y-3">
+          {frame?.imageUrl && (
+            <div className="flex items-center gap-1.5 pb-1">
+              <Switch id={`use-ref-${frameType}`} checked={useCurrentAsRef}
+                onCheckedChange={(checked) => setUseCurrentAsRef(checked)}
+                className="scale-75 origin-left" />
+              <label htmlFor={`use-ref-${frameType}`}
+                className="text-xs text-muted-foreground cursor-pointer select-none">
+                Use current image as reference
+              </label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="w-3 h-3 opacity-50 cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent side="right" className="max-w-[220px] text-xs">
+                  When enabled, the current image is sent as a style reference to guide generation, helping maintain visual consistency.
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          )}
           {!showManualEdit ? (
             <>
               <div className="space-y-2">
@@ -830,7 +854,7 @@ export function FramePanel({
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      onRegenerate();
+                      onRegenerate(useCurrentAsRef && frame?.imageUrl ? { referenceImageUrl: frame.imageUrl } : undefined);
                       setShowRegenOptions(false);
                     }}
                   >

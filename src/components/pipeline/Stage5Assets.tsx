@@ -54,10 +54,11 @@ import { AssetDrawer } from './AssetDrawer';
 import { AssetFilterModal } from './AssetFilterModal';
 import { AssetVersionSync } from './AssetVersionSync';
 import { AddAssetModal } from './AddAssetModal';
-import { ImageDescriptionModal } from './ImageDescriptionModal';
+import { EnhancedUploadModal } from './shared/EnhancedUploadModal';
 import { StyleChangeWarningDialog } from './StyleChangeWarningDialog';
 import { ProjectAssetCarousel } from './ProjectAssetCarousel';
 import { AngleVariantsDialog } from './AngleVariantsDialog';
+import { LocationViewsDialog } from './LocationViewsDialog';
 import { MergeDialog } from './MergeDialog';
 import { SplitWizard } from './SplitWizard';
 import type { ProjectAsset, AssetPreviewEntity, AssetType, AssetDecision } from '@/types/asset';
@@ -138,10 +139,12 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
   const [imageAnalysisModal, setImageAnalysisModal] = useState<{
     assetId: string;
     assetName: string;
+    assetType: string;
     currentDescription: string;
     extractedDescription: string;
     suggestedMerge: string;
     confidence: number;
+    imageUrl: string;
   } | null>(null);
 
   // Style change warning state (3A.9)
@@ -149,6 +152,9 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
 
   // Angle variants dialog state (3C.2)
   const [angleDialogAsset, setAngleDialogAsset] = useState<ProjectAsset | null>(null);
+
+  // Location views dialog state (3.7 Phase C)
+  const [locationViewsAsset, setLocationViewsAsset] = useState<ProjectAsset | null>(null);
 
   // Selection mode state (merge / split)
   const [selectionMode, setSelectionMode] = useState(false);
@@ -433,10 +439,12 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
         setImageAnalysisModal({
           assetId,
           assetName: asset.name,
+          assetType: asset.asset_type || 'character',
           currentDescription: asset.description || '',
           extractedDescription: analysis.extractedDescription,
           suggestedMerge: analysis.suggestedMerge,
           confidence: analysis.confidence,
+          imageUrl: updatedAsset.image_key_url || '',
         });
       } catch (analysisError) {
         console.error('Image analysis failed (non-blocking):', analysisError);
@@ -605,21 +613,33 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
     toast.success(`"${clonedAsset.name}" cloned to project`);
   };
 
-  const handleImageDescriptionConfirm = (action: 'keep' | 'replace' | 'merge', text?: string) => {
+  const handleEnhancedUploadAccept = useCallback(async (finalDescription: string, finalImageUrl: string) => {
     if (!imageAnalysisModal) return;
     const { assetId } = imageAnalysisModal;
 
-    if (action === 'replace') {
-      handleUpdateDescription(assetId, imageAnalysisModal.extractedDescription);
-      setEditingDescriptions(prev => ({ ...prev, [assetId]: imageAnalysisModal.extractedDescription }));
-    } else if (action === 'merge' && text) {
-      handleUpdateDescription(assetId, text);
-      setEditingDescriptions(prev => ({ ...prev, [assetId]: text }));
+    // Save the final description
+    handleUpdateDescription(assetId, finalDescription);
+    setEditingDescriptions(prev => ({ ...prev, [assetId]: finalDescription }));
+
+    // If the accepted image differs from what's currently active, select the matching attempt
+    const asset = assets.find(a => a.id === assetId);
+    if (asset && asset.image_key_url !== finalImageUrl) {
+      try {
+        const attempts = await projectAssetService.listAttempts(projectId, assetId);
+        const matchingAttempt = attempts.find(a => a.image_url === finalImageUrl);
+        if (matchingAttempt && !matchingAttempt.is_selected) {
+          await projectAssetService.selectAttempt(projectId, assetId, matchingAttempt.id);
+        }
+      } catch (err) {
+        console.error('Failed to select matching attempt:', err);
+      }
     }
-    // 'keep' = no action needed
+
+    // Refresh asset data
+    queryClient.invalidateQueries({ queryKey: ['project-asset-attempts', projectId, assetId] });
 
     setImageAnalysisModal(null);
-  };
+  }, [imageAnalysisModal, assets, projectId, handleUpdateDescription, queryClient]);
 
   // Selection mode helpers
   const toggleAssetSelection = (assetId: string) => {
@@ -1190,6 +1210,12 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
                                         Manage Angles
                                       </DropdownMenuItem>
                                     )}
+                                    {asset.asset_type === 'location' && (
+                                      <DropdownMenuItem onClick={() => setLocationViewsAsset(asset)}>
+                                        <MapPin className="w-4 h-4 mr-2" />
+                                        Camera Directions
+                                      </DropdownMenuItem>
+                                    )}
                                     {asset.image_key_url && (
                                       <DropdownMenuItem onClick={() => handlePromoteToGlobal(asset.id)}>
                                         <Upload className="w-4 h-4 mr-2" />
@@ -1450,19 +1476,46 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
         onClearImages={handleStyleChangeClearImages}
       />
 
-      {/* Image Description Modal (3A.7) */}
+      {/* Enhanced Upload Modal (3.7 Phase 1) */}
       {imageAnalysisModal && (
-        <ImageDescriptionModal
+        <EnhancedUploadModal
           isOpen={!!imageAnalysisModal}
           onClose={() => setImageAnalysisModal(null)}
           assetName={imageAnalysisModal.assetName}
+          assetType={imageAnalysisModal.assetType}
           currentDescription={imageAnalysisModal.currentDescription}
           extractedDescription={imageAnalysisModal.extractedDescription}
           suggestedMerge={imageAnalysisModal.suggestedMerge}
           confidence={imageAnalysisModal.confidence}
-          onKeepCurrent={() => handleImageDescriptionConfirm('keep')}
-          onReplaceWithExtracted={() => handleImageDescriptionConfirm('replace')}
-          onUseMerged={(text) => handleImageDescriptionConfirm('merge', text)}
+          initialImageUrl={imageAnalysisModal.imageUrl}
+          onEditImage={(params) =>
+            projectAssetService.startEditImageJob(projectId, imageAnalysisModal.assetId, {
+              referenceImageUrl: params.referenceImageUrl,
+              editInstructions: params.editInstructions,
+              description: params.description,
+            })
+          }
+          onApplyStyle={(params) =>
+            projectAssetService.startEditImageJob(projectId, imageAnalysisModal.assetId, {
+              referenceImageUrl: params.referenceImageUrl,
+              description: params.description,
+            })
+          }
+          onRemoveBackground={(params) =>
+            projectAssetService.startEditImageJob(projectId, imageAnalysisModal.assetId, {
+              referenceImageUrl: params.referenceImageUrl,
+              description: params.description,
+              removeBackground: true,
+            })
+          }
+          onRegenerate={(params) =>
+            projectAssetService.startEditImageJob(projectId, imageAnalysisModal.assetId, {
+              description: params.description,
+              ...(params.referenceImageUrl ? { referenceImageUrl: params.referenceImageUrl } : {}),
+            })
+          }
+          onPollJob={(jobId) => projectAssetService.getImageJobStatus(jobId)}
+          onAccept={handleEnhancedUploadAccept}
         />
       )}
 
@@ -1546,6 +1599,16 @@ export function Stage5Assets({ projectId, onComplete, onBack, stageStatus, onNex
           asset={angleDialogAsset}
           open={!!angleDialogAsset}
           onOpenChange={(open) => { if (!open) setAngleDialogAsset(null); }}
+        />
+      )}
+
+      {/* 3.7 Phase C: Location Views Dialog */}
+      {locationViewsAsset && (
+        <LocationViewsDialog
+          projectId={projectId}
+          asset={locationViewsAsset}
+          open={!!locationViewsAsset}
+          onOpenChange={(open) => { if (!open) setLocationViewsAsset(null); }}
         />
       )}
 

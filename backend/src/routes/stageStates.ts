@@ -121,7 +121,7 @@ router.put('/:projectId/stages/:stageNumber', async (req, res) => {
   try {
     const { projectId, stageNumber } = req.params;
     const userId = req.user!.id;
-    const { content, status, regenerationGuidance, styleCapsuleMetadata } = req.body;
+    const { content, status, regenerationGuidance, styleCapsuleMetadata, origin } = req.body;
 
     console.log('🔄 PUT /api/projects/:projectId/stages/:stageNumber called:', {
       projectId,
@@ -147,10 +147,17 @@ router.put('/:projectId/stages/:stageNumber', async (req, res) => {
     }
 
     // Validate status if provided
-    const validStatuses = ['draft', 'locked', 'invalidated', 'outdated'];
+    const validStatuses = ['draft', 'locked', 'invalidated', 'outdated', 'skipped'];
     if (status && !validStatuses.includes(status)) {
       console.error('❌ Invalid status:', status);
       return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    // Validate origin if provided (Streamline provenance tag)
+    const validOrigins = ['skipped', 'imported', 'ai-generated', 'authored'];
+    if (origin && !validOrigins.includes(origin)) {
+      console.error('❌ Invalid origin:', origin);
+      return res.status(400).json({ error: 'Invalid origin' });
     }
 
     // Get the project and its active branch
@@ -220,6 +227,7 @@ router.put('/:projectId/stages/:stageNumber', async (req, res) => {
       stage_number: stage,
       version: nextVersion,
       status: finalStatus,
+      origin: origin || null,
       content: content,
       regeneration_guidance: regenerationGuidance || '',
       created_by: userId,
@@ -349,12 +357,12 @@ router.post('/:projectId/stages/:stageNumber/lock', async (req, res) => {
         return res.status(500).json({ error: 'Failed to validate stage prerequisites' });
       }
 
-      if (!previousStageState || previousStageState.status !== 'locked') {
+      if (!previousStageState || (previousStageState.status !== 'locked' && previousStageState.status !== 'skipped')) {
         return res.status(400).json({
-          error: `Cannot lock stage ${stage}. Stage ${stage - 1} must be locked first.`,
+          error: `Cannot lock stage ${stage}. Stage ${stage - 1} must be locked or skipped first.`,
           details: {
             requiredStage: stage - 1,
-            requiredStatus: 'locked',
+            requiredStatus: 'locked or skipped',
             currentStatus: previousStageState?.status || 'not found'
           }
         });
@@ -403,6 +411,113 @@ router.post('/:projectId/stages/:stageNumber/lock', async (req, res) => {
   }
 });
 
+// POST /api/projects/:projectId/stages/:stageNumber/skip - Mark a stage as intentionally skipped
+// Only stages 2, 3, 4 are skippable (stage 1 configures the project; stage 5/Assets is never skipped).
+router.post('/:projectId/stages/:stageNumber/skip', async (req, res) => {
+  try {
+    const { projectId, stageNumber } = req.params;
+    const userId = req.user!.id;
+
+    const stage = parseInt(stageNumber);
+    if (isNaN(stage) || ![2, 3, 4].includes(stage)) {
+      return res.status(400).json({ error: 'Only stages 2, 3, and 4 can be skipped' });
+    }
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, active_branch_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    if (!project.active_branch_id) {
+      return res.status(400).json({ error: 'Project has no active branch' });
+    }
+
+    // Previous stage must already be locked or skipped
+    const { data: previousStageState, error: previousError } = await supabase
+      .from('stage_states')
+      .select('id, status')
+      .eq('branch_id', project.active_branch_id)
+      .eq('stage_number', stage - 1)
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (previousError) {
+      console.error('Error checking previous stage:', previousError);
+      return res.status(500).json({ error: 'Failed to validate stage prerequisites' });
+    }
+
+    if (!previousStageState || (previousStageState.status !== 'locked' && previousStageState.status !== 'skipped')) {
+      return res.status(400).json({
+        error: `Cannot skip stage ${stage}. Stage ${stage - 1} must be locked or skipped first.`,
+        details: {
+          requiredStage: stage - 1,
+          requiredStatus: 'locked or skipped',
+          currentStatus: previousStageState?.status || 'not found'
+        }
+      });
+    }
+
+    // Current stage must not already have real (locked) content
+    const { data: currentState, error: currentError } = await supabase
+      .from('stage_states')
+      .select('id, version, status')
+      .eq('branch_id', project.active_branch_id)
+      .eq('stage_number', stage)
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (currentError) {
+      console.error('Error checking current stage:', currentError);
+      return res.status(500).json({ error: 'Failed to validate stage state' });
+    }
+
+    if (currentState?.status === 'locked') {
+      return res.status(400).json({ error: `Stage ${stage} already has locked content. Unlock it first before skipping.` });
+    }
+
+    const nextVersion = (currentState?.version || 0) + 1;
+
+    const { data: skippedState, error: skipError } = await supabase
+      .from('stage_states')
+      .insert({
+        branch_id: project.active_branch_id,
+        stage_number: stage,
+        version: nextVersion,
+        status: 'skipped',
+        origin: 'skipped',
+        content: {},
+        regeneration_guidance: '',
+        created_by: userId,
+        inherited_from_stage_id: currentState?.id || null
+      })
+      .select('*')
+      .single();
+
+    if (skipError) {
+      console.error('❌ Error skipping stage:', skipError);
+      return res.status(500).json({ error: 'Failed to skip stage' });
+    }
+
+    await supabase
+      .from('projects')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', projectId);
+
+    res.json(skippedState);
+  } catch (error) {
+    console.error('Error in POST /api/projects/:projectId/stages/:stageNumber/skip:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // POST /api/projects/:projectId/stages/:stageNumber/unlock - Unlock a Phase A stage (1-5)
 // Two-phase: without confirm returns impact; with confirm=true creates draft version + cascades outdated
 router.post('/:projectId/stages/:stageNumber/unlock', async (req, res) => {
@@ -446,8 +561,8 @@ router.post('/:projectId/stages/:stageNumber/unlock', async (req, res) => {
       return res.status(404).json({ error: 'Stage state not found' });
     }
 
-    if (currentState.status !== 'locked') {
-      return res.status(400).json({ error: 'Stage is not locked' });
+    if (currentState.status !== 'locked' && currentState.status !== 'skipped') {
+      return res.status(400).json({ error: 'Stage is not locked or skipped' });
     }
 
     // Find downstream locked stages

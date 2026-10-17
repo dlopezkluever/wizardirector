@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   FileText,
@@ -8,7 +8,8 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
-  Save
+  Save,
+  Sparkles
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { InputMode, ProjectType, ContentRating, StageStatus, AspectRatio } from '@/types/project';
@@ -23,8 +24,18 @@ import {
 import { useStageState } from '@/lib/hooks/useStageState';
 import { projectService } from '@/lib/services/projectService';
 import { stageStateService } from '@/lib/services/stageStateService';
+import { streamlineService } from '@/lib/services/streamlineService';
+import { scriptService } from '@/lib/services/scriptService';
 import { inputProcessingService, type ProcessedInput } from '@/lib/services/inputProcessingService';
 import type { Project } from '@/types/project';
+import { detectScriptConfidence } from '@/lib/utils/scriptConfidence';
+import { computeStreamlineRouting, effectiveType, type StreamlineImageCard } from '@/lib/utils/streamlineRouting';
+import { StreamlineDropZone, type StreamlineFile } from './streamline/StreamlineDropZone';
+import { StreamlineReviewScreen, type StreamlineEditSummary } from './streamline/StreamlineReviewScreen';
+import { StreamlineImageReviewGrid } from './streamline/StreamlineImageReviewGrid';
+import { AskAuteurQuestionUI, type AskAuteurQuestion, type AskAuteurAnswer } from './streamline/AskAuteurQuestionUI';
+import { StructuralCascadeConfirmDialog } from './streamline/StructuralCascadeConfirmDialog';
+import type { StreamlineReconciledDocument } from '@/lib/services/streamlineService';
 import { StyleCapsuleSelector } from '@/components/styleCapsules/StyleCapsuleSelector';
 import { LockedStageHeader } from './LockedStageHeader';
 import { StageInfoButton } from './StageInfoButton';
@@ -66,6 +77,13 @@ const inputModes: InputModeOption[] = [
     icon: FileText,
     fileHint: 'Upload a formatted screenplay file',
   },
+  {
+    id: 'streamline',
+    title: 'Streamline',
+    description: 'Already have a script or material? Drop it in — we classify it and skip you ahead.',
+    icon: Sparkles,
+    fileHint: 'Drop a script, treatment, or notes — .txt, .md, .pdf, .docx, .rtf',
+  },
 ];
 
 const projectTypes: { id: ProjectType; label: string; description: string }[] = [
@@ -92,6 +110,13 @@ interface Stage1InputModeProps {
   stageStatus?: StageStatus;
   onNext?: () => void;
   onUnlock?: () => void;
+  /**
+   * Streamline's commit lands the project on a different stage than the
+   * normal single-stage progression (e.g. Stage 4 with 2/3 skipped), so it
+   * bypasses onComplete/handleStageComplete entirely and reports its own
+   * target stage instead.
+   */
+  onStreamlineComplete?: (targetStage: number) => void;
 }
 
 interface Stage1Content {
@@ -108,7 +133,7 @@ interface Stage1Content {
   processedInput?: ProcessedInput;
 }
 
-export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, onUnlock }: Stage1InputModeProps) {
+export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, onUnlock, onStreamlineComplete }: Stage1InputModeProps) {
   const isStageLockedOrOutdated = stageStatus === 'locked' || stageStatus === 'outdated';
   
   // Use the stage state hook for persistence (auto-save disabled since we manually manage saving/locking)
@@ -272,6 +297,220 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
     }
   };
 
+  // ── Streamline intake (Phase 3: classification-driven routing) ─────────
+  const [streamlineFiles, setStreamlineFiles] = useState<StreamlineFile[]>([]);
+  const [streamlineImages, setStreamlineImages] = useState<StreamlineImageCard[]>([]);
+  const [isStreamlineCommitting, setIsStreamlineCommitting] = useState(false);
+  const [streamlineError, setStreamlineError] = useState<string | null>(null);
+
+  // ── Ask Auteur session (Phase 4) ────────────────────────────────────────
+  // The question session opens at most once per batch — gated behind
+  // full-batch classification completing (§2.9.6's same-session race fix),
+  // never re-triggered just because the user tweaked a type override.
+  const askAuteurRequestedRef = useRef(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [askAuteurQuestions, setAskAuteurQuestions] = useState<AskAuteurQuestion[]>([]);
+  const [isReconciling, setIsReconciling] = useState(false);
+  const [pendingCascade, setPendingCascade] = useState<StreamlineReconciledDocument[] | null>(null);
+  const [editSummaries, setEditSummaries] = useState<StreamlineEditSummary[]>([]);
+  const [resolutionsForCommit, setResolutionsForCommit] = useState<Array<Record<string, unknown>>>([]);
+  const [resolutionEditsForCommit, setResolutionEditsForCommit] = useState<Array<Record<string, unknown>>>([]);
+
+  const runAskAuteurAnalysis = async () => {
+    if (askAuteurRequestedRef.current || projectId === 'new') return;
+    const successFiles = streamlineFiles.filter(f => f.status === 'success' && f.text);
+    if (successFiles.length === 0) return;
+
+    askAuteurRequestedRef.current = true;
+    setIsAnalyzing(true);
+    try {
+      const { questions } = await streamlineService.analyze(
+        projectId,
+        successFiles.map(f => ({ id: f.id, name: f.name, text: f.text!, isPrimary: f.isPrimary }))
+      );
+      setAskAuteurQuestions(questions);
+    } catch (error) {
+      console.error('Ask Auteur analysis failed (non-fatal — session simply isn\'t offered):', error);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const applyReconciledDocuments = (docs: StreamlineReconciledDocument[]) => {
+    setStreamlineFiles(prev => prev.map(f => {
+      const doc = docs.find(d => d.fileId === f.id);
+      return doc ? { ...f, text: doc.reconciledText } : f;
+    }));
+    setEditSummaries(prev => [...prev, ...docs.map(d => ({ fileName: d.fileName, diffSummary: d.diffSummary }))]);
+  };
+
+  const handleAskAuteurSubmit = async (answers: AskAuteurAnswer[]) => {
+    if (projectId === 'new') return;
+    setIsReconciling(true);
+    try {
+      const successFiles = streamlineFiles.filter(f => f.status === 'success' && f.text);
+      const qaPairs = answers.map(a => {
+        const q = askAuteurQuestions.find(q => q.id === a.questionId)!;
+        return { questionText: q.questionText, selectedAnswer: a.selectedAnswer, subjectEntityName: q.subjectEntityName };
+      });
+
+      const resolutions = askAuteurQuestions.map((q, i) => {
+        const answer = answers.find(a => a.questionId === q.id)!;
+        return {
+          client_id: `r${i}`,
+          question_text: q.questionText,
+          question_category: q.category,
+          options: q.options.map(o => o.label),
+          selected_answer: answer.selectedAnswer,
+          answer_source: answer.answerSource,
+          subject_entity_type: q.subjectEntityType ?? null,
+          subject_entity_name: q.subjectEntityName ?? null,
+          conflicting_sources: q.conflictingSources ?? null,
+        };
+      });
+      setResolutionsForCommit(resolutions);
+
+      const { reconciledDocuments } = await streamlineService.reconcile(
+        projectId,
+        successFiles.map(f => ({ id: f.id, name: f.name, text: f.text!, isPrimary: f.isPrimary })),
+        qaPairs
+      );
+
+      const cascadeDocs = reconciledDocuments.filter(d => d.editScope === 'structural_cascade');
+      const nonCascadeDocs = reconciledDocuments.filter(d => d.editScope !== 'structural_cascade');
+
+      // The reconcile endpoint doesn't report which specific answer caused
+      // which document edit (one LLM call reasons over the whole transcript
+      // at once) — every edit is attributed to the session's first
+      // resolution as a representative link rather than a precise one.
+      const edits = reconciledDocuments.map(d => ({
+        fileId: d.fileId,
+        resolution_client_id: resolutions.length > 0 ? resolutions[0].client_id : null,
+        target_type: 'stage' as const,
+        target_asset_name: null,
+        edit_scope: d.editScope,
+        diff_summary: `${d.fileName}: ${d.diffSummary}`,
+      })).filter(e => e.resolution_client_id !== null);
+      setResolutionEditsForCommit(edits);
+
+      if (nonCascadeDocs.length > 0) applyReconciledDocuments(nonCascadeDocs);
+      if (cascadeDocs.length > 0) setPendingCascade(cascadeDocs);
+
+      setAskAuteurQuestions([]);
+    } catch (error) {
+      console.error('Ask Auteur reconciliation failed:', error);
+      setStreamlineError(error instanceof Error ? error.message : 'Failed to apply your answers. Please try again.');
+    } finally {
+      setIsReconciling(false);
+    }
+  };
+
+  const handleAskAuteurDecline = () => {
+    // Decline path (spec §2.9.7): every open trigger auto-resolves to
+    // ai_inferred — same table, same shape, no separate code path.
+    const resolutions = askAuteurQuestions.map((q, i) => ({
+      client_id: `r${i}`,
+      question_text: q.questionText,
+      question_category: q.category,
+      options: q.options.map(o => o.label),
+      selected_answer: null,
+      answer_source: 'ai_inferred' as const,
+      subject_entity_type: q.subjectEntityType ?? null,
+      subject_entity_name: q.subjectEntityName ?? null,
+      conflicting_sources: q.conflictingSources ?? null,
+    }));
+    setResolutionsForCommit(resolutions);
+    setAskAuteurQuestions([]);
+  };
+
+  const handleCascadeConfirm = () => {
+    if (pendingCascade) applyReconciledDocuments(pendingCascade);
+    setPendingCascade(null);
+  };
+
+  const handleCascadeCancel = () => {
+    // Cancelling a structural-cascade edit leaves that document's text
+    // untouched — its resolution_edit row (if any) is dropped from the
+    // commit payload so the audit trail matches what was actually applied.
+    if (pendingCascade) {
+      const cancelledFileIds = new Set(pendingCascade.map(d => d.fileId));
+      setResolutionEditsForCommit(prev => prev.filter(edit =>
+        !cancelledFileIds.has(edit.fileId as string)
+      ));
+    }
+    setPendingCascade(null);
+  };
+
+  const streamlineProjectConfigReady = !!content.selectedProjectType && content.tonalPrecision.length >= 10;
+  const streamlineRouting = computeStreamlineRouting(streamlineFiles, streamlineImages, streamlineProjectConfigReady);
+  const streamlineKnownEntityNames = streamlineFiles
+    .filter(f => effectiveType(f) === 'character_notes' && f.assetDraft)
+    .map(f => f.assetDraft!.name);
+
+  const handleStreamlineCommit = async () => {
+    if (!streamlineRouting.canConfirm || projectId === 'new' || askAuteurQuestions.length > 0 || pendingCascade) return;
+
+    setIsStreamlineCommitting(true);
+    setStreamlineError(null);
+    try {
+      const projectConfig = {
+        project_type: content.selectedProjectType!,
+        content_rating: content.selectedRating,
+        genre: content.selectedGenres,
+        tonal_precision: content.tonalPrecision,
+        target_length_min: content.targetLength[0] * 60,
+        target_length_max: content.targetLength[1] * 60,
+        aspect_ratio: content.selectedAspectRatio,
+      };
+
+      const assets = streamlineRouting.assetDrafts.map(draft => ({
+        name: draft.name,
+        asset_type: draft.type,
+        description: draft.description,
+        source: streamlineImages.some(img => img.id === draft.sourceFileId) ? 'streamline_import' : 'extracted',
+        image_key_url: streamlineImages.find(img => img.id === draft.sourceFileId)?.imageUrl,
+      }));
+
+      await streamlineService.commit(projectId, {
+        stageTransitions: streamlineRouting.stageTransitions,
+        projectConfig,
+        stage1Draft: { content },
+        ...(assets.length > 0 && { assets }),
+        ...(resolutionsForCommit.length > 0 && { resolutions: resolutionsForCommit }),
+        ...(resolutionEditsForCommit.length > 0 && { resolutionEdits: resolutionEditsForCommit }),
+      });
+
+      // Streamline's commit bypasses the normal Stage 4 lock flow, which is
+      // what usually splits the script into scenes + persists scene
+      // dependencies (extractManifest, zero LLM cost). Without this, Stage 5's
+      // asset extraction would find no scenes to work from — replicate it here.
+      const scriptFile = streamlineFiles.find(f => effectiveType(f) === 'script' && f.status === 'success' && f.text
+        && detectScriptConfidence(f.text).confidence !== 'low');
+      if (scriptFile?.text) {
+        const scenes = scriptService.extractScenes(scriptFile.text);
+        if (scenes.length === 0) {
+          throw new Error(
+            `The import succeeded, but no scenes could be extracted from "${scriptFile.name}". ` +
+            'Stage 4 is locked; please review the screenplay format and retry scene persistence before continuing.'
+          );
+        }
+        await scriptService.persistScenes(projectId, scenes, detectScriptConfidence(scriptFile.text).tiptapDoc);
+      }
+
+      // Land on whichever stage the routing actually filled — the first
+      // stage without a transition is where the user picks up normally.
+      const targetStage = ['1', '2', '3', '4'].every(k => streamlineRouting.stageTransitions[k])
+        ? 5
+        : [2, 3, 4].find(n => !streamlineRouting.stageTransitions[String(n)]) ?? 2;
+      onStreamlineComplete?.(targetStage);
+    } catch (error) {
+      console.error('Streamline commit failed:', error);
+      setStreamlineError(error instanceof Error ? error.message : 'Failed to process your material. Please try again.');
+    } finally {
+      setIsStreamlineCommitting(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -401,7 +640,7 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
                   <span>•</span>
                   <span>Minimum 20 characters required</span>
                 </div>
-                
+
                 <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
                   <CollapsibleTrigger asChild>
                     <Button variant="ghost" size="sm" className="gap-2">
@@ -416,6 +655,57 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
                     />
                   </CollapsibleContent>
                 </Collapsible>
+              </div>
+            ) : content.selectedMode === 'streamline' ? (
+              <div className="space-y-6">
+                <StreamlineDropZone
+                  projectId={projectId}
+                  files={streamlineFiles}
+                  onFilesChange={setStreamlineFiles}
+                  onBatchSettled={() => { void runAskAuteurAnalysis(); }}
+                />
+
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-foreground">Reference images (optional)</h4>
+                  <StreamlineImageReviewGrid
+                    projectId={projectId}
+                    images={streamlineImages}
+                    onImagesChange={setStreamlineImages}
+                    knownEntityNames={streamlineKnownEntityNames}
+                  />
+                </div>
+
+                {isAnalyzing && (
+                  <p className="text-sm text-muted-foreground">Checking your material for gaps or contradictions…</p>
+                )}
+
+                {askAuteurQuestions.length > 0 ? (
+                  <AskAuteurQuestionUI
+                    questions={askAuteurQuestions}
+                    onSubmit={handleAskAuteurSubmit}
+                    onDecline={handleAskAuteurDecline}
+                    isSubmitting={isReconciling}
+                  />
+                ) : (streamlineFiles.length > 0 || streamlineImages.length > 0) && (
+                  <StreamlineReviewScreen
+                    files={streamlineFiles}
+                    routing={streamlineRouting}
+                    onConfirm={handleStreamlineCommit}
+                    isCommitting={isStreamlineCommitting}
+                    editSummaries={editSummaries}
+                  />
+                )}
+
+                <StructuralCascadeConfirmDialog
+                  open={!!pendingCascade}
+                  items={(pendingCascade ?? []).map(d => ({ fileName: d.fileName, diffSummary: d.diffSummary }))}
+                  onConfirm={handleCascadeConfirm}
+                  onCancel={handleCascadeCancel}
+                />
+
+                {streamlineError && (
+                  <p className="text-sm text-destructive">{streamlineError}</p>
+                )}
               </div>
             ) : (
               <FileStagingArea
@@ -598,8 +888,8 @@ export function Stage1InputMode({ projectId, onComplete, stageStatus, onNext, on
           />
         </section>
 
-        {/* Proceed Button */}
-        {!isStageLockedOrOutdated && (
+        {/* Proceed Button — Streamline's confirm action lives inside StreamlineReviewScreen instead */}
+        {!isStageLockedOrOutdated && content.selectedMode !== 'streamline' && (
           <div className="flex justify-between items-center pt-6 border-t border-border">
             {projectId === 'new' ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">

@@ -157,12 +157,17 @@ export const transformationEventService = {
   async generatePostImage(
     projectId: string,
     sceneId: string,
-    eventId: string
+    eventId: string,
+    referenceImageUrl?: string
   ): Promise<{ jobId: string; status: string }> {
     const headers = await getAuthHeaders();
     const response = await fetch(
       `/api/projects/${projectId}/scenes/${sceneId}/transformation-events/${eventId}/generate-post-image`,
-      { method: 'POST', headers }
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(referenceImageUrl ? { referenceImageUrl } : {}),
+      }
     );
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));

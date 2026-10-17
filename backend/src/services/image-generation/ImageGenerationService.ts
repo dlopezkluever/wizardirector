@@ -195,7 +195,8 @@ export class ImageGenerationService {
         projectId: string,
         branchId: string,
         visualStyleCapsuleId?: string,
-        manualVisualTone?: string
+        manualVisualTone?: string,
+        userReferenceImageUrl?: string
     ): Promise<ImageJobResult> {
         const { data: instance, error } = await supabase
             .from('scene_asset_instances')
@@ -237,7 +238,7 @@ export class ImageGenerationService {
             assetId: instance.project_asset_id,
             sceneId: instance.scene_id,
             idempotencyKey: `scene-asset-${sceneInstanceId}-${Date.now()}`,
-            referenceImageUrl: instance.selected_master_reference_url || projectAsset?.image_key_url || undefined,
+            referenceImageUrl: userReferenceImageUrl || instance.selected_master_reference_url || projectAsset?.image_key_url || undefined,
         });
     }
 

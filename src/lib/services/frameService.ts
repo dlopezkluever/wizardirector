@@ -12,7 +12,9 @@ import type {
   FrameJobStatus,
   FrameLink,
   GenerationMode,
+  ReferenceImageOrderEntry,
 } from '@/types/scene';
+import type { ContinuityBaseCandidate } from '@/types/locationContinuity';
 
 export interface AdjacentSceneFrame {
   frameId: string;
@@ -48,6 +50,13 @@ export interface GenerateFramesResponse {
 export interface FrameActionResponse {
   success: boolean;
   frame: Frame;
+}
+
+export interface ContinuityBaseSelectionResponse {
+  success: boolean;
+  selectedContinuityBase: ContinuityBaseCandidate | null;
+  candidates?: ContinuityBaseCandidate[];
+  referenceImageOrder?: ReferenceImageOrderEntry[];
 }
 
 export interface InpaintRequest {
@@ -195,7 +204,8 @@ class FrameService {
   async regenerateFrame(
     projectId: string,
     sceneId: string,
-    frameId: string
+    frameId: string,
+    referenceImageUrl?: string
   ): Promise<FrameActionResponse> {
     const headers = await this.getAuthHeaders();
 
@@ -204,6 +214,7 @@ class FrameService {
       {
         method: 'POST',
         headers,
+        body: JSON.stringify(referenceImageUrl ? { referenceImageUrl } : {}),
       }
     );
 
@@ -304,7 +315,8 @@ class FrameService {
     projectId: string,
     sceneId: string,
     frameId: string,
-    correction: string
+    correction: string,
+    referenceImageUrl?: string
   ): Promise<FrameActionResponse & { updatedPrompt?: string }> {
     const headers = await this.getAuthHeaders();
 
@@ -313,7 +325,7 @@ class FrameService {
       {
         method: 'POST',
         headers,
-        body: JSON.stringify({ correction }),
+        body: JSON.stringify({ correction, ...(referenceImageUrl ? { referenceImageUrl } : {}) }),
       }
     );
 
@@ -332,7 +344,8 @@ class FrameService {
     projectId: string,
     sceneId: string,
     frameId: string,
-    prompt: string
+    prompt: string,
+    referenceImageUrl?: string
   ): Promise<FrameActionResponse> {
     const headers = await this.getAuthHeaders();
 
@@ -341,7 +354,7 @@ class FrameService {
       {
         method: 'POST',
         headers,
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt, ...(referenceImageUrl ? { referenceImageUrl } : {}) }),
       }
     );
 
@@ -477,7 +490,7 @@ class FrameService {
     sceneId: string,
     shotId: string,
     frameType: 'start' | 'end',
-    referenceImages: { label: string; assetName: string; url: string; type: string }[]
+    referenceImages: ReferenceImageOrderEntry[]
   ): Promise<{ success: boolean }> {
     const headers = await this.getAuthHeaders();
 
@@ -493,6 +506,34 @@ class FrameService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to update reference images');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Select or clear the reuse/edit continuity base for a shot.
+   */
+  async updateContinuityBase(
+    projectId: string,
+    sceneId: string,
+    shotId: string,
+    frameId: string | null
+  ): Promise<ContinuityBaseSelectionResponse> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(
+      `/api/projects/${projectId}/scenes/${sceneId}/shots/${shotId}/continuity-base`,
+      {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(frameId ? { frameId } : { clear: true }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to update continuity base');
     }
 
     return response.json();

@@ -4,7 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
-import type { ProjectAsset, CloneAssetRequest, AssetVersionStatus, AssetPreviewResponse, AssetType, AssetDecision, ProjectAssetGenerationAttempt, AngleType, AssetAngleVariant, MergeAssetsRequest, MergeAssetsResponse, SplitAssetRequest, SplitAssetResponse } from '@/types/asset';
+import type { ProjectAsset, CloneAssetRequest, AssetVersionStatus, AssetPreviewResponse, AssetType, AssetDecision, ProjectAssetGenerationAttempt, AngleType, AssetAngleVariant, MergeAssetsRequest, MergeAssetsResponse, SplitAssetRequest, SplitAssetResponse, LocationView } from '@/types/asset';
 
 export interface ExtractAssetsResponse {
   assets: ProjectAsset[];
@@ -25,6 +25,7 @@ export interface UpdateProjectAssetRequest {
   name?: string;
   description?: string;
   image_prompt?: string;
+  location_aliases?: string[];
   deferred?: boolean;
   asset_type?: 'character' | 'prop' | 'location' | 'extra_archetype';
 }
@@ -481,7 +482,7 @@ class ProjectAssetService {
   /**
    * Promote asset to global library
    */
-  async promoteToGlobal(projectId: string, assetId: string): Promise<any> {
+  async promoteToGlobal(projectId: string, assetId: string): Promise<ProjectAsset> {
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session?.access_token) {
@@ -806,6 +807,107 @@ class ProjectAssetService {
     return result.mergedDescription;
   }
 
+  /**
+   * Edit/transform an asset image using reference image + instructions.
+   * Supports: edit with instructions, apply style, remove background, regenerate.
+   */
+  async editImage(
+    projectId: string,
+    assetId: string,
+    params: {
+      referenceImageUrl?: string;
+      editInstructions?: string;
+      description: string;
+      removeBackground?: boolean;
+    }
+  ): Promise<ImageGenerationJobResponse> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/edit-image`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to edit image');
+    }
+
+    const jobResponse = await response.json();
+    return this.pollImageJob(jobResponse.jobId, session.access_token);
+  }
+
+  /**
+   * Start an edit-image job without polling (returns jobId for external polling).
+   */
+  async startEditImageJob(
+    projectId: string,
+    assetId: string,
+    params: {
+      referenceImageUrl?: string;
+      editInstructions?: string;
+      description: string;
+      removeBackground?: boolean;
+    }
+  ): Promise<{ jobId: string; status: string }> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/edit-image`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to edit image');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Get image generation job status (for external polling)
+   */
+  async getImageJobStatus(jobId: string): Promise<{
+    status: string;
+    publicUrl?: string;
+    error?: { message?: string };
+  }> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/images/jobs/${jobId}`, {
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch job status');
+    }
+
+    return response.json();
+  }
+
   // ============================================================================
   // 3C.2: Angle Variant Methods
   // ============================================================================
@@ -886,6 +988,301 @@ class ProjectAssetService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to delete angle variant');
+    }
+  }
+  // ============================================================================
+  // 3.7 Phase C: Location View Methods
+  // ============================================================================
+
+  /**
+   * List all location views for a location asset
+   */
+  async listLocationViews(projectId: string, assetId: string): Promise<LocationView[]> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/location-views`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to list location views');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Create a new location view
+   */
+  async createLocationView(
+    projectId: string,
+    assetId: string,
+    data: {
+      name: string;
+      view_type: 'establishing' | 'direction';
+      alias?: string;
+      description?: string;
+      camera_distance?: string;
+      camera_height?: string;
+      is_primary?: boolean;
+      source?: string;
+    }
+  ): Promise<LocationView> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/location-views`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create location view');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Suggest and create default views (establishing + 2 directions)
+   */
+  async suggestDefaultViews(projectId: string, assetId: string): Promise<LocationView[]> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/location-views/suggest-defaults`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to suggest default views');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Update a location view
+   */
+  async updateLocationView(
+    projectId: string,
+    assetId: string,
+    viewId: string,
+    updates: {
+      alias?: string;
+      description?: string;
+      camera_distance?: string;
+      camera_height?: string;
+      is_primary?: boolean;
+      image_key_url?: string;
+    }
+  ): Promise<LocationView> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/location-views/${viewId}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(updates),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to update location view');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Upload an image for a location view
+   */
+  async uploadLocationViewImage(
+    projectId: string,
+    assetId: string,
+    viewId: string,
+    imageFile: File
+  ): Promise<LocationView> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const formData = new FormData();
+    formData.append('image', imageFile);
+
+    const response = await fetch(
+      `/api/projects/${projectId}/assets/${assetId}/location-views/${viewId}/upload-image`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: formData,
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to upload location view image');
+    }
+
+    return response.json();
+  }
+
+  // ============================================================================
+  // 3.7 Phase G: Establish View from Generated Frame
+  // ============================================================================
+
+  /**
+   * Lock a generated frame as an established view reference for a camera direction.
+   */
+  async establishViewFromFrame(
+    projectId: string,
+    assetId: string,
+    viewId: string,
+    data: {
+      frameImageUrl: string;
+      shotId: string;
+      sceneId: string;
+      frameId?: string;
+    }
+  ): Promise<LocationView> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/assets/${assetId}/location-views/${viewId}/establish-from-frame`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to establish view from frame');
+    }
+
+    return response.json();
+  }
+
+  // ============================================================================
+  // 3.7 Phase H: Generate Location View Image
+  // ============================================================================
+
+  /**
+   * Generate an image for a location view using the establishing/primary image
+   * as a style reference. Polls for completion and updates the view's image_key_url.
+   */
+  async generateLocationViewImage(
+    projectId: string,
+    assetId: string,
+    viewId: string
+  ): Promise<ImageGenerationJobResponse> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(
+      `/api/projects/${projectId}/assets/${assetId}/location-views/${viewId}/generate-image`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to generate location view image');
+    }
+
+    const jobResponse = await response.json();
+
+    // Poll for completion
+    const result = await this.pollImageJob(jobResponse.jobId, session.access_token);
+
+    // If completed, set the location_view's image_key_url to the generated image
+    if (result.status === 'completed' && result.publicUrl) {
+      await fetch(
+        `/api/projects/${projectId}/assets/${assetId}/location-views/${viewId}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ image_key_url: result.publicUrl }),
+        }
+      );
+    }
+
+    return result;
+  }
+
+  /**
+   * Delete a location view
+   */
+  async deleteLocationView(projectId: string, assetId: string, viewId: string): Promise<void> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/assets/${assetId}/location-views/${viewId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to delete location view');
     }
   }
 }

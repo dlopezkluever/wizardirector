@@ -43,7 +43,9 @@ import { sceneService } from '@/lib/services/sceneService';
 import { shotService } from '@/lib/services/shotService';
 import { transformationEventService } from '@/lib/services/transformationEventService';
 import { useShotAssetAutoPopulate } from '@/lib/hooks/useShotAssetAutoPopulate';
-import type { SceneAssetInstance, SceneAssetRelevanceResult, SceneAssetSuggestion } from '@/types/scene';
+import { BulkContextUpdateModal } from '@/components/pipeline/Stage8/BulkContextUpdateModal';
+import { LocationCoveragePanel } from '@/components/pipeline/Stage8/LocationCoveragePanel';
+import type { SceneAssetInstance, SceneAssetRelevanceResult, SceneAssetSuggestion, BulkStoryContextResult } from '@/types/scene';
 import { LockedStageHeader } from './LockedStageHeader';
 import { StageInfoButton } from './StageInfoButton';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
@@ -196,6 +198,10 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
   const [removeConfirmAssetId, setRemoveConfirmAssetId] = useState<string | null>(null);
   // Convert to transformation state
   const [convertingAsset, setConvertingAsset] = useState<SceneAssetInstance | null>(null);
+  // Bulk story context inference
+  const [isInferringContext, setIsInferringContext] = useState(false);
+  const [bulkContextResults, setBulkContextResults] = useState<BulkStoryContextResult[] | null>(null);
+  const [isApplyingContext, setIsApplyingContext] = useState(false);
 
   // Auto-populate on mount
   const [isAutoPopulating, setIsAutoPopulating] = useState(false);
@@ -533,6 +539,49 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
     }
   }, [projectId, sceneId, queryClient]);
 
+  // Bulk story context inference
+  const handleBulkInferContext = useCallback(async () => {
+    if (selectedForGeneration.length === 0) return;
+    setIsInferringContext(true);
+    try {
+      const { results } = await sceneAssetService.bulkInferContext(projectId, sceneId, selectedForGeneration);
+      setBulkContextResults(results);
+    } catch (error) {
+      toast.error(`Context inference failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsInferringContext(false);
+    }
+  }, [projectId, sceneId, selectedForGeneration]);
+
+  const handleApplyBulkContext = useCallback(async (
+    accepted: Array<{ instanceId: string; description: string; tags: string[] }>
+  ) => {
+    setIsApplyingContext(true);
+    try {
+      for (const item of accepted) {
+        // Merge tags: add suggested to existing, deduplicate
+        const existing = sceneAssets.find(a => a.id === item.instanceId);
+        const mergedTags = Array.from(new Set([
+          ...(existing?.status_tags ?? []),
+          ...item.tags,
+        ]));
+
+        await sceneAssetService.updateSceneAsset(projectId, sceneId, item.instanceId, {
+          descriptionOverride: item.description,
+          statusTags: mergedTags,
+          modificationReason: 'Accepted story context suggestion',
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
+      toast.success(`Updated ${accepted.length} asset(s) from story context`);
+      setBulkContextResults(null);
+    } catch (error) {
+      toast.error(`Failed to apply: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsApplyingContext(false);
+    }
+  }, [projectId, sceneId, sceneAssets, queryClient]);
+
   const handleToggleSelection = useCallback((instanceId: string) => {
     setSelectedForGeneration(prev =>
       prev.includes(instanceId) ? prev.filter(id => id !== instanceId) : [...prev, instanceId]
@@ -587,10 +636,10 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
   );
 
   const handleGenerateImage = useCallback(
-    async (instanceId: string) => {
+    async (instanceId: string, referenceImageUrl?: string) => {
       setIsGeneratingSingle(true);
       try {
-        const result = await sceneAssetService.generateSceneAssetImage(projectId, sceneId, instanceId);
+        const result = await sceneAssetService.generateSceneAssetImage(projectId, sceneId, instanceId, referenceImageUrl);
         await pollSingleImageJob(result.jobId);
         await queryClient.invalidateQueries({ queryKey: ['scene-asset-attempts', projectId, sceneId, instanceId] });
         await queryClient.invalidateQueries({ queryKey: ['scene-assets', projectId, sceneId] });
@@ -767,6 +816,8 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           createMode={createMode}
           onDetectAssets={handleAIDetectAssets}
           isDetecting={isDetecting}
+          onBulkInferContext={handleBulkInferContext}
+          isInferringContext={isInferringContext}
           onBack={onBack}
           onComplete={handleProceedToStage9}
         />
@@ -786,6 +837,11 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
           onMasterReferenceChanged={setSelectedAsset}
         />
       </div>
+
+      <LocationCoveragePanel
+        projectId={projectId}
+        sceneId={sceneId}
+      />
 
       <AssetDrawer
         projectId={projectId}
@@ -863,6 +919,17 @@ export function Stage8VisualDefinition({ projectId, sceneId, onComplete, onBack,
             refetch();
             queryClient.invalidateQueries({ queryKey: ['transformation-events', projectId, sceneId] });
           }}
+        />
+      )}
+
+      {/* Bulk Story Context Update Modal */}
+      {bulkContextResults && (
+        <BulkContextUpdateModal
+          isOpen={!!bulkContextResults}
+          onClose={() => setBulkContextResults(null)}
+          results={bulkContextResults}
+          onApply={handleApplyBulkContext}
+          isApplying={isApplyingContext}
         />
       )}
 

@@ -17,6 +17,7 @@ import {
   Info,
   Upload,
   Video,
+  Layers,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -37,19 +38,25 @@ import { FrameGrid } from './FrameGrid';
 import { FrameUploadModal } from './FrameUploadModal';
 import { VersionedTextarea } from './VersionedTextarea';
 import { frameService, type FetchFramesResponse } from '@/lib/services/frameService';
+import { locationContinuityService } from '@/lib/services/locationContinuityService';
 import { textFieldVersionService } from '@/lib/services/textFieldVersionService';
 import { sceneService } from '@/lib/services/sceneService';
 import { promptService } from '@/lib/services/promptService';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import type { ShotWithFrames, GenerationMode, Frame, ContinuityMode, FrameLink } from '@/types/scene';
+import type { ShotWithFrames, GenerationMode, Frame, ContinuityMode, FrameLink, ReferenceImageOrderEntry } from '@/types/scene';
+import type { ContinuityBaseCandidate, GenerationContinuityPackage } from '@/types/locationContinuity';
 import { LockedStageHeader } from './LockedStageHeader';
 import { StageInfoButton } from './StageInfoButton';
 import { UnlockWarningDialog } from './UnlockWarningDialog';
 import { useSceneStageLock } from '@/lib/hooks/useSceneStageLock';
 import type { UnlockImpact } from '@/lib/services/sceneStageLockService';
 import { SceneIndicator } from './SceneIndicator';
+import { EstablishViewPrompt } from './EstablishViewPrompt';
 import { useSceneInfo } from '@/hooks/useSceneInfo';
+import { sceneAssetService } from '@/lib/services/sceneAssetService';
+import { projectAssetService } from '@/lib/services/projectAssetService';
+import type { LocationView } from '@/types/asset';
 
 interface Stage10FrameGenerationProps {
   projectId: string;
@@ -57,6 +64,121 @@ interface Stage10FrameGenerationProps {
   onComplete: () => void;
   onBack: () => void;
   onNext?: () => void;
+}
+
+export interface ContinuityBaseChooserProps {
+  packageData?: GenerationContinuityPackage;
+  isLoading: boolean;
+  isUpdating: boolean;
+  onSelect: (frameId: string) => void;
+  onClear: () => void;
+}
+
+export function ContinuityBaseChooser({
+  packageData,
+  isLoading,
+  isUpdating,
+  onSelect,
+  onClear,
+}: ContinuityBaseChooserProps) {
+  const candidates = packageData?.continuityBaseCandidates ?? [];
+  const selectedBase = packageData?.selectedContinuityBase ?? packageData?.preview.continuityBase ?? null;
+  const visibleCandidates = selectedBase && !candidates.some(candidate => candidate.frameId === selectedBase.frameId)
+    ? [selectedBase, ...candidates.slice(0, 2)]
+    : candidates.slice(0, 3);
+
+  return (
+    <div className="mb-4 rounded-lg border border-border/40 bg-card/30 p-3">
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Layers className="w-4 h-4 text-primary shrink-0" />
+          <div className="min-w-0">
+            <h3 className="text-sm font-medium text-foreground">Continuity Base</h3>
+            {selectedBase ? (
+              <p className="text-[11px] text-muted-foreground truncate">
+                Using Shot {selectedBase.sourceShotLabel}
+              </p>
+            ) : (
+              <p className="text-[11px] text-muted-foreground truncate">
+                Fresh generation
+              </p>
+            )}
+          </div>
+        </div>
+        {selectedBase && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-[11px]"
+            onClick={onClear}
+            disabled={isUpdating}
+          >
+            <RefreshCw className="w-3 h-3 mr-1" />
+            Fresh
+          </Button>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="text-xs text-muted-foreground">Loading continuity candidates...</div>
+      ) : visibleCandidates.length === 0 ? (
+        <div className="text-xs text-muted-foreground">No reusable base frames yet.</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          {visibleCandidates.map((candidate: ContinuityBaseCandidate) => {
+            const isSelected = selectedBase?.frameId === candidate.frameId;
+            return (
+              <div
+                key={candidate.frameId}
+                className={cn(
+                  'rounded-md border p-2 bg-background/30 min-w-0',
+                  isSelected ? 'border-primary/50 bg-primary/5' : 'border-border/40'
+                )}
+              >
+                <div className="flex gap-2">
+                  <div className="w-14 h-10 rounded overflow-hidden bg-muted/50 shrink-0">
+                    <img src={candidate.imageUrl} alt="" className="w-full h-full object-cover" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <Badge variant="outline" className="text-[10px] h-4 px-1">
+                        Shot {candidate.sourceShotLabel}
+                      </Badge>
+                      <Badge variant="outline" className="text-[10px] h-4 px-1 capitalize">
+                        {candidate.suitability}
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">
+                      {candidate.reason}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant={isSelected ? 'secondary' : 'outline'}
+                  size="sm"
+                  className="w-full h-7 text-[11px] mt-2"
+                  onClick={() => onSelect(candidate.frameId)}
+                  disabled={isUpdating || isSelected}
+                >
+                  {isSelected ? (
+                    <>
+                      <Check className="w-3 h-3 mr-1" />
+                      Using
+                    </>
+                  ) : (
+                    <>
+                      <ImageIcon className="w-3 h-3 mr-1" />
+                      Use
+                    </>
+                  )}
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function Stage10FrameGeneration({
@@ -136,14 +258,87 @@ export function Stage10FrameGeneration({
     },
   });
 
+  const {
+    data: continuityPreviewData,
+    isLoading: isContinuityPreviewLoading,
+  } = useQuery({
+    queryKey: ['stage10-continuity-preview', projectId, sceneId],
+    queryFn: () => locationContinuityService.fetchContinuityPreview(projectId, sceneId),
+    enabled: !!projectId && !!sceneId,
+    staleTime: 30_000,
+  });
+
+  const { data: continuityMetrics } = useQuery({
+    queryKey: ['continuity-metrics', projectId, sceneId],
+    queryFn: () => locationContinuityService.fetchContinuityMetrics(projectId, sceneId),
+    enabled: !!projectId && !!sceneId,
+    staleTime: 30_000,
+  });
+
   const shots = useMemo(() => framesData?.shots || [], [framesData?.shots]);
   const frameLinks = useMemo(() => framesData?.links || [], [framesData?.links]);
   const adjacentSceneFrames = framesData?.adjacentSceneFrames;
   const costSummary = framesData?.costSummary || { totalCredits: 0, frameCount: 0 };
   const allFramesApproved = framesData?.allFramesApproved || false;
+  const strictContinuityBlocked = !!(
+    continuityMetrics?.strictValidation.enabled &&
+    !continuityMetrics.strictValidation.canProceed
+  );
 
   // Calculate progress
   const progress = frameService.calculateProgress(shots);
+
+  // Phase G: Fetch location views for established view prompts
+  // Collect unique camera_direction_ids from shots
+  const directionIds = useMemo(
+    () => [...new Set(shots.map(s => s.cameraDirectionId).filter(Boolean))] as string[],
+    [shots]
+  );
+
+  // Fetch scene assets to find location assets and their views
+  const { data: sceneAssetsData } = useQuery({
+    queryKey: ['scene-assets-stage10', projectId, sceneId],
+    queryFn: () => sceneAssetService.listSceneAssets(projectId, sceneId),
+    enabled: directionIds.length > 0,
+    staleTime: 60_000,
+  });
+
+  // Fetch location views for all location assets in the scene
+  const locationAssets = useMemo(
+    () => (sceneAssetsData || []).filter(a => a.project_asset?.asset_type === 'location'),
+    [sceneAssetsData]
+  );
+
+  const { data: locationViewsMap } = useQuery({
+    queryKey: ['location-views-stage10', projectId, locationAssets.map(a => a.project_asset_id)],
+    queryFn: async () => {
+      const result = new Map<string, LocationView>();
+      for (const asset of locationAssets) {
+        const views = await projectAssetService.listLocationViews(projectId, asset.project_asset_id);
+        for (const view of views) {
+          result.set(view.id, view);
+        }
+      }
+      return result;
+    },
+    enabled: locationAssets.length > 0 && directionIds.length > 0,
+    staleTime: 30_000,
+  });
+
+  // Build lookup: direction view ID → { view, assetId, locationName }
+  const directionLookup = useMemo(() => {
+    if (!locationViewsMap) return new Map<string, { view: LocationView; assetId: string; locationName: string }>();
+    const lookup = new Map<string, { view: LocationView; assetId: string; locationName: string }>();
+    for (const asset of locationAssets) {
+      const assetName = asset.project_asset?.name ?? 'Unknown';
+      for (const [viewId, view] of locationViewsMap) {
+        if (view.project_asset_id === asset.project_asset_id) {
+          lookup.set(viewId, { view, assetId: asset.project_asset_id, locationName: assetName });
+        }
+      }
+    }
+    return lookup;
+  }, [locationViewsMap, locationAssets]);
 
   // Select first shot by default
   useEffect(() => {
@@ -174,8 +369,8 @@ export function Stage10FrameGeneration({
 
   // Regenerate frame mutation
   const regenerateMutation = useMutation({
-    mutationFn: (frameId: string) =>
-      frameService.regenerateFrame(projectId, sceneId, frameId),
+    mutationFn: ({ frameId, referenceImageUrl }: { frameId: string; referenceImageUrl?: string }) =>
+      frameService.regenerateFrame(projectId, sceneId, frameId, referenceImageUrl),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
     },
@@ -209,8 +404,8 @@ export function Stage10FrameGeneration({
 
   // Regenerate with correction mutation
   const regenerateWithCorrectionMutation = useMutation({
-    mutationFn: ({ frameId, correction }: { frameId: string; correction: string }) =>
-      frameService.regenerateWithCorrection(projectId, sceneId, frameId, correction),
+    mutationFn: ({ frameId, correction, referenceImageUrl }: { frameId: string; correction: string; referenceImageUrl?: string }) =>
+      frameService.regenerateWithCorrection(projectId, sceneId, frameId, correction, referenceImageUrl),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
     },
@@ -218,8 +413,8 @@ export function Stage10FrameGeneration({
 
   // Regenerate with edited prompt mutation
   const regenerateWithPromptMutation = useMutation({
-    mutationFn: ({ frameId, prompt }: { frameId: string; prompt: string }) =>
-      frameService.regenerateWithPrompt(projectId, sceneId, frameId, prompt),
+    mutationFn: ({ frameId, prompt, referenceImageUrl }: { frameId: string; prompt: string; referenceImageUrl?: string }) =>
+      frameService.regenerateWithPrompt(projectId, sceneId, frameId, prompt, referenceImageUrl),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
     },
@@ -234,10 +429,34 @@ export function Stage10FrameGeneration({
     }: {
       shotId: string;
       frameType: 'start' | 'end';
-      referenceImages: { label: string; assetName: string; url: string; type: string }[];
+      referenceImages: ReferenceImageOrderEntry[];
     }) => frameService.updateReferenceImages(projectId, sceneId, shotId, frameType, referenceImages),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+    },
+  });
+
+  const updateContinuityBaseMutation = useMutation({
+    mutationFn: ({ shotId, frameId }: { shotId: string; frameId: string | null }) =>
+      frameService.updateContinuityBase(projectId, sceneId, shotId, frameId),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['frames', projectId, sceneId] });
+      queryClient.invalidateQueries({ queryKey: ['stage10-continuity-preview', projectId, sceneId] });
+      queryClient.invalidateQueries({ queryKey: ['continuity-preview', projectId, sceneId] });
+      toast({
+        title: variables.frameId ? 'Continuity base selected' : 'Fresh generation selected',
+        description: variables.frameId ? 'Stage 10 will use the selected frame as the edit base' : 'This shot will generate without a reuse base',
+      });
+    },
+  });
+
+  const updateProjectContinuityModeMutation = useMutation({
+    mutationFn: (continuityMode: 'basic' | 'advanced') =>
+      locationContinuityService.updateContinuityMode(projectId, continuityMode),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['continuity-metrics', projectId, sceneId] });
+      queryClient.invalidateQueries({ queryKey: ['stage10-continuity-preview', projectId, sceneId] });
+      queryClient.invalidateQueries({ queryKey: ['location-coverage', projectId, sceneId] });
     },
   });
 
@@ -389,6 +608,10 @@ export function Stage10FrameGeneration({
 
   // Get selected shot
   const selectedShot = shots.find((s) => s.id === selectedShotId);
+  const selectedContinuityPackage = useMemo(
+    () => continuityPreviewData?.packages.find(pkg => pkg.shotId === selectedShot?.id),
+    [continuityPreviewData?.packages, selectedShot?.id]
+  );
 
   // Sync edited prompts when selected shot changes
   useEffect(() => {
@@ -397,7 +620,7 @@ export function Stage10FrameGeneration({
     setEditedVideoPrompt(selectedShot?.videoPrompt || '');
     setFramePromptLocked(true);
     setVideoPromptLocked(true);
-  }, [selectedShot?.id]);
+  }, [selectedShot?.id, selectedShot?.endFramePrompt, selectedShot?.framePrompt, selectedShot?.videoPrompt]);
 
   // Get previous shot for continuity comparison
   const getPreviousShot = useCallback(
@@ -660,7 +883,7 @@ export function Stage10FrameGeneration({
           }}
           onRelock={stage10Outdated ? () => relockStage(10) : undefined}
           lockAndProceedLabel="Lock & Proceed"
-          lockAndProceedDisabled={!allFramesApproved}
+          lockAndProceedDisabled={!allFramesApproved || strictContinuityBlocked}
         />
       )}
 
@@ -716,11 +939,51 @@ export function Stage10FrameGeneration({
           </div>
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          {mode === 'quick'
-            ? 'Bulk generate all frames at once (faster)'
-            : 'Approve each frame before proceeding (cost-efficient)'}
-        </p>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1 bg-card/50 rounded-lg p-1">
+            {(['basic', 'advanced'] as const).map((continuityMode) => (
+              <button
+                key={continuityMode}
+                onClick={() => updateProjectContinuityModeMutation.mutate(continuityMode)}
+                disabled={updateProjectContinuityModeMutation.isPending}
+                className={cn(
+                  'px-2.5 py-1 rounded-md text-xs font-medium transition-all capitalize',
+                  (continuityMetrics?.continuityMode || 'basic') === continuityMode
+                    ? 'bg-secondary text-secondary-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {continuityMode}
+              </button>
+            ))}
+          </div>
+          {continuityMetrics?.strictValidation.enabled && continuityMetrics.strictValidation.issues.length > 0 && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Badge
+                  variant="outline"
+                  className="text-[10px] text-amber-300 border-amber-500/30 cursor-pointer"
+                >
+                  <AlertCircle className="w-3 h-3 mr-1" />
+                  {continuityMetrics.strictValidation.issues.length} strict issue{continuityMetrics.strictValidation.issues.length === 1 ? '' : 's'}
+                </Badge>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 text-xs space-y-1.5" align="start">
+                <p className="font-medium text-foreground">Blocking Lock & Proceed:</p>
+                <ul className="space-y-1 list-disc pl-4 text-muted-foreground">
+                  {continuityMetrics.strictValidation.issues.map((issue, index) => (
+                    <li key={index}>{issue}</li>
+                  ))}
+                </ul>
+              </PopoverContent>
+            </Popover>
+          )}
+          <p className="text-xs text-muted-foreground">
+            {mode === 'quick'
+              ? 'Bulk generate all frames at once (faster)'
+              : 'Approve each frame before proceeding (cost-efficient)'}
+          </p>
+        </div>
       </div>
 
       {/* Main content - varies by mode */}
@@ -890,6 +1153,17 @@ export function Stage10FrameGeneration({
             {selectedShot && (
               <ScrollArea className="flex-1">
                 <div className="p-6">
+                  <ContinuityBaseChooser
+                    packageData={selectedContinuityPackage}
+                    isLoading={isContinuityPreviewLoading}
+                    isUpdating={updateContinuityBaseMutation.isPending}
+                    onSelect={(frameId) =>
+                      updateContinuityBaseMutation.mutate({ shotId: selectedShot.id, frameId })
+                    }
+                    onClear={() =>
+                      updateContinuityBaseMutation.mutate({ shotId: selectedShot.id, frameId: null })
+                    }
+                  />
                   <div className="grid grid-cols-2 gap-6">
                     {/* Top-left: Start Frame */}
                     <FramePanel
@@ -900,22 +1174,24 @@ export function Stage10FrameGeneration({
                       projectId={projectId}
                       sceneId={sceneId}
                       onGenerate={() => handleGenerateShot(selectedShot.id, true)}
-                      onRegenerate={() =>
+                      onRegenerate={(options) =>
                         selectedShot.startFrame &&
-                        regenerateMutation.mutate(selectedShot.startFrame.id)
+                        regenerateMutation.mutate({ frameId: selectedShot.startFrame.id, referenceImageUrl: options?.referenceImageUrl })
                       }
-                      onRegenerateWithCorrection={(correction) =>
+                      onRegenerateWithCorrection={(correction, options) =>
                         selectedShot.startFrame &&
                         regenerateWithCorrectionMutation.mutate({
                           frameId: selectedShot.startFrame.id,
                           correction,
+                          referenceImageUrl: options?.referenceImageUrl,
                         })
                       }
-                      onRegenerateWithEditedPrompt={(prompt) =>
+                      onRegenerateWithEditedPrompt={(prompt, options) =>
                         selectedShot.startFrame &&
                         regenerateWithPromptMutation.mutate({
                           frameId: selectedShot.startFrame.id,
                           prompt,
+                          referenceImageUrl: options?.referenceImageUrl,
                         })
                       }
                       currentPrompt={selectedShot.framePrompt ?? undefined}
@@ -985,6 +1261,26 @@ export function Stage10FrameGeneration({
                       isUploadPending={uploadFrameMutation.isPending}
                     />
 
+                    {/* Phase G: Establish View Prompt — for start frame */}
+                    {(() => {
+                      const dirId = selectedShot.cameraDirectionId;
+                      const info = dirId ? directionLookup.get(dirId) : undefined;
+                      if (!info) return null;
+                      return (
+                        <EstablishViewPrompt
+                          projectId={projectId}
+                          sceneId={sceneId}
+                          shotId={selectedShot.id}
+                          frameImageUrl={selectedShot.startFrame?.imageUrl ?? null}
+                          frameId={selectedShot.startFrame?.id ?? null}
+                          frameStatus={selectedShot.startFrame?.status ?? 'pending'}
+                          directionView={info.view}
+                          locationAssetId={info.assetId}
+                          locationName={info.locationName}
+                        />
+                      );
+                    })()}
+
                     {/* Top-right: End Frame */}
                     {selectedShot.requiresEndFrame ? (
                       <div className="flex flex-col">
@@ -1030,22 +1326,24 @@ export function Stage10FrameGeneration({
                           isGenerateDisabled={selectedShot.startFrame?.status !== 'approved' && selectedShot.startFrame?.status !== 'generated'}
                           disabledReason="Start frame must be ready first"
                           onGenerate={() => handleGenerateShot(selectedShot.id, false)}
-                          onRegenerate={() =>
+                          onRegenerate={(options) =>
                             selectedShot.endFrame &&
-                            regenerateMutation.mutate(selectedShot.endFrame.id)
+                            regenerateMutation.mutate({ frameId: selectedShot.endFrame.id, referenceImageUrl: options?.referenceImageUrl })
                           }
-                          onRegenerateWithCorrection={(correction) =>
+                          onRegenerateWithCorrection={(correction, options) =>
                             selectedShot.endFrame &&
                             regenerateWithCorrectionMutation.mutate({
                               frameId: selectedShot.endFrame.id,
                               correction,
+                              referenceImageUrl: options?.referenceImageUrl,
                             })
                           }
-                          onRegenerateWithEditedPrompt={(prompt) =>
+                          onRegenerateWithEditedPrompt={(prompt, options) =>
                             selectedShot.endFrame &&
                             regenerateWithPromptMutation.mutate({
                               frameId: selectedShot.endFrame.id,
                               prompt,
+                              referenceImageUrl: options?.referenceImageUrl,
                             })
                           }
                           currentPrompt={selectedShot.endFramePrompt ?? undefined}
@@ -1396,7 +1694,7 @@ export function Stage10FrameGeneration({
           <Button variant="gold" onClick={async () => {
             try { await lockStage(10); } catch { /* best-effort */ }
             onComplete();
-          }} disabled={!allFramesApproved}>
+          }} disabled={!allFramesApproved || strictContinuityBlocked}>
             <Check className="w-4 h-4 mr-2" />
             Lock & Proceed
           </Button>
