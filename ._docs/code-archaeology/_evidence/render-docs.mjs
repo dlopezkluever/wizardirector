@@ -4,6 +4,7 @@ const A = '/home/user/workspace/repo/.amp/in/archaeology';
 const OUT = '/home/user/workspace/repo/._docs/code-archaeology';
 const L = fs.readFileSync(`${A}/merged2/merged.jsonl`, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 const retired = JSON.parse(fs.readFileSync(`${A}/merged2/retired-ids.json`, 'utf8'));
+for (const e of L) if (Array.isArray(e.related)) e.related = [...new Set(e.related.map((r) => retired[r] || r))];
 
 // product-intent relations (late coverage check)
 const rel = {}; // impl id -> [{ideas, relation, cluster}]

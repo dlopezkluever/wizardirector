@@ -116,7 +116,7 @@
 - **Ownership and auth.** Branch-level ownership checks in routes. Service role. Anon direct read of `scene_number` and `slug` through `src/hooks/useSceneInfo.ts:26-29` (C-database.md section 5, WD-IMPL-FACT-0225).
 - **Persistence.** DB. React Query key `['scenes', projectId]` (`Stage10FrameGeneration.tsx:230`, `Stage8VisualDefinition.tsx:219`, `ContentAccessCarousel.tsx:1011`).
 - **Versioning.** None for scenes. Stage lock has no history (H section 7, "overwrite").
-- **Derived.** Scene continuity risk (`safe`, `risky`, `broken`) is computed per request in `continuityRiskAnalyzer.ts:59-126` (V7 section 1). `sceneProgress` is computed in the list endpoint (V1 section 4.3). Scene `expected_*` values are a cache of dependency extraction.
+- **Derived.** Scene continuity risk (`safe`, `risky`, `broken`) is computed per request in `continuityRiskAnalyzer.ts:59-126` (V7 section 1). `sceneProgress` is computed in the list endpoint (V1 section 4.3). Scene `expected_*` values are a cache of dependency extraction. Asset extraction reads them with the Stage 4 manifest as fallback. The LLM receives names, types, scene numbers and style, not script text (WD-IMPL-ENTITY-0011).
 - **Competing representations.** Stage 7 lock is held in both `shot_list_locked_at` and `stage_locks["7"]` (WD-IMPL-INVALIDATE-0008, section 5 row 1). Scene `status` and stage locks are separate, and `status` values can disagree with stage locks (WD-IMPL-FACT-0044). The three identities are transient id, slug and row UUID (WD-IMPL-ENTITY-0009). The `stage_locks` JSON is read with no version guard (WD-IMPL-INVALIDATE-0010).
 - **Status.** Slice columns PERSISTED and FUNCTIONAL (WD-IMPL-TABLE-0003). `stage_locks` LEGACY and ORPHANED from the migration chain (WD-IMPL-TABLE-0042). Live state UNKNOWN.
 
@@ -727,6 +727,7 @@ Deletion behavior by parent, as recorded in the migrations and routes. Invalidat
 17. Lock on scene status. The lock trigger overwrites `frames_locked` or `video_complete`. `frames_locked` and `outdated` are not written by code. Consistent, and the overwrite path applies only to `video_complete`.
 
 ### 9.2 Entity-level contradictions and UNKNOWNs
+- Referenced in code but not created by any migration: `users` (script only, WD-IMPL-TABLE-0059) and `hello` (test only, WD-IMPL-TABLE-0060).
 - Phase A unlock impact dialog cannot open. The backend nests `downstreamStages` under `details` and the frontend reads it at top level. Unlock is therefore unconditional (WD-IMPL-FACT-0005, WD-IMPL-FACT-0206, H section 1.4).
 - Frame approval. The route is REACHABLE and no UI caller exists (section 5 row 39, WD-IMPL-FACT-0109). H section 4.2 F8 describes the route as a transition, not as UI behavior.
 - Stage 4 warning dialog says deleted scenes are marked `continuity_broken`. The code hard-deletes them (`projects.ts:1431-1434`, V3 section 6.3). CONTRADICTED.

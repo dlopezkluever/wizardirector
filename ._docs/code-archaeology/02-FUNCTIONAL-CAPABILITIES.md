@@ -1156,7 +1156,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=P P=Y T=N
 - Evidence: src/components/pipeline/Stage2Treatment.tsx:121-230; src/lib/services/treatmentService.ts:38-120; backend/src/routes/llm.ts:139-315; backend/scripts/seed-templates.ts:17-86
 - Notes: Live prompt_templates content UNKNOWN; seed text used. Output truncation at default 4096 tokens plausible.
-- Related: WD-IMPL-AI-0013, WD-IMPL-STATE-0026
+- Related: WD-IMPL-AI-0068, WD-IMPL-STATE-0026
 - Related product intent: PARTIAL_MATCH: WD-IDEA-UX-052,WD-IDEA-UX-074,WD-IDEA-UX-075,WD-IDEA-UX-076,WD-IDEA-UX-079,WD-IDEA-UX-081,WD-IDEA-UX-084,WD-IDEA-UX-095,WD-IDEA-UX-096 || UNKNOWN: WD-IDEA-PHIL-024 || PARTIAL_MATCH: WD-IDEA-STORY-005,WD-IDEA-STORY-006,WD-IDEA-STORY-007,WD-IDEA-STORY-008,WD-IDEA-STORY-009,WD-IDEA-STORY-010,WD-IDEA-STORY-011,WD-IDEA-STORY-012,WD-IDEA-STORY-013,WD-IDEA-STORY-014
 
 ### WD-IMPL-CAP-0091 Stage 2 Edit Mode with explicit Save Changes
@@ -1195,7 +1195,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=P P=Y T=N | labels: CONTRADICTED
 - Evidence: src/components/pipeline/Stage2Treatment.tsx:348-398; src/lib/services/treatmentService.ts:125-187; backend/scripts/seed-templates.ts:17-86; backend/src/routes/stageStates.ts:232
 - Notes: Dialog text claims guidance is saved as commit message; not true.
-- Related: WD-IMPL-FACT-0112, WD-IMPL-AI-0013
+- Related: WD-IMPL-FACT-0112, WD-IMPL-AI-0068
 - Related product intent: PARTIAL_MATCH: WD-IDEA-STORY-005,WD-IDEA-STORY-006,WD-IDEA-STORY-007,WD-IDEA-STORY-008,WD-IDEA-STORY-009,WD-IDEA-STORY-010,WD-IDEA-STORY-011,WD-IDEA-STORY-012,WD-IDEA-STORY-013,WD-IDEA-STORY-014 || PARTIAL_MATCH: WD-IDEA-STORY-069,WD-IDEA-STORY-070,WD-IDEA-STORY-071,WD-IDEA-STORY-072,WD-IDEA-STORY-073,WD-IDEA-STORY-074,WD-IDEA-STORY-075,WD-IDEA-STORY-076,WD-IDEA-STORY-077,WD-IDEA-STORY-078
 
 ### WD-IMPL-CAP-0094 Stage 2 Generate New Variation (replaces all variations, no confirm)
@@ -1234,7 +1234,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=P P=Y T=N
 - Evidence: src/components/pipeline/Stage3BeatSheet.tsx:273-364; src/lib/services/beatService.ts:44-101; src/lib/services/beatService.ts:303-441
 - Notes: Falls back to hardcoded params 180/300, Drama, 'Emotional and contemplative' when stage 2 processedInput missing.
-- Related: WD-IMPL-AI-0016
+- Related: WD-IMPL-AI-0069
 - Related product intent: PARTIAL_MATCH: WD-IDEA-STORY-015,WD-IDEA-STORY-016,WD-IDEA-STORY-017,WD-IDEA-STORY-018,WD-IDEA-STORY-019,WD-IDEA-STORY-020,WD-IDEA-STORY-021,WD-IDEA-STORY-026
 
 ### WD-IMPL-CAP-0097 Stage 3 inline beat editing, drag reorder, add and delete
@@ -1298,7 +1298,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=P P=Y T=N
 - Evidence: src/components/pipeline/Stage4MasterScript.tsx:228-373; src/lib/services/scriptService.ts:65-129; src/lib/services/scriptService.ts:474-548
 - Notes: Auto-generation guarded by autoGenAttempted ref per mount.
-- Related: WD-IMPL-AI-0019, WD-IMPL-FACT-0111
+- Related: WD-IMPL-AI-0070, WD-IMPL-FACT-0111
 - Related product intent: UNKNOWN: WD-IDEA-PHIL-024 || EXACT_MATCH: WD-IDEA-STORY-034,WD-IDEA-STORY-035,WD-IDEA-STORY-036,WD-IDEA-STORY-037,WD-IDEA-STORY-038,WD-IDEA-STORY-040,WD-IDEA-STORY-041 || PARTIAL_MATCH: WD-IDEA-STORY-046,WD-IDEA-STORY-047,WD-IDEA-STORY-048,WD-IDEA-STORY-049,WD-IDEA-STORY-050,WD-IDEA-STORY-051,WD-IDEA-STORY-052
 
 ### WD-IMPL-CAP-0102 Stage 4 TipTap editor with 2s debounced autosave
@@ -1324,7 +1324,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=P P=Y T=N | labels: CONTRADICTED
 - Evidence: src/components/pipeline/Stage4MasterScript.tsx:376-423; src/lib/services/scriptService.ts:134-197
 - Notes: Prior manual edits remain only in earlier stage_states rows; no UI exposes them.
-- Related: WD-IMPL-FACT-0112, WD-IMPL-AI-0020
+- Related: WD-IMPL-FACT-0112, WD-IMPL-AI-0070
 
 ### WD-IMPL-CAP-0104 Stage 4 Edit Selection: AI rewrite of highlighted script span
 - Behavior: Selected text plus 500 chars before and after is sent to /api/llm/generate. Count 1 replaces selection via insertContent; count 3 offers three alternatives.
@@ -2032,7 +2032,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=Y P=Y T=N
 - Evidence: 
 - Notes: UI creates direction_N by count+1, so deleting a lower-numbered direction then adding can collide with 409 (projectAssets.ts:2836-2838). No generate-image action in Stage 5 dialog.
-- Related: WD-IMPL-AI-0041, WD-IMPL-STATE-0044, WD-IMPL-INVALIDATE-0031, WD-IMPL-ENTITY-0013
+- Related: WD-IMPL-AI-0082, WD-IMPL-STATE-0044, WD-IMPL-INVALIDATE-0031, WD-IMPL-ENTITY-0013
 - Related product intent: EXACT_MATCH: WD-IDEA-LOC-026,WD-IDEA-LOC-027 || PARTIAL_MATCH: WD-IDEA-LOC-077,WD-IDEA-LOC-078,WD-IDEA-LOC-079,WD-IDEA-LOC-080,WD-IDEA-LOC-081 || EXACT_MATCH: WD-IDEA-LOC-104,WD-IDEA-LOC-105,WD-IDEA-LOC-106 || PARTIAL_MATCH: WD-IDEA-LOC-119,WD-IDEA-LOC-120,WD-IDEA-LOC-121,WD-IDEA-LOC-122,WD-IDEA-LOC-123,WD-IDEA-LOC-124 || PARTIAL_MATCH: WD-IDEA-PHIL-073,WD-IDEA-PHIL-078 || UNKNOWN: WD-IDEA-PHIL-081 || NOT_IMPLEMENTED: WD-IDEA-INPUT-138,WD-IDEA-INPUT-139,WD-IDEA-INPUT-140,WD-IDEA-INPUT-141,WD-IDEA-INPUT-142,WD-IDEA-INPUT-143
 
 ### WD-IMPL-CAP-0159 Generate location view image (AI, style from establishing or primary view)
@@ -2045,7 +2045,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=P P=Y T=N
 - Evidence: 
 - Notes: Persistence depends on client completing the poll. If the tab closes or the 60s poll times out, the generated image is never attached to the view.
-- Related: WD-IMPL-AI-0041, WD-IMPL-STATE-0044
+- Related: WD-IMPL-AI-0082, WD-IMPL-STATE-0044
 - Related product intent: PARTIAL_MATCH: WD-IDEA-LOC-107,WD-IDEA-LOC-108,WD-IDEA-LOC-109,WD-IDEA-LOC-110,WD-IDEA-LOC-111,WD-IDEA-LOC-112,WD-IDEA-LOC-113,WD-IDEA-LOC-114,WD-IDEA-LOC-118 || EXACT_MATCH: WD-IDEA-LOC-115,WD-IDEA-LOC-116,WD-IDEA-LOC-117 || NOT_IMPLEMENTED: WD-IDEA-INPUT-138,WD-IDEA-INPUT-139,WD-IDEA-INPUT-140,WD-IDEA-INPUT-141,WD-IDEA-INPUT-142,WD-IDEA-INPUT-143
 
 ### WD-IMPL-CAP-0160 Lock frame as established view (Stage 10 and Stage 8)
@@ -2124,7 +2124,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=P P=Y T=N
 - Evidence: src/components/pipeline/Stage8VisualDefinition.tsx:505-540; backend/src/routes/sceneAssets.ts:122-163; backend/src/routes/sceneAssets.ts:169-282; backend/src/services/sceneAssetRelevanceService.ts:109-157
 - Notes: Re-running after an asset is present yields 409 for that asset, so the batch rejects and suggestions are skipped. Instances are created without image.
-- Related: WD-IMPL-AI-0043, WD-IMPL-CAP-0187
+- Related: WD-IMPL-AI-0075, WD-IMPL-CAP-0187
 - Related product intent: PARTIAL_MATCH: WD-IDEA-CONT-007,WD-IDEA-CONT-008 || EXACT_MATCH: WD-IDEA-CONT-095 || NOT_IMPLEMENTED: WD-IDEA-CONT-096 || PARTIAL_MATCH: WD-IDEA-CONT-062 || PARTIAL_MATCH: WD-IDEA-ASSET-162 || PARTIAL_MATCH: WD-IDEA-ASSET-159,WD-IDEA-ASSET-166
 
 ### WD-IMPL-CAP-0166 Add existing project asset to scene from AssetDrawer (with optional shot checklist)
@@ -2329,7 +2329,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=P P=Y T=N
 - Evidence: src/components/pipeline/Stage8/SceneAssetImageUpload.tsx:14-134; src/components/pipeline/Stage8/VisualStateEditorPanel.tsx:327-362,811-851; backend/src/routes/sceneAssets.ts:1671-1777,524-575
 - Notes: Analysis failure is non-blocking. Accept saves the final description via PUT descriptionOverride, not through versioning, so no version is recorded.
-- Related: WD-IMPL-AI-0049, WD-IMPL-AI-0050, WD-IMPL-CAP-0182
+- Related: WD-IMPL-AI-0035, WD-IMPL-AI-0036, WD-IMPL-CAP-0182
 - Related product intent: EXACT_MATCH: WD-IDEA-ASSET-170,WD-IDEA-ASSET-171,WD-IDEA-ASSET-177 || PARTIAL_MATCH: WD-IDEA-INPUT-021
 
 ### WD-IMPL-CAP-0182 Edit, regenerate, apply style or remove background via upload modal
@@ -2342,7 +2342,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=P P=Y T=N | labels: DUPLICATED
 - Evidence: src/components/pipeline/Stage8/VisualStateEditorPanel.tsx:822-849; backend/src/routes/sceneAssets.ts:408-518; backend/src/services/image-generation/ImageGenerationService.ts:443-495; src/lib/services/__tests__/sceneAssetService.editImage.test.ts:35-160
 - Notes: Edit route re-implements isolation suffix and dimensions from ImageGenerationService. Modal polling is client-side. Test covers client fetch shape only.
-- Related: WD-IMPL-AI-0049, WD-IMPL-CAP-0181
+- Related: WD-IMPL-AI-0035, WD-IMPL-CAP-0181
 - Related product intent: EXACT_MATCH: WD-IDEA-GEN-210,WD-IDEA-GEN-214 || EXACT_MATCH: WD-IDEA-ASSET-118,WD-IDEA-ASSET-119,WD-IDEA-ASSET-120,WD-IDEA-ASSET-121,WD-IDEA-ASSET-122,WD-IDEA-ASSET-126,WD-IDEA-ASSET-127 || EXACT_MATCH: WD-IDEA-ASSET-128
 
 ### WD-IMPL-CAP-0183 Infer description and tags from story context (single asset, reviewed before applying)
@@ -2355,7 +2355,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=P P=Y T=Y | labels: CONTRADICTED
 - Evidence: src/components/pipeline/Stage8/VisualStateEditorPanel.tsx:365-405,584-696; backend/src/routes/sceneAssets.ts:2226-2268; backend/src/services/storyContextService.ts:52-146,151-173,247-277; src/lib/services/__tests__/sceneAssetService.inferContext.test.ts:35-116
 - Notes: Treatment context is likely always empty because stored stage 2 and 3 keys differ from lookup keys. Unverified against stored rows.
-- Related: WD-IMPL-AI-0044, WD-IMPL-FACT-0147
+- Related: WD-IMPL-AI-0024, WD-IMPL-FACT-0147
 - Related product intent: PARTIAL_MATCH: WD-IDEA-CONT-084,WD-IDEA-CONT-085,WD-IDEA-CONT-086,WD-IDEA-CONT-087 || EXACT_MATCH: WD-IDEA-CONT-089,WD-IDEA-CONT-090,WD-IDEA-CONT-091 || EXACT_MATCH: WD-IDEA-CONT-093 || PARTIAL_MATCH: WD-IDEA-CONT-094 || EXACT_MATCH: WD-IDEA-CONT-095
 
 ### WD-IMPL-CAP-0184 Bulk update from story context for selected instances (review modal then apply)
@@ -2368,7 +2368,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=P P=Y T=Y
 - Evidence: src/components/pipeline/Stage8VisualDefinition.tsx:543-583; src/components/pipeline/Stage8/BulkContextUpdateModal.tsx:55-101; backend/src/routes/sceneAssets.ts:2274-2330; backend/src/services/storyContextService.ts:179-242,282-364; src/lib/services/__tests__/sceneAssetService.inferContext.test.ts:118-240
 - Notes: Apply overwrites description_override and bypasses version history; ignores the locked tag. BulkContextUpdateModal reads r.id (not in type); falls back to instanceId.
-- Related: WD-IMPL-AI-0045, WD-IMPL-CAP-0183
+- Related: WD-IMPL-AI-0025, WD-IMPL-CAP-0183
 - Related product intent: PARTIAL_MATCH: WD-IDEA-CONT-012 || PARTIAL_MATCH: WD-IDEA-CONT-084,WD-IDEA-CONT-085,WD-IDEA-CONT-086,WD-IDEA-CONT-087 || PARTIAL_MATCH: WD-IDEA-CONT-088 || EXACT_MATCH: WD-IDEA-CONT-089,WD-IDEA-CONT-090,WD-IDEA-CONT-091 || PARTIAL_MATCH: WD-IDEA-CONT-092 || EXACT_MATCH: WD-IDEA-CONT-095
 
 ### WD-IMPL-CAP-0185 Add transformation event manually (with AI prefill of post description and narrative)
@@ -2381,7 +2381,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=Y P=Y T=Y
 - Evidence: src/components/pipeline/Stage8/AddTransformationDialog.tsx:164-213; src/components/pipeline/Stage8/VisualStateEditorPanel.tsx:253-275,719-728; backend/src/routes/sceneAssets.ts:1828-1846,1916-1938; backend/src/services/transformationEventService.ts:237-273,380-517; backend/src/tests/transformationPrefill.test.ts:54-355
 - Notes: Pre-description is sent from editor local state, and handleAddTransformation useCallback omits editedDescription from its deps, so the value may be stale. Gradual requires completion shot.
-- Related: WD-IMPL-AI-0047, WD-IMPL-CAP-0187, WD-IMPL-STATE-0050
+- Related: WD-IMPL-AI-0077, WD-IMPL-CAP-0187, WD-IMPL-STATE-0050
 - Related product intent: PARTIAL_MATCH: WD-IDEA-CONT-058 || PARTIAL_MATCH: WD-IDEA-CONT-067 || CONTRADICTED_BY_CODE: WD-IDEA-CONT-068 || EXACT_MATCH: WD-IDEA-CONT-104 || EXACT_MATCH: WD-IDEA-CONT-106,WD-IDEA-CONT-107
 
 ### WD-IMPL-CAP-0186 Convert a duplicate scene asset into a transformation of another asset
@@ -2407,7 +2407,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=P P=Y T=N | labels: CONTRADICTED
 - Evidence: src/components/pipeline/Stage8/TransformationEventCard.tsx:49-71,91-127,255-287; src/components/pipeline/Stage8/VisualStateEditorPanel.tsx:165-201,733-744; backend/src/routes/sceneAssets.ts:1852-1910; backend/src/services/transformationEventService.ts:275-374
 - Notes: Card local state is initialised once; generate-with-AI updates parent but not the card textarea, so the next blur can write old text back. Confirm is irreversible in UI. Transformation list uses local useState and does not invalidate the React Query count used by the gatekeeper.
-- Related: WD-IMPL-STATE-0050, WD-IMPL-INVALIDATE-0041, WD-IMPL-AI-0046
+- Related: WD-IMPL-STATE-0050, WD-IMPL-INVALIDATE-0041, WD-IMPL-AI-0076
 
 ### WD-IMPL-CAP-0188 Generate post-transformation reference image (confirmed events only) and pick existing images
 - Behavior: After confirm, Generate Image enqueues a transformation_post job from post_description and post tags, with reference from client, instance image or project image. On completion the backend writes post_image_key_url and the frontend writes the same value again. Use Existing lists confirmed post images of the same project asset across scenes.
@@ -2419,7 +2419,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=P P=Y T=N | labels: DUPLICATED
 - Evidence: src/components/pipeline/Stage8/TransformationEventCard.tsx:162-253; src/components/pipeline/Stage8/VisualStateEditorPanel.tsx:203-251; backend/src/routes/sceneAssets.ts:1944-2101; backend/src/services/image-generation/ImageGenerationService.ts:428-440,618-620
 - Notes: No attempt history. Frontend poll is 60x2s. No white-background isolation for transformation_post. Picker lists post images from any scene.
-- Related: WD-IMPL-AI-0048, WD-IMPL-AI-0050
+- Related: WD-IMPL-AI-0048, WD-IMPL-AI-0036
 - Related product intent: PARTIAL_MATCH: WD-IDEA-CONT-067 || EXACT_MATCH: WD-IDEA-CONT-108 || PARTIAL_MATCH: WD-IDEA-CONT-109,WD-IDEA-CONT-110
 
 ### WD-IMPL-CAP-0189 Persisted AI suggestions for assets not in library (list, ignore)
@@ -2770,7 +2770,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=U: image provider runtime P=Y T=Y: referenceContinuity/continuityComposition parity tests cover reference resolution only, not decision order | labels: CROSS-SLICE-V9
 - Evidence: backend/src/services/frameGenerationService.ts:L342-L452; backend/src/services/frameGenerationService.ts:L1018-L1189; backend/src/services/frameGenerationService.ts:L626-L709
 - Notes: Bulk match copy only when previous shot end frame id is known in this request (previousEndFrameId from same run). Single regenerate looks up previous end frame by shot_order. Lineage is not cleared on fresh generation (frameGenerationService.ts:L876-L881).
-- Related: WD-IMPL-AI-0053, WD-IMPL-AI-0054, WD-IMPL-FACT-0158, WD-IMPL-FACT-0157
+- Related: WD-IMPL-AI-0008, WD-IMPL-AI-0054, WD-IMPL-FACT-0158, WD-IMPL-FACT-0157
 - Related product intent: PARTIAL_MATCH: WD-IDEA-UX-099,WD-IDEA-UX-102 || PARTIAL_MATCH: WD-IDEA-UX-217,WD-IDEA-UX-221,WD-IDEA-UX-222,WD-IDEA-UX-224,WD-IDEA-UX-227,WD-IDEA-UX-228,WD-IDEA-UX-229 || EXACT_MATCH: WD-IDEA-LOC-028,WD-IDEA-LOC-029,WD-IDEA-LOC-030,WD-IDEA-LOC-031 || EXACT_MATCH: WD-IDEA-CONT-160,WD-IDEA-CONT-163 || PARTIAL_MATCH: WD-IDEA-CONT-197,WD-IDEA-CONT-198,WD-IDEA-CONT-205 || EXACT_MATCH: WD-IDEA-CONT-199 || EXACT_MATCH: WD-IDEA-CONT-202,WD-IDEA-CONT-203,WD-IDEA-CONT-204
 
 ### WD-IMPL-CAP-0216 Automatic match-link propagation to linked targets after source change
@@ -2862,7 +2862,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=P P=Y T=N
 - Evidence: src/components/pipeline/Stage7ShotList.tsx:157-206; src/components/pipeline/Stage7ShotList.tsx:873-888; src/lib/services/shotService.ts:105-131; backend/src/routes/projects.ts:1711-1977
 - Notes: Functional depends on LLM output quality and latency (runtime-only). Route not tested; service tested only with mocks. Re-extraction on a populated scene is not reachable from UI.
-- Related: WD-IMPL-AI-0055, V8-STATE-07, WD-IMPL-FACT-0168
+- Related: WD-IMPL-AI-0071, V8-STATE-07, WD-IMPL-FACT-0168
 - Related product intent: UNKNOWN: WD-IDEA-PHIL-024 || PARTIAL_MATCH: WD-IDEA-SHOT-001,WD-IDEA-SHOT-002,WD-IDEA-SHOT-008,WD-IDEA-SHOT-009
 
 ### WD-IMPL-CAP-0223 Edit shot fields in Stage 7 inspector (debounced autosave)
@@ -2888,7 +2888,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=P P=Y T=P
 - Evidence: src/components/pipeline/Stage7ShotList.tsx:401-450; src/components/pipeline/Stage7ShotList.tsx:1700-1764; src/lib/services/shotService.ts:258-291; backend/src/routes/projects.ts:2514-2654; backend/src/services/shotSplitService.ts:95-184; backend/src/tests/shotExtraction.test.ts:189-250
 - Notes: Non-transactional: delete precedes insert. UI never passes splitCount (default 2). Assignments cloned. Stage 9 prompt cards do not refresh after split from Stage 7 (no state sync).
-- Related: WD-IMPL-AI-0056, WD-IMPL-INVALIDATE-0054, WD-IMPL-INVALIDATE-0056, WD-IMPL-FACT-0164, V8-STATE-07
+- Related: WD-IMPL-AI-0073, WD-IMPL-INVALIDATE-0054, WD-IMPL-INVALIDATE-0056, WD-IMPL-FACT-0164, V8-STATE-07
 - Related product intent: PARTIAL_MATCH: WD-IDEA-SHOT-053,WD-IDEA-SHOT-054,WD-IDEA-SHOT-055,WD-IDEA-SHOT-056,WD-IDEA-SHOT-058
 
 ### WD-IMPL-CAP-0225 Merge selected shot with next or previous shot via AI
@@ -2901,7 +2901,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=P P=Y T=N
 - Evidence: src/components/pipeline/Stage7ShotList.tsx:516-547; src/components/pipeline/Stage7ShotList.tsx:1115-1161; src/lib/services/shotService.ts:297-330; backend/src/routes/projects.ts:2657-2788
 - Notes: Adjacency uses shot_order plus or minus 1, so gaps produce a 400 even if UI shows a neighbour. No invalidation of Stage 9-12. No tests.
-- Related: WD-IMPL-AI-0057, WD-IMPL-FACT-0165, WD-IMPL-FACT-0167, WD-IMPL-INVALIDATE-0057
+- Related: WD-IMPL-AI-0074, WD-IMPL-FACT-0165, WD-IMPL-FACT-0167, WD-IMPL-INVALIDATE-0057
 - Related product intent: PARTIAL_MATCH: WD-IDEA-SHOT-053,WD-IDEA-SHOT-054,WD-IDEA-SHOT-055,WD-IDEA-SHOT-056,WD-IDEA-SHOT-058
 
 ### WD-IMPL-CAP-0226 Delete a shot (blocked for the last shot)
@@ -3043,7 +3043,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=P P=Y T=N
 - Evidence: src/components/pipeline/Stage9/ShotAssetPanel.tsx:78; src/components/pipeline/Stage9/ShotAssetPanel.tsx:80-92; src/components/pipeline/Stage9/ShotAssetPanel.tsx:216-239; src/components/pipeline/Stage9/ShotAssetPanel.tsx:302-319; src/components/pipeline/Stage9PromptSegmentation.tsx:726-736
 - Notes: Stage 9 does not pass onShotSplit, so prompt cards are not reloaded after split (only assignments reload). Shot UUID in prompt set becomes stale until page reload.
-- Related: WD-IMPL-AI-0056, WD-IMPL-CAP-0224, WD-IMPL-INVALIDATE-0054
+- Related: WD-IMPL-AI-0073, WD-IMPL-CAP-0224, WD-IMPL-INVALIDATE-0054
 
 ### WD-IMPL-CAP-0237 Timeline matrix: cycle shot by asset presence
 - Behavior: Timeline view shows assets as rows and shots as columns; each click cycles the cell through none, throughout, enters, exits, passes through, then back to none (delete).
@@ -3096,7 +3096,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y (ProjectView sceneStage 9 render) F=U (runtime LLM needed) P=Y T=N
 - Evidence: src/components/pipeline/Stage9PromptSegmentation.tsx:257-290; src/lib/services/promptService.ts:96-127; backend/src/routes/projects.ts:3573-3958; src/pages/ProjectView.tsx:798-806
 - Notes: Errors and 429 surfaced as toast. No stage-lock check on route.
-- Related: WD-IMPL-AI-0058, WD-IMPL-AI-0059, WD-IMPL-STATE-0071
+- Related: WD-IMPL-AI-0006, WD-IMPL-AI-0009, WD-IMPL-STATE-0071
 - Related product intent: EXACT_MATCH: WD-IDEA-GEN-101,WD-IDEA-GEN-102,WD-IDEA-GEN-103 || PARTIAL_MATCH: WD-IDEA-GEN-100,WD-IDEA-GEN-107,WD-IDEA-GEN-108 || NOT_IMPLEMENTED: WD-IDEA-AV-034,WD-IDEA-AV-040,WD-IDEA-AV-042 || EXACT_MATCH: WD-IDEA-SHOT-095 || EXACT_MATCH: WD-IDEA-FLOW-056
 
 ### WD-IMPL-CAP-0241 Stage 9 per-shot regenerate prompt
@@ -3198,7 +3198,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=U (needs provider) P=Y T=P (fetchShotReferenceImageContext only)
 - Evidence: src/components/pipeline/Stage10FrameGeneration.tsx:807-809; src/components/pipeline/Stage10FrameGeneration.tsx:1176; src/components/pipeline/Stage10FrameGeneration.tsx:1326-1328; src/lib/services/frameService.ts:125-150; backend/src/routes/frames.ts:227-291; backend/src/services/frameGenerationService.ts:311-495
 - Notes: Control startOnly keeps previousEndFrameId null so match and camera_change branches do not run in this path.
-- Related: WD-IMPL-AI-0063, WD-IMPL-STATE-0069, WD-IMPL-FACT-0184
+- Related: WD-IMPL-AI-0010, WD-IMPL-STATE-0069, WD-IMPL-FACT-0184
 - Related product intent: PARTIAL_MATCH: WD-IDEA-GEN-188,WD-IDEA-GEN-191,WD-IDEA-GEN-196
 
 ### WD-IMPL-CAP-0249 Stage 10 Quick Mode Generate All / Generate Remaining
@@ -3250,7 +3250,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=U P=Y T=N
 - Evidence: src/components/pipeline/FramePanel.tsx:843-852; src/lib/services/frameService.ts:314-340; backend/src/routes/frames.ts:708-794; backend/src/services/promptGenerationService.ts:1438-1451
 - Notes: Does not delete incoming frame_links and does not propagate. Start frames in match or camera_change mode ignore the corrected text in some branches.
-- Related: WD-IMPL-AI-0062, WD-IMPL-STATE-0072
+- Related: WD-IMPL-AI-0078, WD-IMPL-STATE-0072
 - Related product intent: CONTRADICTED_BY_CODE: WD-IDEA-CONT-027 || EXACT_MATCH: WD-IDEA-CONT-213 || EXACT_MATCH: WD-IDEA-GEN-192,WD-IDEA-GEN-193,WD-IDEA-GEN-194,WD-IDEA-GEN-198
 
 ### WD-IMPL-CAP-0253 Generate with Edited Prompt (manual)
@@ -3302,7 +3302,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=U P=Y T=N
 - Evidence: src/components/pipeline/Stage10FrameGeneration.tsx:1621-1678; src/lib/services/frameService.ts:260-284; backend/src/routes/frames.ts:519-658; backend/src/services/promptGenerationService.ts:1270-1353
 - Notes: Uses unscoped scene assets (no assignments), overwrites any user end prompt.
-- Related: WD-IMPL-AI-0060, WD-IMPL-FACT-0189
+- Related: WD-IMPL-AI-0007, WD-IMPL-FACT-0189
 - Related product intent: EXACT_MATCH: WD-IDEA-CONT-118 || CONTRADICTED_BY_CODE: WD-IDEA-GEN-109
 
 ### WD-IMPL-CAP-0257 Edit frame, video, and end frame prompts in Stage 10
@@ -3416,7 +3416,7 @@ Reading notes: workflow narratives are in 03-USER-WORKFLOWS.md; the AI calls ref
 - Status: P=Y R=Y F=U P=Y (via V7 route) T=N
 - Evidence: src/components/pipeline/Stage9PromptSegmentation.tsx:849-894; src/lib/services/promptService.ts:154-181
 - Notes: Generate route belongs to V7 slice (frames.ts:2148).
-- Related: WD-IMPL-AI-0061
+- Related: WD-IMPL-AI-0008
 
 ## Confirmation, video, credits (Stages 11, 12)
 
