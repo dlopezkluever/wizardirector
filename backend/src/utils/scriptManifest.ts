@@ -4,8 +4,6 @@
  * Pure-function module: zero LLM calls, zero external dependencies.
  * Extracts characters, locations, props, and dialogue from structured
  * TipTap JSON documents stored by Stage 4.
- *
- * Reference: ._docs/newest-tickets-while-in-master/tiptap-json-extraction-guide.md
  */
 
 // ---------------------------------------------------------------------------

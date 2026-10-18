@@ -197,11 +197,9 @@ LANGSMITH_API_KEY=your_langsmith_key
 ### **Database Setup**
 
 ```bash
-# Run migrations
-npm run db:migrate
-
-# Seed initial data (optional)
-npm run db:seed
+# Run migrations (from backend/)
+cd backend
+npm run migrate
 ```
 
 ## **📁 Project Structure**
@@ -234,11 +232,7 @@ aiuteur/
 │   └── migrations/         # Database migrations
 ├── tests/                  # Test suites
 ├── docs/                   # Generated documentation
-├── ._docs/                 # Project documentation
-│   ├── project-overview.md
-│   ├── architecture-and-rules.md
-│   ├── AI-agent-registry-context-flow-architecture.md
-│   └── tech-stack.md
+├── ._docs/                 # Product knowledge base + UI/theme rules
 └── public/                 # Static assets
 ```
 
@@ -268,12 +262,8 @@ aiuteur/
 
 ## **📚 Documentation**
 
-Comprehensive project documentation is available in the `._docs/` directory:
-
-- **[Project Overview](._docs/project-overview.md)**: Complete PRD with 12-stage pipeline specification
-- **[Architecture & Rules](._docs/architecture-and-rules.md)**: System architecture, database schema, and development guidelines
-- **[AI Agent Registry](._docs/AI-agent-registry-context-flow-architecture.md)**: Detailed AI agent specifications and context flow
-- **[Tech Stack](._docs/tech-stack.md)**: Complete technical stack breakdown and conventions
+- `._docs/product-knowledge/`: condensed historical product ideas and intent (not authoritative for current behavior; inspect the code)
+- `._docs/ui-and-theme-rules.md`: UI/theme design rules
 
 ## **🤝 Contributing**
 
@@ -310,7 +300,7 @@ For questions, issues, or contributions:
 
 - **Issues**: [GitHub Issues](repository-issues-url)
 - **Discussions**: [GitHub Discussions](repository-discussions-url)
-- **Documentation**: See `._docs/` directory
+- **Documentation**: See `._docs/product-knowledge/`
 
 ---
 
