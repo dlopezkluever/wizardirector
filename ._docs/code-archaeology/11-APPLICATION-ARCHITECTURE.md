@@ -43,13 +43,7 @@ Section 8 holds the mermaid component diagram of frontend, backend, and external
 ### 2.1 Entry and provider stack
 
 - Entry. `src/main.tsx` renders `<App />` into `#root` without `React.StrictMode`, and imports `index.css` and `styles/screenplay.css` (V1 section 1, `src/main.tsx:1-6`).
-- Provider stack, outermost first (`src/App.tsx:74-106`):
-  1. `ThemeProvider` (next-themes): `attribute="class"`, `defaultTheme="dark"`, `storageKey="aiuteur-theme"` (`App.tsx:75-80`).
-  2. `QueryClientProvider` with a module-level `new QueryClient()` created with default options (`App.tsx:19`, `:82`). No global `onError`, no default `staleTime`.
-  3. `TooltipProvider`.
-  4. `AuthInitializer` (`App.tsx:22-30`), which calls the auth store `initialize()` once on mount. It renders nothing.
-  5. Two toast systems mounted side by side: shadcn `Toaster` and `sonner` `Sonner` (`App.tsx:85-86`). Sonner is imported in 30 files and `use-toast` in 17 files (I H-FACT-11, [WD-IMPL-FACT-0014]).
-  6. `BrowserRouter` (`App.tsx:87`).
+- Provider stack, outermost first (`src/App.tsx:74-106`): `ThemeProvider` (next-themes, `storageKey="aiuteur-theme"`, `App.tsx:75-80`) > `QueryClientProvider` with a module-level `new QueryClient()` using default options (`App.tsx:19`, `:82`; no global `onError`, no default `staleTime`) > `TooltipProvider` > `AuthInitializer` (`App.tsx:22-30`; calls the auth store `initialize()` once and renders nothing) > two toast systems, shadcn `Toaster` and `sonner` (`App.tsx:85-86`; imported by 30 and 17 files, [WD-IMPL-FACT-0014]) > `BrowserRouter` (`App.tsx:87`).
 - No error boundary and no `componentDidCatch` exist. An uncaught render error unmounts the tree (I H-FACT-11, [WD-IMPL-FACT-0234]).
 
 ### 2.2 Routing
@@ -91,7 +85,7 @@ Facts about routing (V1 section 1):
 **Local component state.**
 - `ProjectView` is the stage host. Its state: `currentStage` (1-12), `stages` (array of 5 Phase A entries, initialized stage 1 active and 2-5 pending, `ProjectView.tsx:29-35`), `activeSceneId`, `sceneStage` (7-12), `completedSceneStages`, `sceneStageLocks`, Phase A unlock dialog state, and refs `hasRestoredStage`, `isHydrated`, `isUnskipping`, `isBackfilling` (V1 section 5.1).
 - Stage components hold most state inline. Stage 7 (`Stage7ShotList.tsx`, 1769 LOC, 31 `useState`), Stage 5 (`Stage5Assets.tsx`, 1749 LOC, 33 `useState`), Stage 10 (`Stage10FrameGeneration.tsx`, 1754 LOC, 16 `useState` and 24 `useQuery`/`useMutation`), Stage 8 (`Stage8VisualDefinition.tsx`, 939 LOC, 23 `useState`) (L section 1.3).
-- Hooks: `src/lib/hooks/` holds `useStageState`, `useSceneStageLock`, `useShotAssetAutoPopulate`, `useDebounce`. `src/hooks/` holds `useSceneInfo` (the one direct table read), `use-toast`, and `use-mobile`.
+- Hooks: `src/lib/hooks/` (`useStageState`, `useSceneStageLock`, `useShotAssetAutoPopulate`, `useDebounce`) and `src/hooks/` (`useSceneInfo`, the one direct table read; `use-toast`; `use-mobile`).
 
 **URL and localStorage state.**
 
@@ -112,8 +106,7 @@ None of the project keys are cleared on sign-out or project delete (V1 sections 
 ### 2.4 Service layer pattern
 
 - 22 service modules live in `src/lib/services/` (excluding `__tests__`). Each is a class exported as a module-level instance, for example `export const checkoutService = new CheckoutService()` (`checkoutService.ts:254`), `stageStateService.ts:306`, `projectAssetService.ts:1290`. 21 of the 22 call `fetch` directly. No shared request helper exists (grep for `apiClient`, `API_BASE`, `baseUrl` returned nothing).
-- URLs are relative `/api/...`. No absolute API origin and no `VITE_API_URL` exists (grep). 204 `fetch(` call sites in non-test `src` ([WD-IMPL-FACT-0224]).
-- Errors: each method checks `response.ok` and throws `new Error(error.error || ...)` (`checkoutService.ts:40-42`, `frameService.ts:579-581`). If the body is an `errorHandler` object (`{error:{message}}`), the message is an object-derived string ([WD-IMPL-FACT-0233]).
+- URLs are relative `/api/...` (no absolute origin, no `VITE_API_URL`; 204 `fetch(` sites in non-test `src`, [WD-IMPL-FACT-0224]). Errors: each method checks `response.ok` and throws `new Error(error.error || ...)` (`checkoutService.ts:40-42`, `frameService.ts:579-581`). If the body is an `errorHandler` object (`{error:{message}}`), the message is an object-derived string ([WD-IMPL-FACT-0233]).
 - No retry on 401, no token refresh call (supabase-js `autoRefreshToken: true` runs in the background), no `AbortController` except `StreamlineDropZone.tsx` (I section 4, [WD-IMPL-FACT-0243]).
 - Response envelopes differ by route. Example: `stageStateService.unlockStage` returns the raw 409 body (`stageStateService.ts:188-191`), while `sceneStageLockService` unwraps `details` (`sceneStageLockService.ts:103-108`) (V1 sections 5.5 and 7). Contract detail in doc 10.
 
@@ -126,7 +119,6 @@ None of the project keys are cleared on sign-out or project delete (V1 sections 
 | Components that call `fetch` directly, reading the session inline | Stage 4 (`Stage4MasterScript.tsx:256-262`, `:550-556`, `:568-573`) | |
 | Fetch sites with no `Authorization` string or `headers` object within 8 lines (awk window scan) | 0 of 204 | Static window scan, not a data-flow proof |
 | Token source used by services | supabase-js session (`getSession`). The zustand `session` copy is not read by any service (V1 section 2) | |
-| Refresh | `autoRefreshToken: true` (`src/lib/supabase.ts:13`) | [WD-IMPL-FACT-0243] |
 | 401 or 403 handling | none in `src` (grep for `401`, `403`, `SIGNED_OUT`, `TOKEN_REFRESHED`) | [WD-IMPL-FACT-0243] |
 
 Services that throw before sending when no session exists: `throw new Error('User not authenticated')` (`checkoutService.ts:6-8`, `stageStateService.ts:149-151`).
@@ -145,9 +137,7 @@ No browser `storage`, `rpc`, realtime, or `functions` calls exist (grep).
 
 ### 2.7 Frontend size and layout
 
-- 8 page modules in `src/pages/`. `src/components/pipeline/` holds 89 files (Stage 1 to 12, dialogs, carousels, and the `Stage8/` and `streamline/` subfolders). `src/components/ui/` is shadcn/ui.
-- Non-test `src` is 53,362 LOC. Tests under `src` are 4,879 LOC (L section 1.1, recounted: 53,362).
-- Largest components: `Stage7ShotList.tsx` 1769, `Stage10FrameGeneration.tsx` 1754, `Stage5Assets.tsx` 1749, `ContentAccessCarousel.tsx` 1335 (rendered by seven stage components), `Stage4MasterScript.tsx` 1265, `ProjectView.tsx` 994, `Stage9PromptSegmentation.tsx` 994 (L section 1.1).
+- 8 page modules in `src/pages/`. `src/components/pipeline/` holds 89 files (Stage 1 to 12, dialogs, carousels). Non-test `src` is 53,362 LOC; tests under `src` are 4,879 LOC (L section 1.1, recounted).
 
 ---
 
@@ -214,7 +204,7 @@ Handler counts are router registrations (`router.get|post|put|patch|delete|use|a
 ### 3.4 How routes access the database
 
 - Routes call `supabase.from(...)` inline. There is no repository or data-access layer. L counts 561 table-literal calls in 12 route files and 237 in 22 services. A raw grep counts 586 `.from(` occurrences in route files and 267 in services, which include non-table calls. 158 inline `from('projects')` project lookups appear in route files (L, inline project lookups; PRESSURE-01).
-- Each handler repeats the project lookup with `.eq('id', projectId).eq('user_id', userId)` and an inline `Project not found` response (about 150 such responses, L PRESSURE-01).
+- Each handler repeats the `.eq('id', projectId).eq('user_id', userId)` project lookup with an inline `Project not found` response (about 150 such responses, L PRESSURE-01).
 - Services mostly import `supabase` directly. Two services construct `DatabaseService`: `contextManager.ts:94` and `prompt-template.ts:56`. `DatabaseService` (`config/database.ts`) has `testConnection` and `runMigration` as static methods, and three instance trace-id methods with no callers (V1 section 3, [WD-IMPL-DEAD-0001], [WD-IMPL-DEAD-0083]).
 - The raw Supabase row shape is mapped by hand. There is one transformer module: `backend/src/transformers/styleCapsule.ts` (57 LOC, four functions typed `any`, sole consumer `routes/styleCapsules.ts`). Case conversion is written inline at about 385 `camelKey: x.snake_prop` and 138 `snake_key: x.camelProp` backend lines (L section 6, PRESSURE-13).
 
@@ -226,9 +216,8 @@ Handler counts are router registrations (`router.get|post|put|patch|delete|use|a
 | `services/image-generation/` | 3 | 1402 | `ImageGenerationService.ts` (958), `NanoBananaClient.ts`, `ImageProviderInterface.ts` |
 | `services/video-generation/` | 5 | 705 | `VideoJobExecutor.ts`, `Veo3Provider.ts`, `MockVideoProvider.ts`, `createVideoProvider.ts`, `VideoProviderInterface.ts` |
 | `utils/` | 5 | 839 | `llmJson.ts` (JSON repair), `token-utils.ts` (in-memory usage and cost), `scriptManifest.ts`, `scriptConfidence.ts`, `resolveConflict.ts` |
-| `config/` | 3 | | `supabase.ts`, `database.ts`, `streamlineConfig.ts` |
-| `middleware/` | 2 | | `auth.ts`, `errorHandler.ts` |
-| `transformers/` | 1 | 57 | `styleCapsule.ts` |
+
+Also: `config/` (3 files: `supabase.ts`, `database.ts`, `streamlineConfig.ts`), `middleware/` (2 files), `transformers/` (1 file, 57 LOC, `styleCapsule.ts`).
 
 Backend production LOC is 33,639 (recounted, matches L section 1.1). Backend test LOC is 9,422 (L).
 
@@ -250,7 +239,6 @@ Lazy singletons:
 - `llmClient.instance` (`services/llm-client.ts:361-368`) constructs `LLMClient` on first use. The constructor calls `validateEnvironment()` (`:69-71`, `:89-99`), which requires `GOOGLE_AI_API_KEY` and `LANGSMITH_API_KEY`. The failure is therefore on the first text call, not at boot. This refines E-FACT-19.
 - `VideoJobExecutor` is instantiated at module scope (`video-generation/VideoJobExecutor.ts:176`) but the module is loaded only by dynamic import inside `videoGenerationService.triggerJobProcessing` (V10 sections 3.5 and 5.2). Its constructor calls `createVideoProvider()` (`VideoJobExecutor.ts:19-21`).
 
-Per-request instances: handlers construct services on each call (for example `new ImageGenerationService()` at `sceneAssets.ts:384`, `:494`; `new ImageAnalysisService()` at `projectAssets.ts:1413`, `sceneAssets.ts:559`, `streamline.ts:292`; `new ShotExtractionService()` at `projects.ts:1818`).
 
 ### 3.6 Boot sequence and module-scope side effects
 
@@ -269,11 +257,7 @@ Consequences, static:
 ### 3.7 Authentication middleware
 
 `authenticateUser` (`backend/src/middleware/auth.ts:16-44`), verified static:
-1. Missing or non-Bearer `authorization` header: `401 {error:'Authorization header missing or invalid'}` (`:20-22`).
-2. `supabase.auth.getUser(token)` with the service-role client (`:27`). This is a network call to Supabase Auth per request. The JWT is not verified locally and no role or claim is read.
-3. Error or no user: `401 {error:'Invalid or expired token'}` (`:29-31`).
-4. Success: `req.user = {id, email}` and `next()` (`:34-39`).
-5. Exception: `500 {error:'Authentication error'}` (`:40-43`).
+- Missing or non-Bearer header: `401 {error:'Authorization header missing or invalid'}` (`:20-22`). Otherwise `supabase.auth.getUser(token)` with the service-role client (`:27`), a network call per request. The JWT is not verified locally and no role or claim is read. Error or no user: `401 {error:'Invalid or expired token'}` (`:29-31`). Success: `req.user = {id, email}` and `next()` (`:34-39`). Exception: `500` (`:40-43`).
 
 Identity is `req.user.id` everywhere ([WD-IMPL-ROUTE-0006], [WD-IMPL-ROUTE-0134]).
 
@@ -300,15 +284,7 @@ Method: static scan of all 198 registrations. Counts of `eq('user_id'` per file:
 | seed (`seed.ts`) | 1 | None beyond authentication | n/a | N | [WD-IMPL-ROUTE-0140] |
 | health (`health.ts`) | 1 | None, by design | n/a | n/a | [WD-IMPL-ROUTE-0142] |
 
-Cross-tenant paths, code reading only (not runtime-tested; I section 2.5):
-
-| Path | Effect | Evidence |
-|---|---|---|
-| `GET /api/projects/:p/scenes/:s/video-jobs/:jobId` | Reads any video job by id, for a caller who owns any project | [WD-IMPL-ROUTE-0137] |
-| `POST .../video-jobs/:jobId/retry` | Moves any failed video job to `queued`. A provider call follows. No credit check | [WD-IMPL-ROUTE-0137], [WD-IMPL-FACT-0135] |
-| transformation-events family | Read, create, edit, confirm, and delete for any scene UUID | [WD-IMPL-ROUTE-0136] |
-| `POST /api/images/generate` | A body `assetId` or `shotId` from another user is accepted. The executor writes frames, `scene_asset_instances`, and `global_assets` by those ids | [WD-IMPL-ROUTE-0138] |
-| `POST /api/seed/prompt-templates` and template PUT, DELETE, activate on `created_by IS NULL` rows | Any authenticated user | [WD-IMPL-ROUTE-0139], [WD-IMPL-ROUTE-0140], [WD-IMPL-FACT-0354] |
+Cross-tenant consequences (code reading, not runtime-tested; I section 2.5): a caller who owns one project can read or re-queue another user's video job (`checkout.ts:208-237`, `:301-324`); any authenticated user can read or edit transformation events for a scene UUID; a body `assetId` or `shotId` from another user is accepted by `POST /api/images/generate` (`images.ts:9-68`); and seeded prompt templates (`created_by IS NULL`) can be edited or deleted by any user (ids in the table above and [WD-IMPL-FACT-0354]).
 
 V1 INVALIDATE-0011 said every slice route checks project ownership. That claim is CONTRADICTED by the transformation-events family (I section 8, [WD-IMPL-INVALIDATE-0011]).
 
@@ -322,9 +298,7 @@ V1 INVALIDATE-0011 said every slice route checks project ownership. That claim i
 | Background jobs | `.catch` on fire-and-forget promises. Job row written to `failed` | `ImageGenerationService.ts:178-181`; VideoJobExecutor loop catch `VideoJobExecutor.ts:51-53` |
 | Backend silent catches | 290 `catch` blocks in non-test backend: 7 comment-only (`routes/frames.ts:573`, `:2220`; `services/frameGenerationService.ts:786`; `services/promptGenerationService.ts:1493`; `utils/llmJson.ts:44`, `:80`, `:100`), 222 console-only (re-scan, section 11), 61 other | [WD-IMPL-FACT-0235] |
 | Frontend catches | 202 `catch` blocks in non-test `src`: 19 comment-only, 102 console-only, 81 other | Re-scan agrees with L section 9 |
-| Toasts | `sonner` (30 files) and shadcn `use-toast` (17 files) | [WD-IMPL-FACT-0014] |
 | Logging | `console.log` and `console.error` only. No logger dependency. No request logging. Timestamps only in `errorHandler` | [WD-IMPL-FACT-0237] |
-| Process level | No `unhandledRejection`, `uncaughtException`, or `SIGTERM` handler. No graceful shutdown | [WD-IMPL-FACT-0232] |
 | Error envelope | Routes and auth return `{error: string}`. `errorHandler` returns `{error:{message}}`. `/generate-from-template` returns `{success, error, details}` | [WD-IMPL-FACT-0233] |
 
 ### 3.10 Request limits and uploads
@@ -336,8 +310,7 @@ V1 INVALIDATE-0011 said every slice route checks project ownership. That claim i
 
 - One Supabase client serves the whole backend: `backend/src/config/supabase.ts:17-22`, built with `SUPABASE_SERVICE_ROLE_KEY`, `autoRefreshToken: false`, `persistSession: false`. No user-scoped client exists in `backend/src` or `backend/scripts` (grep). All PostgREST, storage, and `auth.getUser` calls use it ([WD-IMPL-FACT-0226], [WD-IMPL-FACT-0002]).
 - RLS policies in the migrations (for example `prompt_templates`, `video_generation_jobs`, `user_credits`, `stage_states`) therefore do not apply to any API request (C section 5.1, [WD-IMPL-FACT-0171]).
-- The per-route ownership checks in section 3.8 are the only tenant boundary on the API ([WD-IMPL-FACT-0226]).
-- The browser depends on RLS for one read (`scenes`) and for auth ([WD-IMPL-FACT-0225]).
+- The per-route ownership checks in section 3.8 are the only tenant boundary on the API ([WD-IMPL-FACT-0226]). The browser depends on RLS for one read (`scenes`) and for auth ([WD-IMPL-FACT-0225]).
 - `SUPABASE_ANON_KEY` is read into `supabaseConfig.anonKey` (`config/supabase.ts:25-28`) with a comment saying it is exported for client-side use. Nothing imports `supabaseConfig` ([WD-IMPL-FACT-0244], CONTRADICTED comment).
 
 ---
@@ -346,7 +319,7 @@ V1 INVALIDATE-0011 said every slice route checks project ownership. That claim i
 
 ### 4.1 Database access and schema provenance
 
-- One database: Supabase Postgres. The API reaches it through PostgREST and one RPC, always with the service-role key (section 3.11). The browser reads one table directly (`scenes`).
+- One database: Supabase Postgres, reached by the API through PostgREST and one RPC, always with the service-role key (section 3.11).
 - 29 distinct table names appear in `.from('...')` literals in non-test backend code. 27 have DDL in `backend/migrations`. Two have none in the repo: `videos` (`routes/projects.ts:3078`, `:3115`; `routes/sceneStageLocks.ts:215`) and `invalidation_logs` ([WD-IMPL-FACT-0151], [WD-IMPL-TABLE-0028]). The `videos` name also appears as a storage bucket (`Veo3Provider.ts:338`, `:354`), which is a different object.
 - 46 migration files. 44 distinct numeric prefixes: `022_add_aspect_ratio.sql` and `022_scene_asset_generation_attempts.sql` share a prefix, as do `024_extra_archetype_and_style_outdated.sql` and `024_scene_asset_suggestions.sql` ([WD-IMPL-FACT-0165], C section 1.4). The migrations create 28 tables (C section 5.2, grep of `CREATE TABLE`).
 - RLS is enabled on all 28 migration-created tables (C section 5.2). Open policies: `text_field_versions` has one `FOR ALL USING (true) WITH CHECK (true)` policy with no `TO` clause, so it applies to `anon` ([WD-IMPL-FACT-0146], [WD-IMPL-FACT-0359]). `prompt_templates` rows are readable by any role when `is_active = TRUE`. Preset style capsules are readable by any role (C section 5.3). These policies govern direct PostgREST access only. The API bypasses them (section 3.11).
@@ -354,7 +327,6 @@ V1 INVALIDATE-0011 said every slice route checks project ownership. That claim i
 - Schema drift with code, both documented in the repo: `scenes.stage_locks` exists only in `backend/quickies-sql/add_stage_locks.sql` ([WD-IMPL-FACT-0143], [WD-IMPL-FACT-0012]). `shots.end_frame_reference_image_order` was read and written before any migration created it (C section 1.5, [WD-IMPL-FACT-0167]).
 - RPCs. `streamline_commit_atomic` is the only RPC defined in the repo (`backend/migrations/044_streamline_atomic_intake_fix.sql:38`) and the only one the API calls (`routes/streamline.ts:77`) (I section 1.4).
 - Trigger guards that affect every writer of the table. `enforce_streamline_stage_lock_prerequisite` runs BEFORE INSERT on `stage_states` for locked rows (`backend/migrations/044_streamline_atomic_intake_fix.sql:4-36`) and can reject backfill and PUT inserts ([WD-IMPL-FACT-0153]). `trg_sync_scene_lock_status` on `scenes` copies shot-list lock transitions into `scenes.status` and raises nothing ([WD-IMPL-FACT-0177]).
-- `DatabaseService.testConnection` queries `projects.count`, which is not a column (C section 1.3, [WD-IMPL-FACT-0145]).
 
 ### 4.2 Storage buckets
 
@@ -369,10 +341,8 @@ Path conventions (C section 4.2, 15 templates). Two root styles share `asset-ima
 
 ### 4.3 Persistence pointers
 
-- Versioned stage rows (`stage_states`, append-only per `(branch_id, stage_number, version)`) and their transitions: doc 10 and V1 section 6.
-- Image job and video job tables, status vocabularies, and stranded-state behavior: doc 12 and doc 08.
-- `user_credits` is created lazily at 100.00 on first balance read (`userCreditsService.ts:28-73`) ([WD-IMPL-STATE-0114]). Deductions are non-atomic read-modify-write (V10 section 4).
-- Table-by-table columns and constraints: doc 05 and C-table-inventory.
+- Versioned `stage_states` rows and transitions: doc 10 and V1 section 6. Image and video job tables and stranded-state behavior: docs 12 and 08. Table columns and constraints: doc 05 and C-table-inventory.
+- `user_credits` is created lazily at 100.00 on first balance read (`userCreditsService.ts:28-73`, [WD-IMPL-STATE-0114]). Deductions are non-atomic read-modify-write (V10 section 4).
 
 ---
 
@@ -394,10 +364,8 @@ Path conventions (C section 4.2, 15 templates). Two root styles share `asset-ima
 
 ### 5.2 Selection
 
-- Text, image, and vision each have one implementation. No provider switch exists for them (grep).
-- Video. `createVideoProvider()` (`services/video-generation/createVideoProvider.ts:15-33`) reads `VIDEO_PROVIDER` once and caches the result module-wide. `veo3` selects `Veo3Provider`. Any other value, including unset, selects `MockVideoProvider` (`:18-30`) ([WD-IMPL-FACT-0139]).
+- Text, image, and vision each have one implementation and no switch (grep). Video: `createVideoProvider()` (`services/video-generation/createVideoProvider.ts:15-33`) reads `VIDEO_PROVIDER` once and caches the result module-wide. `veo3` selects `Veo3Provider`. Any other value, including unset, selects `MockVideoProvider` (`:18-30`) ([WD-IMPL-FACT-0139]).
 - Veo model id is chosen by the job's `model_variant` (`veo_3_1_fast` or `veo_3_1_standard`) (`Veo3Provider.ts:17-20`).
-- Image size is set per asset type (`ImageGenerationService.ts:58` `ASPECT_RATIOS` table) and passed to the provider as `width` and `height`. The NanoBanana request does not carry them (section 5.1).
 
 ### 5.3 Retries, timeouts, and failure classes
 
@@ -427,10 +395,9 @@ Path conventions (C section 4.2, 15 templates). Two root styles share `asset-ima
 ### 5.6 Cost, usage, and tracing
 
 - Token counts are estimates: `ceil(chars/4) + ceil(lines*0.5)` (`token-utils.ts:51-63`). API `usage_metadata` is not read (E section 6, [WD-IMPL-FACT-0181]).
-- Usage records go to an in-memory `globalUsageTracker` (`token-utils.ts:163-208`), appended at `llm-client.ts:188`. The array is lost on restart and read only by `GET /api/llm/usage-stats` (E section 6). No table stores usage (grep of migrations).
-- Image cost estimate `0.01 * (w*h)/(512*512)` (`NanoBananaClient.ts:230-235`) is written to `image_generation_jobs` as an estimate and as the actual (E section 6).
+- Usage records go to an in-memory `globalUsageTracker` (`token-utils.ts:163-208`, appended at `llm-client.ts:188`), lost on restart and read only by `GET /api/llm/usage-stats`. No table stores usage (E section 6). Image cost estimate `0.01 * (w*h)/(512*512)` (`NanoBananaClient.ts:230-235`) is written to `image_generation_jobs` (E section 6).
 - Video cost rates 0.15 and 0.40 per second appear in `Veo3Provider.ts:157-160` and `videoGenerationService.ts:6-7`. Charging uses the un-clamped duration (V10 section 3.2, [WD-IMPL-FACT-0127]).
-- LangSmith. The explicit path (`llm-client.ts:154-161`) calls `getLangchainCallbacks()`. That calls `getCurrentRunTree()`, which throws outside a traceable scope. The throw is caught and logged, and the callbacks option is commented out (`:163-165`). The env path is live when `LANGSMITH_TRACING` or `LANGCHAIN_TRACING_V2` resolves to `'true'` (`@langchain/core` `callbacks.js:4-13`). Its value in any deployment is UNKNOWN; this audit did not read it. The `traceId` returned to callers is the request UUID (`llm-client.ts:179`), not a LangSmith run id ([WD-IMPL-PROV-0020], E section 7).
+- LangSmith. The explicit callbacks path (`llm-client.ts:154-161`) never attaches: `getCurrentRunTree()` throws outside a traceable scope, the error is caught, and the callbacks option is commented out (`:163-165`). The env path runs when `LANGSMITH_TRACING` or `LANGCHAIN_TRACING_V2` is `'true'` (`@langchain/core` `callbacks.js:4-13`); its value is UNKNOWN (not read). `traceId` is the request UUID (`llm-client.ts:179`), not a LangSmith run id ([WD-IMPL-PROV-0020], E section 7).
 
 ---
 
@@ -451,7 +418,6 @@ Names are those read by code (grep over `backend/src` and `backend/scripts`). Va
 | `GEMINI_MODEL` | `llm-client.ts:76`, `:106`, `:310` | `gemini-2.5-flash-lite` (ctor, estimate), `gemini-1.5-flash` (call) | Text model id | Optional | [WD-IMPL-FACT-0105] |
 | `LANGSMITH_API_KEY` | `llm-client.ts:83`, `:95-99`, `:156`; `routes/llm.ts:144` (boolean only) | None | LangSmith client. Required by `validateEnvironment` | First text call (lazy) | [WD-IMPL-PROV-0020] |
 | `LANGSMITH_TRACING` | `llm-client.ts:156` (`=== 'true'`). Also read by `@langchain/core` | None | Gates the explicit callbacks path (dead). Enables the env tracer | Optional | [WD-IMPL-PROV-0030] |
-| `LANGCHAIN_TRACING_V2` | Read by `@langchain/core` only | None | Library tracer switch | Optional | [WD-IMPL-PROV-0030] |
 | `LANGSMITH_PROJECT` | Not read by repo code | None | Library-level trace project | Optional | E section 2 |
 | `VIDEO_PROVIDER` | `services/video-generation/createVideoProvider.ts:18` | `mock` | `veo3` selects Veo. Anything else selects the mock | Optional | [WD-IMPL-FACT-0139] |
 | `GOOGLE_CLOUD_PROJECT` | `Veo3Provider.ts:41` | None. `AUTH_ERROR` at generate time | Vertex project id and GCS path prefix | veo3 only | [WD-IMPL-FACT-0229] |
@@ -492,11 +458,8 @@ Naming mismatch: the root templates list `GOOGLE_API_KEY`, and the backend reads
 
 ### 7.1 Dev topology
 
-- Frontend: root `npm run dev` runs `vite` on port 8080 (`package.json` `dev`; `vite.config.ts:9-11`).
-- Backend: `cd backend && npm run dev` runs `tsx watch src/server.ts`, listening on `PORT` (default 3001) ([WD-IMPL-FACT-0239]).
-- Both processes must run. The browser calls `/api/*` on port 8080, and Vite forwards to port 3001 (`vite.config.ts:12-18`). Because the browser sees a same-origin call, the dev CORS allowlist (5173, 3000) is not exercised (I H-FACT-07).
-- Playwright assumes both are already running (no `webServer`).
-
+- Frontend: root `npm run dev` runs `vite` on port 8080 (`vite.config.ts:9-11`). Backend: `cd backend && npm run dev` runs `tsx watch src/server.ts` on `PORT` (default 3001) ([WD-IMPL-FACT-0239]). Both must run. Vite forwards `/api` to port 3001 (`vite.config.ts:12-18`), so the browser sees a same-origin call and the dev CORS allowlist (5173, 3000) is not exercised (I H-FACT-07).
+- 
 ### 7.2 Scripts
 
 Root `package.json`: `dev` (vite), `build` (vite build), `build:dev` (vite build `--mode development`), `lint` (eslint .), `preview` (vite preview), `test` (vitest run), `test:watch`, `test:e2e` (playwright test), `test:e2e:ui` ([WD-IMPL-FACT-0239]).
@@ -514,8 +477,7 @@ Storage setup is not a migration step. `setup:bucket` creates `asset-images`. `s
 
 - App `wizardirector-api`. Builder `paketobuildpacks/builder:base`, buildpack `paketobuildpacks/nodejs`.
 - `[env]` sets `NODE_ENV = "production"` only. No `PORT`, no `VIDEO_PROVIDER`, no Google or Supabase variables. Secrets are set outside the repo. Which ones is UNKNOWN.
-- `[http_service]`: `internal_port = 3001`, `force_https = true`, `auto_stop_machines = true`, `auto_start_machines = true`, `min_machines_running = 0`. No `[[http_service.checks]]`. `/api/health` is not referenced ([WD-IMPL-FACT-0238]).
-- `[[vm]]`: shared CPU, one vCPU, 1024 MB.
+- `[http_service]`: `internal_port = 3001`, `force_https = true`, `auto_stop_machines` and `auto_start_machines` true, `min_machines_running = 0`. No `[[http_service.checks]]`; `/api/health` is not referenced. `[[vm]]`: shared CPU, one vCPU, 1024 MB ([WD-IMPL-FACT-0238]).
 - Production CORS origin. With `NODE_ENV=production`, `cors` allows only `https://your-frontend-domain.com` (`server.ts:35-37`). Any other production frontend origin is refused ([WD-IMPL-FACT-0230]). The deployed origin is UNKNOWN.
 - Instance count is not in the repo (UNKNOWN). Whether auto-stop interrupts an in-flight background job is platform behavior and not verifiable from the repo (I section 10.2).
 
@@ -524,9 +486,7 @@ Storage setup is not a migration step. `setup:bucket` creates `asset-images`. `s
 - `GET /api/health` (`routes/health.ts`) returns `status`, `timestamp`, `service: 'wizardirector-api'`, `version: '1.0.0'`, and `environment`. It checks no dependency ([WD-IMPL-ROUTE-0142]). It is covered by `health.route.test.ts` (3 tests) ([WD-IMPL-ROUTE-0142]).
 - Logs are `console` output only. Background job failures are visible only in captured stdout ([WD-IMPL-FACT-0237]).
 
-### 7.6 Test harness pointer
-
-Test counts, mock strategy, and gaps: doc 13. Backend jest, frontend vitest (jsdom), and two Playwright specs. Authorization is tested in one backend file (`shotLocking4_5_task_11.test.ts`, 401 cases) (I H-FACT-17, [WD-IMPL-FACT-0240]).
+Test harness and gaps: doc 13. Authorization is tested in one backend file, `shotLocking4_5_task_11.test.ts` (401 cases) (I H-FACT-17, [WD-IMPL-FACT-0240]).
 
 ---
 
@@ -610,15 +570,14 @@ Each table lists the calls in order. Status words describe the step. Runtime was
 | 2 | `treatmentService.ts:94` | Reads session with `getSession()`, then `POST /api/llm/generate-from-template` with Bearer | Section 2.5 |
 | 3 | `vite.config.ts:12-18` (dev) | Proxies `/api` to port 3001. Production routing UNKNOWN | [WD-IMPL-FACT-0224] |
 | 4 | `server.ts:75` | `authenticateUser`: one `auth.getUser` call | [WD-IMPL-ROUTE-0134] |
-| 5 | `routes/llm.ts:139-160` | Zod parse, then `promptTemplateService.listTemplates({name, activeOnly, limit: 1})` using the service-role client | REACHABLE. Read of `prompt_templates` |
-| 6 | `routes/llm.ts` (around 176) | `validateVariables`. Missing variables return 400 | |
-| 7 | `routes/llm.ts:194-236` and `contextManager.ts:102-111` | With project and branch IDs in metadata, `assembleGlobalContext` runs. `fetchProject` filters `user_id` (`contextManager.ts:449-458`). Failure logs and empties `writing_style_context` | Section 3.8 (llm row) |
-| 8 | `routes/llm.ts:267-272` | `interpolateTemplate`, then `llmClient.generate` | |
-| 9 | `services/llm-client.ts:104-190` | Model id resolution. Token estimate. LangSmith callbacks only when `LANGSMITH_API_KEY` and `LANGSMITH_TRACING === 'true'` (`:154-161`) | Section 5.6 |
-| 10 | `llm-client.ts` retry loop | `client.invoke` through `ChatGoogleGenerativeAI`. Retries RATE_LIMIT, SERVER_ERROR, NETWORK_ERROR with 1 s, 2 s, 4 s backoff | [WD-IMPL-PROV-0033] |
-| 11 | `llm-client.ts:188` | Usage record appended to the in-memory tracker | [WD-IMPL-FACT-0181] |
-| 12 | `routes/llm.ts:307-316` | `res.json({success: true, data: {...response, promptTemplateVersion, templateId, styleCapsuleMetadata}})` | |
-| 13 | Browser | Text enters React state. It is saved only by a later stage save (`PUT /api/projects/:id/stages/2`). The generate route itself writes no rows (no `insert` or `update` in `llm.ts`). Autosave-on-mount behavior is inferred from hook code (V1 section 6), runtime UNKNOWN | V1 section 6 |
+| 5 | `routes/llm.ts:139-176` | Zod parse, then `promptTemplateService.listTemplates({name, activeOnly, limit: 1})` (service-role read of `prompt_templates`), then `validateVariables` (400 on missing variables) | REACHABLE |
+| 6 | `routes/llm.ts:194-236` and `contextManager.ts:102-111` | With project and branch IDs in metadata, `assembleGlobalContext` runs. `fetchProject` filters `user_id` (`contextManager.ts:449-458`). Failure logs and empties `writing_style_context` | Section 3.8 (llm row) |
+| 7 | `routes/llm.ts:267-272` | `interpolateTemplate`, then `llmClient.generate` | |
+| 8 | `services/llm-client.ts:104-190` | Model id resolution. Token estimate. LangSmith callbacks only when `LANGSMITH_API_KEY` and `LANGSMITH_TRACING === 'true'` (`:154-161`) | Section 5.6 |
+| 9 | `llm-client.ts` retry loop | `client.invoke` through `ChatGoogleGenerativeAI`. Retries RATE_LIMIT, SERVER_ERROR, NETWORK_ERROR with 1 s, 2 s, 4 s backoff | [WD-IMPL-PROV-0033] |
+| 10 | `llm-client.ts:188` | Usage record appended to the in-memory tracker | [WD-IMPL-FACT-0181] |
+| 11 | `routes/llm.ts:307-316` | `res.json({success: true, data: {...response, promptTemplateVersion, templateId, styleCapsuleMetadata}})` | |
+| 12 | Browser | Text enters React state. It is saved only by a later stage save (`PUT /api/projects/:id/stages/2`). The generate route itself writes no rows (no `insert` or `update` in `llm.ts`). Autosave-on-mount behavior is inferred from hook code (V1 section 6), runtime UNKNOWN | V1 section 6 |
 
 ### 9.2 Image generation job: Stage 5 master image for a project asset
 
@@ -628,20 +587,17 @@ Each table lists the calls in order. Status words describe the step. Runtime was
 | 2 | `projectAssetService.ts:363` | `POST /api/projects/:p/assets/:a/generate-image` with Bearer | Section 2.5 |
 | 3 | `server.ts:52` | Mount 2 of `/api/projects`: `authenticateUser` runs twice | [WD-IMPL-ROUTE-0134] |
 | 4 | `routes/projectAssets.ts:1210-1230` | Project lookup with `user_id`. Asset lookup. Prompt build | Section 3.8 (projectAssets row) |
-| 5 | `routes/projectAssets.ts:1271` | `createImageJob` with `idempotencyKey: 'asset-<id>-<Date.now()>'` | Key includes a timestamp, so the lookup never matches ([WD-IMPL-STATE-0115]) |
-| 6 | `ImageGenerationService.ts:109-122` | Idempotency lookup (never matches) | |
-| 7 | `ImageGenerationService.ts:124-141` | For `master_asset`: width and height from `ASPECT_RATIOS`, isolation text injected ([WD-IMPL-AI-0081]). Visual style required (throws without capsule or tone) | |
-| 8 | `ImageGenerationService.ts:146-169` | INSERT into `image_generation_jobs` with status `queued` and a NanoBanana cost estimate | [WD-IMPL-STATE-0109] |
-| 9 | `ImageGenerationService.ts:178-181` | `executeJobInBackground(...).catch(...)`. Not awaited | Fire-and-forget ([WD-IMPL-FACT-0232]) |
-| 10 | `routes/projectAssets.ts` | Response returns `jobId` before any generation | |
-| 11 | `ImageGenerationService.ts:298-310` | Background: `processing`, `attempt_count = 1`, visual style context loaded, identity references prepended | STATE: [WD-IMPL-STATE-0109] |
-| 12 | `ImageGenerationService.ts:353` | `generating`: `NanoBananaClient.generateImage`. Up to 3 retries on RATE_LIMIT and TEMPORARY | [WD-IMPL-PROV-0025], [WD-IMPL-PROV-0033] |
-| 13 | `ImageGenerationService.ts:361-383` | `uploading`. Upload to bucket `asset-images` at a `buildStoragePath` path | [WD-IMPL-FACT-0173] |
-| 14 | `ImageGenerationService.ts:391-393`, `:539` | `getPublicUrl`. `completed` with `public_url`, cost, provider metadata. Per-type target rows are updated in the executor (`:298-586`) | |
-| 15 | `ImageGenerationService.ts:559-584` | Failure path: `failed` with `error_code`. `failure_stage` derived from the DB status | I section 3.3 |
-| 16 | `projectAssetService.ts:385-424` | `pollImageJob` calls `GET /api/images/jobs/:jobId` every 1 s, up to 60 times. Throws on `failed` or on timeout | Client budget 60 s |
-| 17 | `routes/images.ts:71-115` | GET checks ownership through the job's `project_id` (`projects.user_id`) or `asset_id` (`global_assets.user_id`). 400 if neither | [WD-IMPL-ROUTE-0141] |
-| Stranded | Process restart during steps 11-14 | Row stays in `processing`, `generating`, or `uploading`. No sweeper. Client poll ends at 60 s with a timeout error | [WD-IMPL-STATE-0109], doc 12 |
+| 5 | `routes/projectAssets.ts:1271`, `ImageGenerationService.ts:109-122` | `createImageJob` with `idempotencyKey: 'asset-<id>-<Date.now()>'`. Idempotency lookup, which never matches because the key includes a timestamp | [WD-IMPL-STATE-0115] |
+| 6 | `ImageGenerationService.ts:124-169` | For `master_asset`: width and height from `ASPECT_RATIOS`, isolation text injected ([WD-IMPL-AI-0081]). Visual style required. INSERT into `image_generation_jobs` as `queued` with a NanoBanana cost estimate | [WD-IMPL-STATE-0109] |
+| 7 | `ImageGenerationService.ts:178-181` | `executeJobInBackground(...).catch(...)`, not awaited. The route returns `jobId` before any generation | Fire-and-forget ([WD-IMPL-FACT-0232]) |
+| 8 | `ImageGenerationService.ts:298-310` | Background: `processing`, `attempt_count = 1`, visual style context loaded, identity references prepended | STATE: [WD-IMPL-STATE-0109] |
+| 9 | `ImageGenerationService.ts:353` | `generating`: `NanoBananaClient.generateImage`. Up to 3 retries on RATE_LIMIT and TEMPORARY | [WD-IMPL-PROV-0025], [WD-IMPL-PROV-0033] |
+| 10 | `ImageGenerationService.ts:361-383` | `uploading`. Upload to bucket `asset-images` at a `buildStoragePath` path | [WD-IMPL-FACT-0173] |
+| 11 | `ImageGenerationService.ts:391-393`, `:539` | `getPublicUrl`. `completed` with `public_url`, cost, provider metadata. Per-type target rows are updated in the executor (`:298-586`) | |
+| 12 | `ImageGenerationService.ts:559-584` | Failure path: `failed` with `error_code`. `failure_stage` derived from the DB status | I section 3.3 |
+| 13 | `projectAssetService.ts:385-424` | `pollImageJob` calls `GET /api/images/jobs/:jobId` every 1 s, up to 60 times. Throws on `failed` or on timeout | Client budget 60 s |
+| 14 | `routes/images.ts:71-115` | GET checks ownership through the job's `project_id` (`projects.user_id`) or `asset_id` (`global_assets.user_id`). 400 if neither | [WD-IMPL-ROUTE-0141] |
+| Stranded | Process restart during steps 8-11 | Row stays in `processing`, `generating`, or `uploading`. No sweeper. Client poll ends at 60 s with a timeout error | [WD-IMPL-STATE-0109], doc 12 |
 
 ### 9.3 Stage lock: approving Stage 4
 
@@ -678,13 +634,10 @@ Each table lists the calls in order. Status words describe the step. Runtime was
 | 9 | Image aspect ratio applied as sizing | Width and height not sent to the model | [WD-IMPL-FACT-0349], [WD-IMPL-PROV-0025] |
 | 10 | Landing copy: multi-provider AI, OpenAI and Anthropic | No code or dependency for either | [WD-IMPL-FACT-0013], [WD-IMPL-PROV-0032] |
 | 11 | LangSmith "tracing optional" comment (`llm-client.ts:153`) | Explicit callbacks never attach. Env tracer depends on value | [WD-IMPL-FACT-0353], [WD-IMPL-PROV-0030] |
-| 12 | Migrations are applied by `npm run migrate` | Runner calls an undefined `exec` RPC and splits on `;` | [WD-IMPL-FACT-0150] |
 | 13 | Production CORS origin is the deployed frontend | Placeholder `https://your-frontend-domain.com` | [WD-IMPL-FACT-0230] |
 | 14 | Project type `audio-visual` (frontend) | Backend and DB use `audio_visual`. Save fails | [WD-IMPL-FACT-0147] (V1 contradictions 2) |
 | 15 | Phase A unlock returns `downstreamStages` at top level (frontend read) | Backend nests it under `details`. Dialog never opens and unlock auto-confirms | [WD-IMPL-FACT-0017], [WD-IMPL-FACT-0340] (CONFIRMED by R1a) |
-| 16 | Route envelope `{error: string}` | `errorHandler` returns `{error:{message}}`. Frontend reads `error.error` | [WD-IMPL-FACT-0233] |
 | 17 | Live schema matches migrations | `scenes.stage_locks`, `videos`, and `invalidation_logs` are referenced with no DDL in the repo | [WD-IMPL-FACT-0143], [WD-IMPL-FACT-0151] |
-| 18 | Model defaults are consistent | Three different literal fallbacks | [WD-IMPL-FACT-0105] |
 
 ### 10.2 Unknowns and what would settle them
 
@@ -701,7 +654,6 @@ Each table lists the calls in order. Status words describe the step. Runtime was
 | Whether Fly auto-stop interrupts an in-flight background job | Platform behavior |
 | Whether backend `npm run lint` runs (no backend ESLint config) | Run it in an environment |
 | Whether async errors escaping `try` blocks crash the process | Forced-throw runtime test |
-| Frontend behavior on an expired token (no 401 handling) | Runtime test with an expired token |
 | Whether Supabase email confirmation is enabled (affects the `signUp` null-session path, V1 section 2) | Supabase project settings |
 | Whether `frames.total_cost_credits` re-accrues when status is polled after completion | Depends on the poll loop (V10 section 11) |
 
@@ -718,8 +670,7 @@ Each item states the report value, the recount, and the value used in this docum
 5. Backend catch classes. I H-FACT-12 says 22 "only log". Brace-matching re-scan of 290 catch blocks: 7 comment-only, 222 console-only, 61 other. Used: 222. The 290 and 7 values agree with I.
 6. E-FACT-19 (`WD-IMPL-FACT-0198`) is honored as corrected by I (`WD-IMPL-FACT-0227`). The refinement added here is that `LLMClient` is lazy (`llm-client.ts:361-368`). `GOOGLE_AI_API_KEY` is a boot requirement through `NanoBananaClient` only. `LANGSMITH_API_KEY` and the text-path key are required at the first text call.
 7. I H-ROUTE-01 says "14 router mounts". The file has 14 authenticated mounts plus `/api/health`. Clarified, not changed.
-8. Route handler counts (198) and per-file counts in I section 1.2 reproduced exactly. Route LOC (16,539) computed here. Frontend and backend production LOC (53,362 and 33,639) reproduced from L section 1.1.
-9. Table-literal counts: L reports 561 and 237. Raw `.from(` counts are 586 (routes) and 267 (services). Both are shown in section 3.4.
+8. Route handler counts (198) and per-file counts (I section 1.2), production LOC (L section 1.1: 53,362 and 33,639), and table-literal counts (L: 561 and 237; raw `.from(`: 586 and 267, section 3.4) reproduced or restated. Route LOC (16,539) computed here.
 
 ---
 
@@ -727,27 +678,22 @@ Each item states the report value, the recount, and the value used in this docum
 
 The I report numbers its entries `H-<KIND>-NN`. The same local ids are used by the H report, so this map is limited to reporter I. Every id below is `WD-IMPL-<KIND>-NNNN`.
 
-| Local id | WD-IMPL id | Local id | WD-IMPL id | Local id | WD-IMPL id |
-|---|---|---|---|---|---|
-| H-FACT-01 | WD-IMPL-FACT-0224 | H-FACT-05 | WD-IMPL-FACT-0228 | H-STATE-09 | WD-IMPL-STATE-0117 |
-| H-PRESSURE-01 | WD-IMPL-PRESSURE-0008 | H-PRESSURE-05 | WD-IMPL-PRESSURE-0012 | H-FACT-10 | WD-IMPL-FACT-0233 |
-| H-PROV-01 | WD-IMPL-PROV-0024 | H-PROV-05 | WD-IMPL-PROV-0028 | H-PROV-10 | WD-IMPL-PROV-0033 |
-| H-ROUTE-01 | WD-IMPL-ROUTE-0133 | H-ROUTE-05 | WD-IMPL-ROUTE-0137 | H-ROUTE-10 | WD-IMPL-ROUTE-0142 |
-| H-STATE-01 | WD-IMPL-STATE-0109 | H-STATE-05 | WD-IMPL-STATE-0113 | H-STATE-10 | WD-IMPL-STATE-0118 |
-| H-FACT-02 | WD-IMPL-FACT-0225 | H-FACT-06 | WD-IMPL-FACT-0229 | H-FACT-11 | WD-IMPL-FACT-0234 |
-| H-PRESSURE-02 | WD-IMPL-PRESSURE-0009 | H-PROV-06 | WD-IMPL-PROV-0029 | H-ROUTE-11 | WD-IMPL-ROUTE-0143 |
-| H-PROV-02 | WD-IMPL-PROV-0025 | H-ROUTE-06 | WD-IMPL-ROUTE-0138 | H-STATE-11 | WD-IMPL-STATE-0119 |
-| H-ROUTE-02 | WD-IMPL-ROUTE-0134 | H-STATE-06 | WD-IMPL-STATE-0114 | H-FACT-12 | WD-IMPL-FACT-0235 |
-| H-STATE-02 | WD-IMPL-STATE-0110 | H-FACT-07 | WD-IMPL-FACT-0230 | H-STATE-12 | WD-IMPL-STATE-0120 |
-| H-FACT-03 | WD-IMPL-FACT-0226 | H-PROV-07 | WD-IMPL-PROV-0030 | H-FACT-13 | WD-IMPL-FACT-0236 |
-| H-PRESSURE-03 | WD-IMPL-PRESSURE-0010 | H-ROUTE-07 | WD-IMPL-ROUTE-0139 | H-FACT-14 | WD-IMPL-FACT-0237 |
-| H-PROV-03 | WD-IMPL-PROV-0026 | H-STATE-07 | WD-IMPL-STATE-0115 | H-FACT-15 | WD-IMPL-FACT-0238 |
-| H-ROUTE-03 | WD-IMPL-ROUTE-0135 | H-FACT-08 | WD-IMPL-FACT-0231 | H-FACT-16 | WD-IMPL-FACT-0239 |
-| H-STATE-03 | WD-IMPL-STATE-0111 | H-PROV-08 | WD-IMPL-PROV-0031 | H-FACT-17 | WD-IMPL-FACT-0240 |
-| H-FACT-04 | WD-IMPL-FACT-0227 | H-ROUTE-08 | WD-IMPL-ROUTE-0140 | H-FACT-18 | WD-IMPL-FACT-0241 |
-| H-PRESSURE-04 | WD-IMPL-PRESSURE-0011 | H-STATE-08 | WD-IMPL-STATE-0116 | H-FACT-19 | WD-IMPL-FACT-0242 |
-| H-PROV-04 | WD-IMPL-PROV-0027 | H-FACT-09 | WD-IMPL-FACT-0232 | H-FACT-20 | WD-IMPL-FACT-0243 |
-| H-ROUTE-04 | WD-IMPL-ROUTE-0136 | H-PROV-09 | WD-IMPL-PROV-0032 | H-FACT-21 | WD-IMPL-FACT-0244 |
-| H-STATE-04 | WD-IMPL-STATE-0112 | H-ROUTE-09 | WD-IMPL-ROUTE-0141 |  |  |
+| Local id | WD-IMPL id | Local id | WD-IMPL id | Local id | WD-IMPL id | Local id | WD-IMPL id |
+|---|---|---|---|---|---|---|---|
+| H-FACT-01 | WD-IMPL-FACT-0224 | H-FACT-04 | WD-IMPL-FACT-0227 | H-PROV-07 | WD-IMPL-PROV-0030 | H-FACT-11 | WD-IMPL-FACT-0234 |
+| H-PRESSURE-01 | WD-IMPL-PRESSURE-0008 | H-PRESSURE-04 | WD-IMPL-PRESSURE-0011 | H-ROUTE-07 | WD-IMPL-ROUTE-0139 | H-ROUTE-11 | WD-IMPL-ROUTE-0143 |
+| H-PROV-01 | WD-IMPL-PROV-0024 | H-PROV-04 | WD-IMPL-PROV-0027 | H-STATE-07 | WD-IMPL-STATE-0115 | H-STATE-11 | WD-IMPL-STATE-0119 |
+| H-ROUTE-01 | WD-IMPL-ROUTE-0133 | H-ROUTE-04 | WD-IMPL-ROUTE-0136 | H-FACT-08 | WD-IMPL-FACT-0231 | H-FACT-12 | WD-IMPL-FACT-0235 |
+| H-STATE-01 | WD-IMPL-STATE-0109 | H-STATE-04 | WD-IMPL-STATE-0112 | H-PROV-08 | WD-IMPL-PROV-0031 | H-STATE-12 | WD-IMPL-STATE-0120 |
+| H-FACT-02 | WD-IMPL-FACT-0225 | H-FACT-05 | WD-IMPL-FACT-0228 | H-ROUTE-08 | WD-IMPL-ROUTE-0140 | H-FACT-13 | WD-IMPL-FACT-0236 |
+| H-PRESSURE-02 | WD-IMPL-PRESSURE-0009 | H-PRESSURE-05 | WD-IMPL-PRESSURE-0012 | H-STATE-08 | WD-IMPL-STATE-0116 | H-FACT-14 | WD-IMPL-FACT-0237 |
+| H-PROV-02 | WD-IMPL-PROV-0025 | H-PROV-05 | WD-IMPL-PROV-0028 | H-FACT-09 | WD-IMPL-FACT-0232 | H-FACT-15 | WD-IMPL-FACT-0238 |
+| H-ROUTE-02 | WD-IMPL-ROUTE-0134 | H-ROUTE-05 | WD-IMPL-ROUTE-0137 | H-PROV-09 | WD-IMPL-PROV-0032 | H-FACT-16 | WD-IMPL-FACT-0239 |
+| H-STATE-02 | WD-IMPL-STATE-0110 | H-STATE-05 | WD-IMPL-STATE-0113 | H-ROUTE-09 | WD-IMPL-ROUTE-0141 | H-FACT-17 | WD-IMPL-FACT-0240 |
+| H-FACT-03 | WD-IMPL-FACT-0226 | H-FACT-06 | WD-IMPL-FACT-0229 | H-STATE-09 | WD-IMPL-STATE-0117 | H-FACT-18 | WD-IMPL-FACT-0241 |
+| H-PRESSURE-03 | WD-IMPL-PRESSURE-0010 | H-PROV-06 | WD-IMPL-PROV-0029 | H-FACT-10 | WD-IMPL-FACT-0233 | H-FACT-19 | WD-IMPL-FACT-0242 |
+| H-PROV-03 | WD-IMPL-PROV-0026 | H-ROUTE-06 | WD-IMPL-ROUTE-0138 | H-PROV-10 | WD-IMPL-PROV-0033 | H-FACT-20 | WD-IMPL-FACT-0243 |
+| H-ROUTE-03 | WD-IMPL-ROUTE-0135 | H-STATE-06 | WD-IMPL-STATE-0114 | H-ROUTE-10 | WD-IMPL-ROUTE-0142 | H-FACT-21 | WD-IMPL-FACT-0244 |
+| H-STATE-03 | WD-IMPL-STATE-0111 | H-FACT-07 | WD-IMPL-FACT-0230 | H-STATE-10 | WD-IMPL-STATE-0118 |  |  |
 
-This document cites the WD-IMPL column throughout. Local ids appear only in this appendix and in the I report.
+This document cites the WD-IMPL column throughout.

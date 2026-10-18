@@ -58,3 +58,16 @@ const unk = L.filter((e) => !ORDERK.includes(e.kind));
 fs.writeFileSync(`${OUT}/17-IMPLEMENTATION-LEDGER.md`, led);
 fs.writeFileSync(`${OUT}/17-IMPLEMENTATION-LEDGER.jsonl`, L.map((e) => JSON.stringify({ ...e, product_intent_relations: rel[e.id] || [] })).join('\n') + '\n');
 console.log({ caps: caps.length, total: L.length, clusters, unk: unk.length, capLines: md.split('\n').length, ledLines: led.split('\n').length });
+
+// crosswalk
+const rows = [];
+for (const f of relFiles) for (const line of fs.readFileSync(`${A}/reports/${f}`, 'utf8').split('\n')) { if (!line.trim()) continue; try { const o = JSON.parse(line); rows.push({ ...o, pk: f.slice(0, 3) }); } catch {} }
+const cnt = {}; for (const r of rows) cnt[r.relation] = (cnt[r.relation] || 0) + (r.idea_ids || []).length;
+let x = `# 18 Product-intent crosswalk (late coverage check)\n\nSupporting artifact. The product-knowledge corpus (\`._docs/product-knowledge/\`, 1,885 \`WD-IDEA-*\` ideas) was used ONLY as a search checklist after the code model was built. Every idea id is assigned to exactly one concept cluster below with the relation the CODE has to it. \`WD-IDEA-*\` ids are product intent and never evidence; \`WD-IMPL-*\` ids are code evidence. Legacy \`impl\` tags were ignored. Relation vocabulary: EXACT_MATCH, PARTIAL_MATCH, NOT_IMPLEMENTED (searched, nothing found), CONTRADICTED_BY_CODE, UNKNOWN (static analysis cannot settle).\n\n## Totals (ideas)\n\n| relation | ideas |\n|---|---|\n` + Object.entries(cnt).sort().map(([k, v]) => `| ${k} | ${v} |`).join('\n') + `\n\nClusters: ${rows.length}. Coverage reports with missed-concept lists: \`_evidence/reports/PK1-coverage.md\` to \`PK7-coverage.md\`.\n`;
+const byPk = {}; for (const r of rows) (byPk[r.pk] ||= []).push(r);
+for (const [pk, list] of Object.entries(byPk)) {
+  x += `\n## ${pk} clusters\n\n| cluster | relation | ideas | impl ids | code evidence | note |\n|---|---|---|---|---|---|\n`;
+  for (const r of list) x += `| ${esc(r.cluster)} | ${r.relation} | ${(r.idea_ids || []).join(', ')} | ${(r.impl_ids || []).map((i) => retired[i] || i).join(', ')} | ${esc((r.code_evidence || r.searched || []).slice(0, 4).join('; '))} | ${esc(r.note)} |\n`;
+}
+fs.writeFileSync(`${OUT}/18-PRODUCT-INTENT-CROSSWALK.md`, x);
+console.log('crosswalk', rows.length, cnt);
