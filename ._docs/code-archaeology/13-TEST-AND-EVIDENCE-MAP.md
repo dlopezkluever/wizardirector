@@ -628,5 +628,5 @@ Repo reads and greps done for this map (beyond the reporters' own checks). Each 
 21. Auth middleware: `auth.ts:21, 27, 30, 40-42`. Confirmed.
 22. Stage-lock routes: `sceneStageLocks.ts:56, 145, 290`. Confirmed.
 23. Test file counts: 26 vitest files, 37 backend `*.test.ts` in `src/tests`, 4 in `src/utils/__tests__`, 2 e2e specs. Confirmed.
-24. Ledger counts recomputed from `merged2/merged.jsonl`: TEST 124 (50 wave-1, 74 J, IDs 0051 to 0124); CAP 287 with tested Y 37, P 31, N 219, U 0; J-FACT 20. Confirmed.
+24. Ledger counts recomputed from `_evidence/merged/merged.jsonl`: TEST 124 (50 wave-1, 74 J, IDs 0051 to 0124); CAP 287 with tested Y 37, P 31, N 219, U 0; J-FACT 20. Confirmed.
 25. Frame generation and continuity claims used in section 12 (`projects.ts:3853`, `frames.ts:1650-1659`, `continuityCompositionService.ts:638-643`, `:682`) are taken from V7 and V9. Not separately re-read here.

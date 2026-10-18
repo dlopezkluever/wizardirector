@@ -757,7 +757,7 @@ Deletion behavior by parent, as recorded in the migrations and routes. Invalidat
 6. **Frame approve and reject.** H section 4.2 treats the routes as transitions. Recorded here as route REACHABLE with no UI caller (WD-IMPL-FACT-0109).
 7. **Stage name labels.** Five stage label sets exist. The Stage 4 name is "Script" in ProjectView, "Master Script" in the unlock dialog and "Screenplay" on the landing page (section 5 row 24). No single name is canonical in code.
 8. **WD-IMPL-TABLE-0051** says the create route never sets pre or post image keys. Corrected: the create route accepts `pre_image_key_url` from the request body (`sceneAssets.ts:1803`, `transformationEventService.ts:261`), but no UI path sends it (V6 section 1.4, section 3.16).
-9. **Ledger citations.** Every cited ledger id was checked against `merged2/merged.jsonl`. Where a drafted citation did not match its wording it was replaced (video prompt snapshot now cites H section 5.5, frame prompt snapshot cites WD-IMPL-DEAD-0095).
+9. **Ledger citations.** Every cited ledger id was checked against `_evidence/merged/merged.jsonl`. Where a drafted citation did not match its wording it was replaced (video prompt snapshot now cites H section 5.5, frame prompt snapshot cites WD-IMPL-DEAD-0095).
 
 ### 10.2 Spot checks against the repo
 
@@ -785,5 +785,5 @@ Each check was run in this pass with grep or sed on the cited path.
 - Digested by a sub-agent that reports full reads of C-database.md and C-table-inventory.md. Its digest was spot-checked against R1a, R1b and the repo (section 10.2 items 4, 6, 7 and 8).
 - Read by section for this document: V1 (sections 1, 4, 5, contradictions), V3 (sections 0, 2, 6, and the artifact map), V5 (sections 2, 4 to 9), V6 (sections 1, 3 to 6, 8), V7 (sections 1, 2, 6, 8, 11), V8 (sections 1, 2, 8), V9 (sections 1, 3, 4), V10 (sections 4, 5). H (sections 0 to 7 and 10). L-pressure (sections 3 and 6).
 - Not read for this document: V2, V4, E, I, J, K, R2, R1a and R1b directly (their verdicts are used through ledger ids and the database review). Facts from those reports enter only where a ledger id is cited.
-- Ledger entries were used through `merged2/merged.jsonl`. Records that rely only on ledger text are marked "ledger-only" in their status line where that applies. Unmarked records were checked against at least one repo path.
+- Ledger entries were used through `_evidence/merged/merged.jsonl`. Records that rely only on ledger text are marked "ledger-only" in their status line where that applies. Unmarked records were checked against at least one repo path.
 - Several records state UNKNOWN where runtime would settle the answer. The list is in section 9.3.

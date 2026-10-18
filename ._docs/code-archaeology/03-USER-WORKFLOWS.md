@@ -8,7 +8,7 @@ Reading notes. Document map is 00-README.md. Sibling documents: 01 overview, 02 
 
 ## 0. Conventions
 
-- Ledger ids are cited in full (`WD-IMPL-CAP-0013`). Flags (present, reachable, functional, persisted, tested) are not repeated in the tables; read them from `merged2/merged.jsonl`.
+- Ledger ids are cited in full (`WD-IMPL-CAP-0013`). Flags (present, reachable, functional, persisted, tested) are not repeated in the tables; read them from `_evidence/merged/merged.jsonl`.
 - Status words follow the brief vocabulary: IMPLEMENTED, REACHABLE, FUNCTIONAL, PERSISTED, TESTED, PARTIAL, MOCK-ONLY, DEAD, ORPHANED, LEGACY, DUPLICATED, CONTRADICTED, UNKNOWN.
 - "Phase A" means project-level Stages 1 to 5. "Phase B" means per-scene Stages 7 to 12. Stage 6 is the Script Hub. The stage component names are `Stage1InputMode`, `Stage2Treatment`, `Stage3BeatSheet`, `Stage4MasterScript`, `Stage5Assets`, `Stage6ScriptHub`, `Stage7ShotList`, `Stage8VisualDefinition`, `Stage9PromptSegmentation`, `Stage10FrameGeneration`, `Stage11Confirmation`, `Stage12VideoGeneration` (V1 section 5.3).
 - Route paths are relative to `/api/projects/:projectId` unless shown in full. Service names are the frontend `src/lib/services/*` modules and backend `backend/src/services/*` modules.
@@ -793,4 +793,4 @@ Every affordance that re-runs generation or re-enters an earlier state, and what
 4. R1a C04 precision: the repo-level absence of `videos` and `invalidation_logs` is established, but live-database absence is not. This document says "no migration creates" and never "nonexistent".
 5. Ten status labels in the citations were not in the ledger (CAP-0040, CAP-0134, CAP-0222, CAP-0224, CAP-0236, CAP-0250, CAP-0254, CAP-0271, CAP-0278, STATE-0028). Seven are restated as functional P, and three are unlabelled.
 6. Spot checks: 19 load-bearing claims were rechecked against the repo and matched. They include `ProjectView.tsx:695`, `shotAssignments.ts:195,223`, `videoGenerationService.ts:381,394`, `checkout.ts:94`, `MockVideoProvider.ts:23`, `locationResolverService.ts:73`, `Stage5Assets.tsx:218`, `frames.ts:262,267`, `ImageGenerationService.ts:140`, `stageStates.ts:211-222,323`, `projects.ts:1381`, `Stage4MasterScript.tsx:785`, `VideoJobExecutor.ts:16`, `llm.ts:220`, `treatmentService.ts:152`, and the seed templates (no `regeneration_guidance` placeholder).
-7. All 270 ledger ids cited in this document exist in `merged2/merged.jsonl`.
+7. All 270 ledger ids cited in this document exist in `_evidence/merged/merged.jsonl`.

@@ -13,7 +13,7 @@ Forensic reconstruction of what the WizardDirector (Aiuteur) codebase actually i
 | Namespace | Meaning |
 |---|---|
 | `WD-IMPL-CAP-nnnn` | user-visible capability (287) |
-| `WD-IMPL-AI-nnnn` | distinct model call or prompt-building path (61 canonical; duplicate ids folded, see `retired-ids.json` in `_evidence/merged2/` and the retired list at the top of `17`) |
+| `WD-IMPL-AI-nnnn` | distinct model call or prompt-building path (61 canonical; duplicate ids folded, see `retired-ids.json` in `_evidence/merged/` and the retired list at the top of `17`) |
 | `WD-IMPL-STATE-nnnn`, `WD-IMPL-INVALIDATE-nnnn` | state transitions and invalidation/cascade rules (120, 108; overlapping views from different reporters are both kept, cite both) |
 | `WD-IMPL-ENTITY`, `-TABLE`, `-ROUTE`, `-PROV`, `-DEAD`, `-PRESSURE`, `-TEST`, `-FACT` | entities, tables, routes, providers, dead/duplicate code, structural pressure, tests, other verified facts |
 | `WD-IDEA-*` | product intent from the legacy corpus. Never evidence. Never renumbered. Never merged with an implementation id. |
@@ -50,7 +50,7 @@ Product-intent relations (crosswalk only): EXACT_MATCH, PARTIAL_MATCH, NOT_IMPLE
 | 18 | `18-PRODUCT-INTENT-CROSSWALK.md` | 1,885 `WD-IDEA-*` ids clustered with their relation to the code | 685 |
 | - | `_evidence/` | reporter reports, per-reporter ledgers, merged ledger, briefs, generation scripts | scratch |
 
-Suggested paths. Orientation: 01, 03, 10. Rebuild planning inputs: 04, 05, 07, 08, 09, 10, then 14 to 16. Lookup: grep ids in 17. `02` and `17` are generated from `_evidence/merged2/merged.jsonl` by `_evidence/render-docs.mjs`; edit the ledger sources, not the rendered files.
+Suggested paths. Orientation: 01, 03, 10. Rebuild planning inputs: 04, 05, 07, 08, 09, 10, then 14 to 16. Lookup: grep ids in 17. `02` and `17` are generated from `_evidence/merged/merged.jsonl` by `_evidence/render-docs.mjs`; edit the ledger sources, not the rendered files.
 
 ## How the corpus was produced
 

@@ -488,7 +488,7 @@ Each entry lists the trigger, the route or service, and the writes in the handle
 - CURRENT CONSEQUENCE: a permanent error is retried as a billable Veo call (V10-FACT-09). The manual retry contradicts the `max_retries` design (V10-STATE-02, H section 5.2).
 - CONFIDENCE: H.
 
-**SP-65 Client timeouts end before server work does, and polling loops never end on stranded states** `PARTIAL` (WD-IMPL-PRESSURE-0012; WD-IMPL-PRESSURE-0053; WD-IMPL-FACT-0066; WD-IMPL-FACT-0140; V5-FACT-03)
+**SP-65 Client timeouts end before server work does, and polling loops never end on stranded states** `PARTIAL` (WD-IMPL-PRESSURE-0012; WD-IMPL-PRESSURE-0053; WD-IMPL-FACT-0066; WD-IMPL-FACT-0068; V5-FACT-03)
 - OBSERVATION: the image-job client polls once per second for 60 attempts, then shows a timeout toast while the job continues. Stage 10 polls frames every 2 seconds with no ceiling while any frame is generating. Stage 12 polls every 3 seconds while a job is non-terminal. Stage 6 polls every 10 seconds. AssetDialog runs `setInterval` and `setTimeout` without unmount cleanup. `frameService.pollUntilComplete` marks a frame complete on any error and has no caller. Veo polls every 10 seconds for up to 5 minutes inside a job.
 - EVIDENCE: projectAssetService.ts:385-424; Stage10FrameGeneration.tsx:252-259; Stage12VideoGeneration.tsx:59-68; Stage6ScriptHub.tsx:126-129; AssetDialog.tsx:129, :205, :258-266; frameService.ts:593-632 (dead poller); Veo3Provider.ts:224-232.
 - CURRENT CONSEQUENCE: a timed-out image job can still write later (V6 section 7.1). After a restart, a stranded row never reaches a terminal state, so the UI polls without end (H section 3.4, reported).
