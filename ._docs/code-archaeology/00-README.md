@@ -32,7 +32,7 @@ Product-intent relations (crosswalk only): EXACT_MATCH, PARTIAL_MATCH, NOT_IMPLE
 |---|---|---|---|
 | 1 | `01-SYSTEM-OVERVIEW.md` | orientation: topology, repo map, stages, providers, key facts | 364 |
 | 2 | `03-USER-WORKFLOWS.md` | reachable end-to-end workflows with call chains and dead ends | 796 |
-| 3 | `02-FUNCTIONAL-CAPABILITIES.md` | all 287 capabilities (generated from the ledger) | 3,677 |
+| 3 | `02-FUNCTIONAL-CAPABILITIES.md` | all 287 capabilities (generated from the ledger) | 3677 |
 | 4 | `04-DOMAIN-AND-STATE-MODEL.md` | entities, relations, duplicated representations, client state | 789 |
 | 5 | `05-DATA-MODEL.md` | effective schema, migrations reality, storage, RLS, code-vs-schema mismatches | 890 |
 | 6 | `06-WRITING-AND-STORY-IMPLEMENTATION.md` | intake, treatment, beats, script, scene parsing, user-text overwrite paths | 769 |
@@ -45,8 +45,8 @@ Product-intent relations (crosswalk only): EXACT_MATCH, PARTIAL_MATCH, NOT_IMPLE
 | 13 | `13-TEST-AND-EVIDENCE-MAP.md` | what tests prove, test results observed, weak coverage | 632 |
 | 14 | `14-DEAD-PARTIAL-AND-DUPLICATED.md` | orphaned, partial, duplicated, legacy code | 715 |
 | 15 | `15-STRUCTURAL-PRESSURE.md` | descriptive coupling and pressure observations | 700 |
-| 16 | `16-COVERAGE-AND-UNKNOWNS.md` | coverage audit, contradictions, unknowns, runtime checks needed | (see file) |
-| 17 | `17-IMPLEMENTATION-LEDGER.md` / `.jsonl` | flat inventory of all 1,590 entries (markdown lines; lossless JSONL) | 1,635 |
+| 16 | `16-COVERAGE-AND-UNKNOWNS.md` | coverage audit, contradictions, unknowns, runtime checks needed | 634 |
+| 17 | `17-IMPLEMENTATION-LEDGER.md` / `.jsonl` | flat inventory of all 1,590 entries (markdown lines; lossless JSONL) | 1635 |
 | 18 | `18-PRODUCT-INTENT-CROSSWALK.md` | 1,885 `WD-IDEA-*` ids clustered with their relation to the code | 685 |
 | - | `_evidence/` | reporter reports, per-reporter ledgers, merged ledger, briefs, generation scripts | scratch |
 
